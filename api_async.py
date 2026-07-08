@@ -23,11 +23,51 @@ from pydantic import BaseModel
 # FastAPI app
 # ---------------------------------------------------------------------------
 fastapi_app = FastAPI(
-    title="Salfanet NMS — Async API",
-    description="WebSocket & async endpoints for real-time OLT/ONU monitoring",
+    title="Salfanet NMS — Complete API Documentation",
+    description="""**Salfanet NMS** — Multi-tenant OLT Management System for FTTH networks.
+
+## Architecture
+- **Flask (port 5000)** — Main API server (all endpoints below)
+- **FastAPI (port 8765)** — WebSocket + async endpoints + this Swagger UI
+
+## Endpoint Categories
+| Tag | Description |
+|-----|-------------|
+| **WebSocket** | Real-time sync, ONU status, dashboard events |
+| **Auth** | Login, logout, session management |
+| **Dashboard** | Summary stats, live traffic |
+| **OLT Management** | CRUD, sync, connection test |
+| **ONU Management** | CRUD, actions, live detail, migration |
+| **ONU Registration** | Scan, pre-register new ONUs |
+| **Uplink Ports** | Enable/disable, config, VLAN trunk, IP SVI |
+| **PON Ports** | Stats, enable/disable, edit |
+| **VLANs** | Rename, delete |
+| **ONU Types** | Add, delete |
+| **Speed Profiles** | TCONT + Traffic profiles |
+| **WAN IP Profiles** | WAN IP provisioning |
+| **FTTH Infrastructure** | OTB → ODC → ODP hierarchy |
+| **Templates** | ONU provisioning templates |
+| **TR069** | ACS profiles |
+| **Users** | RBAC user management |
+| **Customization** | Columns, signal filter, RX colors |
+| **Notifications** | Alert notifications |
+| **Alerts** | Alert rules |
+| **Subscription** | Tenant subscription management |
+| **Public** | No-auth endpoints (branding, register) |
+| **Superadmin** | Platform admin (tenants, packages) |
+| **Payment** | Duitku payment callback |
+
+## Authentication
+Most endpoints require session-based auth. Public endpoints (tag: Public) are accessible without auth.
+
+## Base URLs
+- **Flask API**: `http://host:5000/api/...`
+- **FastAPI (this docs)**: `http://host:8765/docs`
+- **WebSocket**: `ws://host:8765/ws/...`
+""",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url=None,
+    redoc_url="/redoc",
 )
 
 fastapi_app.add_middleware(
@@ -255,3 +295,10 @@ async def push_dashboard_event(event: str, data: dict):
         "data": data,
         "ts": time.time(),
     })
+
+
+# ---------------------------------------------------------------------------
+# Register Flask API documentation (documentation-only routes)
+# ---------------------------------------------------------------------------
+from api_docs import register_flask_api_docs
+register_flask_api_docs(fastapi_app)
