@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+node_modules/
+
+# Database (don't bake into image)
+instance/
+*.db
+*.sqlite3
+
+# IDE
+.devin/
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Environment (use docker-compose env vars)
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Documentation (not needed in image)
+*.md
+PRD.md
+AGENTS.md
+FiberNMS_Documentation.md
+ZTE_C320_C300_CLI_OID_Reference.md
+oid-cli-reference.md
+
+# Deploy configs (mounted via volumes)
+deploy/
+
+# Tests (not needed in production image)
+tests/
