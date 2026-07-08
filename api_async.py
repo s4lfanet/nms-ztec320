@@ -26,10 +26,46 @@ fastapi_app = FastAPI(
     title="Salfanet NMS — Complete API Documentation",
     description="""**Salfanet NMS** — Multi-tenant OLT Management System for FTTH networks.
 
-## Architecture
-- **Flask (port 5000)** — Main API server (all endpoints below)
-- **FastAPI (port 8765)** — WebSocket + async endpoints + this Swagger UI
+## For External Developers / Tenant Frontend
 
+If you're building your own frontend or integrating with Salfanet NMS, use this API reference.
+
+### Authentication Flow
+```
+1. POST /api/auth/login  →  {username, password}  →  Set-Cookie: nms-tenant-session
+2. All subsequent requests use the session cookie automatically
+3. POST /api/auth/logout  →  Clear session
+```
+
+### Important Notes
+- **Base URL**: `https://{your-subdomain}.salfa.my.id/api/...`
+- **Session cookie**: `nms-tenant-session` (host-only, auto-sent by browser)
+- **CORS**: All origins allowed for API endpoints
+- **Pagination**: `/api/all-onus?page=1&page_size=50&search=&sort_by=name&sort_dir=asc`
+- **Error format**: `{\"error\": \"message\"}` with appropriate HTTP status code
+
+### Public Endpoints (No Auth Required)
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/public/branding` | NMS brand name, base_url |
+| `GET /api/public/tenant-check` | Validate tenant subdomain |
+| `GET /api/public/packages` | List subscription packages |
+| `POST /api/public/register` | Register new tenant |
+
+### WebSocket (Real-time)
+```
+ws://{host}:8765/ws/sync/{olt_id}    → Sync progress
+ws://{host}:8765/ws/onus/{olt_id}    → ONU status changes
+ws://{host}:8765/ws/dashboard        → Dashboard events
+```
+Message format: `{\"event\": \"name\", \"data\": {...}, \"ts\": 1234567890.123}`
+
+### OpenAPI Spec Download
+- **JSON**: `GET /openapi.json`
+- **ReDoc**: `GET /redoc` (clean reference)
+- **Swagger**: `GET /docs` (interactive)
+
+---
 ## Endpoint Categories
 | Tag | Description |
 |-----|-------------|
@@ -56,9 +92,6 @@ fastapi_app = FastAPI(
 | **Public** | No-auth endpoints (branding, register) |
 | **Superadmin** | Platform admin (tenants, packages) |
 | **Payment** | Duitku payment callback |
-
-## Authentication
-Most endpoints require session-based auth. Public endpoints (tag: Public) are accessible without auth.
 
 ## Base URLs
 - **Flask API**: `http://host:5000/api/...`
