@@ -1,0 +1,291 @@
+import { Bell, LogOut, User, Sun, Moon, Menu, Zap, Check, Trash2, AlertTriangle, WifiOff, UserPlus, ArrowRight, X, Package } from 'lucide-react';
+import { useAuth } from '../../stores/auth';
+import { useTheme } from '../../stores/theme';
+import { useState, useRef, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { cn } from '../../lib/utils';
+
+export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
+  const { user, logout } = useAuth();
+  const { theme, toggle } = useTheme();
+  const [showMenu, setShowMenu] = useState(false);
+  const [showNotif, setShowNotif] = useState(false);
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const notifRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const { data: notifData } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      const r = await fetch('/api/notifications?limit=20', { credentials: 'include' });
+      if (!r.ok) return { notifications: [], unread_count: 0 };
+      return r.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  const { data: unregData } = useQuery({
+    queryKey: ['unregistered-count'],
+    queryFn: async () => {
+      const r = await fetch('/api/unregistered-count', { credentials: 'include' });
+      if (!r.ok) return { unregistered: 0, offline_dyinggasp: 0, breakdown: [] };
+      return r.json();
+    },
+    refetchInterval: 60000,
+  });
+
+  const markReadMut = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`/api/notifications/${id}/read`, { method: 'POST', credentials: 'include' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const markAllMut = useMutation({
+    mutationFn: async () => {
+      await fetch('/api/notifications/read-all', { method: 'POST', credentials: 'include' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const clearReadMut = useMutation({
+    mutationFn: async () => {
+      await fetch('/api/notifications/clear', { method: 'POST', credentials: 'include' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const notifs = notifData?.notifications || [];
+  const unreadCount = notifData?.unread_count || 0;
+  const unregCount = unregData?.unregistered || 0;
+  const offlineCount = unregData?.offline_dyinggasp || 0;
+  const totalBadge = unreadCount + unregCount;
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotif(false);
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const severityConfig: Record<string, { icon: React.ReactNode; color: string }> = {
+    critical: { icon: <AlertTriangle size={14} className="text-danger" />, color: 'text-danger' },
+    warning: { icon: <AlertTriangle size={14} className="text-warning" />, color: 'text-warning' },
+    info: { icon: <Check size={14} className="text-info" />, color: 'text-info' },
+  };
+
+  return (
+    <header className="sticky top-0 z-30 h-14 md:h-16 flex items-center justify-between px-3 md:px-6 bg-surface/80 backdrop-blur-xl border-b border-brd transition-colors duration-300">
+      <div className="flex items-center gap-2">
+        <button onClick={onMenuClick} className="p-2 rounded-lg hover:bg-glass transition-colors lg:hidden active:scale-95">
+          <Menu size={20} className="text-tx2" />
+        </button>
+        <div className="flex items-center gap-1.5 lg:hidden">
+          <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center shadow-lg shadow-accent/20">
+            <Zap size={15} className="text-white" />
+          </div>
+          <span className="text-sm font-bold tracking-tight">{user?.sidebar_name || 'Salfanet NMS'}</span>
+        </div>
+
+      </div>
+
+      <div className="flex items-center gap-1">
+        {user?.subscription && !user.subscription.is_active && (
+          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-danger/10 text-danger text-xs font-medium">
+            <AlertTriangle size={14} /> Subscription Expired
+          </span>
+        )}
+        {user?.subscription && user.subscription.is_active && user.subscription.days_remaining <= 7 && (
+          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-warning/10 text-warning text-xs font-medium">
+            <AlertTriangle size={14} /> {user.subscription.days_remaining}d left
+          </span>
+        )}
+        {user?.subscription && user.subscription.is_active && user.subscription.days_remaining > 7 && (
+          <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-success/10 text-success text-xs font-medium">
+            <Package size={13} /> {user.subscription.package_name} · {user.subscription.days_remaining}d
+          </span>
+        )}
+        <button onClick={toggle} title={theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
+          className="p-2 rounded-lg hover:bg-glass transition-all duration-300 text-tx2 hover:text-tx1 active:scale-95">
+          <span className="block transition-transform duration-300 ease-in-out" style={{ transform: theme === 'dark' ? 'rotate(0deg)' : 'rotate(180deg)' }}>
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </span>
+        </button>
+
+        {/* Notifications Bell */}
+        <div className="relative" ref={notifRef}>
+          <button
+            onClick={() => setShowNotif(!showNotif)}
+            className={cn('relative p-2 rounded-lg hover:bg-glass transition-all active:scale-95', showNotif && 'bg-glass')}
+          >
+            <Bell size={18} className={cn('text-tx2 transition-transform', showNotif && 'text-accent')} />
+            {totalBadge > 0 && (
+              <div className={cn(
+                'absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-bold flex items-center justify-center animate-pulse-once',
+                unregCount > 0 ? 'bg-warning' : 'bg-danger'
+              )}>
+                {totalBadge > 99 ? '99+' : totalBadge}
+              </div>
+            )}
+          </button>
+
+          {showNotif && (
+            <div className="fixed md:absolute left-2 right-2 md:left-auto md:right-0 top-14 md:top-12 w-auto md:w-96 max-h-[80vh] md:max-h-[75vh] rounded-2xl z-50 animate-fade-in overflow-hidden flex flex-col shadow-2xl shadow-black/40 border border-brd"
+              style={{ background: 'var(--bg-surface)', backdropFilter: 'blur(20px)' }}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-brd">
+                <div className="flex items-center gap-2">
+                  <Bell size={16} className="text-accent" />
+                  <span className="font-semibold text-sm">Notifications</span>
+                  {totalBadge > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-accent/15 text-accent text-[10px] font-bold">{totalBadge}</span>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  {unreadCount > 0 && (
+                    <button onClick={() => markAllMut.mutate()} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-accent transition-colors" title="Mark all read">
+                      <Check size={14} />
+                    </button>
+                  )}
+                  <button onClick={() => clearReadMut.mutate()} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-danger transition-colors" title="Clear read">
+                    <Trash2 size={14} />
+                  </button>
+                  <button onClick={() => setShowNotif(false)} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-tx1 transition-colors" title="Close">
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Unregistered ONUs alert */}
+              {unregCount > 0 && (
+                <div
+                  onClick={() => { setShowNotif(false); navigate('/dashboard/onus/register'); }}
+                  className="px-4 py-3 bg-warning/10 border-b border-warning/20 cursor-pointer hover:bg-warning/15 transition-colors group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-warning/20 flex items-center justify-center flex-shrink-0">
+                      <UserPlus size={16} className="text-warning" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-warning">{unregCount} Unregistered ONU{unregCount > 1 ? 's' : ''}</div>
+                      <div className="text-xs text-tx3 mt-0.5">Tap to register now</div>
+                    </div>
+                    <ArrowRight size={16} className="text-warning/50 group-hover:text-warning group-hover:translate-x-1 transition-all" />
+                  </div>
+                  {(unregData?.breakdown || []).slice(0, 3).map((b: Record<string, unknown>, i: number) => (
+                    <div key={i} className="text-xs text-tx3 mt-1.5 pl-10">
+                      {String(b.olt_name)}: {String(b.count)} ONU(s)
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Offline/dyinggasp summary */}
+              {offlineCount > 0 && (
+                <div
+                  onClick={() => { setShowNotif(false); navigate('/dashboard/onus?filter=offline'); }}
+                  className="px-4 py-2.5 bg-danger/5 border-b border-brd/50 cursor-pointer hover:bg-danger/10 transition-colors group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-danger/15 flex items-center justify-center flex-shrink-0">
+                      <WifiOff size={14} className="text-danger" />
+                    </div>
+                    <div className="flex-1">
+                      <span className="text-xs font-medium text-danger">{offlineCount} ONU{offlineCount > 1 ? 's' : ''} offline/dyinggasp</span>
+                    </div>
+                    <ArrowRight size={14} className="text-danger/50 group-hover:text-danger group-hover:translate-x-1 transition-all" />
+                  </div>
+                </div>
+              )}
+
+              {/* Notification list */}
+              <div className="overflow-y-auto flex-1 max-h-[55vh] md:max-h-[50vh] overscroll-contain">
+                {notifs.length === 0 ? (
+                  <div className="py-10 text-center">
+                    <Bell size={28} className="text-tx3/40 mx-auto mb-2" />
+                    <p className="text-tx3 text-sm">No notifications</p>
+                  </div>
+                ) : (
+                  notifs.map((n: Record<string, unknown>) => {
+                    const sev = String(n.severity || 'info');
+                    const sc = severityConfig[sev] || severityConfig.info;
+                    return (
+                      <div
+                        key={String(n.id)}
+                        onClick={() => { if (!n.is_read) markReadMut.mutate(Number(n.id)); }}
+                        className={cn(
+                          'px-4 py-3 border-b border-brd/50 cursor-pointer hover:bg-glass/50 transition-colors',
+                          !n.is_read && 'bg-accent/5'
+                        )}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <div className="mt-0.5 flex-shrink-0">{sc.icon}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{String(n.title)}</div>
+                            <div className="text-xs text-tx3 mt-0.5 line-clamp-2">{String(n.message).split('\n')[0]}</div>
+                            <div className="text-[10px] text-tx3/70 mt-1">{n.created_at ? new Date(String(n.created_at)).toLocaleString() : ''}</div>
+                          </div>
+                          {!n.is_read && <div className="w-2 h-2 rounded-full bg-accent mt-2 flex-shrink-0 animate-pulse" />}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* User menu */}
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setShowMenu(!showMenu)}
+            className="flex items-center gap-2 p-1.5 pr-2 rounded-lg hover:bg-glass transition-colors active:scale-95"
+          >
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent/30 to-accent/10 flex items-center justify-center ring-1 ring-accent/20">
+              <User size={16} className="text-accent" />
+            </div>
+            <div className="text-left hidden sm:block">
+              <div className="text-sm font-medium leading-tight">{user?.full_name || 'Admin'}</div>
+              <div className="text-[10px] text-tx3 leading-tight">{user?.role || 'User'}</div>
+            </div>
+          </button>
+
+          {showMenu && (
+            <div className="absolute right-0 top-12 w-52 py-1.5 glass-card rounded-xl z-50 animate-fade-in shadow-2xl shadow-black/20">
+              <div className="px-4 py-2.5 border-b border-brd">
+                <div className="text-sm font-medium">{user?.full_name || 'Admin'}</div>
+                <div className="text-xs text-tx3">{user?.username || ''}</div>
+                {user?.is_super_admin && (
+                  <div className="text-[10px] text-accent font-medium mt-0.5">Super Admin</div>
+                )}
+                {user?.subscription && (
+                  <div className="text-[10px] mt-0.5">
+                    <span className={user.subscription.is_active ? 'text-success' : 'text-danger'}>
+                      {user.subscription.package_name} — {user.subscription.is_active ? `${user.subscription.days_remaining}d left` : 'Expired'}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <button onClick={() => { setShowMenu(false); navigate('/dashboard/profile'); }} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-glass transition-colors">
+                <User size={16} className="text-tx3" /> My Profile
+              </button>
+              <hr className="border-brd my-1" />
+              <button
+                onClick={() => logout()}
+                className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-danger hover:bg-danger/10 transition-colors"
+              >
+                <LogOut size={16} /> Logout
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}

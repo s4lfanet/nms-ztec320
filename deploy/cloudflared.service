@@ -1,0 +1,14 @@
+[Unit]
+Description=cloudflared
+After=network-online.target fibernms.service
+Wants=network-online.target
+
+[Service]
+TimeoutStartSec=15
+Type=notify
+ExecStart=/usr/bin/cloudflared --no-autoupdate --protocol http2 --url http://localhost:8080 tunnel run --token eyJhIjoiZDgzYzA4MTZjNTU2NjdjNWE2N2MzMDM1MDVmNWE2N2IiLCJ0IjoiNTI4MzIzMDktYTM4ZC00OTNiLWIyOGYtZGNlNWZhZTFhZGQxIiwicyI6IllqQXlPRGxoWW1RdE9EbGhaQzAwT1dJd0xUbGlObVl0T1RCaFpHSTRZV1V6TjJVMyJ9
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+tunnel: 52832309-a38d-493b-b28f-dce5fae1add
+credentials-file: /etc/cloudflared/creds.json
+
+ingress:
+  - service: http://localhost:8080

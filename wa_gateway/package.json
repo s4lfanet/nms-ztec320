@@ -1,0 +1,15 @@
+{
+  "name": "fibernms-wa-gateway",
+  "version": "1.0.0",
+  "description": "Native WhatsApp gateway for FiberNMS using Baileys",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "restart": "pm2 restart fibernms-wa-gateway"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.18",
+    "express": "^4.21.0",
+    "qrcode": "^1.5.4"
+  }
+}

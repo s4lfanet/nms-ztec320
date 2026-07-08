@@ -1,0 +1,70 @@
+# Logs
+*.log
+backend.log
+backend-err.log
+frontend.log
+frontend-err.log
+
+# Debug screenshots
+*.png
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+node_modules/
+
+# IDE
+.devin/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Database
+instance/
+*.db
+*.sqlite3
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Docker
+.docker/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test/coverage
+.coverage
+htmlcov/
+.pytest_cache/
+frontend/coverage/
+
+# Old test scripts (deleted)
+# add_liveinfo_route.py
+# check_routes.py
+# fetch_onu_detail*.py
+# inject_live.py
+# migrate_onu.py
+# parse_allonus.py
+# probe_onu_config.py
+# quick_snmp.py
+# model_result.txt
+# rconfig_allonus.html

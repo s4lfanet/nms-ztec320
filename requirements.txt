@@ -1,0 +1,9 @@
+Flask>=3.0
+Flask-Login>=0.6
+Flask-SQLAlchemy>=3.1
+Flask-Migrate>=4.0
+SQLAlchemy>=2.0
+pysnmp>=7.1
+Werkzeug>=3.0
+Jinja2>=3.1
+pytest>=8.0
