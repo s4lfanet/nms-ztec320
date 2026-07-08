@@ -146,6 +146,7 @@ def send_registration_notification(tenant, pkg, sub, admin_username, admin_passw
     nms_phone = brand['nms_phone']
     tenant_url = _build_tenant_url(tenant, brand)
     trial_end_str = sub.end_date.strftime('%d/%m/%Y') if sub.end_date else '-'
+    trial_days = (sub.end_date - sub.start_date).days if sub.end_date and sub.start_date else (pkg.duration_days or 30)
     cf_status_str = 'Terkonfigurasi' if cf_success else 'Manual setup diperlukan'
 
     msg = (
@@ -156,7 +157,7 @@ def send_registration_notification(tenant, pkg, sub, admin_username, admin_passw
         f"*Business* : *{tenant.name}*\n"
         f"*Paket* : *{pkg.name}*\n"
         f"*Max OLT* : *{pkg.max_olts} unit*\n"
-        f"*Status* : *Trial 30 Hari Gratis*\n"
+        f"*Status* : *Trial {trial_days} Hari Gratis*\n"
         f"*Berakhir* : *{trial_end_str}*\n\n"
         f"*Detail Login Dashboard:*\n"
         f"*URL* : {tenant_url}/spa/login\n"

@@ -5900,8 +5900,8 @@ def public_register():
     admin_user.set_password(data['admin_password'])
     db.session.add(admin_user)
 
-    # Create active trial subscription for 30 days (regardless of package duration)
-    trial_days = 30
+    # Create active trial subscription — duration matches the selected package
+    trial_days = pkg.duration_days or 30
     now_utc = datetime.now(timezone.utc)
     sub = Subscription(
         tenant_id=tenant.id,
@@ -5953,7 +5953,7 @@ def public_register():
         package_id=pkg.id,
         amount=0,
         invoice_type='trial',
-        description=f'Trial 30 hari - {pkg.name} (gratis)',
+        description=f'Trial {trial_days} hari - {pkg.name} (gratis)',
     )
     # Mark trial invoice as paid immediately
     inv.status = 'paid'

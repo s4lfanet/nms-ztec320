@@ -47,6 +47,10 @@ export default function RegisterPage() {
     queryFn: api.publicPackages,
   });
 
+  // Get selected package's trial duration
+  const selectedPkg = packages?.find(p => p.id === form.package_id);
+  const trialDays = selectedPkg?.duration_days || 30;
+
   const registerMut = useMutation({
     mutationFn: () => api.publicRegister(form),
     onSuccess: (resp) => {
@@ -76,7 +80,7 @@ export default function RegisterPage() {
   };
 
   const benefits = [
-    { icon: Rocket, text: 'Langsung aktif — trial 30 hari gratis, tanpa kartu kredit' },
+    { icon: Rocket, text: `Langsung aktif — trial ${trialDays} hari gratis, tanpa kartu kredit` },
     { icon: Cloud, text: 'Subdomain otomatis — langsung terhubung ke Cloudflare Tunnel' },
     { icon: ShieldCheck, text: 'Isolasi data aman — setiap tenant punya subdomain sendiri' },
     { icon: Wifi, text: 'Monitoring real-time OLT & ONU dari ZTE C320' },
@@ -112,7 +116,7 @@ export default function RegisterPage() {
 
                 <h1 className="text-3xl font-bold mb-3">Pendaftaran Berhasil!</h1>
                 <p className="text-sm text-tx3 mb-8 max-w-sm mx-auto">
-                  Akun tenant Anda telah aktif dengan masa trial <strong className="text-accent">30 hari gratis</strong>.
+                  Akun tenant Anda telah aktif dengan masa trial <strong className="text-accent">{trialDays} hari gratis</strong>.
                   Subdomain telah dikonfigurasi otomatis.
                 </p>
 
@@ -130,7 +134,7 @@ export default function RegisterPage() {
                     <div className="font-semibold text-sm text-warning">
                       {regResult.trial_end
                         ? new Date(regResult.trial_end).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
-                        : '30 hari dari sekarang'}
+                        : `${trialDays} hari dari sekarang`}
                     </div>
                   </div>
                   <div className="glass-card rounded-xl p-4">
@@ -202,7 +206,7 @@ export default function RegisterPage() {
               <div className="absolute top-0 right-0 w-48 h-48 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
               <div className="relative">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-xs text-accent font-medium mb-5">
-                  <Sparkles size={12} /> Trial 30 Hari Gratis
+                  <Sparkles size={12} /> Trial {trialDays} Hari Gratis
                 </div>
                 <h2 className="text-2xl font-bold mb-3 leading-tight">
                   Mulai Kelola Jaringan FTTH Anda Hari Ini
@@ -284,7 +288,7 @@ export default function RegisterPage() {
                         <span className="font-semibold text-sm">{pkg.name}</span>
                         <span className="text-xs text-tx3 mt-0.5">{pkg.max_olts} OLT</span>
                         <div className="mt-2 pt-2 border-t border-brd/40">
-                          <span className="block text-xs font-bold text-accent">Trial 30 hari</span>
+                          <span className="block text-xs font-bold text-accent">Trial {pkg.duration_days || 30} hari</span>
                           <span className="text-[10px] text-tx3">lalu Rp {pkg.price.toLocaleString('id-ID')}/bln</span>
                         </div>
                       </label>
