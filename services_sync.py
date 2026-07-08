@@ -22,6 +22,12 @@ def run_single_sync(app, olt_id, sync_id):
                 sync.progress = pct
                 sync.message = msg
                 db.session.commit()
+                # Push to WebSocket clients (fire-and-forget)
+                try:
+                    from ws_bridge import ws_broadcast_sync
+                    ws_broadcast_sync(olt_id, pct, msg, "running")
+                except Exception:
+                    pass
 
             update_progress(5, 'Connecting to OLT...')
 
@@ -44,6 +50,12 @@ def run_single_sync(app, olt_id, sync_id):
                     check_unregistered_onus(olt)
                 except Exception:
                     pass
+                # Push completion to WebSocket
+                try:
+                    from ws_bridge import ws_broadcast_sync
+                    ws_broadcast_sync(olt_id, 100, "Sync complete", "done")
+                except Exception:
+                    pass
             else:
                 olt.is_online = False
                 olt.connection_status = 'error'
@@ -51,6 +63,12 @@ def run_single_sync(app, olt_id, sync_id):
                 sync.message = f'Sync failed: {"; ".join(result["errors"])}'
                 sync.completed_at = datetime.now(timezone.utc)
                 db.session.commit()
+                # Push failure to WebSocket
+                try:
+                    from ws_bridge import ws_broadcast_sync
+                    ws_broadcast_sync(olt_id, 0, sync.message, "error")
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"Sync error: {e}")
             sync.status = 'error'
