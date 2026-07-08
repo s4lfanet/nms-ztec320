@@ -10,7 +10,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
-      disable: true,
+      disable: false,
       manifest: {
         name: 'FiberNMS — OLT Management',
         short_name: 'FiberNMS',
@@ -70,5 +70,12 @@ export default defineConfig({
         },
       },
     },
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/__tests__/setup.ts',
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    css: true,
   },
 })
