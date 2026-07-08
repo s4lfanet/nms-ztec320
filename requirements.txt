@@ -1,9 +1,24 @@
+# === Core ===
 Flask>=3.0
 Flask-Login>=0.6
 Flask-SQLAlchemy>=3.1
 Flask-Migrate>=4.0
 SQLAlchemy>=2.0
-pysnmp>=7.1
 Werkzeug>=3.0
 Jinja2>=3.1
+
+# === Network ===
+pysnmp>=7.1
+
+# === Async / WebSocket (Phase 2 upgrade) ===
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+websockets>=14.0
+httpx>=0.28.0
+
+# === Caching (Phase 4 upgrade) ===
+redis>=5.0
+
+# === Testing ===
 pytest>=8.0
+pytest-asyncio>=0.24.0
