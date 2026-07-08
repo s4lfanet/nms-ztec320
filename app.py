@@ -41,15 +41,11 @@ from services_sync import (
 )
 from routes_auth import bp as auth_bp
 
+from config import ActiveConfig
+
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-app.config['SECRET_KEY'] = 'fiber-nms-secret-key-2024'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///nms.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['PREFERRED_URL_SCHEME'] = 'https'
+app.config.from_object(ActiveConfig)
 # Use custom session interface for isolated admin/tenant cookies
 app.session_interface = MultiTenantSessionInterface()
 
