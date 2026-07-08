@@ -5,6 +5,7 @@ import { AppShell } from './components/layout/AppShell';
 import { Login } from './pages/Login';
 
 // Lazy-loaded public pages
+const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.default })));
 const RegisterPage = lazy(() => import('./pages/RegisterPage').then(m => ({ default: m.default })));
 const PaymentResultPage = lazy(() => import('./pages/PaymentResultPage').then(m => ({ default: m.default })));
 const RenewalPage = lazy(() => import('./pages/RenewalPage').then(m => ({ default: m.default })));
@@ -172,10 +173,11 @@ export default function App() {
       </div>
     }>
     <Routes>
-      {/* Public routes — register only on main domain */}
+      {/* Public routes — only on main domain */}
+      {isMainDomain && <Route path="/" element={<LandingPage />} />}
       {isMainDomain && <Route path="/register" element={<RegisterPage />} />}
-      {/* All domains: / redirects to /login */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      {/* Tenant subdomain: / redirects to /login */}
+      {!isMainDomain && <Route path="/" element={<Navigate to="/login" replace />} />}
 
       <Route path="/login" element={<Login />} />
       {isMainDomain && <Route path="/secure-portal-x7k2" element={<Login />} />}

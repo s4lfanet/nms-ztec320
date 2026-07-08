@@ -58,7 +58,6 @@ export default function LandingPage() {
             <a href="#features" className="hover:text-tx1 transition-colors">Fitur</a>
             <a href="#advantages" className="hover:text-tx1 transition-colors">Keunggulan</a>
             <a href="#pricing" className="hover:text-tx1 transition-colors">Paket</a>
-            <button onClick={() => navigate('/login')} className="hover:text-tx1 transition-colors">Login</button>
           </div>
           <button
             onClick={() => navigate('/register')}
@@ -87,18 +86,12 @@ export default function LandingPage() {
             Platform SaaS untuk monitoring OLT & ONU, manajemen pelanggan, billing otomatis,
             dan notifikasi real-time. Dirancang khusus untuk ISP fiber optik di Indonesia.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex items-center justify-center">
             <button
               onClick={() => navigate('/register')}
               className="px-8 py-3.5 rounded-xl bg-accent hover:bg-accent-hover text-white font-medium transition-all flex items-center gap-2 text-lg"
             >
               Mulai Sekarang <ArrowRight size={20} />
-            </button>
-            <button
-              onClick={() => navigate('/login')}
-              className="px-8 py-3.5 rounded-xl glass-card border border-brd hover:border-accent/50 font-medium transition-all text-lg"
-            >
-              Login Dashboard
             </button>
           </div>
           <div className="mt-12 flex items-center justify-center gap-8 text-sm text-tx3">
