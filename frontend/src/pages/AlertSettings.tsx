@@ -7,7 +7,7 @@ import {
   Bell, MessageCircle, Send, Settings, Shield, Save,
   ToggleLeft, ToggleRight, AlertTriangle, Radio, Wifi,
   Zap, Clock, RefreshCw, Smartphone, QrCode, LogOut, Loader2,
-  Play, Square, Server
+  Play, Square, Server, Activity, Cpu, Thermometer
 } from 'lucide-react';
 
 export function AlertSettings() {
@@ -160,6 +160,47 @@ function RuleCard({ rule, onSave }: { rule: Record<string, unknown>; onSave: (r:
               <input type="number" step="0.5" value={String(form.rx_change_threshold || 3)}
                 onChange={e => setForm({ ...form, rx_change_threshold: parseFloat(e.target.value) })}
                 className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
+            </div>
+          </div>
+
+          {/* OLT Health Monitoring */}
+          <div>
+            <label className="text-xs text-tx3 block mb-2">OLT Health Monitoring</label>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {[
+                { key: 'check_olt_offline', label: 'OLT Offline', icon: <Server size={14} /> },
+                { key: 'check_olt_cpu', label: 'CPU Load', icon: <Activity size={14} /> },
+                { key: 'check_olt_memory', label: 'Memory Usage', icon: <Cpu size={14} /> },
+                { key: 'check_olt_temperature', label: 'Temperature', icon: <Thermometer size={14} /> },
+              ].map(item => (
+                <button key={item.key} onClick={() => toggleField(item.key)}
+                  className={cn('flex items-center gap-2 p-3 rounded-lg border text-sm transition-all',
+                    form[item.key] ? 'border-accent bg-accent/10 text-accent' : 'border-brd bg-glass text-tx3')}>
+                  {item.icon}
+                  <span className="flex-1 text-left">{item.label}</span>
+                  {form[item.key] ? <ToggleRight size={20} className="text-accent" /> : <ToggleLeft size={20} />}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-tx3 block mb-1">CPU Threshold (%)</label>
+                <input type="number" value={String(form.olt_cpu_threshold ?? 80)}
+                  onChange={e => setForm({ ...form, olt_cpu_threshold: parseFloat(e.target.value) })}
+                  className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-tx3 block mb-1">Memory Threshold (%)</label>
+                <input type="number" value={String(form.olt_memory_threshold ?? 80)}
+                  onChange={e => setForm({ ...form, olt_memory_threshold: parseFloat(e.target.value) })}
+                  className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-tx3 block mb-1">Temp Threshold (°C)</label>
+                <input type="number" value={String(form.olt_temp_threshold ?? 60)}
+                  onChange={e => setForm({ ...form, olt_temp_threshold: parseFloat(e.target.value) })}
+                  className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
+              </div>
             </div>
           </div>
 

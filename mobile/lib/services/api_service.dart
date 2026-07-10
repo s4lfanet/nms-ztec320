@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,21 +14,22 @@ class ApiService {
   String get baseUrl => _baseUrl;
   bool get isLoggedIn => _cookie.isNotEmpty;
 
-  /// Initialize with saved preferences
+  // ── Initialization ──
+
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _baseUrl = prefs.getString('api_base_url') ?? '';
     _cookie = prefs.getString('session_cookie') ?? '';
   }
 
-  /// Set server URL (e.g., https://tenant-name.salfa.my.id)
   Future<void> setServer(String url) async {
     _baseUrl = url.replaceAll(RegExp(r'/+$'), '');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('api_base_url', _baseUrl);
   }
 
-  /// Login
+  // ── Auth ──
+
   Future<Map<String, dynamic>> login(String username, String password) async {
     final response = await _post('/api/auth/login', {
       'username': username,
@@ -35,8 +37,6 @@ class ApiService {
     });
 
     if (response['success'] == true) {
-      // Extract session cookie from response headers
-      // The http package stores cookies in response headers
       _cookie = 'authenticated';
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('session_cookie', _cookie);
@@ -45,7 +45,6 @@ class ApiService {
     return response;
   }
 
-  /// Logout
   Future<void> logout() async {
     try {
       await _post('/api/auth/logout', {});
@@ -55,17 +54,18 @@ class ApiService {
     await prefs.remove('session_cookie');
   }
 
-  /// Get current user
   Future<Map<String, dynamic>> getMe() async {
     return await _get('/api/auth/me');
   }
 
-  /// Get dashboard data
+  // ── Dashboard ──
+
   Future<Map<String, dynamic>> getDashboard() async {
     return await _get('/api/dashboard');
   }
 
-  /// Get all ONUs (paginated)
+  // ── ONU ──
+
   Future<Map<String, dynamic>> getAllOnus({
     int page = 1,
     int pageSize = 50,
@@ -89,54 +89,100 @@ class ApiService {
     return await _get('/api/all-onus?$query');
   }
 
-  /// Get ONU detail
   Future<Map<String, dynamic>> getOnuDetail(int onuId) async {
     return await _get('/api/onu/$onuId/detail');
   }
 
-  /// Get ONU live detail
   Future<Map<String, dynamic>> getOnuLiveDetail(int onuId) async {
     return await _get('/api/onu/$onuId/live-detail');
   }
 
-  /// ONU action (reboot, reset, delete, etc.)
   Future<Map<String, dynamic>> onuAction(int onuId, String action) async {
     return await _post('/api/onu/$onuId/action', {'action': action});
   }
 
-  /// Update ONU
   Future<Map<String, dynamic>> updateOnu(int onuId, Map<String, dynamic> data) async {
     return await _post('/api/onu/$onuId/update', data);
   }
 
-  /// Get OLT list
+  // ── OLT ──
+
   Future<List<dynamic>> getOlts() async {
     final result = await _get('/api/olts');
-    return result is List ? result : [];
+    if (result.containsKey('data') && result['data'] is List) {
+      return result['data'] as List;
+    }
+    return result['olts'] is List ? result['olts'] as List : [];
   }
 
-  /// Get OLT detail
   Future<Map<String, dynamic>> getOltDetail(int oltId) async {
     return await _get('/api/olt/$oltId');
   }
 
-  /// Trigger OLT sync
   Future<Map<String, dynamic>> syncOlt(int oltId) async {
     return await _post('/api/olt/$oltId/sync', {});
   }
 
-  /// Get sync status
   Future<Map<String, dynamic>> getSyncStatus(int oltId) async {
     return await _get('/api/olt/$oltId/sync-status');
   }
 
-  /// Get notifications
-  Future<List<dynamic>> getNotifications() async {
-    final result = await _get('/api/notifications');
-    return result is List ? result : [];
+  // ── Notifications ──
+
+  Future<Map<String, dynamic>> getNotifications({int limit = 50}) async {
+    return await _get('/api/notifications?limit=$limit');
   }
 
-  /// Get action logs
+  Future<Map<String, dynamic>> markNotificationRead(int notifId) async {
+    return await _post('/api/notifications/$notifId/read', {});
+  }
+
+  Future<Map<String, dynamic>> markAllNotificationsRead() async {
+    return await _post('/api/notifications/read-all', {});
+  }
+
+  Future<Map<String, dynamic>> acknowledgeNotification(int notifId) async {
+    return await _post('/api/notifications/$notifId/acknowledge', {});
+  }
+
+  Future<Map<String, dynamic>> acknowledgeAllNotifications() async {
+    return await _post('/api/notifications/acknowledge-all', {});
+  }
+
+  Future<Map<String, dynamic>> deleteNotification(int notifId) async {
+    return await _post('/api/notifications/$notifId', {});
+  }
+
+  // ── Alert History ──
+
+  Future<Map<String, dynamic>> getAlertHistory({
+    int page = 1,
+    int perPage = 30,
+    String? type,
+  }) async {
+    var url = '/api/alerts/history?page=$page&per_page=$perPage';
+    if (type != null && type.isNotEmpty) url += '&type=$type';
+    return await _get(url);
+  }
+
+  // ── Uptime ──
+
+  Future<Map<String, dynamic>> getOnuUptime(int onuId, {int range = 30}) async {
+    return await _get('/api/uptime/onu/$onuId?range=$range');
+  }
+
+  Future<Map<String, dynamic>> getOltUptime(int oltId, {int range = 30}) async {
+    return await _get('/api/uptime/olt/$oltId?range=$range');
+  }
+
+  // ── Technicians ──
+
+  Future<Map<String, dynamic>> getTechnicians() async {
+    return await _get('/api/technicians');
+  }
+
+  // ── Action Logs ──
+
   Future<Map<String, dynamic>> getActionLogs({int page = 1}) async {
     return await _get('/api/logs?page=$page');
   }
@@ -146,10 +192,19 @@ class ApiService {
   Future<Map<String, dynamic>> _get(String path) async {
     try {
       final uri = Uri.parse('$_baseUrl$path');
-      final response = await http.get(uri, headers: _headers());
+      final response = await http.get(uri, headers: _headers()).timeout(
+        const Duration(seconds: 15),
+      );
+      _extractCookie(response);
       return _handleResponse(response);
-    } catch (e) {
-      return {'error': 'Connection failed: $e'};
+    } on SocketException {
+      return {'error': 'Tidak dapat terhubung ke server', 'success': false};
+    } on HttpException {
+      return {'error': 'Koneksi terputus', 'success': false};
+    } on FormatException {
+      return {'error': 'Response tidak valid', 'success': false};
+    } on Exception catch (e) {
+      return {'error': 'Connection failed: $e', 'success': false};
     }
   }
 
@@ -160,10 +215,17 @@ class ApiService {
         uri,
         headers: _headers(),
         body: jsonEncode(body),
-      );
+      ).timeout(const Duration(seconds: 15));
+      _extractCookie(response);
       return _handleResponse(response);
-    } catch (e) {
-      return {'error': 'Connection failed: $e'};
+    } on SocketException {
+      return {'error': 'Tidak dapat terhubung ke server', 'success': false};
+    } on HttpException {
+      return {'error': 'Koneksi terputus', 'success': false};
+    } on FormatException {
+      return {'error': 'Response tidak valid', 'success': false};
+    } on Exception catch (e) {
+      return {'error': 'Connection failed: $e', 'success': false};
     }
   }
 
@@ -178,15 +240,39 @@ class ApiService {
     return headers;
   }
 
+  /// Extract Set-Cookie from response headers and persist
+  void _extractCookie(http.Response response) {
+    final setCookie = response.headers['set-cookie'];
+    if (setCookie != null && setCookie.isNotEmpty) {
+      final cookie = setCookie.split(';').first.trim();
+      if (cookie.isNotEmpty) {
+        _cookie = cookie;
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('session_cookie', _cookie);
+        });
+      }
+    }
+  }
+
   Map<String, dynamic> _handleResponse(http.Response response) {
     try {
       final body = jsonDecode(response.body);
       if (body is Map<String, dynamic>) {
+        if (response.statusCode >= 400) {
+          body['_status'] = response.statusCode;
+          if (!body.containsKey('error') && !body.containsKey('message')) {
+            body['error'] = 'HTTP ${response.statusCode}';
+          }
+        }
         return body;
       }
-      return {'data': body};
+      return {'data': body, '_status': response.statusCode};
     } catch (e) {
-      return {'error': 'Invalid response: ${response.statusCode}'};
+      return {
+        'error': 'Invalid response (HTTP ${response.statusCode})',
+        'success': false,
+        '_status': response.statusCode,
+      };
     }
   }
 }

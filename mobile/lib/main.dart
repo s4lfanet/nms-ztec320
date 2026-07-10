@@ -31,7 +31,7 @@ class SalfanetApp extends StatelessWidget {
         colorSchemeSeed: const Color(0xFF00D9C0),
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0B1426),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           color: const Color(0xFF111D33),
           elevation: 0,
           shape: RoundedRectangleBorder(

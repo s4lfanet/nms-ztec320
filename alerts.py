@@ -65,6 +65,298 @@ def _get_check_interval():
     return 60
 
 
+# ─── OLT Health Check ───
+
+def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send, tenant_id=None):
+    """Check OLT reachability and system health (CPU, memory, temperature) via SNMP.
+    Uses vendor-specific OIDs. For ZTE C300/C320: standard enterprise OIDs.
+    Returns True if OLT is reachable, False if offline."""
+    from models import db, AlertHistory
+
+    is_reachable = False
+    cpu_load = None
+    mem_usage = None
+    temperature = None
+
+    # ── SNMP health check ──
+    try:
+        async def _snmp_health():
+            from pysnmp.hlapi.v1arch.asyncio import Slim, ObjectType, ObjectIdentity
+            from snmp_core import OID_SYS_DESCR
+
+            result = {'reachable': False, 'cpu': None, 'mem': None, 'temp': None}
+
+            # Step 1: Ping OLT via sysDescr GET
+            slim = Slim(1)
+            try:
+                ei, es, eidx, vb = await slim.get(
+                    olt.snmp_community or 'public', olt.ip_address, olt.snmp_port or 161,
+                    ObjectType(ObjectIdentity(OID_SYS_DESCR)), timeout=5, retries=2)
+                if not ei and not es:
+                    result['reachable'] = True
+                    result['description'] = str(vb[0][1]).strip()
+            except Exception:
+                pass
+            finally:
+                slim.close()
+
+            if not result['reachable']:
+                return result
+
+            # Step 2: Check CPU, Memory, Temperature (ZTE C300/C320 OIDs)
+            # These OIDs are from the .3902.1082 tree (C300 enterprise MIB)
+            # C320 may or may not support them — failure is gracefully handled
+            health_oids = {
+                'cpu':  '1.3.6.1.4.1.3902.1082.10.1.2.4.1.9.1.1',   # CPU Load %
+                'mem':  '1.3.6.1.4.1.3902.1082.10.1.2.4.1.11.1.1',  # Memory Usage %
+                'temp': '1.3.6.1.4.1.3902.1082.10.10.2.1.6.1.2.1.1', # Temperature °C
+            }
+
+            for key, oid in health_oids.items():
+                slim2 = Slim(1)
+                try:
+                    ei2, es2, eidx2, vb2 = await slim2.get(
+                        olt.snmp_community or 'public', olt.ip_address, olt.snmp_port or 161,
+                        ObjectType(ObjectIdentity(oid)), timeout=3, retries=1)
+                    if not ei2 and not es2:
+                        val = int(vb2[0][1])
+                        result[key] = val
+                except Exception:
+                    pass  # OID not supported on this vendor/firmware — skip
+                finally:
+                    slim2.close()
+
+            return result
+
+        loop = asyncio.new_event_loop()
+        try:
+            snmp_result = loop.run_until_complete(_snmp_health())
+        finally:
+            loop.close()
+
+        is_reachable = snmp_result.get('reachable', False)
+        cpu_load = snmp_result.get('cpu')
+        mem_usage = snmp_result.get('mem')
+        temperature = snmp_result.get('temp')
+
+    except Exception as e:
+        logger.error(f"[ALERT] OLT health SNMP check failed for {olt.name}: {e}")
+        is_reachable = False
+
+    # ── OLT Offline Alert ──
+    if not is_reachable:
+        if not rule.check_olt_offline:
+            return False
+
+        recent = AlertHistory.query.filter_by(
+            olt_id=olt.id, alert_type='olt_offline'
+        ).filter(
+            AlertHistory.last_alert_at > now - timedelta(hours=2)
+        ).first()
+
+        if not recent:
+            title = f"🔴 OLT OFFLINE: {olt.name}"
+            message = (
+                f"🔴 OLT OFFLINE 🔴\n\n"
+                f"OLT: {olt.name} ({olt.ip_address})\n"
+                f"Vendor: {olt.vendor or 'Unknown'}\n"
+                f"Status: Tidak dapat dijangkau via SNMP\n\n"
+                f"⚠️ Indikasi: OLT mati, jaringan terputus, atau SNMP tidak merespons.\n"
+                f"⚠️ Semua monitoring ONU untuk OLT ini di-sampai OLT kembali online.\n\n"
+                f"🕒 Waktu: {_fmt_time(now)}"
+            )
+
+            existing = Notification.query.filter_by(
+                olt_id=olt.id, category='olt_offline', is_read=False
+            ).first()
+
+            if existing:
+                existing.created_at = now
+                existing.message = message
+            else:
+                notifications_to_create.append({
+                    'tenant_id': tenant_id,
+                    'olt_id': olt.id,
+                    'onu_id': None,
+                    'severity': 'critical',
+                    'category': 'olt_offline',
+                    'title': title,
+                    'message': message,
+                    'target_roles': '',
+                })
+
+            if not existing:
+                alerts_to_send.append({
+                    'type': 'olt_offline',
+                    'severity': 'critical',
+                    'title': title,
+                    'message': message,
+                    'olt_name': olt.name,
+                    'olt_ip': olt.ip_address,
+                    'is_recovery': False,
+                })
+
+            # Update history
+            hist = AlertHistory.query.filter_by(olt_id=olt.id, alert_type='olt_offline').first()
+            if hist:
+                hist.last_alert_at = now
+                hist.last_value = 'offline'
+            else:
+                db.session.add(AlertHistory(olt_id=olt.id, alert_type='olt_offline', last_value='offline', last_alert_at=now))
+
+        # Mark OLT offline in DB
+        if olt.is_online:
+            olt.is_online = False
+            db.session.commit()
+            logger.warning(f"[ALERT] OLT {olt.name} marked offline")
+
+        return False
+
+    # ── OLT is reachable ──
+    # Clear offline alert if OLT was previously offline
+    was_offline = AlertHistory.query.filter_by(olt_id=olt.id, alert_type='olt_offline').first()
+    if was_offline and was_offline.last_value == 'offline':
+        was_offline.last_value = 'online'
+        was_offline.last_alert_at = now
+
+        # Create recovery notification
+        notifications_to_create.append({
+            'tenant_id': tenant_id,
+            'olt_id': olt.id,
+            'onu_id': None,
+            'severity': 'info',
+            'category': 'olt_recovery',
+            'title': f"✅ OLT ONLINE: {olt.name}",
+            'message': (
+                f"✅ OLT KEMBALI ONLINE ✅\n\n"
+                f"OLT: {olt.name} ({olt.ip_address})\n"
+                f"Status: Sudah kembali dapat dijangkau\n\n"
+                f"🕒 Waktu: {_fmt_time(now)}"
+            ),
+            'target_roles': '',
+        })
+
+    if not olt.is_online:
+        olt.is_online = True
+
+    # ── CPU Alert ──
+    if cpu_load is not None and rule.check_olt_cpu and cpu_load >= rule.olt_cpu_threshold:
+        recent_cpu = AlertHistory.query.filter_by(
+            olt_id=olt.id, alert_type='olt_cpu_high'
+        ).filter(
+            AlertHistory.last_alert_at > now - timedelta(hours=1)
+        ).first()
+
+        if not recent_cpu:
+            title = f"⚠️ CPU Tinggi: {olt.name} ({cpu_load}%)"
+            message = (
+                f"OLT: {olt.name} ({olt.ip_address})\n"
+                f"CPU Load: {cpu_load}% (threshold: {rule.olt_cpu_threshold}%)\n\n"
+                f"🕒 Waktu: {_fmt_time(now)}"
+            )
+
+            existing = Notification.query.filter_by(
+                olt_id=olt.id, category='olt_cpu_high', is_read=False
+            ).first()
+
+            if not existing:
+                notifications_to_create.append({
+                    'tenant_id': tenant_id, 'olt_id': olt.id, 'onu_id': None,
+                    'severity': 'warning', 'category': 'olt_cpu_high',
+                    'title': title, 'message': message, 'target_roles': '',
+                })
+                alerts_to_send.append({
+                    'type': 'olt_cpu_high', 'severity': 'warning',
+                    'title': title, 'message': message,
+                    'olt_name': olt.name, 'olt_ip': olt.ip_address, 'is_recovery': False,
+                })
+
+            hist = AlertHistory.query.filter_by(olt_id=olt.id, alert_type='olt_cpu_high').first()
+            if hist:
+                hist.last_alert_at = now; hist.last_value = str(cpu_load)
+            else:
+                db.session.add(AlertHistory(olt_id=olt.id, alert_type='olt_cpu_high', last_value=str(cpu_load), last_alert_at=now))
+
+    # ── Memory Alert ──
+    if mem_usage is not None and rule.check_olt_memory and mem_usage >= rule.olt_memory_threshold:
+        recent_mem = AlertHistory.query.filter_by(
+            olt_id=olt.id, alert_type='olt_mem_high'
+        ).filter(
+            AlertHistory.last_alert_at > now - timedelta(hours=1)
+        ).first()
+
+        if not recent_mem:
+            title = f"⚠️ Memory Tinggi: {olt.name} ({mem_usage}%)"
+            message = (
+                f"OLT: {olt.name} ({olt.ip_address})\n"
+                f"Memory Usage: {mem_usage}% (threshold: {rule.olt_memory_threshold}%)\n\n"
+                f"🕒 Waktu: {_fmt_time(now)}"
+            )
+
+            existing = Notification.query.filter_by(
+                olt_id=olt.id, category='olt_mem_high', is_read=False
+            ).first()
+
+            if not existing:
+                notifications_to_create.append({
+                    'tenant_id': tenant_id, 'olt_id': olt.id, 'onu_id': None,
+                    'severity': 'warning', 'category': 'olt_mem_high',
+                    'title': title, 'message': message, 'target_roles': '',
+                })
+                alerts_to_send.append({
+                    'type': 'olt_mem_high', 'severity': 'warning',
+                    'title': title, 'message': message,
+                    'olt_name': olt.name, 'olt_ip': olt.ip_address, 'is_recovery': False,
+                })
+
+            hist = AlertHistory.query.filter_by(olt_id=olt.id, alert_type='olt_mem_high').first()
+            if hist:
+                hist.last_alert_at = now; hist.last_value = str(mem_usage)
+            else:
+                db.session.add(AlertHistory(olt_id=olt.id, alert_type='olt_mem_high', last_value=str(mem_usage), last_alert_at=now))
+
+    # ── Temperature Alert ──
+    if temperature is not None and rule.check_olt_temperature and temperature >= rule.olt_temp_threshold:
+        recent_temp = AlertHistory.query.filter_by(
+            olt_id=olt.id, alert_type='olt_temp_high'
+        ).filter(
+            AlertHistory.last_alert_at > now - timedelta(hours=1)
+        ).first()
+
+        if not recent_temp:
+            title = f"🌡️ Suhu Tinggi: {olt.name} ({temperature}°C)"
+            message = (
+                f"OLT: {olt.name} ({olt.ip_address})\n"
+                f"Temperature: {temperature}°C (threshold: {rule.olt_temp_threshold}°C)\n\n"
+                f"⚠️ Indikasi: Suhu OLT melebihi batas aman. Periksa ventilasi dan pendingin.\n\n"
+                f"🕒 Waktu: {_fmt_time(now)}"
+            )
+
+            existing = Notification.query.filter_by(
+                olt_id=olt.id, category='olt_temp_high', is_read=False
+            ).first()
+
+            if not existing:
+                notifications_to_create.append({
+                    'tenant_id': tenant_id, 'olt_id': olt.id, 'onu_id': None,
+                    'severity': 'critical', 'category': 'olt_temp_high',
+                    'title': title, 'message': message, 'target_roles': '',
+                })
+                alerts_to_send.append({
+                    'type': 'olt_temp_high', 'severity': 'critical',
+                    'title': title, 'message': message,
+                    'olt_name': olt.name, 'olt_ip': olt.ip_address, 'is_recovery': False,
+                })
+
+            hist = AlertHistory.query.filter_by(olt_id=olt.id, alert_type='olt_temp_high').first()
+            if hist:
+                hist.last_alert_at = now; hist.last_value = str(temperature)
+            else:
+                db.session.add(AlertHistory(olt_id=olt.id, alert_type='olt_temp_high', last_value=str(temperature), last_alert_at=now))
+
+    return True
+
+
 def run_alert_monitor(app):
     """Background thread that monitors ONU status changes and sends alerts."""
     logger.info("[ALERT] Alert monitor started")
@@ -149,6 +441,26 @@ def _check_onus_for_tenant(tenant_id, force_send=False):
     recovery_groups = {}
 
     for olt in olts:
+        # ─── Maintenance Window Check ───
+        from models import MaintenanceWindow
+        in_maintenance = MaintenanceWindow.query.filter(
+            MaintenanceWindow.start_time <= now,
+            MaintenanceWindow.end_time >= now,
+        ).filter(
+            (MaintenanceWindow.olt_id == olt.id) | (MaintenanceWindow.olt_id.is_(None))
+        ).filter(
+            (MaintenanceWindow.tenant_id == tenant_id) | (MaintenanceWindow.tenant_id.is_(None))
+        ).first()
+        if in_maintenance:
+            logger.info(f"[ALERT] OLT {olt.name} is in maintenance window — skipping alerts")
+            continue
+
+        # ─── OLT Health Check (Fase 2A) ───
+        olt_reachable = _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send, tenant_id)
+        if not olt_reachable:
+            logger.info(f"[ALERT] OLT {olt.name} is offline — skipping ONU checks")
+            continue  # Skip ONU checks for unreachable OLT (avoid false positives)
+
         onus = ONU.query.filter_by(olt_id=olt.id).all()
 
         for onu in onus:
@@ -178,6 +490,14 @@ def _check_onus_for_tenant(tenant_id, force_send=False):
                     else:
                         db.session.add(AlertHistory(onu_id=onu.id, alert_type=onu.status, last_value=onu.status, last_alert_at=now))
 
+                    # ─── Uptime Log: record status change ───
+                    from models import UptimeLog
+                    db.session.add(UptimeLog(
+                        onu_id=onu.id, olt_id=olt.id,
+                        old_status='online', new_status=onu.status,
+                        changed_at=now
+                    ))
+
             # ─── Check recovery (was offline, now online) ───
             elif onu.status == 'online':
                 recent_offline = AlertHistory.query.filter_by(
@@ -191,6 +511,14 @@ def _check_onus_for_tenant(tenant_id, force_send=False):
                 if recent_offline:
                     pon_groups[pon_key]['recovery'].append(onu)
                     recent_offline.last_alert_at = now - timedelta(hours=24)
+
+                    # ─── Uptime Log: record recovery ───
+                    from models import UptimeLog
+                    db.session.add(UptimeLog(
+                        onu_id=onu.id, olt_id=olt.id,
+                        old_status='offline', new_status='online',
+                        changed_at=now
+                    ))
 
                     existing_notif = Notification.query.filter_by(
                         onu_id=onu.id, is_read=False
@@ -252,6 +580,23 @@ def _check_onus_for_tenant(tenant_id, force_send=False):
 
     # Always commit — AlertHistory updates need to persist even if no new notifications
     db.session.commit()
+
+    # ─── Push real-time alert to WebSocket clients ───
+    if notifications_to_create:
+        try:
+            from ws_bridge import ws_broadcast_dashboard
+            for notif_data in notifications_to_create:
+                ws_broadcast_dashboard('alert', {
+                    'type': 'new_alert',
+                    'severity': notif_data.get('severity', 'info'),
+                    'category': notif_data.get('category', 'status'),
+                    'title': notif_data.get('title', ''),
+                    'olt_id': notif_data.get('olt_id'),
+                    'onu_id': notif_data.get('onu_id'),
+                    'tenant_id': notif_data.get('tenant_id'),
+                })
+        except Exception as e:
+            logger.debug(f"[ALERT] WS broadcast failed (server may be down): {e}")
 
     # ─── Send external alerts ───
     if alerts_to_send:

@@ -13,6 +13,7 @@ import {
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useAuth } from '../stores/auth';
 import { SuperAdminDashboard } from './SuperAdminDashboard';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 const REFRESH_INTERVAL = 30;
 
@@ -61,6 +62,14 @@ export function Dashboard() {
   });
   const olts = (data as DashboardData)?.olts ?? [];
   const subInfo = (data as DashboardData)?.subscription;
+
+  // WebSocket listener — real-time alert push: auto-refresh dashboard when alerts arrive
+  const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
+  useEffect(() => {
+    if (alertWsMsg && alertWsMsg.event === 'alert') {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    }
+  }, [alertWsMsg, queryClient]);
 
   // Payment success notification from redirect
   useEffect(() => {

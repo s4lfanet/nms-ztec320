@@ -7,6 +7,7 @@ import '../widgets/olt_card.dart';
 import 'all_onus_screen.dart';
 import 'olt_settings_screen.dart';
 import 'settings_screen.dart';
+import 'notifications_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -19,11 +20,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
   bool _loading = true;
   Map<String, dynamic>? _dashboardData;
+  int _unreadNotifs = 0;
 
   @override
   void initState() {
     super.initState();
     _loadDashboard();
+    _loadNotifCount();
   }
 
   Future<void> _loadDashboard() async {
@@ -37,6 +40,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (result['olts'] != null) {
         Provider.of<AppState>(context, listen: false).setOlts(result['olts']);
       }
+    }
+  }
+
+  Future<void> _loadNotifCount() async {
+    final api = ApiService();
+    final result = await api.getNotifications(limit: 1);
+    if (mounted) {
+      setState(() {
+        _unreadNotifs = result['unread_count'] ?? 0;
+      });
     }
   }
 
@@ -109,6 +122,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             actions: [
+              // Notification bell
+              Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_outlined),
+                    onPressed: () async {
+                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+                      _loadNotifCount(); // Refresh count after returning
+                    },
+                  ),
+                  if (_unreadNotifs > 0)
+                    Positioned(
+                      right: 8, top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF5757),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          _unreadNotifs > 99 ? '99+' : '$_unreadNotifs',
+                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
               IconButton(
                 icon: const Icon(Icons.refresh),
                 onPressed: _loadDashboard,

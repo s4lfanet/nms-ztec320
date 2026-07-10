@@ -51,6 +51,7 @@ const navItems: NavItem[] = [
       { label: 'User Management', path: '/dashboard/users', permission: 'manage_users' },
       { label: 'Action Logs', path: '/dashboard/logs', permission: 'manage_users' },
       { label: 'Alert Settings', path: '/dashboard/settings/alerts', permission: 'customization' },
+      { label: 'Alert History', path: '/dashboard/alerts/history', permission: 'view_dashboard' },
     ],
   },
 ];

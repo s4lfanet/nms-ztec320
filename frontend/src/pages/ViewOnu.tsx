@@ -7,7 +7,7 @@ import { confirm } from '../components/ConfirmDialog';
 import {
   Wifi, Clock, RefreshCw, RotateCcw, Trash2, Ban, Eraser,
   FileText, Radio, Globe, Shield, Key, Plug, Database, Layers,
-  Edit3, X, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff
+  Edit3, X, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff, ChevronDown
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -524,6 +524,89 @@ function useOltVlans(oltId: number) {
   return vlans;
 }
 
+// ═══ SearchableSelect — custom dropdown that stays open during scroll ═══
+function SearchableSelect({ label, value, onChange, options, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void;
+  options: Array<{ value: string; label: string }>; placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = options.filter(o =>
+    o.label.toLowerCase().includes(search.toLowerCase()) ||
+    o.value.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const selectedLabel = options.find(o => o.value === value)?.label || value || '';
+
+  return (
+    <div className="relative" ref={ref}>
+      {label && <label className="label-sm mb-1">{label}</label>}
+      <button
+        type="button"
+        onClick={() => { setOpen(!open); setSearch(''); setTimeout(() => inputRef.current?.focus(), 50); }}
+        className="input-field w-full text-left flex items-center justify-between gap-2 cursor-pointer"
+      >
+        <span className={cn('truncate text-sm', !value && 'text-tx3')}>
+          {value ? selectedLabel : (placeholder || 'Select...')}
+        </span>
+        <ChevronDown size={14} className={cn('text-tx3 flex-shrink-0 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div
+          className="absolute z-[9999] mt-1 w-full rounded-xl border border-brd shadow-2xl shadow-black/40 overflow-hidden"
+          style={{ background: 'var(--bg-surface)', backdropFilter: 'blur(20px)' }}
+          onMouseDown={e => e.stopPropagation()} // Prevent modal scroll from closing this
+        >
+          {/* Search input */}
+          <div className="p-2 border-b border-brd">
+            <input
+              ref={inputRef}
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="w-full h-8 px-3 rounded-lg text-sm bg-glass border border-brd outline-none focus:border-accent/50"
+              onKeyDown={e => { if (e.key === 'Escape') setOpen(false); }}
+            />
+          </div>
+          {/* Options list */}
+          <div className="max-h-48 overflow-y-auto overscroll-contain">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-tx3">No results</div>
+            ) : (
+              filtered.map(o => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => { onChange(o.value); setOpen(false); setSearch(''); }}
+                  className={cn(
+                    'w-full text-left px-3 py-2 text-sm hover:bg-accent/10 transition-colors',
+                    o.value === value ? 'bg-accent/15 text-accent font-medium' : 'text-tx1'
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══ Helper: fetch speed profiles from OLT ═══
 function useOltProfiles(oltId: number) {
   const [profiles, setProfiles] = useState<{tcont: string[]; traffic: string[]; wan_ip_profiles: Array<{name: string; cvlan?: string}>}>({tcont: [], traffic: [], wan_ip_profiles: []});
@@ -700,9 +783,7 @@ function WanEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Record
   };
 
   const SelectField = ({ label, value, onChange, options, placeholder }: { label: string; value: string; onChange: (v: string) => void; options: Array<{value: string; label: string}>; placeholder?: string }) => (
-    <div><label className="label-sm mb-1">{label}</label><select value={value} onChange={e => onChange(e.target.value)} className="input-field">
-      {placeholder && <option value="">{placeholder}</option>}{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select></div>
+    <SearchableSelect label={label} value={value} onChange={onChange} options={options} placeholder={placeholder} />
   );
 
   return (

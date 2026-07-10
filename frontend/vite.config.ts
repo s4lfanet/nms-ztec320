@@ -9,8 +9,8 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
-      disable: false,
+      injectRegister: null,
+      disable: true,
       manifest: {
         name: 'FiberNMS — OLT Management',
         short_name: 'FiberNMS',

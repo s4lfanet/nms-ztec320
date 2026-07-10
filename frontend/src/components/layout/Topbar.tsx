@@ -1,10 +1,11 @@
-import { Bell, LogOut, User, Sun, Moon, Menu, Zap, Check, Trash2, AlertTriangle, WifiOff, UserPlus, ArrowRight, X, Package } from 'lucide-react';
+import { Bell, LogOut, User, Sun, Moon, Menu, Zap, Check, Trash2, AlertTriangle, WifiOff, UserPlus, ArrowRight, X, Package, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../stores/auth';
 import { useTheme } from '../../stores/theme';
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
+import { useWebSocket } from '../../hooks/useWebSocket';
 
 export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const { user, logout } = useAuth();
@@ -23,8 +24,18 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       if (!r.ok) return { notifications: [], unread_count: 0 };
       return r.json();
     },
-    refetchInterval: 30000,
+    refetchInterval: 10000,
   });
+
+  // WebSocket listener — real-time alert push from backend
+  const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
+  useEffect(() => {
+    if (alertWsMsg && alertWsMsg.event === 'alert') {
+      // Immediately refetch notifications when a new alert arrives
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['unregistered-count'] });
+    }
+  }, [alertWsMsg, qc]);
 
   const { data: unregData } = useQuery({
     queryKey: ['unregistered-count'],
@@ -53,6 +64,20 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const clearReadMut = useMutation({
     mutationFn: async () => {
       await fetch('/api/notifications/clear', { method: 'POST', credentials: 'include' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const ackMut = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`/api/notifications/${id}/acknowledge`, { method: 'POST', credentials: 'include' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const ackAllMut = useMutation({
+    mutationFn: async () => {
+      await fetch('/api/notifications/acknowledge-all', { method: 'POST', credentials: 'include' });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
@@ -148,6 +173,11 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                 </div>
                 <div className="flex gap-1">
                   {unreadCount > 0 && (
+                    <button onClick={() => ackAllMut.mutate()} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-success transition-colors" title="Acknowledge all">
+                      <CheckCircle2 size={14} />
+                    </button>
+                  )}
+                  {unreadCount > 0 && (
                     <button onClick={() => markAllMut.mutate()} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-accent transition-colors" title="Mark all read">
                       <Check size={14} />
                     </button>
@@ -214,23 +244,48 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                   notifs.map((n: Record<string, unknown>) => {
                     const sev = String(n.severity || 'info');
                     const sc = severityConfig[sev] || severityConfig.info;
+                    const isAcked = n.acknowledged === true;
                     return (
                       <div
                         key={String(n.id)}
                         onClick={() => { if (!n.is_read) markReadMut.mutate(Number(n.id)); }}
                         className={cn(
-                          'px-4 py-3 border-b border-brd/50 cursor-pointer hover:bg-glass/50 transition-colors',
-                          !n.is_read && 'bg-accent/5'
+                          'px-4 py-3 border-b border-brd/50 cursor-pointer hover:bg-glass/50 transition-colors group',
+                          !n.is_read && 'bg-accent/5',
+                          isAcked && 'opacity-60'
                         )}
                       >
                         <div className="flex items-start gap-2.5">
                           <div className="mt-0.5 flex-shrink-0">{sc.icon}</div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{String(n.title)}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium truncate">{String(n.title)}</span>
+                              {isAcked && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-success/15 text-success flex-shrink-0">
+                                  <CheckCircle2 size={9} /> ACK
+                                </span>
+                              )}
+                            </div>
                             <div className="text-xs text-tx3 mt-0.5 line-clamp-2">{String(n.message).split('\n')[0]}</div>
-                            <div className="text-[10px] text-tx3/70 mt-1">{n.created_at ? new Date(String(n.created_at)).toLocaleString() : ''}</div>
+                            <div className="text-[10px] text-tx3/70 mt-1 flex items-center gap-2">
+                              <span>{n.created_at ? new Date(String(n.created_at)).toLocaleString() : ''}</span>
+                              {isAcked && n.acknowledged_by ? (
+                                <span className="text-success/70">by {String(n.acknowledged_by)}</span>
+                              ) : null}
+                            </div>
                           </div>
-                          {!n.is_read && <div className="w-2 h-2 rounded-full bg-accent mt-2 flex-shrink-0 animate-pulse" />}
+                          <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                            {!n.is_read && <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />}
+                            {!isAcked && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); ackMut.mutate(Number(n.id)); }}
+                                className="p-1 rounded hover:bg-success/15 text-tx3 hover:text-success transition-colors opacity-0 group-hover:opacity-100"
+                                title="Acknowledge"
+                              >
+                                <CheckCircle2 size={14} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );

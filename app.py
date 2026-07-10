@@ -4912,6 +4912,8 @@ def get_notifications():
         'notifications': [{
             'id': n.id, 'severity': n.severity, 'category': n.category,
             'title': n.title, 'message': n.message, 'is_read': n.is_read,
+            'acknowledged': n.acknowledged, 'acknowledged_by': n.acknowledged_by,
+            'acknowledged_at': utc_iso(n.acknowledged_at),
             'olt_id': n.olt_id, 'onu_id': n.onu_id,
             'created_at': utc_iso(n.created_at),
         } for n in notifications],
@@ -4946,6 +4948,45 @@ def mark_all_notifications_read():
     return jsonify({'success': True})
 
 
+@app.route('/api/notifications/<int:notif_id>/acknowledge', methods=['POST'])
+@login_required
+def acknowledge_notification(notif_id):
+    """Acknowledge a notification (mark as being handled)."""
+    notif = db.session.get(Notification, notif_id)
+    if not notif:
+        return jsonify({'success': False, 'message': 'Not found'}), 404
+    notif.acknowledged = True
+    notif.acknowledged_by = current_user.username or current_user.email or 'unknown'
+    notif.acknowledged_at = datetime.now(timezone.utc)
+    notif.is_read = True
+    db.session.commit()
+    log_action('acknowledge', 'notification', notif.id, f'Acknowledged alert: {notif.title}')
+    return jsonify({'success': True, 'acknowledged_by': notif.acknowledged_by})
+
+
+@app.route('/api/notifications/acknowledge-all', methods=['POST'])
+@login_required
+def acknowledge_all_notifications():
+    """Acknowledge all unread/unacknowledged notifications."""
+    q = Notification.query.filter_by(acknowledged=False)
+    tid = get_tenant_id()
+    if tid is not None:
+        q = q.filter_by(tenant_id=tid)
+    else:
+        q = q.filter_by(tenant_id=None)
+    now = datetime.now(timezone.utc)
+    username = current_user.username or current_user.email or 'unknown'
+    count = 0
+    for notif in q.all():
+        notif.acknowledged = True
+        notif.acknowledged_by = username
+        notif.acknowledged_at = now
+        notif.is_read = True
+        count += 1
+    db.session.commit()
+    return jsonify({'success': True, 'count': count})
+
+
 @app.route('/api/notifications/<int:notif_id>', methods=['DELETE'])
 @login_required
 def delete_notification(notif_id):
@@ -4971,6 +5012,216 @@ def clear_notifications():
     q.delete()
     db.session.commit()
     return jsonify({'success': True})
+
+
+@app.route('/api/alerts/history', methods=['GET'])
+@login_required
+def get_alert_history():
+    """Get paginated alert history (AlertHistory table).
+    Query params: page, per_page, alert_type, olt_id"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 30, type=int)
+    alert_type = request.args.get('type', '').strip()
+    olt_id = request.args.get('olt_id', type=int)
+
+    query = AlertHistory.query
+
+    # Tenant isolation — only show alerts for OLTs in this tenant
+    tid = get_tenant_id()
+    if tid is not None:
+        olt_ids = [o.id for o in OLT.query.filter_by(tenant_id=tid).all()]
+        if olt_ids:
+            query = query.filter(AlertHistory.olt_id.in_(olt_ids))
+        else:
+            return jsonify({'history': [], 'total': 0, 'pages': 0})
+    # Super admin sees all (no filter)
+
+    if alert_type:
+        query = query.filter_by(alert_type=alert_type)
+    if olt_id:
+        query = query.filter_by(olt_id=olt_id)
+
+    # Join with OLT for name, and ONU for serial/name
+    pagination = query.order_by(AlertHistory.last_alert_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False)
+
+    results = []
+    for h in pagination.items:
+        olt_name = ''
+        onu_info = ''
+        if h.olt_id:
+            olt = db.session.get(OLT, h.olt_id)
+            olt_name = olt.name if olt else ''
+        if h.onu_id:
+            onu = db.session.get(ONU, h.onu_id)
+            if onu:
+                onu_info = onu.name or onu.serial_number or onu.onu_id_str or ''
+
+        results.append({
+            'id': h.id,
+            'alert_type': h.alert_type,
+            'last_value': h.last_value,
+            'last_alert_at': utc_iso(h.last_alert_at),
+            'olt_id': h.olt_id,
+            'olt_name': olt_name,
+            'onu_id': h.onu_id,
+            'onu_info': onu_info,
+        })
+
+    return jsonify({
+        'history': results,
+        'total': pagination.total,
+        'pages': pagination.pages,
+        'page': page,
+    })
+
+
+# ==================== MAINTENANCE WINDOWS API ====================
+
+@app.route('/api/maintenance', methods=['GET'])
+@login_required
+def get_maintenance_windows():
+    """List maintenance windows."""
+    from models import MaintenanceWindow
+    tid = get_tenant_id()
+    query = MaintenanceWindow.query
+    if tid is not None:
+        query = query.filter((MaintenanceWindow.tenant_id == tid) | (MaintenanceWindow.tenant_id.is_(None)))
+    windows = query.order_by(MaintenanceWindow.start_time.desc()).limit(50).all()
+    return jsonify({
+        'windows': [{
+            'id': w.id, 'olt_id': w.olt_id,
+            'olt_name': w.olt.name if w.olt else 'All OLTs',
+            'start_time': utc_iso(w.start_time),
+            'end_time': utc_iso(w.end_time),
+            'reason': w.reason,
+            'created_by': w.created_by,
+            'is_active': w.start_time <= datetime.now(timezone.utc) <= w.end_time,
+        } for w in windows]
+    })
+
+
+@app.route('/api/maintenance', methods=['POST'])
+@login_required
+@permission_required('customization')
+def create_maintenance_window():
+    """Create a maintenance window."""
+    from models import MaintenanceWindow
+    data = request.get_json() or {}
+    start = data.get('start_time')
+    end = data.get('end_time')
+    if not start or not end:
+        return jsonify({'success': False, 'message': 'start_time and end_time required'}), 400
+
+    try:
+        start_dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
+        end_dt = datetime.fromisoformat(end.replace('Z', '+00:00'))
+    except Exception:
+        return jsonify({'success': False, 'message': 'Invalid datetime format'}), 400
+
+    window = MaintenanceWindow(
+        tenant_id=get_tenant_id(),
+        olt_id=data.get('olt_id'),
+        start_time=start_dt,
+        end_time=end_dt,
+        reason=data.get('reason', ''),
+        created_by=current_user.username or '',
+    )
+    db.session.add(window)
+    db.session.commit()
+    log_action('create', 'maintenance', window.id, f'Maintenance: {window.reason}')
+    return jsonify({'success': True, 'id': window.id})
+
+
+@app.route('/api/maintenance/<int:window_id>', methods=['DELETE'])
+@login_required
+@permission_required('customization')
+def delete_maintenance_window(window_id):
+    """Delete a maintenance window."""
+    from models import MaintenanceWindow
+    window = db.session.get(MaintenanceWindow, window_id)
+    if not window:
+        return jsonify({'success': False, 'message': 'Not found'}), 404
+    db.session.delete(window)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+# ==================== UPTIME / SLA API ====================
+
+@app.route('/api/uptime/onu/<int:onu_id>', methods=['GET'])
+@login_required
+def get_onu_uptime(onu_id):
+    """Get uptime statistics for an ONU.
+    Query params: range (days, default 30)"""
+    from models import UptimeLog
+    days = request.args.get('range', 30, type=int)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    logs = UptimeLog.query.filter(
+        UptimeLog.onu_id == onu_id,
+        UptimeLog.changed_at >= since
+    ).order_by(UptimeLog.changed_at.asc()).all()
+
+    # Calculate uptime
+    total_seconds = days * 86400
+    offline_seconds = 0
+    last_online_at = since
+
+    for log in logs:
+        if log.new_status in ('offline', 'dyinggasp', 'los'):
+            # Went offline
+            offline_start = log.changed_at
+            last_online_at = None
+        elif log.new_status == 'online' and last_online_at is None:
+            # Came back online
+            if hasattr(log, '_offline_start'):
+                offline_seconds += (log.changed_at - offline_start).total_seconds()
+            last_online_at = log.changed_at
+
+    uptime_pct = ((total_seconds - offline_seconds) / total_seconds * 100) if total_seconds > 0 else 100
+
+    return jsonify({
+        'onu_id': onu_id,
+        'range_days': days,
+        'uptime_pct': round(uptime_pct, 2),
+        'total_incidents': len([l for l in logs if l.new_status != 'online']),
+        'last_incident': utc_iso(logs[-1].changed_at) if logs else None,
+    })
+
+
+@app.route('/api/uptime/olt/<int:olt_id>', methods=['GET'])
+@login_required
+def get_olt_uptime(olt_id):
+    """Get uptime statistics for an OLT."""
+    from models import UptimeLog
+    days = request.args.get('range', 30, type=int)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    logs = UptimeLog.query.filter(
+        UptimeLog.olt_id == olt_id,
+        UptimeLog.onu_id.is_(None),  # OLT-level events only
+        UptimeLog.changed_at >= since
+    ).order_by(UptimeLog.changed_at.asc()).all()
+
+    total_seconds = days * 86400
+    offline_seconds = 0
+    for i, log in enumerate(logs):
+        if log.new_status == 'offline':
+            next_online = next((l for l in logs[i+1:] if l.new_status == 'online'), None)
+            if next_online:
+                offline_seconds += (next_online.changed_at - log.changed_at).total_seconds()
+            else:
+                offline_seconds += (datetime.now(timezone.utc) - log.changed_at).total_seconds()
+
+    uptime_pct = ((total_seconds - offline_seconds) / total_seconds * 100) if total_seconds > 0 else 100
+
+    return jsonify({
+        'olt_id': olt_id,
+        'range_days': days,
+        'uptime_pct': round(uptime_pct, 2),
+        'total_incidents': len([l for l in logs if l.new_status == 'offline']),
+    })
 
 
 @app.route('/api/unregistered-count', methods=['GET'])

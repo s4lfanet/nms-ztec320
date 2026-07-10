@@ -553,6 +553,9 @@ class Notification(db.Model):
     message = db.Column(db.Text, default='')
     target_roles = db.Column(db.Text, default='')  # comma-separated role IDs, empty = all
     is_read = db.Column(db.Boolean, default=False)
+    acknowledged = db.Column(db.Boolean, default=False)
+    acknowledged_by = db.Column(db.String(100), default='')  # username who acknowledged
+    acknowledged_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('notifications', lazy=True))
 
@@ -571,6 +574,14 @@ class AlertRule(db.Model):
     check_rx_power = db.Column(db.Boolean, default=True)
     rx_threshold = db.Column(db.Float, default=-27.0)  # dBm, alert if below this
     rx_change_threshold = db.Column(db.Float, default=3.0)  # dB change to trigger
+    # OLT Health Monitoring
+    check_olt_offline = db.Column(db.Boolean, default=True)
+    check_olt_cpu = db.Column(db.Boolean, default=True)
+    check_olt_memory = db.Column(db.Boolean, default=True)
+    check_olt_temperature = db.Column(db.Boolean, default=True)
+    olt_cpu_threshold = db.Column(db.Float, default=80.0)  # % — alert if >= this
+    olt_memory_threshold = db.Column(db.Float, default=80.0)  # %
+    olt_temp_threshold = db.Column(db.Float, default=60.0)  # °C
     # Notification channels
     notify_bell = db.Column(db.Boolean, default=True)
     notify_telegram = db.Column(db.Boolean, default=False)
@@ -604,6 +615,44 @@ class BotConfig(db.Model):
     api_key = db.Column(db.String(256), default='')  # WhatsApp API key
     phone_number = db.Column(db.String(50), default='')  # WhatsApp target number
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class MaintenanceWindow(db.Model):
+    """Scheduled maintenance windows to suppress alerts"""
+    __tablename__ = 'maintenance_windows'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
+    olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=True)  # null = all OLTs
+    start_time = db.Column(db.DateTime, nullable=False)
+    end_time = db.Column(db.DateTime, nullable=False)
+    reason = db.Column(db.Text, default='')
+    created_by = db.Column(db.String(100), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    olt = db.relationship('OLT', backref=db.backref('maintenance_windows', lazy=True))
+
+
+class UptimeLog(db.Model):
+    """Track ONU/OLT status changes for uptime/SLA calculation"""
+    __tablename__ = 'uptime_log'
+    id = db.Column(db.Integer, primary_key=True)
+    onu_id = db.Column(db.Integer, nullable=True)
+    olt_id = db.Column(db.Integer, nullable=True)
+    old_status = db.Column(db.String(20), default='')
+    new_status = db.Column(db.String(20), default='')
+    changed_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class MetricHistory(db.Model):
+    """Historical metrics for trending (RX power, CPU, memory, temperature)"""
+    __tablename__ = 'metric_history'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
+    olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=True)
+    onu_id = db.Column(db.Integer, nullable=True)
+    metric_type = db.Column(db.String(30), nullable=False)  # rx_power, olt_cpu, olt_mem, olt_temp
+    value = db.Column(db.Float, nullable=True)
+    recorded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    olt = db.relationship('OLT', backref=db.backref('metric_history', lazy=True))
 
 
 # ==================== FTTH INFRASTRUCTURE ====================

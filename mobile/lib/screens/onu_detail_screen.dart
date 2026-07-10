@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../widgets/status_badge.dart';
+import 'onu_edit_screen.dart';
 
 class OnuDetailScreen extends StatefulWidget {
   final Map<String, dynamic> onu;
@@ -74,14 +75,27 @@ class _OnuDetailScreenState extends State<OnuDetailScreen> {
       appBar: AppBar(
         title: Text(name != '-' ? name : 'ONU Detail'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () async {
+              final updated = await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => OnuEditScreen(onu: _detail ?? widget.onu)),
+              );
+              if (updated == true) _loadDetail(); // Refresh after edit
+            },
+            tooltip: 'Edit ONU',
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _loadDetail),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
+          : RefreshIndicator(
+              onRefresh: _loadDetail,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
                 // Status header
                 Card(
                   child: Padding(
@@ -130,8 +144,9 @@ class _OnuDetailScreenState extends State<OnuDetailScreen> {
                       ],
                     ),
                   ),
-                ),
+                  ),
               ],
+              ),
             ),
     );
   }

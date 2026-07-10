@@ -28,6 +28,7 @@ const Tr069Profile = lazy(() => import('./pages/Tr069Profile').then(m => ({ defa
 const ActionLogs = lazy(() => import('./pages/ActionLogs').then(m => ({ default: m.ActionLogs })));
 const AdminPanel = lazy(() => import('./pages/AdminPanel').then(m => ({ default: m.default })));
 const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage').then(m => ({ default: m.default })));
+const AlertHistoryPage = lazy(() => import('./pages/AlertHistory').then(m => ({ default: m.AlertHistory })));
 
 const routePermissions: Record<string, string> = {
   '/dashboard/onus/add': 'add_onu',
@@ -205,6 +206,7 @@ export default function App() {
         <Route path="users" element={<UserManagement />} />
         <Route path="profile" element={<MyProfile />} />
         <Route path="settings/alerts" element={<AlertSettings />} />
+        <Route path="alerts/history" element={<AlertHistoryPage />} />
         <Route path="ftth" element={<FtthInfrastructure />} />
         <Route path="templates" element={<Templates />} />
         <Route path="templates/tr069-profile" element={<Tr069Profile />} />

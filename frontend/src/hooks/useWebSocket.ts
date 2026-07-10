@@ -65,10 +65,10 @@ export function useWebSocket(
     if (opts.baseUrl) {
       return `${opts.baseUrl}${path}`;
     }
-    // Auto-detect: same host, port 8765
+    // Auto-detect: same host and port as page (works behind nginx proxy)
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.hostname;
-    return `${proto}//${host}:8765${path}`;
+    const host = window.location.host; // includes port if non-default
+    return `${proto}//${host}${path}`;
   }, [path, opts.baseUrl]);
 
   const cleanup = useCallback(() => {

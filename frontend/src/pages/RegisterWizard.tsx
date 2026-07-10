@@ -116,29 +116,37 @@ function generateRegisterScript(d: WizardData): string {
     }
     lines.push('  security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069');
   } else if (d.template === 'zte_full') {
-    const pv = e.primary_vlan || '30';
-    const sv = e.secondary_vlan || '151';
-    lines.push(`  tcont 1 name VLAN${String(pv).padStart(4, '0')} profile ${d.tcontProfile}`);
-    lines.push('  gemport 1 tcont 1');
-    if (d.trafficProfile) lines.push(`  gemport 1 traffic-limit downstream ${d.trafficProfile}`);
-    lines.push(`  tcont 2 name VLAN${sv} profile ${d.tcontProfile}`);
-    lines.push('  gemport 2 tcont 2');
-    if (d.trafficProfile) lines.push(`  gemport 2 traffic-limit downstream ${d.trafficProfile}`);
-    lines.push(`  service-port 1 vport 1 user-vlan ${pv} vlan ${pv}`);
-    lines.push(`  service-port 2 vport 2 user-vlan ${sv} vlan ${sv}`);
+    const vlans = Array.isArray(e.vlans) && e.vlans.length > 0 ? e.vlans : [
+      { vlan: e.primary_vlan || '30', label: 'Internet' },
+      { vlan: e.secondary_vlan || '151', label: 'Voucher' },
+    ];
+    vlans.forEach((v, i) => {
+      const n = i + 1;
+      const vid = String(v.vlan || '');
+      const svcName = `VLAN${String(vid).padStart(4, '0')}`;
+      lines.push(`  tcont ${n} name ${svcName} profile ${d.tcontProfile}`);
+      lines.push(`  gemport ${n} tcont ${n}`);
+      if (d.trafficProfile) lines.push(`  gemport ${n} traffic-limit downstream ${d.trafficProfile}`);
+      lines.push(`  service-port ${n} vport ${n} user-vlan ${vid} vlan ${vid}`);
+    });
     lines.push('!');
     lines.push(`pon-onu-mng ${onuIf}`);
     const useVeipF = eWithVeip.use_veip === 'true';
-    if (useVeipF) {
-      lines.push(`  service VLAN${String(pv).padStart(4, '0')} gemport 1 vlan ${pv}`);
-    } else {
-      lines.push(`  service VLAN${String(pv).padStart(4, '0')} gemport 1 iphost 1 vlan ${pv}`);
-    }
-    lines.push(`  service VLAN${sv} gemport 2 vlan ${sv}`);
+    vlans.forEach((v, i) => {
+      const n = i + 1;
+      const vid = String(v.vlan || '');
+      const svcName = `VLAN${String(vid).padStart(4, '0')}`;
+      if (n === 1 && !useVeipF) {
+        lines.push(`  service ${svcName} gemport ${n} iphost 1 vlan ${vid}`);
+      } else {
+        lines.push(`  service ${svcName} gemport ${n} vlan ${vid}`);
+      }
+    });
     if (useVeipF) {
       lines.push('  vlan port veip_1 mode hybrid');
       lines.push('  vlan port veip_1 vlan 1');
     }
+    const pv = String(vlans[0]?.vlan || '30');
     const enableTr069 = e.enable_tr069 === 'true';
     if (enableTr069) lines.push('  wan 1 service tr069 internet host 1');
     else lines.push('  wan 1 service internet host 1');
@@ -253,34 +261,42 @@ function generateRegisterScript(d: WizardData): string {
     lines.push('  service ServiceONU1 gemport 1');
     lines.push(`  wan-ip 1 mode dhcp vlan-profile ${vlanProfile} host 1`);
   } else if (d.template === 'fiberhome_veip') {
-    const tv = e.tr069_vlan || '1010';
-    const iv = e.internet_vlan || '30';
-    const vv = e.voip_vlan || '151';
+    const vlans = Array.isArray(e.vlans) && e.vlans.length > 0 ? e.vlans : [
+      { vlan: e.tr069_vlan || '1010', label: 'TR069' },
+      { vlan: e.internet_vlan || '30', label: 'Internet' },
+      { vlan: e.voip_vlan || '151', label: 'VoIP' },
+    ];
     lines.push('  sn-bind enable sn');
     lines.push(`  tcont 1 profile ${d.tcontProfile}`);
     lines.push('  gemport 1 tcont 1');
     if (d.trafficProfile) lines.push(`  gemport 1 traffic-limit downstream ${d.trafficProfile}`);
-    lines.push(`  tcont 2 profile ${d.tcontProfile}`);
-    lines.push('  gemport 2 tcont 2');
-    lines.push(`  tcont 3 profile ${d.tcontProfile}`);
-    lines.push('  gemport 3 tcont 3');
-    lines.push(`  service-port 1 vport 1 user-vlan ${tv} vlan ${tv}`);
-    lines.push(`  service-port 2 vport 2 user-vlan ${iv} vlan ${iv}`);
-    lines.push(`  service-port 3 vport 3 user-vlan ${vv} vlan ${vv}`);
+    vlans.forEach((_, i) => {
+      if (i > 0) {
+        lines.push(`  tcont ${i + 1} profile ${d.tcontProfile}`);
+        lines.push(`  gemport ${i + 1} tcont ${i + 1}`);
+      }
+    });
+    vlans.forEach((v, i) => {
+      const vid = String(v.vlan || '');
+      lines.push(`  service-port ${i + 1} vport ${i + 1} user-vlan ${vid} vlan ${vid}`);
+    });
     lines.push('!');
     lines.push(`pon-onu-mng ${onuIf}`);
-    lines.push(`  service service1 gemport 1 vlan ${tv}`);
-    lines.push(`  service 2 gemport 2 vlan ${iv}`);
-    lines.push(`  service 3 gemport 3 vlan ${vv}`);
+    vlans.forEach((v, i) => {
+      const vid = String(v.vlan || '');
+      lines.push(`  service ${i + 1} gemport ${i + 1} vlan ${vid}`);
+    });
     lines.push('  vlan port veip_1 mode hybrid');
-    lines.push(`  vlan port eth_0/1 mode tag vlan ${iv}`);
-    lines.push(`  vlan port eth_0/2 mode tag vlan ${iv}`);
-    lines.push(`  vlan port eth_0/3 mode tag vlan ${iv}`);
-    lines.push(`  vlan port eth_0/4 mode tag vlan ${iv}`);
-    lines.push(`  vlan port wifi_0/1 mode tag vlan ${iv}`);
+    const internetVlan = String(vlans.find(v => (v.label || '').toLowerCase().includes('internet'))?.vlan || vlans[1]?.vlan || '30');
+    lines.push(`  vlan port eth_0/1 mode tag vlan ${internetVlan}`);
+    lines.push(`  vlan port eth_0/2 mode tag vlan ${internetVlan}`);
+    lines.push(`  vlan port eth_0/3 mode tag vlan ${internetVlan}`);
+    lines.push(`  vlan port eth_0/4 mode tag vlan ${internetVlan}`);
+    lines.push(`  vlan port wifi_0/1 mode tag vlan ${internetVlan}`);
     lines.push('  tr069-mgmt 1 state unlock');
     lines.push(`  tr069-mgmt 1 acs ${e.acs_url || 'http://192.168.54.254:7547'} validate basic username ${e.acs_user || 'acs'} password ${e.acs_pass || 'acs'}`);
-    lines.push(`  tr069-mgmt 1 tag pri 0 vlan ${tv}`);
+    const tr069Vlan = String(vlans.find(v => (v.label || '').toLowerCase().includes('tr069'))?.vlan || vlans[0]?.vlan || '1010');
+    lines.push(`  tr069-mgmt 1 tag pri 0 vlan ${tr069Vlan}`);
   }
 
   // SSID config (for zte_single and zte_full)
@@ -962,26 +978,68 @@ export function RegisterWizard() {
                 return null;
               })()}
 
-              {/* VLANs */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="label-sm mb-1">Primary VLAN (Internet)</label>
-                  {vlanList.length > 0 ? (
-                    <select value={data.extra.primary_vlan || ''} onChange={e => update('extra', { ...data.extra, primary_vlan: e.target.value })} className="input-field">
-                      <option value="">Select VLAN...</option>
-                      {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
-                    </select>
-                  ) : (
-                    <input type="number" value={data.extra.primary_vlan || '30'} onChange={e => update('extra', { ...data.extra, primary_vlan: e.target.value })} className="input-field" placeholder="30" />
-                  )}</div>
-                <div><label className="label-sm mb-1">Secondary VLAN (Voucher)</label>
-                  {vlanList.length > 0 ? (
-                    <select value={data.extra.secondary_vlan || ''} onChange={e => update('extra', { ...data.extra, secondary_vlan: e.target.value })} className="input-field">
-                      <option value="">Select VLAN...</option>
-                      {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
-                    </select>
-                  ) : (
-                    <input type="number" value={data.extra.secondary_vlan || '151'} onChange={e => update('extra', { ...data.extra, secondary_vlan: e.target.value })} className="input-field" placeholder="151" />
-                  )}</div>
+              {/* VLANs — Dynamic List */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label-sm">VLAN List</label>
+                  <button type="button" onClick={() => {
+                    const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans : [];
+                    update('extra', { ...data.extra, vlans: [...cur, { vlan: '', label: '' }] });
+                  }} className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-1">
+                    <Plus size={12} /> Add VLAN
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {(Array.isArray(data.extra.vlans) && data.extra.vlans.length > 0 ? data.extra.vlans : [
+                    { vlan: data.extra.primary_vlan || '30', label: 'Internet' },
+                    { vlan: data.extra.secondary_vlan || '151', label: 'Voucher' },
+                  ]).map((v, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <span className="text-[10px] text-tx3 w-6 flex-shrink-0">#{i + 1}</span>
+                      {vlanList.length > 0 ? (
+                        <select value={v.vlan || ''} onChange={e => {
+                          const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
+                            { vlan: data.extra.primary_vlan || '30', label: 'Internet' },
+                            { vlan: data.extra.secondary_vlan || '151', label: 'Voucher' },
+                          ];
+                          cur[i] = { ...cur[i], vlan: e.target.value };
+                          update('extra', { ...data.extra, vlans: cur });
+                        }} className="input-field flex-1">
+                          <option value="">Select VLAN...</option>
+                          {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
+                        </select>
+                      ) : (
+                        <input type="number" value={v.vlan || ''} placeholder="VLAN ID"
+                          onChange={e => {
+                            const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
+                              { vlan: data.extra.primary_vlan || '30', label: 'Internet' },
+                              { vlan: data.extra.secondary_vlan || '151', label: 'Voucher' },
+                            ];
+                            cur[i] = { ...cur[i], vlan: e.target.value };
+                            update('extra', { ...data.extra, vlans: cur });
+                          }}
+                          className="input-field flex-1" min={1} max={4094} />
+                      )}
+                      <input type="text" value={v.label || ''} placeholder="Label (opt)"
+                        onChange={e => {
+                          const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
+                            { vlan: data.extra.primary_vlan || '30', label: 'Internet' },
+                            { vlan: data.extra.secondary_vlan || '151', label: 'Voucher' },
+                          ];
+                          cur[i] = { ...cur[i], label: e.target.value };
+                          update('extra', { ...data.extra, vlans: cur });
+                        }}
+                        className="input-field flex-1" />
+                      <button type="button" onClick={() => {
+                        const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans.filter((_, idx) => idx !== i) : [];
+                        update('extra', { ...data.extra, vlans: cur });
+                      }} className="p-1.5 rounded text-red-400 hover:bg-red-500/10 flex-shrink-0">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-tx3 mt-1">VLAN pertama = Primary (Internet), kedua = Secondary (Voucher). Tambah VLAN lain sesuai kebutuhan.</p>
               </div>
 
               {/* PPPoE */}
@@ -1360,8 +1418,8 @@ export function RegisterWizard() {
                   ]).map((v, i) => (
                     <div key={i} className="flex gap-2 items-center">
                       <span className="text-[10px] text-tx3 w-6 flex-shrink-0">#{i + 1}</span>
-                      <input type="number" value={v.vlan || ''} placeholder="VLAN ID"
-                        onChange={e => {
+                      {vlanList.length > 0 ? (
+                        <select value={v.vlan || ''} onChange={e => {
                           const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
                             { vlan: data.extra.mgmt_vlan || '1010', label: 'Mgmt' },
                             { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
@@ -1369,8 +1427,23 @@ export function RegisterWizard() {
                           ];
                           cur[i] = { ...cur[i], vlan: e.target.value };
                           update('extra', { ...data.extra, vlans: cur });
-                        }}
-                        className="input-field flex-1" min={1} max={4094} />
+                        }} className="input-field flex-1">
+                          <option value="">Select VLAN...</option>
+                          {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
+                        </select>
+                      ) : (
+                        <input type="number" value={v.vlan || ''} placeholder="VLAN ID"
+                          onChange={e => {
+                            const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
+                              { vlan: data.extra.mgmt_vlan || '1010', label: 'Mgmt' },
+                              { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
+                              { vlan: data.extra.voip_vlan || '151', label: 'VoIP' },
+                            ];
+                            cur[i] = { ...cur[i], vlan: e.target.value };
+                            update('extra', { ...data.extra, vlans: cur });
+                          }}
+                          className="input-field flex-1" min={1} max={4094} />
+                      )}
                       <input type="text" value={v.label || ''} placeholder="Label (opt)"
                         onChange={e => {
                           const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
@@ -1425,14 +1498,75 @@ export function RegisterWizard() {
           {data.template === 'fiberhome_veip' && (
             <div className="p-3 md:p-4 rounded-lg bg-glass border border-accent/20 space-y-3">
               <h4 className="text-sm font-semibold text-accent">Fiberhome VEIP (HG6145D2)</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div><label className="label-sm mb-1">TR069 VLAN</label>
-                  <input type="number" value={data.extra.tr069_vlan || '100'} onChange={e => update('extra', { ...data.extra, tr069_vlan: e.target.value })} className="input-field" /></div>
-                <div><label className="label-sm mb-1">Internet VLAN</label>
-                  <input type="number" value={data.extra.internet_vlan || '30'} onChange={e => update('extra', { ...data.extra, internet_vlan: e.target.value })} className="input-field" /></div>
-                <div><label className="label-sm mb-1">VoIP VLAN</label>
-                  <input type="number" value={data.extra.voip_vlan || '151'} onChange={e => update('extra', { ...data.extra, voip_vlan: e.target.value })} className="input-field" /></div>
+
+              {/* Dynamic VLAN list */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label-sm">VLAN List (Service Ports)</label>
+                  <button type="button" onClick={() => {
+                    const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans : [];
+                    update('extra', { ...data.extra, vlans: [...cur, { vlan: '', label: '' }] });
+                  }} className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-1">
+                    <Plus size={12} /> Add VLAN
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {(Array.isArray(data.extra.vlans) && data.extra.vlans.length > 0 ? data.extra.vlans : [
+                    { vlan: data.extra.tr069_vlan || '1010', label: 'TR069' },
+                    { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
+                    { vlan: data.extra.voip_vlan || '151', label: 'VoIP' },
+                  ]).map((v, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <span className="text-[10px] text-tx3 w-6 flex-shrink-0">#{i + 1}</span>
+                      {vlanList.length > 0 ? (
+                        <select value={v.vlan || ''} onChange={e => {
+                          const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
+                            { vlan: data.extra.tr069_vlan || '1010', label: 'TR069' },
+                            { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
+                            { vlan: data.extra.voip_vlan || '151', label: 'VoIP' },
+                          ];
+                          cur[i] = { ...cur[i], vlan: e.target.value };
+                          update('extra', { ...data.extra, vlans: cur });
+                        }} className="input-field flex-1">
+                          <option value="">Select VLAN...</option>
+                          {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
+                        </select>
+                      ) : (
+                        <input type="number" value={v.vlan || ''} placeholder="VLAN ID"
+                          onChange={e => {
+                            const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
+                              { vlan: data.extra.tr069_vlan || '1010', label: 'TR069' },
+                              { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
+                              { vlan: data.extra.voip_vlan || '151', label: 'VoIP' },
+                            ];
+                            cur[i] = { ...cur[i], vlan: e.target.value };
+                            update('extra', { ...data.extra, vlans: cur });
+                          }}
+                          className="input-field flex-1" min={1} max={4094} />
+                      )}
+                      <input type="text" value={v.label || ''} placeholder="Label (opt)"
+                        onChange={e => {
+                          const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
+                            { vlan: data.extra.tr069_vlan || '1010', label: 'TR069' },
+                            { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
+                            { vlan: data.extra.voip_vlan || '151', label: 'VoIP' },
+                          ];
+                          cur[i] = { ...cur[i], label: e.target.value };
+                          update('extra', { ...data.extra, vlans: cur });
+                        }}
+                        className="input-field flex-1" />
+                      <button type="button" onClick={() => {
+                        const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans.filter((_, idx) => idx !== i) : [];
+                        update('extra', { ...data.extra, vlans: cur });
+                      }} className="p-1.5 rounded text-red-400 hover:bg-red-500/10 flex-shrink-0">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-tx3 mt-1">Default: #1=TR069, #2=Internet, #3=VoIP. Bisa tambah/hapus sesuai kebutuhan.</p>
               </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div><label className="label-sm mb-1">ACS URL</label>
                   <input type="text" value={String(data.extra.acs_url ?? '')} onChange={e => update('extra', { ...data.extra, acs_url: e.target.value })} className="input-field" placeholder="http://192.168.54.254:7547" /></div>
@@ -1549,8 +1683,15 @@ export function RegisterWizard() {
               {data.template === 'zte_full' && (
                 <div className="space-y-1">
                   <ConfigRow label="VEIP Mode" value={data.extra.use_veip === 'true' ? 'Enabled (non-ZTE ONU)' : 'Disabled (ZTE ONU)'} />
-                  <ConfigRow label="Primary VLAN" value={String(data.extra.primary_vlan || '30')} />
-                  <ConfigRow label="Secondary VLAN" value={String(data.extra.secondary_vlan || '151')} />
+                  {(() => {
+                    const vlans = Array.isArray(data.extra.vlans) && data.extra.vlans.length > 0 ? data.extra.vlans : [
+                      { vlan: data.extra.primary_vlan || '30', label: 'Internet' },
+                      { vlan: data.extra.secondary_vlan || '151', label: 'Voucher' },
+                    ];
+                    return vlans.map((v, i) => (
+                      <ConfigRow key={i} label={`VLAN #${i + 1}${v.label ? ` (${v.label})` : ''}`} value={String(v.vlan || '-')} />
+                    ));
+                  })()}
                   <ConfigRow label="PPPoE" value={data.extra.enable_pppoe === 'true' ? 'Enabled' : 'Disabled'} />
                   {data.extra.enable_pppoe === 'true' && (
                     <>
@@ -1633,9 +1774,16 @@ export function RegisterWizard() {
 
               {data.template === 'fiberhome_veip' && (
                 <div className="space-y-1">
-                  <ConfigRow label="TR069 VLAN" value={String(data.extra.tr069_vlan || '100')} />
-                  <ConfigRow label="Internet VLAN" value={String(data.extra.internet_vlan || '30')} />
-                  <ConfigRow label="VoIP VLAN" value={String(data.extra.voip_vlan || '151')} />
+                  {(() => {
+                    const vlans = Array.isArray(data.extra.vlans) && data.extra.vlans.length > 0 ? data.extra.vlans : [
+                      { vlan: data.extra.tr069_vlan || '1010', label: 'TR069' },
+                      { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
+                      { vlan: data.extra.voip_vlan || '151', label: 'VoIP' },
+                    ];
+                    return vlans.map((v, i) => (
+                      <ConfigRow key={i} label={`VLAN #${i + 1}${v.label ? ` (${v.label})` : ''}`} value={String(v.vlan || '-')} />
+                    ));
+                  })()}
                   <ConfigRow label="ACS URL" value={String(data.extra.acs_url || '-')} />
                   <ConfigRow label="ACS User" value={String(data.extra.acs_user || '-')} />
                   <ConfigRow label="ACS Password" value={data.extra.acs_pass ? '••••••••' : '-'} />

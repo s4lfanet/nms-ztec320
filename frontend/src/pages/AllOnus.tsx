@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useAuth } from '../stores/auth';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 export function AllOnus() {
   const queryClient = useQueryClient();
@@ -86,6 +87,14 @@ export function AllOnus() {
       }
     }
   }
+
+  // WebSocket listener — real-time alert: auto-refresh ONU list when status changes
+  const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
+  useEffect(() => {
+    if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change')) {
+      queryClient.invalidateQueries({ queryKey: ['all-onus'] });
+    }
+  }, [alertWsMsg, queryClient]);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
