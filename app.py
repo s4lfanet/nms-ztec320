@@ -62,7 +62,7 @@ def add_security_headers(response):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "img-src 'self' data: blob: https:; "
-        "connect-src 'self' wss: https:; "
+        "connect-src 'self' ws: wss: https:; "
         "frame-ancestors 'none';"
     )
     if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https':
