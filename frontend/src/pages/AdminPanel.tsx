@@ -4,6 +4,7 @@ import { api, type SubscriptionPackage, type Tenant, type Subscription, type Tra
 import { Building2, Package, CreditCard, Plus, Trash2, CheckCircle, XCircle, Clock, X, Edit3, Settings, Receipt, FileText, Info, Shield } from 'lucide-react';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
+import { TutorialBanner } from '../components/TutorialBanner';
 import { cn } from '../lib/utils';
 
 type Tab = 'packages' | 'tenants' | 'subscriptions' | 'transactions' | 'invoices' | 'settings';
@@ -38,12 +39,35 @@ export default function AdminPanel() {
 
   return (
     <div className="space-y-4 md:space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-          <Shield size={22} className="text-accent" />
-          Admin Panel — SaaS Management
-        </h1>
-        <p className="text-tx2 text-xs md:text-sm mt-1">{tabDescriptions[tab]}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+            <Shield size={22} className="text-accent" />
+            Admin Panel — SaaS Management
+          </h1>
+          <p className="text-tx2 text-xs md:text-sm mt-1">{tabDescriptions[tab]}</p>
+        </div>
+        <TutorialBanner
+          title="Panduan Admin Panel"
+          steps={[
+            { title: 'Packages', content: <><p>Kelola paket subscription: nama, harga, jumlah OLT max, durasi (hari), dan fitur. Paket aktif muncul di halaman registrasi tenant baru.</p></> },
+            { title: 'Tenants', content: <><p>Manajemen semua tenant: tambah manual, edit, suspend/activate, hapus. Setiap tenant punya subdomain, admin user, dan subscription.</p><p className="text-xs text-tx3 mt-1">Suspend tenant = nonaktifkan akses tanpa hapus data. Activate = kembalikan akses.</p></> },
+            { title: 'Subscriptions', content: <><p>Kelola subscription per tenant: assign paket, extend durasi, suspend. Subscription active = tenant bisa akses sistem.</p></> },
+            { title: 'Transactions', content: <><p>Riwayat semua transaksi pembayaran via Duitku (registrasi & renewal). Status: paid, pending, expired, cancelled.</p></> },
+            { title: 'Invoices', content: <><p>Daftar invoice otomatis yang dibuat saat notifikasi expiry terkirim. Invoice berisi detail paket, harga, dan status pembayaran.</p></> },
+            { title: 'Settings', content: <><p>Konfigurasi sistem: branding (nama sistem, logo), payment gateway (Duitku merchant code, API key), dan pengaturan global lainnya.</p></> },
+          ]}
+          tips={
+            <>
+              <strong className="text-tx2">Tips:</strong>
+              <ul className="mt-1 ml-4 space-y-0.5">
+                <li>Tambah tenant manual untuk demo/trial tanpa pembayaran</li>
+                <li>Extend subscription untuk kompensasi downtime</li>
+                <li>Cek transactions untuk verifikasi pembayaran Duitku</li>
+              </ul>
+            </>
+          }
+        />
       </div>
 
       <div className="tab-scroll flex gap-2 flex-wrap pb-1">
@@ -534,8 +558,9 @@ function TenantsTab({ tenants, packages, qc }: { tenants: Tenant[]; packages: Su
       )}
 
       {editTenant && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setEditTenant(null)}>
-          <div className="glass-card p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setEditTenant(null)}>
+          <div className="modal-overlay" />
+          <div className="relative glass-card p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold text-base flex items-center gap-2"><Edit3 size={18} className="text-accent" /> Edit Tenant</h3>
               <button onClick={() => setEditTenant(null)} className="p-1.5 rounded-lg hover:bg-glass transition-colors"><X size={18} /></button>
@@ -574,8 +599,9 @@ function TenantsTab({ tenants, packages, qc }: { tenants: Tenant[]; packages: Su
       )}
 
       {assignSub && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setAssignSub(null)}>
-          <div className="glass-card p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setAssignSub(null)}>
+          <div className="modal-overlay" />
+          <div className="relative glass-card p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold text-base">Assign Package</h3>
               <button onClick={() => setAssignSub(null)} className="p-1.5 rounded-lg hover:bg-glass transition-colors"><X size={18} /></button>
@@ -759,8 +785,9 @@ function SubscriptionsTab({ subscriptions, tenants, packages, qc }: { subscripti
       )}
 
       {extendId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setExtendId(null)}>
-          <div className="glass-card p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setExtendId(null)}>
+          <div className="modal-overlay" />
+          <div className="relative glass-card p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold text-base">Extend Subscription</h3>
               <button onClick={() => setExtendId(null)} className="p-1.5 rounded-lg hover:bg-glass transition-colors"><X size={18} /></button>

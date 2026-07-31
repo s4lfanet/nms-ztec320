@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -9,6 +9,7 @@ interface Toast {
   type: ToastType;
   message: string;
   duration?: number;
+  exiting?: boolean;
 }
 
 const DEFAULT_DURATION = 4000;
@@ -32,39 +33,52 @@ const icons: Record<ToastType, React.ReactNode> = {
 };
 
 const styles: Record<ToastType, string> = {
-  success: 'border-success/30 bg-success/10 text-success',
-  error: 'border-danger/30 bg-danger/10 text-danger',
-  warning: 'border-warning/30 bg-warning/10 text-warning',
-  info: 'border-accent/30 bg-accent/10 text-accent',
+  success: 'border-success/30 bg-success/10',
+  error: 'border-danger/30 bg-danger/10',
+  warning: 'border-warning/30 bg-warning/10',
+  info: 'border-accent/30 bg-accent/10',
 };
 
 export function Toaster() {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const remove = useCallback((id: string) => {
+    setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+      delete timersRef.current[id];
+    }, 250);
+  }, []);
 
   const add = useCallback((t: Omit<Toast, 'id'>) => {
-    const id = Math.random().toString(36).slice(2);
-    setToasts(prev => [...prev, { ...t, id }]);
-    const dur = t.duration || DEFAULT_DURATION;
-    setTimeout(() => {
-      setToasts(prev => prev.filter(x => x.id !== id));
-    }, dur);
-  }, []);
+    setToasts(prev => {
+      const dedup = prev.find(x => x.type === t.type && x.message === t.message && !x.exiting);
+      if (dedup) return prev;
+      const id = `${t.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const dur = t.duration || DEFAULT_DURATION;
+      timersRef.current[id] = setTimeout(() => remove(id), dur);
+      return [...prev, { ...t, id }];
+    });
+  }, [remove]);
 
   useEffect(() => { _addToast = add; return () => { _addToast = null; }; }, [add]);
 
-  const remove = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
+  useEffect(() => {
+    return () => { Object.values(timersRef.current).forEach(clearTimeout); };
+  }, []);
 
   return (
     <div className="fixed top-20 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
-      {toasts.map((t, i) => (
+      {toasts.map((t) => (
         <div
           key={t.id}
           className={cn(
             'pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-xl',
-            'animate-slide-in shadow-lg transition-all duration-300',
+            'shadow-lg transition-all duration-250',
             styles[t.type],
+            t.exiting ? 'opacity-0 translate-x-4' : 'animate-slide-in opacity-100',
           )}
-          style={{ animationDelay: `${i * 50}ms` }}
         >
           <span className="flex-shrink-0">{icons[t.type]}</span>
           <span className="text-sm font-medium flex-1 text-tx1">{t.message}</span>

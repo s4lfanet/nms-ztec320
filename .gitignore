@@ -20,6 +20,7 @@ build/
 # Virtual environment
 .venv/
 venv/
+env/
 
 # Node
 frontend/node_modules/
@@ -32,17 +33,18 @@ node_modules/
 .idea/
 *.swp
 *.swo
+windsurf/
 
 # Database
 instance/
 *.db
 *.sqlite3
+*.db-journal
 
 # Environment & secrets
 .env
 .env.*
 !.env.example
-!.env.template
 
 # Docker
 .docker/
@@ -50,6 +52,7 @@ instance/
 # OS files
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Test/coverage
 .coverage
@@ -57,14 +60,12 @@ htmlcov/
 .pytest_cache/
 frontend/coverage/
 
-# Old test scripts (deleted)
-# add_liveinfo_route.py
-# check_routes.py
-# fetch_onu_detail*.py
-# inject_live.py
-# migrate_onu.py
-# parse_allonus.py
-# probe_onu_config.py
-# quick_snmp.py
-# model_result.txt
-# rconfig_allonus.html
+# Build artifacts
+*.zip
+*.tar.gz
+
+# Cloudflare (removed SaaS)
+deploy/cloudflared*
+
+# AGENTS.md (AI assistant context, not for repo)
+AGENTS.md

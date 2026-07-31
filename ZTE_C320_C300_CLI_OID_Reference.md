@@ -236,13 +236,14 @@ Semua show command dijalankan dari EXEC mode (`#` prompt).
 
 ```text
 configure terminal
-interface gpon-onu_X/Y/Z:N
-reset
+pon-onu-mng gpon-onu_X/Y/Z:N
+reboot
 exit
 exit
 exit
 ```
 **Method:** `reset_onu(frame, slot, port, onu_id)`
+**Note:** Must use `pon-onu-mng` context, NOT `interface gpon-onu` + `reset` (gives Invalid input error).
 
 ### Deregister ONU
 
@@ -294,6 +295,47 @@ exit
 exit
 ```
 **Method:** `restore_wifi_onu(frame, slot, port, onu_id)`
+
+### Disable ONU (admin shutdown)
+
+```text
+configure terminal
+interface gpon-onu_X/Y/Z:N
+shutdown
+exit
+exit
+exit
+```
+**Method:** `disable_onu(frame, slot, port, onu_id)`
+**Effect:** ONU admin state → disable, ONU goes offline. Laser stays on but ONU is administratively down.
+
+### Enable ONU (admin up)
+
+```text
+configure terminal
+interface gpon-onu_X/Y/Z:N
+no shutdown
+exit
+exit
+exit
+```
+**Method:** `enable_onu(frame, slot, port, onu_id)`
+**Effect:** ONU admin state → enable, ONU reconnects.
+
+### PON Port Toggle (laser on/off)
+
+```text
+configure terminal
+interface gpon-olt_X/Y/Z
+shutdown          ← disable port (laser off, all ONUs go offline)
+no shutdown       ← enable port (laser on, ONUs reconnect)
+exit
+exit
+exit
+```
+**Method:** `toggle_pon_port(port_name, enable=True/False)`
+**Effect:** Controls the PON port laser. Disabling shuts down the optical signal to all ONUs on that PON port.
+**API:** `POST /api/olt/<olt_id>/pon-port/<port_id>/toggle` with `{"action": "enable"}` or `{"action": "disable"}`
 
 ---
 

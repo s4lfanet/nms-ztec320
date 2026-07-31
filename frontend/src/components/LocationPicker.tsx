@@ -57,25 +57,29 @@ export function LocationPicker({ latitude, longitude, onChange }: LocationPicker
         <div className="flex-1 grid grid-cols-2 gap-2">
           <div className="relative">
             <input
-              className="input-field pl-7 text-xs"
-              type="number"
-              step="any"
+              className="input-field text-xs"
+              style={{ paddingLeft: '2.25rem' }}
+              type="text"
+              inputMode="decimal"
               value={latitude ?? ''}
               onChange={e => onChange(e.target.value, String(longitude ?? ''))}
+              onBlur={() => { const v = parseFloat(String(latitude)); if (latitude && !isNaN(v)) onChange(v.toFixed(6), String(longitude ?? '')); }}
               placeholder="Latitude"
             />
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-tx3 text-xs">Lat</span>
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-tx3 text-xs pointer-events-none">Lat</span>
           </div>
           <div className="relative">
             <input
-              className="input-field pl-7 text-xs"
-              type="number"
-              step="any"
+              className="input-field text-xs"
+              style={{ paddingLeft: '2.25rem' }}
+              type="text"
+              inputMode="decimal"
               value={longitude ?? ''}
               onChange={e => onChange(String(latitude ?? ''), e.target.value)}
+              onBlur={() => { const v = parseFloat(String(longitude)); if (longitude && !isNaN(v)) onChange(String(latitude ?? ''), v.toFixed(6)); }}
               placeholder="Longitude"
             />
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-tx3 text-xs">Lng</span>
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-tx3 text-xs pointer-events-none">Lng</span>
           </div>
         </div>
       </div>
@@ -230,8 +234,9 @@ function MapModal({ lat, lng, onPick, onClose }: {
 
   if (error) {
     return (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
-        <div className="glass-card w-full max-w-2xl p-6 text-center">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="modal-overlay" />
+        <div className="relative glass-card w-full max-w-2xl p-6 text-center">
           <p className="text-danger text-sm mb-3">{error}</p>
           <button onClick={onClose} className="btn-cancel text-sm">Close</button>
         </div>
@@ -240,8 +245,9 @@ function MapModal({ lat, lng, onPick, onClose }: {
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
-      <div className="glass-card w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="modal-overlay" />
+      <div className="relative glass-card w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
         <div className="px-4 py-3 border-b border-brd flex items-center justify-between">
           <h3 className="text-sm font-semibold flex items-center gap-2"><MapPin size={16} /> Pick Location on Map</h3>
           <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>

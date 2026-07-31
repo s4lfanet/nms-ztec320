@@ -43,7 +43,7 @@ export function ConfirmDialog() {
 
   return (
     <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => handle(false)} />
+      <div className="modal-overlay" onClick={() => handle(false)} />
       <div className="relative glass-card p-6 w-full max-w-md animate-fade-in">
         <button onClick={() => handle(false)} className="absolute top-4 right-4 text-tx3 hover:text-tx1">
           <X size={18} />

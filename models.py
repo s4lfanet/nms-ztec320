@@ -2,8 +2,45 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timezone
+import os, base64, hashlib
 
 db = SQLAlchemy()
+
+
+def _get_fernet_key():
+    """Derive a Fernet key from SECRET_KEY for encrypting sensitive fields."""
+    secret = os.environ.get('SECRET_KEY', 'fallback-dev-key')
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+    return key
+
+
+def encrypt_field(value):
+    """Encrypt a string value using Fernet. Returns encrypted string or '' if empty."""
+    if not value:
+        return ''
+    try:
+        from cryptography.fernet import Fernet
+        f = Fernet(_get_fernet_key())
+        return f.encrypt(value.encode()).decode()
+    except ImportError:
+        return value
+    except Exception:
+        return value
+
+
+def decrypt_field(value):
+    """Decrypt a string value. Falls back to plain text for unencrypted legacy data."""
+    if not value:
+        return ''
+    try:
+        from cryptography.fernet import Fernet
+        f = Fernet(_get_fernet_key())
+        return f.decrypt(value.encode()).decode()
+    except ImportError:
+        return value
+    except Exception:
+        # Not encrypted (legacy plain text) — return as-is
+        return value
 
 
 class Role(db.Model):
@@ -47,135 +84,6 @@ AVAILABLE_PERMISSIONS = {
 }
 
 
-class Tenant(db.Model):
-    """Multi-tenant organization — each tenant has isolated data"""
-    __tablename__ = 'tenants'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(150), nullable=False)
-    subdomain = db.Column(db.String(100), unique=True, nullable=False)
-    contact_name = db.Column(db.String(150), default='')
-    contact_email = db.Column(db.String(150), default='')
-    contact_phone = db.Column(db.String(50), default='')
-    status = db.Column(db.String(20), default='active')  # active, suspended, expired
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-
-
-class SubscriptionPackage(db.Model):
-    """Subscription tiers — defines limits and pricing"""
-    __tablename__ = 'subscription_packages'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.String(256), default='')
-    price = db.Column(db.Integer, default=0)  # IDR per month
-    max_olts = db.Column(db.Integer, default=1)
-    duration_days = db.Column(db.Integer, default=30)
-    features = db.Column(db.Text, default='')  # comma-separated feature keys
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-
-
-class Subscription(db.Model):
-    """Active subscription for a tenant"""
-    __tablename__ = 'subscriptions'
-    id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False)
-    package_id = db.Column(db.Integer, db.ForeignKey('subscription_packages.id'), nullable=False)
-    start_date = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    end_date = db.Column(db.DateTime, nullable=False)
-    status = db.Column(db.String(20), default='active')  # active, expired, suspended, cancelled
-    auto_renew = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-
-    package = db.relationship('SubscriptionPackage', backref='subscriptions')
-    tenant = db.relationship('Tenant', backref='subscriptions')
-
-    @property
-    def is_active(self):
-        if self.status != 'active':
-            return False
-        now = datetime.now(timezone.utc)
-        end = self.end_date
-        if end.tzinfo is None:
-            end = end.replace(tzinfo=timezone.utc)
-        return now < end
-
-    @property
-    def days_remaining(self):
-        if not self.is_active:
-            return 0
-        now = datetime.now(timezone.utc)
-        end = self.end_date
-        if end.tzinfo is None:
-            end = end.replace(tzinfo=timezone.utc)
-        delta = end - now
-        return max(0, delta.days)
-
-    @property
-    def max_olts(self):
-        return self.package.max_olts if self.package else 0
-
-
-class SubscriptionNotification(db.Model):
-    """Track subscription expiry notifications sent to tenants"""
-    __tablename__ = 'subscription_notifications'
-    id = db.Column(db.Integer, primary_key=True)
-    subscription_id = db.Column(db.Integer, db.ForeignKey('subscriptions.id'), nullable=False)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False)
-    notification_type = db.Column(db.String(30), nullable=False)  # expiry_7d, expiry_3d, expiry_1d, expired
-    sent_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-
-    __table_args__ = (db.UniqueConstraint('subscription_id', 'notification_type', name='uq_sub_notif_type'),)
-
-
-class PaymentTransaction(db.Model):
-    """Track Duitku payment transactions for subscription renewals"""
-    __tablename__ = 'payment_transactions'
-    id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False)
-    subscription_id = db.Column(db.Integer, db.ForeignKey('subscriptions.id'), nullable=False)
-    package_id = db.Column(db.Integer, db.ForeignKey('subscription_packages.id'), nullable=False)
-    merchant_order_id = db.Column(db.String(100), unique=True, nullable=False)
-    duitku_transaction_id = db.Column(db.String(100), default='')
-    reference = db.Column(db.String(200), default='')
-    amount = db.Column(db.Integer, nullable=False)  # in IDR
-    payment_method = db.Column(db.String(50), default='')
-    status = db.Column(db.String(20), default='pending')  # pending, paid, failed, expired, cancelled
-    payment_url = db.Column(db.Text, default='')
-    signature = db.Column(db.String(256), default='')
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    paid_at = db.Column(db.DateTime, nullable=True)
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-    tenant = db.relationship('Tenant', backref='payment_transactions')
-    subscription = db.relationship('Subscription', backref='payment_transactions')
-    package = db.relationship('SubscriptionPackage', backref='payment_transactions')
-
-
-class Invoice(db.Model):
-    """Auto-generated invoices for subscription renewals.
-    Created when expiry notification is sent or when tenant initiates payment."""
-    __tablename__ = 'invoices'
-    id = db.Column(db.Integer, primary_key=True)
-    invoice_number = db.Column(db.String(50), unique=True, nullable=False)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False)
-    subscription_id = db.Column(db.Integer, db.ForeignKey('subscriptions.id'), nullable=False)
-    package_id = db.Column(db.Integer, db.ForeignKey('subscription_packages.id'), nullable=False)
-    amount = db.Column(db.Integer, nullable=False)  # in IDR
-    status = db.Column(db.String(20), default='unpaid')  # unpaid, paid, expired, cancelled
-    invoice_type = db.Column(db.String(20), default='auto')  # auto (generated by system), manual (tenant initiated)
-    description = db.Column(db.String(256), default='')
-    due_date = db.Column(db.DateTime, nullable=True)  # when payment is due
-    paid_at = db.Column(db.DateTime, nullable=True)
-    payment_transaction_id = db.Column(db.Integer, db.ForeignKey('payment_transactions.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-    tenant = db.relationship('Tenant', backref='invoices')
-    subscription = db.relationship('Subscription', backref='invoices')
-    package = db.relationship('SubscriptionPackage', backref='invoices')
-    payment_transaction = db.relationship('PaymentTransaction', backref='invoice', foreign_keys=[payment_transaction_id])
-
-
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -183,7 +91,6 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('roles.id'), nullable=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     is_super_admin = db.Column(db.Boolean, default=False)
     phone = db.Column(db.String(30), default='')  # phone number for WA notifications
     profile_image = db.Column(db.String(256), default='default.png')
@@ -205,32 +112,11 @@ class User(UserMixin, db.Model):
             return True
         return self.role.has_permission(perm)
 
-    @property
-    def tenant(self):
-        if not self.tenant_id:
-            return None
-        return Tenant.query.get(self.tenant_id)
-
-    @property
-    def subscription(self):
-        if not self.tenant_id:
-            return None
-        return Subscription.query.filter_by(tenant_id=self.tenant_id, status='active').first()
-
-    @property
-    def is_subscription_active(self):
-        if self.is_super_admin:
-            return True
-        sub = self.subscription
-        if not sub:
-            return False
-        return sub.is_active
 
 
 class OLT(db.Model):
     __tablename__ = 'olts'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     name = db.Column(db.String(100), nullable=False)
     ip_address = db.Column(db.String(50), nullable=False)
     vendor = db.Column(db.String(100), default='zte')
@@ -238,15 +124,22 @@ class OLT(db.Model):
     firmware_version = db.Column(db.String(100), default='')
     snmp_enabled = db.Column(db.Boolean, default=True)
     snmp_community = db.Column(db.String(100), default='public')
+    snmp_community_write = db.Column(db.String(100), default='')
     snmp_port = db.Column(db.Integer, default=161)
     telnet_enabled = db.Column(db.Boolean, default=True)
     telnet_port = db.Column(db.Integer, default=23)
+    web_port = db.Column(db.Integer, default=80)
     ssh_enabled = db.Column(db.Boolean, default=False)
     ssh_port = db.Column(db.Integer, default=22)
     cli_username = db.Column(db.String(100), default='')
-    cli_password = db.Column(db.String(256), default='')
+    _cli_password_enc = db.Column('cli_password', db.String(512), default='')
     monitoring_enabled = db.Column(db.Boolean, default=True)
     polling_interval = db.Column(db.Integer, default=300)
+    auto_backup_enabled = db.Column(db.Boolean, default=False)
+    auto_backup_interval = db.Column(db.Integer, default=24)  # interval value (combined with unit)
+    auto_backup_unit = db.Column(db.String(10), default='hours')  # 'hours' or 'days'
+    auto_backup_time = db.Column(db.String(5), default='')  # HH:MM format, empty = anytime
+    last_backup_at = db.Column(db.DateTime, nullable=True)
     is_online = db.Column(db.Boolean, default=False)
     uptime = db.Column(db.Integer, default=0)
     temperature = db.Column(db.Float, nullable=True)
@@ -261,7 +154,17 @@ class OLT(db.Model):
     connection_status = db.Column(db.String(20), default='disconnected')
     snmp_status = db.Column(db.String(20), default='disconnected')
     telnet_status = db.Column(db.String(20), default='disconnected')
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def cli_password(self):
+        return decrypt_field(self._cli_password_enc)
+
+    @cli_password.setter
+    def cli_password(self, value):
+        self._cli_password_enc = encrypt_field(value)
 
 
 class ONU(db.Model):
@@ -294,6 +197,9 @@ class ONU(db.Model):
     last_online = db.Column(db.DateTime, nullable=True)
     last_offline = db.Column(db.DateTime, nullable=True)
     technician_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
+    wifi_config = db.Column(db.Text, default='')  # JSON: {ssids: [{ssid_num, ssid_name, ssid_auth_type, ssid_password, wifi_mode, wifi_status, vlan}]}
     olt = db.relationship('OLT', backref=db.backref('onus', lazy=True))
     technician = db.relationship('User', foreign_keys=[technician_id], backref='assigned_onus')
 
@@ -305,7 +211,6 @@ class ONU(db.Model):
 class Template(db.Model):
     __tablename__ = 'templates'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     name = db.Column(db.String(150), nullable=False)
     vendor = db.Column(db.String(100), default='')
     model = db.Column(db.String(100), default='')
@@ -320,24 +225,30 @@ class Template(db.Model):
 class TR069Profile(db.Model):
     __tablename__ = 'tr069_profiles'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     name = db.Column(db.String(150), nullable=False)
     acs_url = db.Column(db.String(256), default='')
     acs_username = db.Column(db.String(100), default='')
-    acs_password = db.Column(db.String(256), default='')
+    _acs_password_enc = db.Column('acs_password', db.String(512), default='')
     default_olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=True)
     vlan = db.Column(db.Integer, default=100)
     vlan_mode = db.Column(db.String(10), default='tag')  # tag or untag
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     default_olt = db.relationship('OLT', backref='tr069_profiles')
 
+    @property
+    def acs_password(self):
+        return decrypt_field(self._acs_password_enc)
+
+    @acs_password.setter
+    def acs_password(self, value):
+        self._acs_password_enc = encrypt_field(value)
+
 
 class ONUCustomColumn(db.Model):
     __tablename__ = 'onu_custom_columns'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
-    column_name = db.Column(db.String(100), nullable=False)
     column_key = db.Column(db.String(100), nullable=False)
+    column_name = db.Column(db.String(100), nullable=False)
     visible_desktop = db.Column(db.Boolean, default=True)
     visible_mobile = db.Column(db.Boolean, default=False)
     sort_order = db.Column(db.Integer, default=0)
@@ -544,7 +455,6 @@ class Notification(db.Model):
     """System notifications for users"""
     __tablename__ = 'notifications'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=True)
     onu_id = db.Column(db.Integer, nullable=True)
     severity = db.Column(db.String(20), default='info')  # info, warning, critical
@@ -564,7 +474,6 @@ class AlertRule(db.Model):
     """Configurable alert rules for monitoring"""
     __tablename__ = 'alert_rules'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     name = db.Column(db.String(150), nullable=False)
     enabled = db.Column(db.Boolean, default=True)
     # Conditions
@@ -606,7 +515,6 @@ class BotConfig(db.Model):
     """Bot configuration for Telegram/WhatsApp"""
     __tablename__ = 'bot_config'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     bot_type = db.Column(db.String(20), nullable=False)  # telegram, whatsapp
     enabled = db.Column(db.Boolean, default=False)
     bot_token = db.Column(db.String(256), default='')  # Telegram bot token
@@ -621,7 +529,6 @@ class MaintenanceWindow(db.Model):
     """Scheduled maintenance windows to suppress alerts"""
     __tablename__ = 'maintenance_windows'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=True)  # null = all OLTs
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime, nullable=False)
@@ -646,13 +553,43 @@ class MetricHistory(db.Model):
     """Historical metrics for trending (RX power, CPU, memory, temperature)"""
     __tablename__ = 'metric_history'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=True)
     onu_id = db.Column(db.Integer, nullable=True)
-    metric_type = db.Column(db.String(30), nullable=False)  # rx_power, olt_cpu, olt_mem, olt_temp
+    metric_type = db.Column(db.String(100), nullable=False)  # rx_power, olt_cpu, olt_mem, olt_temp, mt_if_in:<name>
     value = db.Column(db.Float, nullable=True)
     recorded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('metric_history', lazy=True))
+
+
+class TrafficLog(db.Model):
+    """Periodic traffic samples (rx/tx Mbps) per uplink or PON port, collected via cron.
+    Raw data retained for 7 days. Older data aggregated into TrafficLogHourly."""
+    __tablename__ = 'traffic_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=False)
+    port_type = db.Column(db.String(10), nullable=False)  # 'uplink' or 'pon'
+    port_name = db.Column(db.String(50), nullable=False)  # e.g. xgei_1/3/1, gpon-olt_1/1/1
+    rx_mbps = db.Column(db.Float, default=0.0)
+    tx_mbps = db.Column(db.Float, default=0.0)
+    recorded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    olt = db.relationship('OLT', backref=db.backref('traffic_logs', lazy=True, cascade='all, delete-orphan'))
+
+
+class TrafficLogHourly(db.Model):
+    """Hourly aggregated traffic data — avg rx/tx Mbps per port per hour.
+    Retained for 90 days. Used for history queries beyond 7-day raw retention."""
+    __tablename__ = 'traffic_log_hourly'
+    id = db.Column(db.Integer, primary_key=True)
+    olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=False)
+    port_type = db.Column(db.String(10), nullable=False)
+    port_name = db.Column(db.String(50), nullable=False)
+    rx_mbps_avg = db.Column(db.Float, default=0.0)
+    tx_mbps_avg = db.Column(db.Float, default=0.0)
+    rx_mbps_peak = db.Column(db.Float, default=0.0)
+    tx_mbps_peak = db.Column(db.Float, default=0.0)
+    sample_count = db.Column(db.Integer, default=0)
+    hour_start = db.Column(db.DateTime, nullable=False, index=True)  # UTC hour boundary
+    __table_args__ = (db.UniqueConstraint('olt_id', 'port_type', 'port_name', 'hour_start', name='uq_traffic_hourly'),)
 
 
 # ==================== FTTH INFRASTRUCTURE ====================
@@ -661,7 +598,6 @@ class FTTHOTB(db.Model):
     """OTB/ODF at server room — top of FTTH chain, fed by OLT PON port"""
     __tablename__ = 'ftth_otb'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     name = db.Column(db.String(150), nullable=False)
     type = db.Column(db.String(10), default='otb')  # otb or odf
     model = db.Column(db.String(100), default='')
@@ -746,6 +682,20 @@ class FTTHPonPort(db.Model):
     otb = db.relationship('FTTHOTB', backref=db.backref('ftth_pon_ports', lazy=True))
 
 
+class FTTHFiberPath(db.Model):
+    """Manual or auto-generated fiber path polylines between infrastructure nodes."""
+    __tablename__ = 'ftth_fiber_path'
+    id = db.Column(db.Integer, primary_key=True)
+    from_type = db.Column(db.String(10), nullable=False)  # otb, odc, odp, onu
+    from_id = db.Column(db.Integer, nullable=False)
+    to_type = db.Column(db.String(10), nullable=False)
+    to_id = db.Column(db.Integer, nullable=False)
+    coordinates = db.Column(db.Text, default='[]')  # JSON array of [lat,lng] points
+    path_type = db.Column(db.String(10), default='manual')  # manual, auto
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
 class SystemConfig(db.Model):
     """System-wide configuration key-value store"""
     __tablename__ = 'system_config'
@@ -755,11 +705,24 @@ class SystemConfig(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class OLTConfigBackup(db.Model):
+    """Stores OLT running-config backups."""
+    __tablename__ = 'olt_config_backups'
+    id = db.Column(db.Integer, primary_key=True)
+    olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=False)
+    config_text = db.Column(db.Text, nullable=False)
+    config_size = db.Column(db.Integer, default=0)
+    backup_type = db.Column(db.String(20), default='manual')  # manual, auto
+    status = db.Column(db.String(20), default='success')  # success, failed
+    error_message = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    olt = db.relationship('OLT', backref=db.backref('config_backups', lazy=True))
+
+
 class ActionLog(db.Model):
     """Audit log for all user actions"""
     __tablename__ = 'action_logs'
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=True)
     user_id = db.Column(db.Integer, nullable=True)
     username = db.Column(db.String(80), default='')
     action = db.Column(db.String(50), nullable=False)

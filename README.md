@@ -1,194 +1,367 @@
-# Salfanet NMS — Multi-Tenant OLT Management System
+# Salfanet NMS — ZTE OLT Management System
 
-A SaaS multi-tenant Flask-based OLT management system for ZTE C320/C300 FTTH network operators. Built with React SPA frontend, multi-tenant architecture with subdomain-based tenant isolation, subscription management, and Duitku payment integration.
+Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600, C650). Dibangun dengan Flask + React, mendukung sinkronisasi SNMP/Telnet, monitoring ONU real-time, alerting, provisioning, dan manajemen infrastruktur FTTH dari satu dashboard.
 
-## Quick Start
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Python](https://img.shields.io/badge/python-3.12+-green)
+![React](https://img.shields.io/badge/react-19+-cyan)
+![OLT](https://img.shields.io/badge/OLT-ZTE%20C320%2FC300-orange)
 
-```bash
-# Activate virtual environment
-.venv\Scripts\activate   # Windows
-source .venv/bin/activate  # Linux/Mac
+## Fitur Utama
 
-# Install dependencies
-pip install -r requirements.txt
+### OLT & ONU Management
+- Tambah, edit, hapus, dan sinkronisasi OLT via SNMP + Telnet
+- Monitoring status ONU, sinyal RX/TX, jarak, serial number, dan detail perangkat
+- Aksi CLI: reboot, reset, delete, clear config, enable/disable, restore factory, restore WiFi
+- Auto-sync setelah aksi ONU (reboot/delete/clear-config)
+- Rack diagram visual untuk chassis OLT (slot, port, fan, PSU)
 
-# Run the application
-python app.py
+### ONU Provisioning
+- Pre-register wizard: scan ONU → pilih template → konfigurasi → preview CLI → register
+- Provision wizard dengan mode manual/pre-config
+- Template ZTE (Single/Dual/Multi VLAN), Huawei Full, Fiberhome VEIP
+- WiFi SSID OMCI config: Open/WPA/WPA2/Mixed auth untuk dual-band (2.4G & 5G)
+- TR069/ACS profile support untuk Fiberhome VEIP template
+
+### Alerting & Monitoring
+- Rule-based alerts untuk OLT offline, ONU offline/dyinggasp, sinyal rendah, CPU/memory/temperature
+- Batched alerts per PON port (gangguan massal detection)
+- Notifikasi ke Telegram, WhatsApp (third-party API), WhatsApp Native (Baileys gateway)
+- Technician alert sending (per-user phone number)
+- In-app bell notifications dengan dedup via AlertHistory
+- Maintenance window untuk suppress alerts
+- OLT health check via SNMP (CPU, memory, temperature)
+
+### FTTH Infrastructure
+- Manajemen hierarki OTB → ODC → ODP
+- ODP port management dan assignment ke ONU
+- Koordinat lokasi dengan tampilan peta
+- Tree view navigasi infrastruktur
+
+### Traffic Monitoring
+- Real-time traffic per uplink/PON port via Telnet CLI
+- Historical traffic logging (raw + hourly aggregation)
+- Traffic grid visualization dengan Recharts
+
+### Customization & RBAC
+- Customizable column visibility dan sort order (desktop & mobile)
+- Configurable RX power color ranges dengan preview
+- Signal filter thresholds (critical/good) dengan slider
+- Role-based access control (Full Access, Viewer, Limited, Technician)
+- Technician assignment untuk ONU
+- ONU custom columns
+
+### WebSocket Real-time
+- Sync progress broadcast per OLT
+- ONU status change notifications
+- Dashboard live events
+- Auto-refresh UI pada sync completion
+
+## Arsitektur
+
+```text
+Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
+              ↓
+         Flask API (port 5000) → SQLite / PostgreSQL
+              ↓
+    SNMP (pysnmp 7.x) + Telnet CLI → ZTE OLT/ONU devices
+              ↓
+    FastAPI (port 8765) → WebSocket real-time + Swagger docs
+              ↓
+    Alert Engine → Telegram / WhatsApp / In-app notifications
 ```
-
-Open **http://127.0.0.1:5000** and login with:
-- Superadmin: `https://nms.salfa.my.id/spa/secure-portal-x7k2`
-- Tenant: `https://<subdomain>.salfa.my.id/spa/login`
-
-## Architecture
-
-```
-User Browser ↔ React SPA (Vite + TypeScript + TailwindCSS)
-                    ↕
-              Flask (app.py) ↔ SQLite (models.py)
-                    ↕
-            Telnet/SNMP (snmp_collector.py) → ZTE C320 OLT
-                    ↕
-            Duitku Payment Gateway (SaaS subscriptions)
-```
-
-### Multi-Tenant Model
-- **Main domain** (`nms.salfa.my.id`): Superadmin panel + public landing/registration
-- **Tenant subdomains** (`<subdomain>-nms.salfa.my.id`): Tenant-scoped OLT/ONU management
-- **Session isolation**: Separate cookies (`nms-admin-session` vs `nms-tenant-session`) with host-only domain — admin and tenant sessions coexist in same browser
-- Domain-based login isolation: superadmin can only login on main domain, tenants only on their subdomain
-
-## Project Structure
-
-```
-nms/
-├── app.py                    # Flask routes, API endpoints, sync logic (~6460 lines)
-├── models.py                 # SQLAlchemy ORM models (20+ tables)
-├── extensions.py             # Shared Flask extensions + MultiTenantSessionInterface
-├── helpers.py                # Shared helper functions & decorators
-├── snmp_core.py              # SNMP core collector (pysnmp 7.x)
-├── telnet_client.py          # Telnet CLI collector (raw socket)
-├── snmp_collector.py         # Compatibility shim + poll_olt() orchestrator
-├── services_cf.py            # Cloudflare Tunnel service
-├── services_wa.py            # WhatsApp notification service
-├── services_sync.py          # OLT sync service
-├── sync_helper.py            # Sync helper (DB operations during sync)
-├── alerts.py                 # Alert monitoring engine
-├── auto_sync.py              # Auto-sync scheduler
-├── ont_provisioner.py        # ONT provisioning helper
-├── requirements.txt          # Python dependencies
-├── instance/
-│   └── nms.db               # SQLite database
-├── frontend/                 # React SPA (Vite + TypeScript)
-│   ├── src/
-│   │   ├── App.tsx           # Router + ProtectedRoute + tenant validation
-│   │   ├── main.tsx          # Entry point (BrowserRouter basename="/spa")
-│   │   ├── pages/            # 22 page components
-│   │   ├── components/       # Layout, UI components
-│   │   ├── hooks/            # useHasPerm
-│   │   ├── lib/              # API client, utils
-│   │   └── stores/           # Zustand auth store
-│   ├── package.json
-│   └── vite.config.ts
-├── deploy/                   # VPS deployment scripts + configs
-├── templates/                # Legacy Jinja2 templates (login, dashboard)
-├── static/                   # Legacy static assets
-├── wa_gateway/               # WhatsApp notification gateway
-├── fibernms_nginx.conf       # Nginx config
-├── AGENTS.md                 # AI agent handoff guide
-├── FiberNMS_Documentation.md # Full system documentation
-└── PRD.md                    # Product Requirements Document
-```
-
-## Key Features
-
-### SaaS Multi-Tenant
-- Tenant registration with subdomain provisioning
-- Subscription packages (Starter/Business/Enterprise)
-- Duitku payment integration (registration + renewal)
-- Tenant isolation: subdomain-based access, per-tenant data filtering
-- Superadmin panel: tenant management, subscriptions, packages, notifications
-- Auto-activation on payment callback
-
-### OLT Management
-- Add/edit/delete OLT devices
-- SNMP + Telnet connection testing
-- Background sync with progress tracking
-- Firmware version auto-detection
-
-### OLT Configuration (per-OLT tabs)
-| Tab | Data Source | Features |
-|-----|-----------|----------|
-| Uplinks | SMXA card ports | Enable/disable, edit config, VLAN trunk edit/delete, IP network config (VLAN SVI) |
-| PON Cards | GPON card ports | Per-port ONU stats, enable/disable, edit name/description |
-| VLANs | VLAN database | VLAN ID, name, type, rename, delete |
-| ONU Types | `show onu-type` | Type name, PON type, description, max values, add, delete |
-| WAN-IP Profiles | `show gpon profile wan-ip` | IP, netmask, gateway, DNS, add, delete |
-| Speed Profiles | TCONT + Traffic | Bandwidth profiles, add, delete |
-| System | OLT info | Name, IP, model, vendor, firmware, temp, uptime, status |
-
-### ONU Management
-- All ONUs table with server-side pagination, SQL search, sort
-- Signal quality indicators (Good/Warning/Critical)
-- Quick edit (name, description) inline
-- View detail with actions (Reboot, Reset, Clear Config, Delete)
-- ONU pre-registration from unconfigured scan
-- ONU migration (single + batch)
-- WAN service configuration via Telnet
-- Get Status (interface, optical, history, MACs)
-
-### Security
-- **Session isolation**: Separate cookies for admin (`nms-admin-session`) and tenant (`nms-tenant-session`) with host-only domain — no cross-subdomain cookie sharing
-- **Domain-session guard**: `@before_request` validates user-domain match, clears stale sessions
-- **Domain-based login isolation**: superadmin → main domain only, tenants → their subdomain only
-- **Rate limiting**: 5 login attempts per IP per 5 min window, 15 min lockout
-- **Security headers**: X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy, HSTS
-- **RBAC**: Role-based access control with granular permissions
-- **Superadmin URL**: Non-guessable path (`/secure-portal-x7k2`), main domain only
-- **Admin route guard**: Frontend blocks non-superadmin from `/dashboard/admin`
-- **Tenant validation**: Subdomain checked against active tenants on page load
-- **Subscription enforcement**: Expired/suspended tenants blocked
-
-### User Management
-- Role-based access control (RBAC)
-- Permissions: view_dashboard, add_onu, configure_onu, reboot_onu, etc.
-- Default roles: Full Access, Viewer, Limited, Demo
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| Backend | Python 3.10+ / Flask / SQLAlchemy |
-| Database | SQLite (via SQLAlchemy ORM) |
-| Frontend | React 19 / TypeScript / Vite |
-| State | Zustand (auth), React Query (data) |
-| UI | TailwindCSS, Lucide icons |
-| Network | pysnmp 7.x (SNMPv2c) / Raw socket Telnet (Python 3.13+ compatible) |
-| Payment | Duitku payment gateway |
-| Deploy | Nginx reverse proxy, systemd, Cloudflare CDN |
+| Layer | Technology |
+|-------|-----------|
+| Backend | Flask 3.x, SQLAlchemy 2.x, Flask-Login, Flask-Migrate |
+| Async/WebSocket | FastAPI, uvicorn, websockets |
+| Network | pysnmp 7.x (SNMP), raw socket Telnet (IAC negotiation) |
+| Frontend | React 19, TypeScript, Vite 8, TailwindCSS v4 |
+| State | Zustand (auth), React Query (data fetching) |
+| Charts | Recharts |
+| Icons | Lucide React |
+| Database | SQLite (default) / PostgreSQL (production) |
+| Cache | Redis (optional) |
+| Testing | pytest (backend), vitest (frontend) |
 
-## Supported Devices
+## Struktur Proyek
 
-| Vendor | Model | Status |
-|--------|-------|--------|
-| ZTE | C320 | Fully tested (V2.1.0) |
-| ZTE | C300 | Compatible (same CLI) |
-| ZTE | C600 | Planned |
+```text
+├── app.py                 # Flask routes, API, sync orchestration (~7300 lines)
+├── models.py              # SQLAlchemy models (OLT, ONU, Alert, FTTH, Users, etc.)
+├── config.py              # Environment-based configuration
+├── snmp_core.py           # SNMP core collector (pysnmp 7.x Slim API)
+├── snmp_collector.py      # Compatibility shim (re-exports snmp_core + telnet_client)
+├── telnet_client.py       # ZTE CLI collector & provisioning (~4330 lines)
+├── alerts.py              # Alert engine + notification (Telegram, WA, in-app)
+├── services_sync.py       # Sync service (background thread management)
+├── sync_helper.py         # Sync result persistence to DB
+├── auto_sync.py           # Cron-based auto-sync
+├── auto_backup.py         # Automatic OLT config backup
+├── task_queue.py          # Background task queue (traffic aggregation)
+├── traffic_poller.py      # Traffic polling via Telnet CLI
+├── traffic_poller_cron.py # Cron entry point for traffic polling
+├── ws_bridge.py           # WebSocket bridge for real-time events
+├── api_async.py           # FastAPI app (WebSocket + Swagger docs)
+├── api_docs.py            # FastAPI endpoint documentation
+├── routes_auth.py         # Auth Blueprint (login, logout, API auth)
+├── extensions.py          # Shared Flask extensions (db, login_manager, migrate)
+├── helpers.py             # Shared helpers (permissions, rate limiting, logging)
+├── logging_config.py      # Structured logging (JSON for prod, human-readable for dev)
+├── cache.py               # Redis cache helpers
+├── run_server.py          # Hybrid server launcher (Flask + FastAPI)
+├── migrate.py             # Flask-Migrate CLI wrapper
+├── rq_worker.py           # Redis Queue worker (optional)
+├── olt_adapters/          # ZTE adapter package
+│   ├── __init__.py        # Auto-registers ZTE adapter
+│   ├── base.py            # BaseOLTAdapter abstract class
+│   ├── registry.py        # RackAdapterRegistry
+│   ├── normalized.py      # Normalized data classes (RackData, Slot, Port, Fan, PSU)
+│   ├── snmp_oids.py       # ZTE SNMP OID mappings
+│   └── zte_adapter.py     # ZTE adapter (delegates to snmp_collector)
+├── frontend/              # React SPA
+│   ├── src/
+│   │   ├── pages/         # Dashboard, AllOnus, ViewOnu, Settings, Customization, etc.
+│   │   ├── components/    # Rack diagrams, UI components, layout
+│   │   ├── hooks/         # useRackData, useRackMetrics, etc.
+│   │   ├── stores/        # Zustand auth store
+│   │   ├── types/         # TypeScript interfaces (rack.ts, etc.)
+│   │   └── utils/         # API client, formatters
+│   └── vite.config.ts     # Vite config with proxy + PWA
+├── wa_gateway/            # WhatsApp Native gateway (Node.js/Baileys)
+├── deploy/                # Deployment scripts & configs
+│   ├── vps-setup.sh       # Ubuntu VPS one-click deployment
+│   ├── nginx-fibernms.conf # Nginx reverse proxy config
+│   ├── deploy-frontend.ps1 # Frontend build & deploy script
+│   └── .env.template      # Production env template
+├── migrations/            # Alembic database migrations
+├── tests/                 # pytest unit tests
+├── scripts/               # CLI utility scripts
+├── requirements.txt       # Python dependencies
+├── Dockerfile             # Multi-stage Docker build
+├── docker-compose.yml     # Docker Compose (backend + postgres + redis + nginx)
+└── .env.example           # Environment config template
+```
 
-## API Reference
+## Quick Start
 
-See [FiberNMS_Documentation.md](FiberNMS_Documentation.md) for complete API documentation.
+### Prerequisites
 
-### Key Endpoints
-| Method | Endpoint | Purpose |
-|--------|---------|---------|
-| POST | `/api/auth/login` | Login (domain-checked) |
-| GET | `/api/auth/me` | Get current user |
-| GET | `/api/dashboard` | Dashboard data |
-| GET | `/api/all-onus` | Server-side paginated ONU list |
-| POST | `/api/olt/<id>/sync` | Trigger sync |
-| POST | `/api/onu/<id>/action` | CLI action (reboot/reset/delete) |
-| GET | `/api/public/branding` | Public branding (no auth) |
-| GET | `/api/public/tenant-check` | Validate tenant subdomain (no auth) |
-| GET | `/api/public/packages` | List subscription packages (no auth) |
-| POST | `/api/public/register` | Register new tenant (no auth) |
+- **Python 3.12+**
+- **Node.js 22+** (for frontend)
+- **ZTE OLT** (C320/C300) accessible via SNMP (port 161) and Telnet (port 23)
+
+### Option 1: Installer Script (Windows)
+
+```bat
+install.bat
+```
+
+### Option 2: Installer Script (Linux/macOS)
+
+```bash
+chmod +x install.sh
+./install.sh
+```
+
+### Option 3: Manual Setup
+
+```bash
+# 1. Backend setup
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+# Linux/macOS
+source .venv/bin/activate
+
+pip install -r requirements.txt
+
+# 2. Frontend setup
+cd frontend
+npm install
+npm run build
+cd ..
+
+# 3. Configure environment
+cp .env.example .env
+# Edit .env with your settings
+
+# 4. Run the server
+python run_server.py
+# Or just Flask:
+python app.py
+```
+
+### Access the Application
+
+- **App**: http://127.0.0.1:5000
+- **API Docs (Swagger)**: http://127.0.0.1:8765/docs
+- **WebSocket**: ws://127.0.0.1:8765/ws/
+- **Default login**: `admin` / `admin123`
+
+### Development Mode (with hot reload)
+
+```bash
+# Terminal 1: Backend
+python app.py
+
+# Terminal 2: Frontend dev server
+cd frontend
+npm run dev
+```
+
+Frontend dev server runs on http://127.0.0.1:5173 with API proxy to Flask on port 5000.
+
+## Configuration
+
+### Environment Variables (.env)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SECRET_KEY` | auto-generated | Flask secret key for sessions |
+| `FLASK_ENV` | development | `development` / `production` / `testing` |
+| `FLASK_DEBUG` | 0 | Enable debug mode (1/0) |
+| `DATABASE_URL` | (empty=SQLite) | PostgreSQL URL for production |
+| `HOST` | 0.0.0.0 | Server bind address |
+| `PORT` | 5000 | Flask port |
+| `WS_PORT` | 8765 | FastAPI/WebSocket port |
+| `SESSION_COOKIE_SECURE` | 1 | HTTPS-only cookies (set 0 for HTTP) |
+| `REDIS_URL` | (empty) | Redis connection URL (optional) |
+| `WA_GATEWAY_URL` | (empty) | WhatsApp gateway URL (optional) |
+
+### Adding Your OLT
+
+1. Login to the web UI
+2. Go to **Settings → OLT Settings**
+3. Click **Add OLT**
+4. Enter OLT name, IP address, SNMP community, Telnet credentials
+5. Click **Test Connection** to verify
+6. Click **Sync** to pull ONU data
 
 ## Deployment
 
-```powershell
-# 1. Build frontend
-cd e:\nms\frontend && npm run build
+### Docker (Recommended for Production)
 
-# 2. Copy frontend dist to VPS
-pscp -r -pw <password> e:\nms\frontend\dist\* root@<vps-ip>:/opt/fibernms/frontend/dist/
+```bash
+# Build and start all services
+docker compose up -d
 
-# 3. Copy backend files
-pscp -pw <password> e:\nms\app.py e:\nms\models.py e:\nms\telnet_client.py root@<vps-ip>:/opt/fibernms/
-
-# 4. Restart service
-plink -pw <password> root@<vps-ip> "systemctl restart fibernms"
+# With nginx reverse proxy (production profile)
+docker compose --profile production up -d
 ```
+
+Services: backend (Flask+FastAPI), PostgreSQL, Redis, Nginx
+
+### VPS Deployment (Ubuntu)
+
+```bash
+# On your VPS:
+sudo bash deploy/vps-setup.sh your-domain.com
+
+# Or manually:
+# 1. Copy files to /opt/fibernms/
+# 2. Create Python venv, install requirements
+# 3. Build frontend: cd frontend && npm ci && npm run build
+# 4. Configure nginx (use deploy/nginx-fibernms.conf)
+# 5. Create systemd service
+# 6. sudo certbot --nginx -d your-domain.com (for HTTPS)
+```
+
+### Systemd Service
+
+```ini
+[Unit]
+Description=Salfanet NMS
+After=network.target
+
+[Service]
+Type=simple
+User=fibernms
+WorkingDirectory=/opt/fibernms
+Environment="PATH=/opt/fibernms/.venv/bin"
+ExecStart=/opt/fibernms/.venv/bin/python run_server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## API Documentation
+
+- **Swagger UI**: http://localhost:8765/docs
+- **ReDoc**: http://localhost:8765/redoc
+- **OpenAPI JSON**: http://localhost:8765/openapi.json
+
+### Key API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/login` | POST | Login |
+| `/api/auth/me` | GET | Current user info |
+| `/api/dashboard` | GET | Dashboard summary |
+| `/api/olts` | GET/POST | List/create OLTs |
+| `/api/olts/<id>/sync` | POST | Sync OLT |
+| `/api/all-onus` | GET | List all ONUs (paginated) |
+| `/api/onu/<id>/action` | POST | ONU actions (reboot, delete, etc.) |
+| `/api/onu/<id>/detail` | GET | ONU detail (DB) |
+| `/api/onu/<id>/live-detail` | GET | ONU detail (Telnet live) |
+| `/api/alert-rules` | GET/PUT | Alert rules |
+| `/api/alert-rules/recheck` | POST | Manual alert re-check |
+| `/api/bot-config/*` | GET/PUT | Telegram/WA bot config |
+| `/api/ftth/*` | GET/POST | FTTH infrastructure |
+| `/api/metrics/history` | GET | Historical metrics |
+| `/api/public/branding` | GET | NMS branding (no auth) |
+
+## Testing
+
+```bash
+# Backend tests
+py -3 -m pytest tests/ -v
+
+# Frontend tests
+cd frontend
+npm run test
+```
+
+## Documentation
+
+- [ZTE C320/C300 CLI & OID Reference](ZTE_C320_C300_CLI_OID_Reference.md) — comprehensive CLI commands and SNMP OIDs
+- [OID & CLI Reference](oid-cli-reference.md) — detailed SNMP OID mappings
+- [FiberNMS Documentation](FiberNMS_Documentation.md) — system architecture and features
+- [FTTH Roadmap](FTTH_ROADMAP.md) — FTTH feature planning
+
+## Supported OLT Models
+
+| Model | SNMP | Telnet CLI | Notes |
+|-------|------|-----------|-------|
+| ZTE C320 | ✅ | ✅ | Primary tested model |
+| ZTE C300 | ✅ | ✅ | Full support |
+| ZTE C300-M | ✅ | ✅ | Full support |
+| ZTE C600 | ✅ | ✅ | Full support |
+| ZTE C650 | ✅ | ✅ | Full support |
+
+## Supported ONU Vendors (on ZTE OLT)
+
+ZTE OLTs manage ONUs from multiple vendors. The system auto-detects ONU vendor from serial number prefix:
+
+- **ZTE** (ZTEG prefix)
+- **Huawei** (HWTC prefix) — Huawei Full template
+- **Fiberhome** (GPON prefix) — Fiberhome VEIP template with TR069
+- **Other** (generic provisioning)
 
 ## License
 
-Internal project. Not for distribution.
+MIT License — see [LICENSE](LICENSE) file for details.
+
+## Credits
+
+**Salfanet NMS** — Developed for FTTH network operators managing ZTE OLT infrastructure.
+
+- SNMP: [pysnmp](https://github.com/lextudio/pysnmp) 7.x
+- Frontend: [React](https://react.dev), [Vite](https://vitejs.dev), [TailwindCSS](https://tailwindcss.com)
+- Icons: [Lucide](https://lucide.dev)
+- Charts: [Recharts](https://recharts.org)

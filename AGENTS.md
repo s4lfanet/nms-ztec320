@@ -57,10 +57,10 @@ else:
 
 | File | Role | Key Points |
 |------|------|------------|
-| `app.py` | Routes + API + sync orchestration | ~7100 lines. All routes in one file. Sync runs in `threading.Thread`. ONU detail split: DB-only `/detail` + Telnet `/live-detail`. SaaS: tenant registration, Duitku payment, subscription management, superadmin panel. Cloudflare Tunnel API integration for auto subdomain provisioning. WhatsApp notification on registration. Security: rate limiting, security headers, domain-based access control. Error handlers for 500/404/Exception. Auto-sync after ONU action uses vendor adapter dispatch. Technician assignment (`/api/technicians`, technician_id in pre-register/update ONU). RX power color ranges (`/api/customization/rx-colors` stored in SystemConfig). ODP port assignment (`odp_port_id` in update ONU API). |
+| `app.py` | Routes + API + sync orchestration | ~7300 lines. All routes in one file. Sync runs in `threading.Thread`. ONU detail split: DB-only `/detail` + Telnet `/live-detail`. SaaS: tenant registration, Duitku payment, subscription management, superadmin panel. Cloudflare Tunnel API integration for auto subdomain provisioning. WhatsApp notification on registration. Security: rate limiting, security headers (CSP includes Cloudflare Insights), domain-based access control. Error handlers for 500/404/Exception. Auto-sync after ONU action uses vendor adapter dispatch. Technician assignment (`/api/technicians`, technician_id in pre-register/update ONU). RX power color ranges (`/api/customization/rx-colors` stored in SystemConfig). ODP port assignment (`odp_port_id` in update ONU API). WiFi SSID config: Open auth sends explicit `no-auth`, `encrypt none`, `no-key` OMCI commands. RX power signal stats use dynamic color ranges from SystemConfig. Subscription expiry notifications include in-app bell notifications for super admin. |
 | `models.py` | SQLAlchemy models | 20+ tables. Uses `db.create_all()` + Flask-Migrate for migrations. SaaS tables: `tenants`, `subscription_packages`, `subscriptions`, `payment_transactions`, `invoices`, `subscription_notifications`. ONU model has `technician_id` FK to `users` table for field technician assignment. |
 | `snmp_core.py` | SNMP core collector | ~320 lines. OIDs, decode/parse functions (`decode_rx_power`, `parse_serial`, `detect_vendor_from_sn`, etc.), `SNMPCollector` class (pysnmp 7.x Slim API). |
-| `telnet_client.py` | Telnet CLI collector | ~4120 lines. `SimpleTelnet` class (raw socket, IAC negotiation), `TelnetCollector` class (ZTE C320/C300 CLI commands: ONU management, VLAN, profiles, uplinks, PON ports, uplink IP network config via VLAN SVI). |
+| `telnet_client.py` | Telnet CLI collector | ~4330 lines. `SimpleTelnet` class (raw socket, IAC negotiation), `TelnetCollector` class (ZTE C320/C300 CLI commands: ONU management, VLAN, profiles, uplinks, PON ports, uplink IP network config via VLAN SVI). WiFi SSID OMCI config: `register_onu_template()` and `register_unified()` both handle open auth with explicit `no-auth`/`encrypt none`/`no-key` commands. Audit logging for open auth WiFi config. |
 | `snmp_collector.py` | Compatibility shim | ~155 lines. Re-exports from `snmp_core` + `telnet_client`. Contains `poll_olt()` orchestrator. All existing `from snmp_collector import X` still works. |
 | `extensions.py` | Shared Flask extensions | `db`, `login_manager`, `migrate`, `logger` instances. `MultiTenantSessionInterface` class for isolated admin/tenant session cookies. Breaks circular imports between app.py and blueprint modules. |
 | `helpers.py` | Shared helper functions | `utc_iso`, `log_action`, `permission_required`, `super_admin_required`, `get_tenant_id`, `tenant_filter`, `check_subscription`, `check_olt_limit`, rate limiting functions. |
@@ -73,13 +73,16 @@ else:
 | `olt_adapters/` | Multi-vendor adapter package | Vendor-specific adapters, SNMP OID mappings, normalized data classes, registry. See "Vendor Adapter Architecture" above. |
 | `migrate.py` | Flask-Migrate CLI | `py -3 migrate.py <init|migrate|upgrade|current>` for database migrations. |
 | `tests/test_basic.py` | Unit tests | Auth endpoints, public API, security headers, helpers, models. Run: `py -3 -m pytest tests/ -v` |
-| `frontend/src/` | React SPA (Vite+TS) | React 19, TailwindCSS v4, React Query, Zustand. Code splitting via `React.lazy` + vendor chunks. Server-side pagination on AllOnus. Multi-vendor rack diagrams via `RackDiagramRouter`. RX values display N/A for non-online ONUs. Customization page with 4 tabs: Desktop columns, Mobile columns, Signal Filter, RX Colors. AllOnus has inline editing for Technician & ODP port columns. PowerBadge uses configurable RX color ranges. Theme: Fiber Optic NOC palette (Space Grotesk + DM Sans fonts, fiber-teal accent). |
+| `frontend/src/` | React SPA (Vite+TS) | React 19, TailwindCSS v4, React Query, Zustand. Code splitting via `React.lazy` + vendor chunks. Server-side pagination on AllOnus. Multi-vendor rack diagrams via `RackDiagramRouter`. RX values display N/A for non-online ONUs. Customization page with 4 tabs: Desktop columns, Mobile columns, Signal Filter, RX Colors. AllOnus has inline editing for Technician & ODP port columns. PowerBadge uses configurable RX color ranges. Signal stat cards use dynamic RX color ranges from customization. Theme: Fiber Optic NOC palette (Space Grotesk + DM Sans fonts, fiber-teal accent). Optimistic logout (clears user state immediately, API call in background). |
 | `templates/*.html` | Legacy Jinja2 templates | Login, dashboard, and some admin pages still server-rendered. |
 | `frontend/src/components/rack/` | Rack diagram components | `RackDiagramRouter` dispatches to `ZteRackDiagram`, `HsgqRackDiagram`, `RaisecomRackDiagram`, `StandaloneEponRackDiagram` based on OLT vendor. |
 | `frontend/src/hooks/` | React hooks | `useRackData` (fetch normalized rack data), `useRackMetrics` (aggregate metrics). |
 | `frontend/src/types/rack.ts` | TypeScript interfaces | `RackData`, `NormalizedSlot`, `NormalizedPort`, `NormalizedFan`, `NormalizedPsu` for frontend. |
 | `frontend/src/pages/Customization.tsx` | Customization page | 4 tabs: Desktop (column visibility/reorder), Mobile (column visibility), Signal Filter (critical/good thresholds with slider), RX Colors (configurable RX power color ranges with preview). Uses `api.getRxColors`/`api.saveRxColors` for RX color ranges. |
 | `olt_configuration.html` | OLT config page | 7 tabs: Uplinks, PON Cards, VLANs, ONU Types, WAN-IP, Speed Profiles, System |
+| `frontend/src/pages/RegisterWizard.tsx` | ONU Register Wizard | Multi-step wizard: Select OLT → Scan ONUs → Configure (template selection: ZTE Single/Dual/Multi, Huawei Full, Fiberhome VEIP) → Review & Register. WiFi SSID config with auth type dropdown (Open/WPA/WPA2/Mixed). Open auth hides password field and generates explicit `no-auth`/`encrypt none`/`no-key` OMCI commands. Fiberhome VEIP template uses TR069 Profile dropdown (same as ZTE templates) instead of manual ACS fields. Script preview shows exact CLI commands. |
+| `frontend/src/pages/ProvisionWizard.tsx` | ONU Provision Wizard | Unified wizard with optional manual/pre-config mode. WiFi SSID config with auth type, password hidden for Open auth. Script preview generates correct OMCI commands including open auth `no-auth`/`encrypt none`/`no-key`. TR069 profile dropdown for ACS config. |
+| `frontend/src/stores/auth.ts` | Zustand auth store | `fetchUser`, `login`, `logout`. Logout is optimistic — clears user state immediately, fires API call in background without awaiting. Prevents UI delay on logout. |
 
 ## CLI Command Reference (ZTE C320 V2.1.0)
 
@@ -201,6 +204,24 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
     - `set_uplink_ip()`: Creates `interface vlan <id>` with `ip address <ip> <mask>`, tags VLAN to uplink port via `switchport vlan <id> tag`, sets default route via `ip route 0.0.0.0 0.0.0.0 <gateway>`.
     - Frontend: UplinkCard in OltConfiguration has "IP Network" section with VLAN ID, IP, mask, gateway fields.
     - DB: `OLTUplink` model has `ip_vlan_id`, `ip_address`, `ip_mask`, `ip_gateway` columns.
+
+16. **WiFi SSID Open Auth OMCI Config** — When `auth_type = open`, ZTE OMCI requires **3 explicit commands** to fully clear previous WPA config. Sending only `no-auth` leaves encryption AES + old key active, so SSID still requires password:
+    ```text
+    ssid auth wpa wifi_0/N no-auth       # Set auth mode to OPEN
+    ssid auth wpa wifi_0/N encrypt none  # Clear encryption to NONE
+    ssid auth wpa wifi_0/N no-key        # Clear existing WPA key
+    ```
+    - Applied in 3 backend locations: `telnet_client.py` `register_onu_template()`, `register_unified()`, and `app.py` WiFi update endpoint
+    - Applied in 2 frontend script previews: `RegisterWizard.tsx`, `ProvisionWizard.tsx`
+    - Dual-band: Both 2.4GHz (`wifi_0/1`) and 5GHz (`wifi_0/5`) get explicit open auth commands via SSID array iteration
+    - Audit logging: `logger.info()` in both backend methods for troubleshooting
+    - Frontend UI: Password field hidden when `auth === 'open'` in both wizards
+
+17. **Fiberhome VEIP TR069 Profile** — Fiberhome VEIP template in RegisterWizard uses the same TR069 Profile dropdown as ZTE templates (pulls from `tr069Profiles` list). Replaces manual ACS URL/Username/Password fields. Selecting a profile auto-fills ACS URL, credentials, VLAN, and VLAN mode.
+
+18. **CSP Cloudflare Insights** — Content Security Policy `script-src` must include `https://static.cloudflareinsights.com` to allow the Cloudflare Insights beacon. Without it, console errors appear on every page load.
+
+19. **Optimistic Logout** — `auth.ts` store clears user state immediately on `logout()` and fires `api.logout()` in background without awaiting. Prevents UI delay — `ProtectedRoute` redirects to `/` instantly when `user` becomes `null`.
 
 ## Database Tables
 
@@ -478,3 +499,12 @@ ViewOnu, UserManagement, Tr069Profile, RegisterWizard, OltSettings, OltConfigura
 - [x] Theme redesign: Fiber Optic NOC palette (Space Grotesk + DM Sans fonts, fiber-teal accent)
 - [x] Light theme softened: soft slate background, darkened text, darkened accent colors
 - [x] Accessibility: focus ring, touch targets, high contrast button text
+- [x] WiFi SSID Open Auth: OMCI sends no-auth + encrypt none + no-key for both 2.4G and 5G
+- [x] WiFi SSID Open Auth: Password field hidden in RegisterWizard & ProvisionWizard when auth=Open
+- [x] WiFi SSID Open Auth: Script preview shows correct open auth commands
+- [x] Fiberhome VEIP TR069: Profile dropdown works (same as ZTE templates), auto-fills ACS config
+- [x] CSP: Cloudflare Insights beacon loads without console errors
+- [x] Optimistic logout: UI clears instantly, no delay waiting for server response
+- [x] Alert notifications: WhatsApp gateway + in-app bell notifications for ONU/OLT alerts
+- [x] Alert notifications: Subscription expiry notifications to super admin (in-app bell)
+- [x] RX power signal stats: Dynamic color ranges from customization (not hardcoded thresholds)

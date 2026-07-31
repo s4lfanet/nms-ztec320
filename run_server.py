@@ -39,6 +39,14 @@ def start_servers(flask_port: int = 5000, ws_port: int = 8765, host: str = "0.0.
     from app import app as flask_app
     from api_async import fastapi_app
 
+    # Start alert monitor (background thread for ONU/OLT health monitoring)
+    from alerts import run_alert_monitor
+    alert_thread = threading.Thread(
+        target=run_alert_monitor, args=(flask_app,), daemon=True, name="alert-monitor"
+    )
+    alert_thread.start()
+    logger.info("Alert monitor started")
+
     # Start Flask in a background thread
     flask_thread = threading.Thread(
         target=run_flask,

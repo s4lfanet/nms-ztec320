@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
+import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Wifi, Clock, RefreshCw, RotateCcw, Trash2, Ban, Eraser,
   FileText, Radio, Globe, Shield, Key, Plug, Database, Layers,
@@ -12,17 +13,27 @@ import {
 import { useState, useEffect, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useHasPerm } from '../hooks/useHasPerm';
-import { useAuth } from '../stores/auth';
 
 interface ModalState { type: string; data?: Record<string, unknown>; }
+
+const AUTH_TYPE_LABELS: Record<string, string> = {
+  'wpa2-psk': 'WPA2-PSK',
+  'wpa-psk': 'WPA-PSK',
+  'wpa-wpa2-psk': 'Mixed WPA/WPA2-PSK',
+  'open': 'Open',
+  'open-system': 'Open',
+  'no-auth': 'Open',
+};
+const authTypeLabel = (raw: string | undefined): string => {
+  if (!raw) return '--';
+  return AUTH_TYPE_LABELS[raw] || raw;
+};
 
 export function ViewOnu() {
   const { id, oltId, frame, slot, onuNum } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const hasPerm = useHasPerm();
-  const { user } = useAuth();
-  const isSuperAdmin = !!user?.is_super_admin;
 
   // Support both URL formats:
   // 1. /onus/:id (simple DB id)
@@ -153,8 +164,9 @@ export function ViewOnu() {
     refetchLive();
   }, [onuId, refetchLive]);
 
-  if (isLoading) return <Skeleton />;
-  if (error || !data) return (<div className="text-center py-20"><p className="text-tx3">Failed to load ONU details</p><button onClick={() => navigate('/dashboard/onus')} className="mt-4 text-accent hover:underline text-sm">&larr; Back to All ONUs</button></div>);
+  if (isLoading || (!onuId && !rconfigMode)) return <Skeleton />;
+  if (error || (!data && onuId)) return (<div className="text-center py-20"><p className="text-tx3">Failed to load ONU details</p><button onClick={() => navigate('/dashboard/onus')} className="mt-4 text-accent hover:underline text-sm">&larr; Back to All ONUs</button></div>);
+  if (!data) return <Skeleton />;
 
   const { onu } = data;
   const live_detail = liveData?.live_detail ?? null;
@@ -167,7 +179,26 @@ export function ViewOnu() {
     if (ok) actionMut.mutate(action);
   };
   const openFieldEdit = (label: string, field: string, value: string) => setModal({ type: 'editField', data: { label, field, value } });
-  const openSectionEdit = (section: string, index: number, entry: Record<string, string>) => setModal({ type: 'sectionEdit', data: { section, index, entry: { ...entry } } });
+  const openSectionEdit = (section: string, index: number, entry: Record<string, string>) => {
+    const merged = { ...entry };
+    if (section === 'wifi' && onu.wifi_config) {
+      try {
+        const wcfg = JSON.parse(onu.wifi_config);
+        const dbSsids = wcfg.ssids || [];
+        const wifiNum = entry.wifi_num || String(index + 1);
+        const dbMatch = dbSsids.find((s: Record<string, unknown>) => String(s.ssid_num) === String(wifiNum));
+        if (dbMatch) {
+          if (!merged.ssid_password || merged.ssid_password === '--') {
+            merged.ssid_password = dbMatch.ssid_password || '';
+          }
+          if (!merged.ssid_auth_type || merged.ssid_auth_type === '--') {
+            merged.ssid_auth_type = dbMatch.ssid_auth_type || '';
+          }
+        }
+      } catch { /* ignore parse error */ }
+    }
+    setModal({ type: 'sectionEdit', data: { section, index, entry: merged } });
+  };
   const openWanEdit = (svcIdx: number) => {
     const svc = (ld.wan_services as Record<string, Record<string, string>>)?.[`service${svcIdx}`] || {};
     setModal({ type: 'wanEdit', data: { svcIdx, svc: { ...svc } } });
@@ -187,6 +218,18 @@ export function ViewOnu() {
   const rxOnu = isOnline ? onu.onu_rx_power : null;
   const txOnu = isOnline ? onu.tx_power : null;
 
+  // Compute online duration from last_online (real-time, no Refresh Live needed)
+  const onlineDuration = (() => {
+    if (!isOnline || !onu.last_online) return '';
+    const diff = Date.now() - new Date(onu.last_online).getTime();
+    if (diff <= 0) return '';
+    const totalSec = Math.floor(diff / 1000);
+    const d = Math.floor(totalSec / 86400);
+    const h = Math.floor((totalSec % 86400) / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    return `${d}D ${h}H ${m}M`;
+  })();
+
   const wanServices = (ld.wan_services as Record<string, Record<string, string>>) || {};
   const tcontProfiles = (ld.tcont_profiles as string[]) || [];
   const gemports = (ld.gemports as string[]) || [];
@@ -194,7 +237,23 @@ export function ViewOnu() {
   const remoteAccess = (ld.remote_access as Array<Record<string, string>>) || [];
   const veipEntries = (ld.veip_entries as Array<Record<string, string>>) || [];
   const tr069Entries = (ld.tr069_entries as Array<Record<string, string>>) || [];
-  const wifiEntries = (ld.wifi_entries as Array<Record<string, string>>) || [];
+  const wifiEntriesRaw = (ld.wifi_entries as Array<Record<string, string>>) || [];
+  // Merge password from DB wifi_config (ZTE doesn't expose WPA keys in running-config)
+  let wifiEntries = wifiEntriesRaw;
+  if (onu.wifi_config) {
+    try {
+      const wcfg = JSON.parse(onu.wifi_config);
+      const dbSsids = wcfg.ssids || [];
+      wifiEntries = wifiEntriesRaw.map(w => {
+        const num = w.wifi_num || '';
+        const dbMatch = dbSsids.find((s: Record<string, unknown>) => String(s.ssid_num) === String(num));
+        if (dbMatch && (!w.ssid_password || w.ssid_password === '--')) {
+          return { ...w, ssid_password: dbMatch.ssid_password || '' };
+        }
+        return w;
+      });
+    } catch { /* ignore */ }
+  }
   const ethEntries = (ld.eth_entries as Array<Record<string, string>>) || [];
 
   return (
@@ -203,6 +262,30 @@ export function ViewOnu() {
         <button onClick={() => navigate('/dashboard')} className="hover:text-accent transition-colors">Dashboard</button>
         <span>/</span><button onClick={() => navigate('/dashboard/onus')} className="hover:text-accent transition-colors">All-ONUs</button>
         <span>/</span><span className="text-tx1">View / Onu</span>
+        <div className="ml-auto">
+          <TutorialBanner
+            title="Panduan View ONU"
+            steps={[
+              { title: 'ONU Details', content: <><p>Menampilkan info dasar ONU: nama, serial number, type, status (Online/Offline/DyingGasp/LOS), RX/TX power, distance, technician, dan ODP port.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Refresh Live</strong> untuk fetch data real-time dari OLT via Telnet (rx power, state, distance). Klik <strong>Save Config</strong> untuk backup running-config ONU ke file.</p></> },
+              { title: 'Status History', content: <><p>Grafik history status ONU (online/offline/dyinggasp/LOS) dalam 24 jam terakhir. Setiap titik menampilkan timestamp dan status pada saat itu.</p><p className="text-xs text-tx3 mt-1">Data history diupdate setiap kali OLT sync berjalan (manual atau auto-sync).</p></> },
+              { title: 'WiFi Configuration', content: <><p>Tabel WiFi SSID yang terdaftar di ONU. Klik baris untuk edit SSID name, auth type (WPA2-PSK/WPA-PSK/Open), password, VLAN, dan mode.</p><p className="text-xs text-tx3 mt-1">Password ditampilkan dari database (ZTE OLT tidak expose WPA key di running-config). Hint <strong>"(dari database)"</strong> menandakan password berasal dari DB, bukan dari ONU live config.</p><p className="text-xs text-tx3 mt-1">Perubahan langsung diterapkan ke ONU via Telnet + disimpan ke DB + auto-sync OLT.</p></> },
+              { title: 'WAN Services', content: <><p>Konfigurasi WAN service per ONU (Internet/IPTV/VoIP/Bridge). Klik untuk edit VLAN, WAN mode (Bridge/DHCP/PPPoE/PPPoE+NAT), dan PPPoE credentials.</p><p className="text-xs text-tx3 mt-1">Service 1-4 sesuai dengan service-port di OLT. Checkbox menandakan service sudah dikonfigurasi.</p></> },
+              { title: 'VLAN & GEM Ports', content: <><p>Menampilkan service-port, vport, user-vlan, dan VLAN ID yang terdaftar di OLT untuk ONU ini. Data diambil dari running-config OLT.</p></> },
+              { title: 'Remote Access & Actions', content: <><p><strong>Remote Access</strong>: konfigurasi ACL (HTTP/HTTPS/SNMP/SSH/Telnet/TR069) untuk akses remote ke ONU.</p><p className="text-xs text-tx3 mt-1"><strong>Actions</strong>: Reboot (restart ONU), Delete (deregister dari OLT), Clear Config (factory reset), Disable/Enable (shutdown/enable ONU).</p><p className="text-xs text-tx3 mt-1">Setiap action akan auto-sync OLT setelah eksekusi.</p></> },
+            ]}
+            tips={
+              <>
+                <strong className="text-tx2">Tips:</strong>
+                <ul className="mt-1 ml-4 space-y-0.5">
+                  <li>Edit WiFi/LAN/VEIP/TR069 langsung klik baris tabel — perubahan langsung ke ONU + DB</li>
+                  <li>Refresh Live fetch data real-time via Telnet (bisa lambat jika OLT sibuk)</li>
+                  <li>Resync Config untuk read-back full config dari ONU ke database</li>
+                  <li>Password WiFi yang ditampilkan berasal dari database, bukan dari ONU live</li>
+                </ul>
+              </>
+            }
+          />
+        </div>
       </div>
 
       {/* ONU Details Card */}
@@ -214,16 +297,16 @@ export function ViewOnu() {
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass border border-brd hover:border-accent/30 text-xs transition-all disabled:opacity-50">
               <RefreshCw size={13} className={liveFetching ? 'animate-spin' : ''} /> Refresh Live
             </button>
-            {hasPerm('configure_onu') && !isSuperAdmin && <SaveConfigBtn onuId={onuId} />}
+            {hasPerm('configure_onu') && <SaveConfigBtn onuId={onuId} />}
           </div>
         </div>
         <div className="p-3 md:p-5">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
             <DetailField label="OLT" value={onu.olt_name} />
-            <DetailField label="Gpon Onu" value={onu.onu_id_str} mono onEdit={!isSuperAdmin && hasPerm('configure_onu') ? () => setModal({ type: 'moveOnu' }) : undefined} />
-            <EditableField label="Actual Type" field="actual_type" value={onu.actual_type} onEdit={!isSuperAdmin && hasPerm('edit_onu_name') ? openFieldEdit : () => {}} />
-            <DetailField label="Onu Type" value={ld.onu_type as string || '-'} onEdit={!isSuperAdmin && hasPerm('configure_onu') ? () => setModal({ type: 'onuType' }) : undefined} />
-            <DetailField label="Serial Number" value={onu.serial_number} mono />
+            <DetailField label="Gpon Onu" value={onu.onu_id_str} mono onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'moveOnu' }) : undefined} />
+            <EditableField label="Actual Type" field="actual_type" value={onu.actual_type} onEdit={hasPerm('edit_onu_name') ? openFieldEdit : () => {}} />
+            <DetailField label="Onu Type" value={onu.onu_type || (ld.onu_type as string) || '-'} onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'onuType' }) : undefined} />
+            <DetailField label="SN/MAC" value={onu.serial_number} mono />
             <div>
               <div className="label-sm">OLT / Onu RX</div>
               <div className="text-sm font-medium">
@@ -239,8 +322,8 @@ export function ViewOnu() {
               </span>
             </div>
             <DetailField label="Online Duration" value={ld.online_duration as string || (onu.status === 'online' ? 'Active' : '-')} />
-            <EditableField label="Name" field="name" value={onu.name} onEdit={!isSuperAdmin && hasPerm('edit_onu_name') ? openFieldEdit : () => {}} />
-            <EditableField label="Description" field="description" value={onu.description} onEdit={!isSuperAdmin && hasPerm('edit_onu_description') ? openFieldEdit : () => {}} />
+            <EditableField label="Name" field="name" value={onu.name} onEdit={hasPerm('edit_onu_name') ? openFieldEdit : () => {}} />
+            <EditableField label="Description" field="description" value={onu.description} onEdit={hasPerm('edit_onu_description') ? openFieldEdit : () => {}} />
           </div>
 
           {/* Traffic: current values */}
@@ -306,10 +389,10 @@ export function ViewOnu() {
 
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2">
-        {!isSuperAdmin && hasPerm('reboot_onu') && <ActBtn icon={<RotateCcw size={14} />} label="Reboot" onClick={() => doAction('reset', 'Reboot')} loading={pendingAction === 'reset'} />}
+        {hasPerm('reboot_onu') && <ActBtn icon={<RotateCcw size={14} />} label="Reboot" onClick={() => doAction('reset', 'Reboot')} loading={pendingAction === 'reset'} />}
         <ActBtn icon={<Activity size={14} />} label="Get Status" onClick={() => getStatusMut.mutate()} loading={pendingAction === 'get-status'} />
         <ActBtn icon={<FileText size={14} />} label="Show Config" onClick={showConfig} loading={pendingAction === 'show-config'} />
-        {!isSuperAdmin && hasPerm('configure_onu') && <ActBtn icon={<RefreshCw size={14} />} label="Resync Config" onClick={async () => {
+        {hasPerm('configure_onu') && <ActBtn icon={<RefreshCw size={14} />} label="Resync Config" onClick={async () => {
           const ok = await confirm({ title: 'Resync Config?', message: `Re-collect ONU config from OLT for "${onu.name}"?`, confirmLabel: 'Resync', variant: 'warning' });
           if (ok) {
             setPendingAction('resync');
@@ -321,15 +404,15 @@ export function ViewOnu() {
             finally { setPendingAction(null); }
           }
         }} loading={pendingAction === 'resync'} />}
-        {!isSuperAdmin && hasPerm('clear_config_onu') && <ActBtn icon={<Eraser size={14} />} label="Clear Config" onClick={() => doAction('clear-config', 'Clear Config')} variant="danger" loading={pendingAction === 'clear-config'} />}
-        {!isSuperAdmin && hasPerm('configure_onu') && <ActBtn icon={<WifiOff size={14} />} label="Reset WiFi" onClick={() => doAction('restore-wifi', 'Reset WiFi')} variant="warning" loading={pendingAction === 'restore-wifi'} />}
-        {!isSuperAdmin && hasPerm('reset_onu') && <ActBtn icon={<Power size={14} />} label="Reset Factory" onClick={() => doAction('restore-factory', 'Factory Reset')} variant="danger" loading={pendingAction === 'restore-factory'} />}
-        {!isSuperAdmin && hasPerm('disable_onu') && (onu.status === 'online' ? (
+        {hasPerm('clear_config_onu') && <ActBtn icon={<Eraser size={14} />} label="Clear Config" onClick={() => doAction('clear-config', 'Clear Config')} variant="danger" loading={pendingAction === 'clear-config'} />}
+        {hasPerm('configure_onu') && <ActBtn icon={<WifiOff size={14} />} label="Reset WiFi" onClick={() => doAction('restore-wifi', 'Reset WiFi')} variant="warning" loading={pendingAction === 'restore-wifi'} />}
+        {hasPerm('reset_onu') && <ActBtn icon={<Power size={14} />} label="Reset Factory" onClick={() => doAction('restore-factory', 'Factory Reset')} variant="danger" loading={pendingAction === 'restore-factory'} />}
+        {hasPerm('disable_onu') && (onu.status === 'online' ? (
           <ActBtn icon={<Ban size={14} />} label="Disable ONU" onClick={() => doAction('disable', 'Disable')} variant="danger" loading={pendingAction === 'disable'} />
         ) : (
           <ActBtn icon={<Activity size={14} />} label="Enable ONU" onClick={() => doAction('enable', 'Enable')} variant="success" loading={pendingAction === 'enable'} />
         ))}
-        {!isSuperAdmin && hasPerm('delete_onu') && <ActBtn icon={<Trash2 size={14} />} label="Delete" onClick={() => doAction('delete', 'Delete')} variant="danger" loading={pendingAction === 'delete'} />}
+        {hasPerm('delete_onu') && <ActBtn icon={<Trash2 size={14} />} label="Delete" onClick={() => doAction('delete', 'Delete')} variant="danger" loading={pendingAction === 'delete'} />}
       </div>
 
       {/* WAN */}
@@ -343,7 +426,7 @@ export function ViewOnu() {
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={hasConfig} readOnly className="cursor-pointer" />
                   <strong className="text-sm">Service {svcIdx}</strong>
-                  {!isSuperAdmin && hasPerm('configure_onu') && <button onClick={() => openWanEdit(svcIdx)} className="ml-auto text-accent hover:text-accent-hover"><Edit3 size={13} /></button>}
+                  {hasPerm('configure_onu') && <button onClick={() => openWanEdit(svcIdx)} className="ml-auto text-accent hover:text-accent-hover"><Edit3 size={13} /></button>}
                 </div>
                 {hasConfig ? (
                   <div className="mt-3 pl-1">
@@ -352,7 +435,7 @@ export function ViewOnu() {
                       <span className="text-tx3">Download</span><strong>{svc.download_profile || 'DOWN-PPPOE'}</strong>
                       <span className="text-tx3">Upload</span><strong>{svc.upload_profile || 'UP-PPPOE'}</strong>
                       <span className="text-tx3">Mode</span><strong>{svc.mode || 'Bridge / ONU Webpage'}</strong>
-                      <span className="text-tx3">IP</span><strong>{svc.ip || '-'}</strong>
+                      <span className="text-tx3">IP</span><strong>{svc.ip && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(svc.ip) ? <a href={`http://${svc.ip}`} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline" onClick={e => e.stopPropagation()}>{svc.ip}</a> : (svc.ip || '-')}</strong>
                       {(svc.mode || '').toLowerCase().includes('pppoe') && <>
                         <span className="text-tx3">PPPoE Username</span><strong>{svc.pppoe_username || '-'}</strong>
                         <span className="text-tx3">PPPoE Password</span><strong>{svc.pppoe_password || '-'}</strong>
@@ -368,12 +451,12 @@ export function ViewOnu() {
 
       {/* Remote Access */}
       <Card title="Remote Access" icon={<Shield size={16} />}
-        action={!isSuperAdmin && hasPerm('configure_onu') ? <button onClick={() => setModal({ type: 'aclEdit', data: { entry: {}, isNew: true, newIndex: remoteAccess.length + 1 } })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover"><Plus size={13} /> Create</button> : undefined}>
+        action={hasPerm('configure_onu') ? <button onClick={() => setModal({ type: 'aclEdit', data: { entry: {}, isNew: true, newIndex: remoteAccess.length + 1 } })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover"><Plus size={13} /> Create</button> : undefined}>
         {remoteAccess.length > 0 ? (
           <DataTable headers={['ID','Mode','Ingress Type','Service List','Start IP','End IP','Action']}>
             {remoteAccess.map((acl, i) => (
-              <tr key={i} className={!isSuperAdmin && hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={!isSuperAdmin && hasPerm('configure_onu') ? () => setModal({ type: 'aclEdit', data: { entry: acl, index: parseInt(String(acl.acl_id)) || (i + 1), isNew: false } }) : undefined}>
-                <td>{i+1}</td><td>{acl.mode||'-'}</td><td>{acl.ingress_type||'-'}</td><td>{acl.service_list||'-'}</td><td>{acl.start_ip||'-'}</td><td>{acl.end_ip||'-'}</td><td>{!isSuperAdmin && hasPerm('configure_onu') && <EditBtn />}</td>
+              <tr key={i} className={hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={hasPerm('configure_onu') ? () => setModal({ type: 'aclEdit', data: { entry: acl, index: parseInt(String(acl.acl_id)) || (i + 1), isNew: false } }) : undefined}>
+                <td>{i+1}</td><td>{acl.mode||'-'}</td><td>{acl.ingress_type||'-'}</td><td>{acl.service_list||'-'}</td><td>{acl.start_ip||'-'}</td><td>{acl.end_ip||'-'}</td><td>{hasPerm('configure_onu') && <EditBtn />}</td>
               </tr>
             ))}
           </DataTable>
@@ -385,9 +468,9 @@ export function ViewOnu() {
         {veipEntries.length > 0 ? (
           <DataTable headers={['ID','Status','Mode','Access VLAN','Trunk VLANs','Priority','IANA','Action']}>
             {veipEntries.map((v, i) => (
-              <tr key={i} className={!isSuperAdmin && hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={!isSuperAdmin && hasPerm('configure_onu') ? () => openSectionEdit('veip', i, v) : undefined}>
+              <tr key={i} className={hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={hasPerm('configure_onu') ? () => openSectionEdit('veip', i, v) : undefined}>
                 <td>Veip {v.veip_id || i+1}</td><td><StatusPill online={v.status === 'UP'} label={v.status || 'UP'} /></td>
-                <td>{v.mode||'N/A'}</td><td>{v.vlan||'--'}</td><td>--</td><td>{v.priority||'0'}</td><td>{v.iana||'N/A'}</td><td>{!isSuperAdmin && hasPerm('configure_onu') && <EditBtn />}</td>
+                <td>{v.mode||'N/A'}</td><td>{v.vlan||'--'}</td><td>--</td><td>{v.priority||'0'}</td><td>{v.iana||'N/A'}</td><td>{hasPerm('configure_onu') && <EditBtn />}</td>
               </tr>
             ))}
           </DataTable>
@@ -399,9 +482,9 @@ export function ViewOnu() {
         {tr069Entries.length > 0 ? (
           <DataTable headers={['ID','ACS','Username','Password','VLAN','Priority','Action']}>
             {tr069Entries.map((tr, i) => (
-              <tr key={i} className={!isSuperAdmin && hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={!isSuperAdmin && hasPerm('configure_onu') ? () => openSectionEdit('tr069', i, tr) : undefined}>
+              <tr key={i} className={hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={hasPerm('configure_onu') ? () => openSectionEdit('tr069', i, tr) : undefined}>
                 <td>{i+1}</td><td className="font-mono text-xs">{tr.acs_url||'N/A'}</td>
-                <td>{tr.username||'N/A'}</td><td>{tr.password||'N/A'}</td><td>{tr.vlan||'untag'}</td><td>{tr.priority||'N/A'}</td><td>{!isSuperAdmin && hasPerm('configure_onu') && <EditBtn />}</td>
+                <td>{tr.username||'N/A'}</td><td>{tr.password||'N/A'}</td><td>{tr.vlan||'untag'}</td><td>{tr.priority||'N/A'}</td><td>{hasPerm('configure_onu') && <EditBtn />}</td>
               </tr>
             ))}
           </DataTable>
@@ -410,23 +493,41 @@ export function ViewOnu() {
 
       {/* WiFi */}
       <Card title="WiFi" icon={<Wifi size={16} />}
-        action={!isSuperAdmin && hasPerm('configure_onu') ? (
+        action={hasPerm('configure_onu') ? (
           <button onClick={() => {
             const usedNums = wifiEntries.map(w => Number(w.wifi_num || 0));
             const next = [1,2,3,4,5,6,7,8].find(n => !usedNums.includes(n)) || 3;
             openSectionEdit('wifi', -1, { wifi_num: String(next), ssid_name: `Wifi ${next}`, status: 'up', mode: 'N/A', vlan: '', priority: '0' });
           }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover"><Plus size={13} /> Add SSID</button>
         ) : undefined}>
-        {wifiEntries.length > 0 ? (
-          <DataTable headers={['Port','Status','Mode','Access VLAN','Trunk VLANs','Priority','SSID','Action']}>
-            {wifiEntries.map((w, i) => (
-              <tr key={i} className={!isSuperAdmin && hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={!isSuperAdmin && hasPerm('configure_onu') ? () => openSectionEdit('wifi', i, w) : undefined}>
-                <td>Wifi {w.wifi_num || i+1}</td><td><StatusPill online={['up','UP'].includes(w.status)} label={(w.status||'up').toUpperCase()} /></td>
-                <td>{w.mode||'DHCP From Onu'}</td><td>{w.vlan||'--'}</td><td>--</td><td>{w.priority||'0'}</td><td>{w.ssid_name||'-'}</td><td>{!isSuperAdmin && hasPerm('configure_onu') && <EditBtn />}</td>
-              </tr>
-            ))}
-          </DataTable>
-        ) : <EmptyState icon={<Wifi size={24} />} text="No WiFi config from OLT" />}
+        {wifiEntries.length > 0 ? (() => {
+          // Group SSIDs by band: 2.4GHz (1-4), 5GHz (5-8)
+          const band24 = wifiEntries.filter(w => { const n = Number(w.wifi_num || 0); return n >= 1 && n <= 4; });
+          const band5 = wifiEntries.filter(w => Number(w.wifi_num || 0) >= 5);
+          const renderGroup = (label: string, entries: typeof wifiEntries) => entries.length > 0 ? (
+            <div className="mb-2 last:mb-0">
+              <div className="flex items-center gap-2 mb-1.5 px-1">
+                <div className={cn('w-2 h-2 rounded-full', label.includes('5G') ? 'bg-info' : 'bg-accent')} />
+                <span className="text-[11px] font-semibold text-tx2 uppercase tracking-wider">{label}</span>
+                <span className="text-[10px] text-tx3">({entries.length} SSID{entries.length > 1 ? 's' : ''})</span>
+              </div>
+              <DataTable headers={['Port','Status','Mode','Access VLAN','Trunk VLANs','SSID','Auth','Password','Action']}>
+                {entries.map((w, i) => (
+                  <tr key={w.wifi_num || i} className={hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={hasPerm('configure_onu') ? () => openSectionEdit('wifi', wifiEntries.indexOf(w), w) : undefined}>
+                    <td><strong>Wifi {w.wifi_num || '?'}</strong></td>
+                    <td><StatusPill online={['up','UP'].includes(w.status)} label={(w.status||'up').toUpperCase()} /></td>
+                    <td>{w.mode||'DHCP From Onu'}</td><td>{w.vlan||'--'}</td><td>--</td>
+                    <td className="font-medium text-tx1">{w.ssid_name||'-'}</td>
+                    <td className="text-tx3 text-xs">{authTypeLabel(w.ssid_auth_type)}</td>
+                    <td className="text-tx3 text-xs font-mono">{w.ssid_password || '--'}</td>
+                    <td>{hasPerm('configure_onu') && <EditBtn />}</td>
+                  </tr>
+                ))}
+              </DataTable>
+            </div>
+          ) : null;
+          return <div>{renderGroup('2.4 GHz', band24)}{renderGroup('5 GHz', band5)}</div>;
+        })() : <EmptyState icon={<Wifi size={24} />} text="No WiFi config from OLT" />}
       </Card>
 
       {/* Ethernet */}
@@ -434,11 +535,11 @@ export function ViewOnu() {
         {ethEntries.length > 0 ? (
           <DataTable headers={['Port','Status','Mode','Access VLAN','Trunk VLANs','DHCP','Changes','Action']}>
             {ethEntries.map((e, i) => (
-              <tr key={i} className={!isSuperAdmin && hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={!isSuperAdmin && hasPerm('configure_onu') ? () => openSectionEdit('lan', i, e) : undefined}>
+              <tr key={i} className={hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={hasPerm('configure_onu') ? () => openSectionEdit('lan', i, e) : undefined}>
                 <td><strong>LAN {e.gemport || i+1}</strong></td>
                 <td><StatusPill online={e.status === 'up'} label={(e.status||'down').charAt(0).toUpperCase() + (e.status||'down').slice(1)} /></td>
                 <td>{e.mode ? e.mode.charAt(0).toUpperCase() + e.mode.slice(1) : 'N/A'}</td><td>{e.access_vlan||'--'}</td><td>--</td>
-                <td>{e.dhcp_mode||'Auto'}</td><td>{e.changes||'0'}</td><td>{!isSuperAdmin && hasPerm('configure_onu') && <EditBtn />}</td>
+                <td>{e.dhcp_mode||'Auto'}</td><td>{e.changes||'0'}</td><td>{hasPerm('configure_onu') && <EditBtn />}</td>
               </tr>
             ))}
           </DataTable>
@@ -452,7 +553,7 @@ export function ViewOnu() {
           <SignalBox label="RX Power (ONU)" value={rxOnu} />
           <SignalBox label="TX Power (ONU)" value={txOnu} />
           <div className="p-3 rounded-lg bg-glass text-center"><div className="text-xs text-tx3 mb-1">Distance</div><div className="text-lg font-bold font-mono">{String(ld.distance_m || onu.distance || '-')}</div><div className="text-xs text-tx3">m</div></div>
-          <div className="p-3 rounded-lg bg-glass text-center"><div className="text-xs text-tx3 mb-1">Online Duration</div><div className="text-lg font-bold">{ld.online_duration as string || '-'}</div></div>
+          <div className="p-3 rounded-lg bg-glass text-center"><div className="text-xs text-tx3 mb-1">Online Duration</div><div className="text-lg font-bold">{onlineDuration || String(ld.online_duration || '-')}</div></div>
         </div>
       </Card>
 
@@ -481,9 +582,9 @@ export function ViewOnu() {
       {/* MODALS */}
       {modal && <ModalPortal onClose={() => setModal(null)}>
         {modal.type === 'editField' && <EditFieldModal data={modal.data!} onSave={(value) => updateFieldMut.mutate({ field: modal.data!.field as string, value })} onClose={() => setModal(null)} loading={updateFieldMut.isPending} />}
-        {modal.type === 'onuType' && <OnuTypeModal onuId={onuId} oltId={onu.olt_id} currentType={ld.onu_type as string || ''} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
+        {modal.type === 'onuType' && <OnuTypeModal onuId={onuId} oltId={onu.olt_id} currentType={onu.onu_type || (ld.onu_type as string) || ''} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
         {modal.type === 'moveOnu' && <MoveOnuModal onuId={onuId} onu={onu} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); toast.success('ONU moved!'); }} />}
-        {modal.type === 'sectionEdit' && <SectionEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
+        {modal.type === 'sectionEdit' && <SectionEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); setModal(null); }} />}
         {modal.type === 'aclEdit' && <AclEditModal data={modal.data!} onuId={onuId} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
         {modal.type === 'showConfig' && (
           <div className="glass-card w-full max-w-4xl max-h-[80vh] flex flex-col">
@@ -491,7 +592,7 @@ export function ViewOnu() {
               <h2 className="text-sm font-semibold flex items-center gap-2"><FileText size={16} /> ONU Running Config</h2>
               <button onClick={() => setModal(null)} className="text-tx3 hover:text-tx1"><X size={18} /></button>
             </div>
-            <div className="p-5 overflow-auto flex-1"><pre className="p-4 rounded-lg bg-[#1a1a2e] text-sm text-green-300 font-mono whitespace-pre-wrap break-all leading-relaxed">{configContent}</pre></div>
+            <div className="p-5 overflow-auto flex-1"><pre className="code-block !p-4 text-sm whitespace-pre-wrap break-all leading-relaxed">{configContent}</pre></div>
           </div>
         )}
         {modal.type === 'getStatus' && <GetStatusModal status={modal.data as Record<string, unknown>} onClose={() => setModal(null)} />}
@@ -507,7 +608,7 @@ function ModalPortal({ onClose, children }: { onClose: () => void; children: Rea
   useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h); }, [onClose]);
   return (
     <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center p-0 md:p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="modal-overlay" />
       <div className="relative w-full md:w-auto max-h-[90vh] md:max-h-none overflow-y-auto md:overflow-visible rounded-t-2xl md:rounded-none animate-slide-up md:animate-fade-in">{children}</div>
     </div>
   );
@@ -851,6 +952,7 @@ function WanEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Record
 
 // ═══ SECTION EDIT MODAL (WiFi/LAN/VEIP/TR069) ═══
 function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Record<string, unknown>; onuId: number; oltId: number; onClose: () => void; onSuccess: () => void; }) {
+  const qc = useQueryClient();
   const section = data.section as string;
   const entry = data.entry as Record<string, string>;
   const vlans = useOltVlans(oltId);
@@ -862,11 +964,12 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
   const [mode, setMode] = useState(entry.mode || (section === 'wifi' ? 'N/A' : section === 'veip' ? 'Hybrid' : 'Access'));
   const [vlan, setVlan] = useState(entry.vlan || entry.access_vlan || '');
   const [priority, setPriority] = useState(entry.priority || '0');
-  const [ssidNameEnabled, setSsidNameEnabled] = useState(!!(entry.ssid_broadcast_name || entry.ssid_broadcast_name === ''));
-  const [ssidBroadcastName, setSsidBroadcastName] = useState(entry.ssid_broadcast_name || '');
-  const [ssidAuthEnabled, setSsidAuthEnabled] = useState(!!(entry.ssid_auth_type));
-  const [ssidAuthType, setSsidAuthType] = useState(entry.ssid_auth_type || 'wpa2-psk');
+  const [ssidNameEnabled, setSsidNameEnabled] = useState(true);
+  const [ssidBroadcastName, setSsidBroadcastName] = useState(entry.ssid_name || '');
+  const [ssidAuthEnabled, setSsidAuthEnabled] = useState(true);
+  const [ssidAuthType, setSsidAuthType] = useState(entry.ssid_auth_type || 'open');
   const [ssidPassword, setSsidPassword] = useState(entry.ssid_password || '');
+  const [ssidPwFromDb] = useState(!!entry.ssid_password && entry.ssid_password !== '--');
   const [iana, setIana] = useState(entry.iana || '');
   const [dhcpMode, setDhcpMode] = useState(entry.dhcp_mode || 'Auto');
   const [acsUrl, setAcsUrl] = useState(entry.acs_url || '');
@@ -882,10 +985,10 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
       if (section === 'wifi') {
         payload.data = {
           ssid_num: Number(ssidNum),
-          wifiMode: mode, wifiStatus: status, vlan,
+          wifiMode: mode, wifiStatus: status, vlan, priority,
           ssid_name: ssidNameEnabled ? ssidBroadcastName.trim() : '',
           ssid_auth_type: ssidAuthEnabled ? ssidAuthType : '',
-          ssid_password: ssidAuthEnabled && ssidAuthType === 'wpa2-psk' ? ssidPassword : '',
+          ssid_password: ssidAuthEnabled && ssidAuthType !== 'open' ? ssidPassword : '',
         };
       } else if (section === 'lan') {
         payload.data = { lanMode: mode, lanStatus: status, access_vlan: vlan, dhcp_mode: dhcpMode };
@@ -900,7 +1003,14 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
         // Delay refetch to let OLT apply changes (especially for interface eth state)
         await new Promise(r => setTimeout(r, 1500));
         onSuccess();
-        toast.success('Updated!');
+        toast.success('Updated! Auto-syncing OLT...');
+        // Re-invalidate after auto-sync completes (~8s)
+        setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
+          qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
+          qc.invalidateQueries({ queryKey: ['all-onus'] });
+          qc.invalidateQueries({ queryKey: ['dashboard'] });
+        }, 8000);
       } else { toast.error(d.message || 'Failed'); }
     } catch { toast.error('Failed'); }
     setLoading(false);
@@ -1015,11 +1125,18 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
                   <div className="space-y-2">
                     <select value={ssidAuthType} onChange={e => setSsidAuthType(e.target.value)} className="input-field">
                       <option value="wpa2-psk">WPA2-PSK</option>
+                      <option value="wpa-psk">WPA-PSK</option>
+                      <option value="wpa-wpa2-psk">Mixed WPA/WPA2-PSK</option>
                       <option value="open">Open (No Password)</option>
                     </select>
-                    {ssidAuthType === 'wpa2-psk' && (
-                      <input type="password" value={ssidPassword} onChange={e => setSsidPassword(e.target.value)}
-                        placeholder="WiFi Password" className="input-field" />
+                    {ssidAuthType !== 'open' && (
+                      <div className="space-y-1">
+                        <input type="password" value={ssidPassword} onChange={e => setSsidPassword(e.target.value)}
+                          placeholder="WiFi Password" className="input-field" />
+                        {ssidPwFromDb && ssidPassword && (
+                          <p className="text-xs text-tx3 italic">(dari database)</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
@@ -1037,8 +1154,8 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
           {/* VEIP IANA */}
           {section === 'veip' && <div><label className="label-sm mb-1">IANA</label><input type="text" value={iana} onChange={e => setIana(e.target.value)} className="input-field" /></div>}
 
-          {/* Priority */}
-          <div><label className="label-sm mb-1">Priority</label><input type="text" value={priority} onChange={e => setPriority(e.target.value)} className="input-field" /></div>
+          {/* Priority — not shown for WiFi (ZTE C320 doesn't support vlan port wifi priority) */}
+          {section !== 'wifi' && <div><label className="label-sm mb-1">Priority</label><input type="text" value={priority} onChange={e => setPriority(e.target.value)} className="input-field" /></div>}
         </>}
       </div>
       <div className="modal-footer">

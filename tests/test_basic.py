@@ -12,7 +12,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import app, db
-from models import User, Role, Tenant, OLT, SubscriptionPackage, Subscription
+from models import User, Role, OLT
 
 
 @pytest.fixture
@@ -25,16 +25,7 @@ def client():
 
     with app.app_context():
         db.create_all()
-        # Seed minimal data
-        role = Role(name='Admin', permissions='all_olt')
-        db.session.add(role)
-        super_admin = User(
-            username='admin', full_name='Admin', role_id=1,
-            is_super_admin=True
-        )
-        super_admin.set_password('admin123')
-        db.session.add(super_admin)
-        db.session.commit()
+        # seed_initial_data() already ran on import — admin user exists
 
     with app.test_client() as client:
         yield client
@@ -88,22 +79,12 @@ class TestAuthEndpoints:
 class TestPublicEndpoints:
     """Test public API endpoints (no auth required)."""
 
-    def test_public_packages(self, client):
-        """Test public packages endpoint."""
-        with app.app_context():
-            pkg = SubscriptionPackage(
-                name='Test Package', max_olts=5, price=100000,
-                billing_cycle='monthly', duration_days=30, is_active=True
-            )
-            db.session.add(pkg)
-            db.session.commit()
-
-        resp = client.get('/api/public/packages')
+    def test_public_branding(self, client):
+        """Test public branding endpoint."""
+        resp = client.get('/api/public/branding')
         assert resp.status_code == 200
         data = resp.get_json()
-        assert isinstance(data, list)
-        assert len(data) >= 1
-        assert data[0]['name'] == 'Test Package'
+        assert 'nms_name' in data or 'name' in data
 
 
 class TestSecurityHeaders:
@@ -111,7 +92,7 @@ class TestSecurityHeaders:
 
     def test_security_headers(self, client):
         """Verify all security headers are set."""
-        resp = client.get('/api/public/packages')
+        resp = client.get('/api/public/branding')
         assert resp.headers.get('X-Frame-Options') == 'DENY'
         assert resp.headers.get('X-Content-Type-Options') == 'nosniff'
         assert resp.headers.get('Referrer-Policy') == 'strict-origin-when-cross-origin'
@@ -164,21 +145,6 @@ class TestModels:
             user.set_password('mypassword')
             assert user.check_password('mypassword') is True
             assert user.check_password('wrong') is False
-
-    def test_tenant_creation(self):
-        """Test tenant model."""
-        with app.app_context():
-            tenant = Tenant(
-                name='Test Tenant',
-                subdomain='test',
-                status='active',
-                contact_name='Test',
-                contact_phone='123456'
-            )
-            db.session.add(tenant)
-            db.session.commit()
-            assert tenant.id is not None
-            assert tenant.status == 'active'
 
 
 if __name__ == '__main__':

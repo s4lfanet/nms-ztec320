@@ -38,7 +38,7 @@ export const useAuth = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    await api.logout();
     set({ user: null });
+    api.logout().catch(() => {});
   },
 }));

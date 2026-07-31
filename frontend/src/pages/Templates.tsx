@@ -4,6 +4,7 @@ import {
   Blocks, Wifi, Radio, Server, Network, Router,
   Layers, ArrowRight, Check
 } from 'lucide-react';
+import { TutorialBanner } from '../components/TutorialBanner';
 
 interface TemplateInfo {
   id: string;
@@ -125,10 +126,30 @@ export default function Templates() {
           <h1 className="text-xl md:text-2xl font-bold">Templates</h1>
           <p className="text-tx2 text-xs md:text-sm mt-1">ONU configuration templates for automatic provisioning</p>
         </div>
-        <Link to="/dashboard/onus/register" className="btn-primary flex items-center gap-2 text-sm">
-          <ArrowRight size={16} />
-          Register ONU
-        </Link>
+        <div className="flex items-center gap-2">
+          <TutorialBanner
+            title="Panduan Templates"
+            steps={[
+              { title: 'Pilih Template', content: <><p>Pilih template konfigurasi ONU sesuai jenis ONU dan kebutuhan. Klik kartu template untuk melihat detail.</p><p className="text-xs text-tx3 mt-1">Setiap template menampilkan: features, service types, WAN modes, dan SSID support.</p></> },
+              { title: 'Register ONU', content: <><p>Setelah memilih template, klik <strong>Register ONU</strong> untuk lanjut ke Register Wizard dengan template yang sudah dipilih.</p><p className="text-xs text-tx3 mt-1">Template akan auto-fill parameter seperti VLAN, WAN mode, WiFi config, dan TR069 settings.</p></> },
+            ]}
+            tips={
+              <>
+                <strong className="text-tx2">Tips:</strong>
+                <ul className="mt-1 ml-4 space-y-0.5">
+                  <li>Template Bridge cocok untuk ONU yang dikelola router eksternal</li>
+                  <li>Template ZTE Single/Dual/Multi untuk ZTE ONU dengan WiFi</li>
+                  <li>Template Huawei Full untuk Huawei ONU multi-service</li>
+                  <li>Template Fiberhome VEIP untuk Fiberhome ONU dengan TR069</li>
+                </ul>
+              </>
+            }
+          />
+          <Link to="/dashboard/onus/register" className="btn-primary flex items-center gap-2 text-sm">
+            <ArrowRight size={16} />
+            Register ONU
+          </Link>
+        </div>
       </div>
 
       {/* Template Cards */}

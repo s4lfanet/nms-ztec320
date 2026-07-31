@@ -67,20 +67,6 @@ class UserCreate(BaseModel):
     role_id: int
     sidebar_name: Optional[str] = None
 
-class TenantCreate(BaseModel):
-    name: str
-    subdomain: str
-    contact_name: Optional[str] = None
-    contact_email: Optional[str] = None
-    contact_phone: Optional[str] = None
-
-class PackageCreate(BaseModel):
-    name: str
-    max_olts: int
-    price: float
-    billing_cycle: str = "monthly"
-    features: Optional[str] = None
-
 class VLANRename(BaseModel):
     name: str
 
@@ -166,6 +152,66 @@ class AlertRuleCreate(BaseModel):
     rule_type: str
     thresholds: str  # JSON string
 
+class ProvisionUnified(BaseModel):
+    olt_id: int
+    frame: int = 1
+    slot: int = 1
+    port: int
+    onu_id: int
+    serial: str
+    onu_type: str
+    tcont_profile: str
+    services: str  # JSON array of service dicts
+    use_veip: Optional[bool] = None
+    traffic_profile: Optional[str] = None
+    wifi_config: Optional[str] = None  # JSON
+    tr069_config: Optional[str] = None  # JSON
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+class WanServiceEdit(BaseModel):
+    mode: str = "Bridge / ONU Webpage"
+    vlan: Optional[str] = None
+    service_name: Optional[str] = None
+    download_profile: Optional[str] = None
+    upload_profile: Optional[str] = None
+    status: str = "enable"
+    pppoe_username: Optional[str] = None
+    pppoe_password: Optional[str] = None
+    wan_ip_mode: Optional[str] = None
+    vlan_profile: Optional[str] = None
+
+class ONUMove(BaseModel):
+    new_card: int
+    new_pon: int
+    new_oid: int
+
+class SystemConfigUpdate(BaseModel):
+    alert_check_interval: Optional[int] = None
+    maintenance_mode: Optional[bool] = None
+
+class MaintenanceWindow(BaseModel):
+    title: str
+    description: Optional[str] = None
+    start_time: str
+    end_time: str
+
+class RoleCreate(BaseModel):
+    name: str
+    permissions: str  # JSON array
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    password: Optional[str] = None
+
+class BotConfigUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    api_url: Optional[str] = None
+    api_token: Optional[str] = None
+    phone_number: Optional[str] = None
+
 
 # ---------------------------------------------------------------------------
 # Register all Flask API documentation routes
@@ -178,7 +224,7 @@ def register_flask_api_docs(app: FastAPI):
     # AUTH
     # ======================================================================
     @app.post("/api/auth/login", tags=["Auth"], summary="Login",
-              description="Authenticate user. Domain-checked: superadmin on main domain, tenant on subdomain.")
+              description="Authenticate user. Returns user info and session cookie.")
     def auth_login(username: str, password: str):
         """Request body: {username, password}. Returns {user, token} on success."""
         pass
@@ -197,13 +243,8 @@ def register_flask_api_docs(app: FastAPI):
     # DASHBOARD
     # ======================================================================
     @app.get("/api/dashboard", tags=["Dashboard"], summary="Dashboard data",
-             description="Returns OLT list with stats (online/offline ONU counts, temperature, uptime).")
+             description="Returns OLT list with stats (online/offline ONU counts, temperature, uptime). Cached 15s.")
     def dashboard():
-        pass
-
-    @app.get("/api/dashboard/live-traffic", tags=["Dashboard"], summary="Live uplink traffic",
-             description="Returns real-time uplink traffic rates for all OLTs.")
-    def dashboard_live_traffic():
         pass
 
     # ======================================================================
@@ -237,6 +278,11 @@ def register_flask_api_docs(app: FastAPI):
     def sync_olt(olt_id: int):
         pass
 
+    @app.post("/api/olt/sync-all", tags=["OLT Management"], summary="Sync all OLTs",
+              description="Start background sync for all OLTs sequentially.")
+    def sync_all():
+        pass
+
     @app.get("/api/olt/{olt_id}/sync-status", tags=["OLT Management"], summary="Get sync progress",
              description="Poll sync progress. Returns {progress: 0-100, status, message}.")
     def sync_status(olt_id: int):
@@ -245,6 +291,46 @@ def register_flask_api_docs(app: FastAPI):
     @app.post("/api/olt/{olt_id}/test-connection", tags=["OLT Management"], summary="Test connection",
               description="Test SNMP and Telnet connectivity to the OLT.")
     def test_connection(olt_id: int):
+        pass
+
+    @app.post("/api/olt/test-connection", tags=["OLT Management"], summary="Test connection (body-based)",
+              description="Test SNMP/Telnet connectivity using OLT config from request body.")
+    def test_connection_body():
+        pass
+
+    @app.post("/api/olt/{olt_id}/discover-slots", tags=["OLT Management"], summary="Discover slots",
+              description="Real-time slot discovery via CLI 'show card' — no full sync needed.")
+    def discover_slots(olt_id: int):
+        pass
+
+    @app.get("/api/olt/{olt_id}/chassis", tags=["OLT Management"], summary="Get chassis info",
+             description="Returns chassis details: slots, cards, fan, PSU, temperature.")
+    def get_chassis(olt_id: int):
+        pass
+
+    @app.get("/api/olt/{olt_id}/rack", tags=["OLT Management"], summary="Get rack diagram data",
+             description="Returns normalized rack data for vendor-specific rack diagram rendering.")
+    def get_rack(olt_id: int):
+        pass
+
+    @app.post("/api/olt/{olt_id}/write-config", tags=["OLT Management"], summary="Save OLT config",
+              description="Save OLT running-config to startup-config (write command). Requires 'settings_ip_olts'.")
+    def olt_write_config(olt_id: int):
+        pass
+
+    @app.post("/api/olt/{olt_id}/backup-config", tags=["OLT Management"], summary="Backup OLT config",
+              description="Backup OLT running configuration via Telnet. Requires 'settings_ip_olts'.")
+    def backup_config(olt_id: int):
+        pass
+
+    @app.post("/api/olt/{olt_id}/refresh-signal", tags=["OLT Management"], summary="Refresh ONU signals",
+              description="Fast SNMP-only refresh of RX/TX power and status for all ONUs on this OLT.")
+    def refresh_signal(olt_id: int):
+        pass
+
+    @app.get("/api/olt/{olt_id}/pon-structure", tags=["OLT Management"], summary="Get PON structure",
+             description="Return card/PON structure for Move ONU modal dropdowns.")
+    def pon_structure(olt_id: int):
         pass
 
     # ======================================================================
@@ -269,6 +355,11 @@ def register_flask_api_docs(app: FastAPI):
     def onu_live_detail(onu_id: int):
         pass
 
+    @app.get("/api/onu/{onu_id}/live-info", tags=["ONU Management"], summary="ONU live info (Telnet)",
+             description="Fetch live ONU data from OLT: detail-info, remote-onu equip, running-config.")
+    def onu_live_info(onu_id: int):
+        pass
+
     @app.get("/api/onu/{onu_id}/history", tags=["ONU Management"], summary="ONU event history")
     def onu_history(onu_id: int):
         pass
@@ -287,14 +378,29 @@ def register_flask_api_docs(app: FastAPI):
     def update_onu(onu_id: int, body: ONUUpdate):
         pass
 
+    @app.post("/api/onu/{onu_id}/update-field", tags=["ONU Management"], summary="Update single ONU field",
+              description="Update a single ONU field with confirmation message. Inline editing support.")
+    def update_onu_field(onu_id: int):
+        pass
+
     @app.post("/api/onu/{onu_id}/action", tags=["ONU Management"], summary="ONU action",
               description="Execute ONU action: reboot, reset, delete, clear-config, disable, enable, restore-factory, restore-wifi.")
     def onu_action(onu_id: int, body: ONUAction):
         pass
 
+    @app.post("/api/onu/{onu_id}/delete", tags=["ONU Management"], summary="Delete ONU",
+              description="Deregister ONU from OLT and delete from DB. Requires 'delete_onu' permission.")
+    def onu_delete(onu_id: int):
+        pass
+
     @app.post("/api/onu/{onu_id}/get-status", tags=["ONU Management"], summary="Full Get Status",
               description="Collect full ONU status: interface info, optical power, history, MAC addresses.")
     def onu_get_status(onu_id: int):
+        pass
+
+    @app.post("/api/onu/{onu_id}/refresh-status", tags=["ONU Management"], summary="Refresh ONU status",
+              description="Re-fetch ONU status from OLT and update DB.")
+    def onu_refresh_status(onu_id: int):
         pass
 
     @app.post("/api/onu/{onu_id}/resync-config", tags=["ONU Management"], summary="Re-collect ONU config",
@@ -308,8 +414,13 @@ def register_flask_api_docs(app: FastAPI):
         pass
 
     @app.post("/api/onu/{onu_id}/migrate", tags=["ONU Management"], summary="Migrate ONU",
-              description="Migrate single ONU to different PON port.")
+              description="Migrate single ONU to different PON port: deregister old, register new, update DB.")
     def onu_migrate(onu_id: int):
+        pass
+
+    @app.post("/api/onu/{onu_id}/move", tags=["ONU Management"], summary="Move ONU (DB only)",
+              description="Move ONU to different card/PON/ID in DB only. Sync will reconcile with OLT.")
+    def onu_move(onu_id: int, body: ONUMove):
         pass
 
     @app.post("/api/olt/{olt_id}/migrate-batch", tags=["ONU Management"], summary="Batch migrate ONUs",
@@ -317,26 +428,80 @@ def register_flask_api_docs(app: FastAPI):
     def onu_migrate_batch(olt_id: int):
         pass
 
+    @app.post("/api/onu/{onu_id}/section-config", tags=["ONU Management"], summary="Update ONU section config",
+              description="Update specific ONU config section (interface or pon-onu-mng) via Telnet.")
+    def onu_section_config(onu_id: int):
+        pass
+
+    @app.post("/api/onu/{onu_id}/wan-service/{svc_idx}", tags=["ONU Management"], summary="Edit WAN service",
+              description="Edit WAN service via Telnet. Modes: Bridge, PPPoE NAT, Wan-IP. Safe-replace with 63869 error handling.")
+    def onu_wan_service_edit(onu_id: int, svc_idx: int, body: WanServiceEdit):
+        pass
+
+    @app.get("/api/onu/lookup/{olt_id}/{frame}/{port}/{onu_num}", tags=["ONU Management"], summary="Lookup ONU by R-Config path",
+             description="Look up ONU DB id by R-Config URL path components.")
+    def onu_lookup(olt_id: int, frame: int, port: int, onu_num: int):
+        pass
+
     # ======================================================================
-    # ONU REGISTRATION
+    # ONU REGISTRATION & PROVISIONING
     # ======================================================================
     @app.get("/api/olt/{olt_id}/unregistered-onus", tags=["ONU Registration"], summary="Scan unregistered ONUs",
              description="Discover unconfigured ONUs from OLT via Telnet (show pon onu uncfg).")
     def scan_unregistered(olt_id: int):
         pass
 
+    @app.post("/api/scan-unconfigured", tags=["ONU Registration"], summary="Scan unconfigured ONUs (body-based)",
+              description="Scan for unconfigured ONUs on specified OLT.")
+    def scan_unconfigured():
+        pass
+
+    @app.get("/api/unregistered-count", tags=["ONU Registration"], summary="Count unregistered ONUs",
+             description="Returns total count of unregistered ONUs across all OLTs for badge display.")
+    def unregistered_count():
+        pass
+
     @app.get("/api/olt/{olt_id}/next-onu-id", tags=["ONU Registration"], summary="Get next available ONU ID")
     def next_onu_id(olt_id: int):
         pass
 
-    @app.post("/api/pre-register", tags=["ONU Registration"], summary="Register new ONU",
-              description="Pre-register ONU on OLT with template-based provisioning.")
+    @app.post("/api/pre-register", tags=["ONU Registration"], summary="Register new ONU (template-based)",
+              description="Pre-register ONU on ZTE OLT with template-based provisioning. Supports ZTE/Huawei/Fiberhome ONU templates.")
     def pre_register(body: ONURegister):
+        pass
+
+    @app.post("/api/provision/unified", tags=["ONU Registration"], summary="Unified ONU provisioning",
+              description="Unified ONU registration with multi-service support. Works for all vendors. Safe-replace mode prevents error 63869.")
+    def provision_unified(body: ProvisionUnified):
+        pass
+
+    @app.post("/api/provision/ont", tags=["ONU Registration"], summary="Provision ONT (legacy)",
+              description="Legacy ONT provisioning endpoint. Use /api/provision/unified for new implementations.")
+    def provision_ont():
+        pass
+
+    @app.get("/api/provision/vendors", tags=["ONU Registration"], summary="List supported vendors",
+             description="Returns list of vendors supported by the adapter registry.")
+    def provision_vendors():
+        pass
+
+    @app.get("/api/provision/status/{olt_id}/{frame}/{slot}/{port}/{onu_id}", tags=["ONU Registration"], summary="Check provision status",
+             description="Check provisioning status of a specific ONU after registration.")
+    def provision_status(olt_id: int, frame: int, slot: int, port: int, onu_id: int):
         pass
 
     # ======================================================================
     # UPLINK PORT MANAGEMENT
     # ======================================================================
+    @app.get("/api/olt/{olt_id}/uplinks", tags=["Uplink Ports"], summary="List uplink ports")
+    def list_uplinks(olt_id: int):
+        pass
+
+    @app.get("/api/olt/{olt_id}/uplinks/live-traffic", tags=["Uplink Ports"], summary="Live uplink traffic",
+             description="Real-time traffic rates for all uplink ports via SNMP double-read. Cached 10s.")
+    def uplinks_live_traffic(olt_id: int):
+        pass
+
     @app.post("/api/olt/{olt_id}/uplink/{uplink_id}/toggle", tags=["Uplink Ports"], summary="Enable/Disable uplink")
     def toggle_uplink(olt_id: int, uplink_id: int):
         pass
@@ -381,6 +546,15 @@ def register_flask_api_docs(app: FastAPI):
     def pon_stats(olt_id: int, slot: int):
         pass
 
+    @app.get("/api/olt/{olt_id}/pon-port/{port_id}/onus", tags=["PON Ports"], summary="List ONUs on PON port")
+    def pon_port_onus(olt_id: int, port_id: int):
+        pass
+
+    @app.get("/api/olt/{olt_id}/pon-port/{port_id}/optical", tags=["PON Ports"], summary="PON port optical info",
+             description="Returns optical power levels and TX/RX stats for a PON port.")
+    def pon_port_optical(olt_id: int, port_id: int):
+        pass
+
     @app.post("/api/olt/{olt_id}/pon-port/{port_id}/toggle", tags=["PON Ports"], summary="Enable/Disable PON port")
     def toggle_pon(olt_id: int, port_id: int):
         pass
@@ -392,6 +566,19 @@ def register_flask_api_docs(app: FastAPI):
     # ======================================================================
     # VLAN MANAGEMENT
     # ======================================================================
+    @app.get("/api/olt/{olt_id}/vlans", tags=["VLANs"], summary="List VLANs (from OLT)")
+    def list_vlans(olt_id: int):
+        pass
+
+    @app.get("/api/olt/{olt_id}/vlans/db", tags=["VLANs"], summary="List VLANs (from DB)",
+             description="Fast VLAN list from database without polling OLT.")
+    def list_vlans_db(olt_id: int):
+        pass
+
+    @app.post("/api/olt/{olt_id}/vlan/create", tags=["VLANs"], summary="Create VLAN")
+    def create_vlan(olt_id: int):
+        pass
+
     @app.post("/api/olt/{olt_id}/vlan/{vlan_id}/rename", tags=["VLANs"], summary="Rename VLAN")
     def rename_vlan(olt_id: int, vlan_id: int, body: VLANRename):
         pass
@@ -403,6 +590,20 @@ def register_flask_api_docs(app: FastAPI):
     # ======================================================================
     # ONU TYPE MANAGEMENT
     # ======================================================================
+    @app.get("/api/onu-types", tags=["ONU Types"], summary="List all ONU types")
+    def list_onu_types():
+        pass
+
+    @app.get("/api/olt/{olt_id}/onu-types", tags=["ONU Types"], summary="List ONU types for OLT",
+             description="Get ONU types — try Telnet first, fallback to DB.")
+    def olt_onu_types(olt_id: int):
+        pass
+
+    @app.get("/api/olt/{olt_id}/onu-types-full", tags=["ONU Types"], summary="Full ONU types from DB",
+             description="Get full ONU types from DB with all fields for SPA config page.")
+    def olt_onu_types_full(olt_id: int):
+        pass
+
     @app.post("/api/olt/{olt_id}/onu-type/add", tags=["ONU Types"], summary="Add ONU type",
               description="Create new ONU type with max TCONT/GEM/switch/iphost/veip limits.")
     def add_onu_type(olt_id: int, body: ONUTypeAdd):
@@ -415,6 +616,15 @@ def register_flask_api_docs(app: FastAPI):
     # ======================================================================
     # SPEED PROFILES (TCONT / Traffic)
     # ======================================================================
+    @app.get("/api/olt/{olt_id}/speed-profiles", tags=["Speed Profiles"], summary="List speed profiles")
+    def list_speed_profiles(olt_id: int):
+        pass
+
+    @app.get("/api/olt/{olt_id}/speed-profiles-full", tags=["Speed Profiles"], summary="Full speed profiles from DB",
+             description="Get all TCONT and Traffic profiles from DB with full fields.")
+    def speed_profiles_full(olt_id: int):
+        pass
+
     @app.post("/api/olt/{olt_id}/tcont/add", tags=["Speed Profiles"], summary="Add TCONT profile")
     def add_tcont(olt_id: int, body: TCONTAdd):
         pass
@@ -434,12 +644,50 @@ def register_flask_api_docs(app: FastAPI):
     # ======================================================================
     # WAN IP PROFILES
     # ======================================================================
+    @app.get("/api/olt/{olt_id}/wan-ip-profiles", tags=["WAN IP Profiles"], summary="List WAN IP profiles")
+    def list_wan_ip_profiles(olt_id: int):
+        pass
+
     @app.post("/api/olt/{olt_id}/wan-ip/add", tags=["WAN IP Profiles"], summary="Add WAN IP profile")
     def add_wan_ip(olt_id: int, body: WANIPAdd):
         pass
 
     @app.post("/api/olt/{olt_id}/wan-ip/{profile_id}/delete", tags=["WAN IP Profiles"], summary="Delete WAN IP profile")
     def delete_wan_ip(olt_id: int, profile_id: int):
+        pass
+
+    # ======================================================================
+    # TRAFFIC MONITORING
+    # ======================================================================
+    @app.get("/api/traffic/grid", tags=["Traffic"], summary="Traffic grid (live/history)",
+             description="Returns traffic data for grid display. period=live uses SNMP double-read with 10s cache. Other periods use DB traffic_logs. Fallback to last DB values if OLT unreachable.")
+    def traffic_grid():
+        pass
+
+    @app.get("/api/traffic/live", tags=["Traffic"], summary="Live single-port traffic",
+             description="Real-time single-port traffic rate via SNMP double-read. Cached 5s. Fallback to last DB value if OLT unreachable.")
+    def traffic_live():
+        pass
+
+    @app.get("/api/traffic/history", tags=["Traffic"], summary="Traffic history chart",
+             description="Historical traffic data for chart display. Periods: 1h, 6h, 1d, 7d, 30d.")
+    def traffic_history():
+        pass
+
+    @app.get("/api/traffic/meta", tags=["Traffic"], summary="Traffic metadata",
+             description="Returns available periods, port lists, and traffic stats metadata.")
+    def traffic_meta():
+        pass
+
+    # ======================================================================
+    # UPTIME MONITORING
+    # ======================================================================
+    @app.get("/api/uptime/olt/{olt_id}", tags=["Uptime"], summary="OLT uptime history")
+    def olt_uptime(olt_id: int):
+        pass
+
+    @app.get("/api/uptime/onu/{onu_id}", tags=["Uptime"], summary="ONU uptime history")
+    def onu_uptime(onu_id: int):
         pass
 
     # ======================================================================
@@ -450,6 +698,30 @@ def register_flask_api_docs(app: FastAPI):
     def ftth_tree():
         pass
 
+    @app.get("/api/ftth/map", tags=["FTTH Infrastructure"], summary="FTTH map data",
+             description="Returns all FTTH nodes with coordinates for map rendering.")
+    def ftth_map():
+        pass
+
+    @app.get("/api/ftth/available-onus", tags=["FTTH Infrastructure"], summary="Available ONUs for ODP assignment",
+             description="List ONUs not yet assigned to ODP ports.")
+    def ftth_available_onus():
+        pass
+
+    @app.get("/api/ftth/export", tags=["FTTH Infrastructure"], summary="Export FTTH data",
+             description="Export FTTH tree as CSV/JSON for external use.")
+    def ftth_export():
+        pass
+
+    @app.post("/api/ftth/import", tags=["FTTH Infrastructure"], summary="Import FTTH data",
+              description="Bulk import FTTH nodes from CSV/JSON.")
+    def ftth_import():
+        pass
+
+    @app.get("/api/ftth/otb", tags=["FTTH Infrastructure"], summary="List OTBs")
+    def list_otb():
+        pass
+
     @app.post("/api/ftth/otb", tags=["FTTH Infrastructure"], summary="Create OTB")
     def create_otb(body: FTTHNode):
         pass
@@ -458,12 +730,48 @@ def register_flask_api_docs(app: FastAPI):
     def create_odc(body: FTTHNode):
         pass
 
+    @app.get("/api/ftth/odc", tags=["FTTH Infrastructure"], summary="List ODCs")
+    def list_odc():
+        pass
+
     @app.post("/api/ftth/odp", tags=["FTTH Infrastructure"], summary="Create ODP")
     def create_odp(body: FTTHNode):
         pass
 
+    @app.get("/api/ftth/odp", tags=["FTTH Infrastructure"], summary="List ODPs")
+    def list_odp():
+        pass
+
+    @app.get("/api/ftth/odp/{odp_id}/ports", tags=["FTTH Infrastructure"], summary="List ODP ports")
+    def list_odp_ports(odp_id: int):
+        pass
+
     @app.post("/api/ftth/odp-port", tags=["FTTH Infrastructure"], summary="Create ODP port")
     def create_odp_port():
+        pass
+
+    @app.put("/api/ftth/odp-port/{port_id}", tags=["FTTH Infrastructure"], summary="Update ODP port")
+    def update_odp_port(port_id: int):
+        pass
+
+    @app.delete("/api/ftth/odp-port/{port_id}", tags=["FTTH Infrastructure"], summary="Delete ODP port")
+    def delete_odp_port(port_id: int):
+        pass
+
+    @app.get("/api/ftth/pon", tags=["FTTH Infrastructure"], summary="List PON connections")
+    def list_ftth_pon():
+        pass
+
+    @app.post("/api/ftth/pon", tags=["FTTH Infrastructure"], summary="Create PON connection")
+    def create_ftth_pon():
+        pass
+
+    @app.put("/api/ftth/pon/{pon_id}", tags=["FTTH Infrastructure"], summary="Update PON connection")
+    def update_ftth_pon(pon_id: int):
+        pass
+
+    @app.delete("/api/ftth/pon/{pon_id}", tags=["FTTH Infrastructure"], summary="Delete PON connection")
+    def delete_ftth_pon(pon_id: int):
         pass
 
     @app.put("/api/ftth/otb/{id}", tags=["FTTH Infrastructure"], summary="Update OTB")
@@ -512,20 +820,20 @@ def register_flask_api_docs(app: FastAPI):
     # ======================================================================
     # TR069 PROFILES
     # ======================================================================
-    @app.get("/api/tr069-profiles", tags=["TR069"], summary="List TR069 profiles")
+    @app.get("/api/tr069", tags=["TR069"], summary="List TR069 profiles")
     def list_tr069():
         pass
 
-    @app.post("/api/tr069-profile", tags=["TR069"], summary="Create TR069 profile")
+    @app.post("/api/tr069", tags=["TR069"], summary="Create TR069 profile")
     def create_tr069(body: TR069Create):
         pass
 
-    @app.put("/api/tr069-profile/{id}", tags=["TR069"], summary="Update TR069 profile")
-    def update_tr069(id: int):
+    @app.put("/api/tr069/{pid}", tags=["TR069"], summary="Update TR069 profile")
+    def update_tr069(pid: int):
         pass
 
-    @app.delete("/api/tr069-profile/{id}", tags=["TR069"], summary="Delete TR069 profile")
-    def delete_tr069(id: int):
+    @app.delete("/api/tr069/{pid}", tags=["TR069"], summary="Delete TR069 profile")
+    def delete_tr069(pid: int):
         pass
 
     # ======================================================================
@@ -540,17 +848,43 @@ def register_flask_api_docs(app: FastAPI):
     def create_user(body: UserCreate):
         pass
 
-    @app.put("/api/user/{id}", tags=["Users"], summary="Update user")
-    def update_user(id: int):
+    @app.get("/api/user/{uid}", tags=["Users"], summary="Get user detail")
+    def get_user(uid: int):
         pass
 
-    @app.delete("/api/user/{id}", tags=["Users"], summary="Delete user")
-    def delete_user(id: int):
+    @app.put("/api/user/{uid}", tags=["Users"], summary="Update user")
+    def update_user(uid: int):
+        pass
+
+    @app.delete("/api/user/{uid}", tags=["Users"], summary="Delete user")
+    def delete_user(uid: int):
         pass
 
     @app.get("/api/technicians", tags=["Users"], summary="List technicians",
              description="List users with technician role for assignment dropdowns.")
     def list_technicians():
+        pass
+
+    @app.get("/api/permissions", tags=["Users"], summary="List all permissions",
+             description="Returns all available system permissions for role assignment.")
+    def list_permissions():
+        pass
+
+    @app.post("/api/role", tags=["Users"], summary="Create role")
+    def create_role(body: RoleCreate):
+        pass
+
+    @app.put("/api/role/{rid}", tags=["Users"], summary="Update role")
+    def update_role(rid: int):
+        pass
+
+    @app.delete("/api/role/{rid}", tags=["Users"], summary="Delete role")
+    def delete_role(rid: int):
+        pass
+
+    @app.post("/api/profile", tags=["Users"], summary="Update own profile",
+              description="Update current user's own profile (name, email, phone, password).")
+    def update_profile(body: ProfileUpdate):
         pass
 
     # ======================================================================
@@ -580,6 +914,10 @@ def register_flask_api_docs(app: FastAPI):
     def save_rx_colors():
         pass
 
+    @app.post("/api/customization/reset", tags=["Customization"], summary="Reset customization to defaults")
+    def reset_customization():
+        pass
+
     # ======================================================================
     # NOTIFICATIONS
     # ======================================================================
@@ -587,20 +925,36 @@ def register_flask_api_docs(app: FastAPI):
     def list_notifications():
         pass
 
-    @app.post("/api/notifications/mark-all-read", tags=["Notifications"], summary="Mark all as read")
-    def mark_all_read():
+    @app.post("/api/notifications/{notif_id}/read", tags=["Notifications"], summary="Mark notification as read")
+    def read_notification(notif_id: int):
         pass
 
-    @app.post("/api/notifications/clear-read", tags=["Notifications"], summary="Clear read notifications")
+    @app.post("/api/notifications/{notif_id}/acknowledge", tags=["Notifications"], summary="Acknowledge notification")
+    def acknowledge_notification(notif_id: int):
+        pass
+
+    @app.delete("/api/notifications/{notif_id}", tags=["Notifications"], summary="Delete notification")
+    def delete_notification(notif_id: int):
+        pass
+
+    @app.post("/api/notifications/read-all", tags=["Notifications"], summary="Mark all as read")
+    def read_all():
+        pass
+
+    @app.post("/api/notifications/acknowledge-all", tags=["Notifications"], summary="Acknowledge all")
+    def acknowledge_all():
+        pass
+
+    @app.post("/api/notifications/clear", tags=["Notifications"], summary="Clear read notifications")
     def clear_read():
         pass
 
     # ======================================================================
     # ACTION LOGS
     # ======================================================================
-    @app.get("/api/logs", tags=["Action Logs"], summary="List action logs",
+    @app.get("/api/action-logs", tags=["Action Logs"], summary="List action logs",
              description="Audit trail of all user actions. Requires 'manage_users' permission.")
-    def list_logs():
+    def list_action_logs():
         pass
 
     # ======================================================================
@@ -619,18 +973,40 @@ def register_flask_api_docs(app: FastAPI):
         pass
 
     # ======================================================================
-    # SUBSCRIPTION MANAGEMENT (tenant)
+    # SYSTEM CONFIG
     # ======================================================================
-    @app.get("/api/subscription", tags=["Subscription"], summary="Get current subscription")
-    def get_subscription():
+    @app.get("/api/system-config", tags=["System Config"], summary="Get system config",
+             description="Returns system-wide configuration: alert_check_interval, maintenance_mode, etc.")
+    def get_system_config():
         pass
 
-    @app.post("/api/subscription/renew", tags=["Subscription"], summary="Create renewal payment")
-    def renew_subscription():
+    @app.put("/api/system-config", tags=["System Config"], summary="Update system config",
+             description="Update system-wide configuration. Super admin only.")
+    def update_system_config(body: SystemConfigUpdate):
         pass
 
-    @app.get("/api/subscription/invoices", tags=["Subscription"], summary="List invoices")
-    def list_invoices():
+    # ======================================================================
+    # MAINTENANCE WINDOWS
+    # ======================================================================
+    @app.get("/api/maintenance", tags=["Maintenance"], summary="List maintenance windows")
+    def list_maintenance():
+        pass
+
+    @app.post("/api/maintenance", tags=["Maintenance"], summary="Create maintenance window",
+              description="Schedule maintenance window to suppress alerts during planned downtime.")
+    def create_maintenance(body: MaintenanceWindow):
+        pass
+
+    @app.delete("/api/maintenance/{window_id}", tags=["Maintenance"], summary="Delete maintenance window")
+    def delete_maintenance(window_id: int):
+        pass
+
+    # ======================================================================
+    # METRICS
+    # ======================================================================
+    @app.get("/api/metrics/history", tags=["Metrics"], summary="Metrics history",
+             description="Historical system metrics: CPU, RAM, OLT response times, ONU counts over time.")
+    def metrics_history():
         pass
 
     # ======================================================================
@@ -641,95 +1017,21 @@ def register_flask_api_docs(app: FastAPI):
     def branding():
         pass
 
-    @app.get("/api/public/tenant-check", tags=["Public"], summary="Validate tenant subdomain",
-             description="Check if subdomain matches an active tenant. Returns 404 if not found, 403 if suspended.")
-    def tenant_check():
-        pass
-
-    @app.get("/api/public/packages", tags=["Public"], summary="List subscription packages")
-    def list_packages():
-        pass
-
-    @app.post("/api/public/register", tags=["Public"], summary="Register new tenant",
-              description="Create tenant + admin user + trial subscription + Cloudflare subdomain + WA notification.")
-    def register():
-        pass
-
-    @app.post("/api/public/register/pay", tags=["Public"], summary="Create registration payment",
-              description="Create Duitku payment for tenant registration.")
-    def register_pay():
-        pass
-
-    @app.get("/api/public/registration-status/{order_id}", tags=["Public"], summary="Poll registration payment status")
-    def registration_status(order_id: str):
-        pass
-
-    @app.post("/api/public/forgot-password", tags=["Public"], summary="Forgot password",
-              description="Send new password via WhatsApp to tenant's registered phone.")
-    def forgot_password():
-        pass
-
     # ======================================================================
-    # SUPERADMIN ENDPOINTS
+    # WHATSAPP BOT CONFIG
     # ======================================================================
-    @app.get("/api/admin/packages", tags=["Superadmin"], summary="List all packages")
-    def admin_packages():
+    @app.get("/api/bot-config/whatsapp-native/status", tags=["WhatsApp Bot"], summary="Get WA bot status")
+    def wa_bot_status():
         pass
 
-    @app.post("/api/admin/package", tags=["Superadmin"], summary="Create package")
-    def admin_create_package(body: PackageCreate):
+    @app.post("/api/bot-config/whatsapp-native/start", tags=["WhatsApp Bot"], summary="Start WA bot")
+    def wa_bot_start():
         pass
 
-    @app.put("/api/admin/package/{id}", tags=["Superadmin"], summary="Update package")
-    def admin_update_package(id: int):
+    @app.post("/api/bot-config/whatsapp-native/stop", tags=["WhatsApp Bot"], summary="Stop WA bot")
+    def wa_bot_stop():
         pass
 
-    @app.delete("/api/admin/package/{id}", tags=["Superadmin"], summary="Delete package")
-    def admin_delete_package(id: int):
-        pass
-
-    @app.get("/api/admin/tenants", tags=["Superadmin"], summary="List all tenants")
-    def admin_tenants():
-        pass
-
-    @app.post("/api/admin/tenant", tags=["Superadmin"], summary="Create tenant")
-    def admin_create_tenant(body: TenantCreate):
-        pass
-
-    @app.put("/api/admin/tenant/{id}", tags=["Superadmin"], summary="Update tenant")
-    def admin_update_tenant(id: int):
-        pass
-
-    @app.delete("/api/admin/tenant/{id}", tags=["Superadmin"], summary="Delete tenant",
-                description="Cascading delete + Cloudflare DNS/ingress cleanup.")
-    def admin_delete_tenant(id: int):
-        pass
-
-    @app.get("/api/admin/subscriptions", tags=["Superadmin"], summary="List all subscriptions")
-    def admin_subscriptions():
-        pass
-
-    @app.post("/api/admin/subscription/{id}/renew", tags=["Superadmin"], summary="Renew subscription")
-    def admin_renew_subscription(id: int):
-        pass
-
-    @app.get("/api/admin/invoices", tags=["Superadmin"], summary="List invoices")
-    def admin_invoices():
-        pass
-
-    @app.get("/api/admin/notifications", tags=["Superadmin"], summary="List subscription notifications")
-    def admin_notifications():
-        pass
-
-    # ======================================================================
-    # PAYMENT CALLBACK
-    # ======================================================================
-    @app.post("/api/payment/callback", tags=["Payment"], summary="Duitku payment callback",
-              description="Duitku callback handler. Auto-activates tenant on success.")
-    def payment_callback():
-        pass
-
-    @app.get("/api/payment/return", tags=["Payment"], summary="Duitku return redirect",
-             description="Redirect after payment. REG → payment-result, REN → dashboard.")
-    def payment_return():
+    @app.post("/api/bot-config/whatsapp-native/test", tags=["WhatsApp Bot"], summary="Test WA bot")
+    def wa_bot_test():
         pass

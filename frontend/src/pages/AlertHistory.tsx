@@ -6,6 +6,7 @@ import {
   Server, Activity, Cpu, ChevronLeft, ChevronRight,
   Filter, Clock, CheckCircle2, Info
 } from 'lucide-react';
+import { TutorialBanner } from '../components/TutorialBanner';
 
 interface AlertHistoryItem {
   id: number;
@@ -61,9 +62,27 @@ export function AlertHistory() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold">Alert History</h1>
-        <p className="text-tx2 text-xs md:text-sm mt-1">Riwayat semua alert yang terdeteksi oleh sistem monitoring</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold">Alert History</h1>
+          <p className="text-tx2 text-xs md:text-sm mt-1">Riwayat semua alert yang terdeteksi oleh sistem monitoring</p>
+        </div>
+        <TutorialBanner
+          title="Panduan Alert History"
+          steps={[
+            { title: 'Filter Alert', content: <><p>Filter alert by type: ONU Offline, DyingGasp, LOS, RX Critical, OLT Offline, OLT High Temp, OLT CPU High.</p><p className="text-xs text-tx3 mt-1">Klik filter button untuk toggle filter. "All" menampilkan semua alert type.</p></> },
+            { title: 'Alert Table', content: <><p>Tabel menampilkan: alert type, OLT, ONU info, last value, timestamp, dan status (resolved/active).</p><p className="text-xs text-tx3 mt-1">Server-side pagination — 30 entries per halaman.</p></> },
+          ]}
+          tips={
+            <>
+              <strong className="text-tx2">Tips:</strong>
+              <ul className="mt-1 ml-4 space-y-0.5">
+                <li>Alert auto-resolved saat ONU/OLT kembali online</li>
+                <li>Notifikasi dikirim saat alert pertama kali terdeteksi</li>
+              </ul>
+            </>
+          }
+        />
       </div>
 
       {/* Filter bar */}

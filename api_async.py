@@ -24,22 +24,22 @@ from pydantic import BaseModel
 # ---------------------------------------------------------------------------
 fastapi_app = FastAPI(
     title="Salfanet NMS — Complete API Documentation",
-    description="""**Salfanet NMS** — Multi-tenant OLT Management System for FTTH networks.
+    description="""**Salfanet NMS** — OLT Management System for FTTH networks.
 
-## For External Developers / Tenant Frontend
+## For External Developers
 
 If you're building your own frontend or integrating with Salfanet NMS, use this API reference.
 
 ### Authentication Flow
 ```
-1. POST /api/auth/login  →  {username, password}  →  Set-Cookie: nms-tenant-session
+1. POST /api/auth/login  →  {username, password}  →  Set-Cookie: session
 2. All subsequent requests use the session cookie automatically
 3. POST /api/auth/logout  →  Clear session
 ```
 
 ### Important Notes
-- **Base URL**: `https://{your-subdomain}.salfa.my.id/api/...`
-- **Session cookie**: `nms-tenant-session` (host-only, auto-sent by browser)
+- **Base URL**: `http://your-server:5000/api/...`
+- **Session cookie**: auto-sent by browser
 - **CORS**: All origins allowed for API endpoints
 - **Pagination**: `/api/all-onus?page=1&page_size=50&search=&sort_by=name&sort_dir=asc`
 - **Error format**: `{\"error\": \"message\"}` with appropriate HTTP status code
@@ -48,9 +48,6 @@ If you're building your own frontend or integrating with Salfanet NMS, use this 
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/public/branding` | NMS brand name, base_url |
-| `GET /api/public/tenant-check` | Validate tenant subdomain |
-| `GET /api/public/packages` | List subscription packages |
-| `POST /api/public/register` | Register new tenant |
 
 ### WebSocket (Real-time)
 ```
@@ -88,10 +85,8 @@ Message format: `{\"event\": \"name\", \"data\": {...}, \"ts\": 1234567890.123}`
 | **Customization** | Columns, signal filter, RX colors |
 | **Notifications** | Alert notifications |
 | **Alerts** | Alert rules |
-| **Subscription** | Tenant subscription management |
-| **Public** | No-auth endpoints (branding, register) |
-| **Superadmin** | Platform admin (tenants, packages) |
-| **Payment** | Duitku payment callback |
+| **Public** | No-auth endpoints (branding) |
+| **WhatsApp Bot** | WA native gateway config |
 
 ## Base URLs
 - **Flask API**: `http://host:5000/api/...`

@@ -53,3 +53,10 @@ export function timeAgo(dateStr: string | null): string {
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
 }
+
+/**
+ * Format serial number for display (ZTE only — returns as-is).
+ */
+export function formatSn(sn: string): string {
+  return sn || '-';
+}

@@ -75,12 +75,12 @@ interface ChassisData {
 
 function uplinkPortColor(port: ChassisPort) {
   if (port.isEnabled === false)
-    return { bg: '#111827', border: '#475569', dot: '#64748b', text: '#cbd5e1', state: 'DIS' };
+    return { bg: 'var(--bg-glass)', border: 'var(--border-hover)', dot: 'var(--text-3)', text: 'var(--text-2)', state: 'DIS' };
   if (port.isEnabled && port.isLinked)
     return { bg: '#052e16', border: '#16a34a', dot: '#4ade80', text: '#dcfce7', state: 'UP' };
   if (port.isEnabled)
     return { bg: '#451a03', border: '#f59e0b', dot: '#fbbf24', text: '#fde68a', state: 'DOWN' };
-  return { bg: '#0f172a', border: '#334155', dot: '#475569', text: '#94a3b8', state: 'UNK' };
+  return { bg: 'var(--bg-surface)', border: 'var(--border-color)', dot: 'var(--text-3)', text: 'var(--text-3)', state: 'UNK' };
 }
 
 function ponPortTooltip(slot: ChassisSlot, port: ChassisPort): string {
@@ -162,8 +162,9 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-sm mx-4 rounded-xl border shadow-2xl"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="modal-overlay" />
+      <div className="relative w-full max-w-sm mx-4 rounded-xl border shadow-2xl"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-hover)' }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border-color)' }}>
@@ -285,7 +286,7 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
   const isLinked = port.isLinked === true;
 
   const statusColor = !isEnabled
-    ? { bg: 'var(--bg-surface)', border: '#475569', dot: 'bg-gray-500', label: 'Disabled', text: 'text-tx2' }
+    ? { bg: 'var(--bg-surface)', border: 'var(--border-hover)', dot: 'bg-tx3', label: 'Disabled', text: 'text-tx2' }
     : isLinked
       ? { bg: '#052e16', border: '#16a34a', dot: 'bg-green-400 animate-pulse', label: 'Online', text: 'text-green-400' }
       : { bg: '#451a03', border: '#f59e0b', dot: 'bg-amber-400', label: 'Admin UP / Link DOWN', text: 'text-amber-400' };
@@ -310,8 +311,9 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
   const vlans = (port.vlansTagged || '').split(',').filter(Boolean);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-sm mx-4 rounded-xl border shadow-2xl overflow-y-auto max-h-[90vh]"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="modal-overlay" />
+      <div className="relative w-full max-w-sm mx-4 rounded-xl border shadow-2xl overflow-y-auto max-h-[90vh]"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-hover)' }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border-color)' }}>
@@ -418,7 +420,7 @@ function FanColumn({ fans, summary, isOnline }: { fans: FanInfo[]; summary: stri
   const fanList = fans.length > 0 ? fans : [{ number: 1, status: 'unknown', rpm: null }, { number: 2, status: 'unknown', rpm: null }];
   return (
     <div className="flex flex-col items-center justify-between py-2 px-1 sm:px-2 sm:py-3 rounded select-none flex-shrink-0"
-      style={{ minWidth: 36, background: 'var(--bg-glass)', border: '1px solid var(--border-color)' }}>
+      style={{ minWidth: 32, background: 'var(--bg-glass)', border: '1px solid var(--border-color)' }}>
       <div className="flex items-center gap-0.5 sm:gap-1">
         <Zap className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-cyan-400" />
         <span className="text-[8px] sm:text-[9px] text-tx2 font-mono font-bold">FAN</span>
@@ -429,21 +431,21 @@ function FanColumn({ fans, summary, isOnline }: { fans: FanInfo[]; summary: stri
           return (
             <div key={f.number} className="flex flex-col items-center gap-0.5" title={f.rpm ? `Fan ${f.number}: ${f.rpm} RPM` : `Fan ${f.number}`}>
               <div className="relative w-7 h-7 sm:w-9 sm:h-9 flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full" style={{ border: `2px solid ${active ? '#16a34a' : '#475569'}` }} />
+                <div className="absolute inset-0 rounded-full" style={{ border: `2px solid ${active ? '#16a34a' : 'var(--border-hover)'}` }} />
                 <div className={active ? 'animate-spin' : ''} style={{ animationDuration: '2.5s' }}>
                   <svg width="16" height="16" viewBox="0 0 20 20" className="sm:w-5 sm:h-5">
-                    <path d="M10 4 Q14 8 10 10 Q14 12 10 16 Q6 12 10 10 Q6 8 10 4Z" fill={active ? '#22c55e' : '#475569'} opacity="0.8" />
-                    <path d="M4 10 Q8 6 10 10 Q8 14 4 10Z M16 10 Q12 14 10 10 Q12 6 16 10Z" fill={active ? '#16a34a' : '#374151'} opacity="0.5" />
+                    <path d="M10 4 Q14 8 10 10 Q14 12 10 16 Q6 12 10 10 Q6 8 10 4Z" fill={active ? '#22c55e' : 'var(--text-3)'} opacity="0.8" />
+                    <path d="M4 10 Q8 6 10 10 Q8 14 4 10Z M16 10 Q12 14 10 10 Q12 6 16 10Z" fill={active ? '#16a34a' : 'var(--bg-glass-hover)'} opacity="0.5" />
                   </svg>
                 </div>
               </div>
-              <span className="text-[7px] sm:text-[8px] font-mono" style={{ color: active ? '#4ade80' : '#6b7280' }}>{f.number}</span>
+              <span className="text-[7px] sm:text-[8px] font-mono" style={{ color: active ? '#4ade80' : 'var(--text-3)' }}>{f.number}</span>
             </div>
           );
         })}
       </div>
       <div className="text-center">
-        <div className="text-[9px] sm:text-[10px] font-bold font-mono" style={{ color: isOnline ? '#4ade80' : '#6b7280' }}>{summary || '—'}</div>
+        <div className="text-[9px] sm:text-[10px] font-bold font-mono" style={{ color: isOnline ? '#4ade80' : 'var(--text-3)' }}>{summary || '—'}</div>
         <div className="text-[7px] sm:text-[8px] text-tx3">Active</div>
       </div>
     </div>
@@ -471,12 +473,12 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
 
   return (
     <div className="flex items-center gap-0 rounded-lg overflow-hidden select-none"
-      style={{ background: rowBg, border: `1.5px solid ${rowBorder}`, minHeight: 48 }}>
+      style={{ background: rowBg, border: `1.5px solid ${rowBorder}`, minHeight: 44 }}>
       {/* Left accent bar — temperature-colored */}
       <div style={{ width: 3, alignSelf: 'stretch', background: accentColor }} />
 
       {/* Card type label */}
-      <div className="flex items-center justify-start gap-1 px-2 sm:px-3" style={{ minWidth: 64 }}>
+      <div className="flex items-center justify-start gap-1 px-1 sm:px-2" style={{ minWidth: 48 }}>
         {isActive ? (
           <>
             {isUplink ? (
@@ -502,6 +504,14 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
                 <span className="text-[7px] sm:text-[8px] font-mono leading-none text-cyan-400">CTRL</span>
               )}
             </div>
+            {/* PSU indicator for SMXA — right next to label */}
+            {isSmxa && (
+              <div className="flex items-center justify-center flex-shrink-0 ml-0.5"
+                title="DC -48V PSU"
+                style={{ width: 16, height: 16, borderRadius: 3, background: 'var(--bg-surface)', border: '1px solid #0891b2' }}>
+                <Zap size={9} className="text-cyan-400" />
+              </div>
+            )}
           </>
         ) : (
           <span className="text-[10px] sm:text-xs text-tx3 font-mono">—</span>
@@ -509,22 +519,12 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
       </div>
 
       {/* Port area */}
-      <div className="flex-1 pt-2.5 pb-1.5 sm:pb-2 pl-1.5 pr-2 sm:pr-3 overflow-x-auto">
+      <div className={cn('py-1.5 sm:py-2 pl-0.5 pr-1 sm:pr-2 overflow-x-auto', 'flex-1')}>
         {!isActive ? (
           <div className="flex items-center h-full text-xs text-tx3 tracking-[0.3em] justify-center">EMPTY</div>
         ) : (isSmxa || isUplink) ? (
-          /* Uplink ports — clickable, centered */
-          <div className="relative flex items-center justify-center">
-            {/* PSU indicator for SMXA — absolute left */}
-            {isSmxa && (
-              <div className="absolute left-0 flex items-center justify-center"
-                title="DC -48V PSU"
-                style={{ width: 20, height: 20, borderRadius: 4, background: 'var(--bg-surface)', border: '1.5px solid #0891b2' }}>
-                <Zap size={11} className="text-cyan-400" />
-              </div>
-            )}
-            {/* Uplink ports — centered group */}
-            <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap min-w-max">
+          /* Uplink ports — clickable, inline layout */
+          <div className="flex items-center gap-0.5 sm:gap-1 flex-nowrap">
               {slot.ports.map((port) => {
               const v = uplinkPortColor(port);
               const iface = port.iface ?? `port_${port.port}`;
@@ -535,32 +535,31 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
               return (
                 <button key={iface}
                   onClick={() => onSelectPort(port, slot)}
-                  className="flex flex-col items-center px-1.5 sm:px-2 py-1 rounded border transition-all hover:brightness-125 hover:scale-105 cursor-pointer"
-                  style={{ background: v.bg, borderColor: v.border, minWidth: 36 }}
+                  className="flex flex-col items-center px-1 sm:px-1.5 py-0.5 sm:py-1 rounded border transition-all hover:brightness-125 hover:scale-105 cursor-pointer"
+                  style={{ background: v.bg, borderColor: v.border, minWidth: 30 }}
                   title={uplinkTooltip(slot, port)}>
                   <div className="w-1.5 h-1.5 rounded-full mb-0.5" style={{ background: v.dot }} />
-                  <span className="text-[7px] sm:text-[8px] font-mono leading-none whitespace-nowrap" style={{ color: v.text }}>{shortLabel}</span>
+                  <span className="text-[7px] sm:text-[8px] font-mono leading-none whitespace-nowrap font-bold" style={{ color: v.text }}>{shortLabel}</span>
                   <span className="text-[6px] sm:text-[7px] font-mono" style={{ color: v.text }}>{v.state}</span>
                 </button>
               );
             })}
-            </div>
           </div>
         ) : (
           /* GPON ports — LED indicator boxes with badges */
-          <div className="flex items-center gap-1.5 flex-nowrap">
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap">
             {slot.ports.filter(p => p.port !== 0).map((port) => {
               const hasOnu = port.hasOnus && port.onuCount > 0;
               const isDown = (port.adminStatus || 'up').toLowerCase() !== 'up';
               const boxBg = isDown
-                ? '#0a0a0f'
+                ? 'var(--bg-glass)'
                 : hasOnu ? '#071a10' : 'var(--bg-surface)';
               const boxBorder = isDown
                 ? 'var(--border-color)'
                 : hasOnu ? '#16a34a' : 'var(--border-color)';
               const dotColor = isDown
-                ? '#374151'
-                : hasOnu ? '#4ade80' : '#4b5563';
+                ? 'var(--text-3)'
+                : hasOnu ? '#4ade80' : 'var(--text-3)';
               const glow = hasOnu && !isDown
                 ? `0 0 6px 2px rgba(74,222,128,0.5)`
                 : 'none';
@@ -573,7 +572,8 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
                     onClick={() => onSelectPort(port, slot)}
                     title={ponPortTooltip(slot, port)}
                     style={{
-                      width: 26, height: 26,
+                      width: 28, height: 28,
+                    minWidth: 28, minHeight: 28,
                       background: boxBg,
                       border: `1.5px solid ${boxBorder}`,
                       borderRadius: 5,
@@ -584,7 +584,7 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.15)'; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}>
                     <div style={{
-                      width: 12, height: 12,
+                      width: 14, height: 14,
                       borderRadius: '50%',
                       background: dotColor,
                       boxShadow: glow,
@@ -623,7 +623,7 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
                       }} />
                     )}
                   </button>
-                  <span style={{ fontSize: 8, color: '#6b7280', fontFamily: 'monospace', lineHeight: 1 }}>{port.port}</span>
+                  <span style={{ fontSize: 9, color: 'var(--text-3)', fontFamily: 'monospace', lineHeight: 1 }}>{port.port}</span>
                 </div>
               );
             })}
@@ -632,8 +632,8 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
       </div>
 
       {/* Slot number */}
-      <div className="px-2 sm:px-3 text-right" style={{ minWidth: 28 }}>
-        <span className="text-[10px] sm:text-xs text-tx3 font-mono">{slot.index}</span>
+      <div className="px-1.5 sm:px-3 text-right" style={{ minWidth: 24 }}>
+        <span className="text-[9px] sm:text-xs text-tx3 font-mono">{slot.index}</span>
       </div>
     </div>
   );
@@ -738,7 +738,7 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
 
   const LEGEND = [
     { bg: '#14532d', border: '#16a34a', dot: '#4ade80', label: 'Online' },
-    { bg: '#111827', border: '#475569', dot: '#64748b', label: 'Disabled' },
+    { bg: 'var(--bg-glass)', border: 'var(--border-hover)', dot: 'var(--text-3)', label: 'Disabled' },
     { bg: '#451a03', border: '#f59e0b', dot: '#fbbf24', label: 'Admin UP / Port DOWN' },
     { bg: '#dc2626', border: '#fff', dot: '#fff', label: 'LOS', isBadge: true },
     { bg: '#7c3aed', border: '#fff', dot: '#fff', label: 'DyingGasp', isBadge: true },
@@ -777,9 +777,9 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
           <div className="flex items-center gap-2 sm:gap-3 mt-1.5 sm:mt-0">
             {oltIp && <span className="text-[10px] sm:text-xs text-tx3 font-mono">{oltIp}</span>}
             <button onClick={fetchChassis} disabled={loading}
-              className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 text-[10px] sm:text-xs rounded border text-tx2 hover:bg-glass-hover disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1 p-1.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs rounded-lg border text-tx2 hover:bg-glass-hover disabled:opacity-50"
               style={{ borderColor: 'var(--border-hover)' }}>
-              <RefreshCw className={cn('h-3 w-3', loading && 'animate-spin')} />
+              <RefreshCw className={cn('w-3.5 h-3.5 sm:w-3 sm:h-3', loading && 'animate-spin')} />
               <span className="hidden sm:inline">Refresh</span>
             </button>
           </div>
@@ -798,10 +798,12 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
           </div>
         ) : (
           <div className="p-2 sm:p-3 md:p-4 flex gap-2 sm:gap-3 overflow-x-auto">
-            {/* FAN column */}
-            <FanColumn fans={fans} summary={fanSummary} isOnline={isOnline} />
+            {/* FAN column — hidden on mobile to save horizontal space */}
+            <div className="hidden sm:block">
+              <FanColumn fans={fans} summary={fanSummary} isOnline={isOnline} />
+            </div>
             {/* Slot rows — dynamic layout for any ZTE model */}
-            <div className="flex-1 flex flex-col gap-1 sm:gap-1.5" style={{ minWidth: 320 }}>
+            <div className="flex-1 flex flex-col gap-1 sm:gap-1.5" style={{ minWidth: 260 }}>
               {/* Service (GPON) cards — full width rows */}
               {serviceSlots.map(slot => (
                 <SlotRow key={slot.index} slot={slot} onSelectPort={handleSelectPort} />
@@ -847,9 +849,9 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
 
       {/* Detail Per Port PON */}
       {Object.keys(portStats).length > 0 && (
-        <div className="glass-card p-4">
-          <h3 className="text-sm font-semibold mb-3">Detail Per Port PON</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+        <div className="glass-card p-3 md:p-4">
+          <h3 className="text-xs md:text-sm font-semibold mb-2 md:mb-3">Detail Per Port PON</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 md:gap-2">
             {Object.entries(portStats)
               .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
               .map(([key, port]) => {

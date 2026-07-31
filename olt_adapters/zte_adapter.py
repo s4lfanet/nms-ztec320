@@ -264,7 +264,7 @@ class ZteAdapter(BaseOLTAdapter):
             logger.error(f"ZTE collect_chassis failed: {e}")
             return {'slots': [], 'fans': [], 'psus': []}
 
-    def poll_olt(self, progress_cb=None) -> dict:
-        """Full sync — delegates to existing snmp_collector.poll_olt."""
+    def poll_olt(self, progress_cb=None, light=False) -> dict:
+        """Full or light sync — delegates to existing snmp_collector.poll_olt."""
         from snmp_collector import poll_olt as zte_poll
-        return zte_poll(self.olt, progress_cb=progress_cb)
+        return zte_poll(self.olt, progress_cb=progress_cb, light=light)

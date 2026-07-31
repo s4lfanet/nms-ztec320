@@ -4,6 +4,23 @@
 
 ---
 
+## Update Terkini (Juli 2026)
+
+Dokumentasi ini telah disesuaikan dengan implementasi terbaru yang sudah berjalan di sistem. Perubahan utama mencakup:
+
+- Multi-vendor sync via adapter pattern (ZTE, HSGQ, Raisecom, BDCOM, C-Data, VSOL)
+- Penambahan modul alerting dan notifikasi berbasis rule ke WhatsApp gateway + in-app bell notifications
+- Penyempurnaan alur provisioning ONU, termasuk preview CLI dan handling VLAN/SSID/PPPoE
+- WiFi SSID OMCI config: Open auth mengirim no-auth + encrypt none + no-key untuk dual-band (2.4G & 5G)
+- Fiberhome VEIP template menggunakan TR069 Profile dropdown (sama seperti ZTE templates)
+- Penguatan view detail ONU dengan informasi WAN, remote access, VEIP, TR069, dan WiFi
+- Penambahan fitur manajemen FTTH (OTB/ODC/ODP) beserta koordinat lokasi
+- SaaS: registrasi tenant, pembayaran Duitku, subdomain otomatis via Cloudflare Tunnel
+- RX power signal stats menggunakan dynamic color ranges dari customization
+- Optimistic logout: UI clears instantly tanpa delay
+- CSP header: Cloudflare Insights beacon diizinkan
+- Stabilisasi deployment VPS dan perbaikan schema database untuk kolom baru seperti latitude/longitude
+
 ## Daftar Isi
 
 1. [Overview Sistem](#1-overview-sistem)

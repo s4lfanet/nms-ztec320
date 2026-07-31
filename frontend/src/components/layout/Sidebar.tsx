@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Radio,
-  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, Shield, CreditCard
+  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, Shield, CreditCard, ScrollText, Activity
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../stores/auth';
@@ -18,10 +18,11 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/dashboard', permission: 'view_dashboard' },
   {
-    label: 'FTTH', icon: <Radio size={20} />, permission: 'view_dashboard',
+    label: 'ONU', icon: <Radio size={20} />, permission: 'view_dashboard',
     children: [
       { label: 'All ONUs', path: '/dashboard/onus', permission: 'view_onus' },
-      { label: 'Add ONU', path: '/dashboard/onus/add', permission: 'add_onu' },
+      { label: 'Provision ONU', path: '/dashboard/onus/provision', permission: 'add_onu' },
+      { label: 'Pre-config ONT', path: '/dashboard/onus/pre-config', permission: 'add_onu' },
       { label: 'Register Wizard', path: '/dashboard/onus/register', permission: 'add_onu' },
     ],
   },
@@ -32,6 +33,7 @@ const navItems: NavItem[] = [
       { label: 'TR069 Profile', path: '/dashboard/templates/tr069-profile', permission: 'manage_tr069' },
     ],
   },
+  { label: 'Traffic', icon: <Activity size={20} />, path: '/dashboard/traffic', permission: 'view_dashboard' },
   {
     label: 'Infrastructure', icon: <Server size={20} />, permission: 'view_dashboard',
     children: [
@@ -49,11 +51,11 @@ const navItems: NavItem[] = [
     children: [
       { label: 'Customization', path: '/dashboard/customization', permission: 'customization' },
       { label: 'User Management', path: '/dashboard/users', permission: 'manage_users' },
-      { label: 'Action Logs', path: '/dashboard/logs', permission: 'manage_users' },
       { label: 'Alert Settings', path: '/dashboard/settings/alerts', permission: 'customization' },
       { label: 'Alert History', path: '/dashboard/alerts/history', permission: 'view_dashboard' },
     ],
   },
+  { label: 'Activity Log', icon: <ScrollText size={20} />, path: '/dashboard/logs', permission: 'manage_users' },
 ];
 
 function buildVisibleItems(user: { is_super_admin?: boolean; permissions?: string[] } | null): NavItem[] {
@@ -61,6 +63,7 @@ function buildVisibleItems(user: { is_super_admin?: boolean; permissions?: strin
   const userPerms = new Set(user.permissions || []);
   const hasPerm = (perm?: string) => {
     if (!perm) return true;
+    if (user.is_super_admin) return true;
     if (userPerms.has('all_olt')) return true;
     return userPerms.has(perm);
   };
@@ -71,14 +74,14 @@ function buildVisibleItems(user: { is_super_admin?: boolean; permissions?: strin
     items = items
       .filter(item => item.label !== 'Templates')
       .map(item => {
-        if (item.label === 'FTTH') {
+        if (item.label === 'ONU') {
           return { ...item, children: item.children?.filter(c => c.label === 'All ONUs') };
         }
         if (item.label === 'Infrastructure') {
           return { ...item, label: 'OLT Management', children: item.children?.filter(c => c.label === 'OLT Settings') };
         }
         if (item.label === 'System') {
-          return { ...item, children: item.children?.filter(c => c.label === 'Action Logs' || c.label === 'Alert Settings') };
+          return { ...item, children: item.children?.filter(c => c.label === 'Alert Settings') };
         }
         return item;
       });
@@ -106,6 +109,7 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
   const userPerms = new Set(user?.permissions || []);
   const hasPerm = (perm?: string) => {
     if (!perm) return true;
+    if (user?.is_super_admin) return true;
     if (userPerms.has('all_olt')) return true;
     return userPerms.has(perm);
   };

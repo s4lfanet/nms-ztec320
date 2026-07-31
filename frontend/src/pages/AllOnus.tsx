@@ -1,27 +1,28 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type ONUData, type AllOnusData, type TechnicianData, type RxColorRange } from '../lib/api';
-import { cn } from '../lib/utils';
+import { cn, formatSn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
+import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Search, Eye, Edit3, Trash2,
   CheckCircle2, AlertTriangle, XCircle, HelpCircle, Wifi, WifiOff,
-  Satellite, Download, Split, Radio, Wrench
+  Satellite, Download, Split, Radio, Wrench, MapPin
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
-import { useAuth } from '../stores/auth';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { LocationPicker } from '../components/LocationPicker';
 
 export function AllOnus() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const hasPerm = useHasPerm();
-  const { user } = useAuth();
-  const isSuperAdmin = !!user?.is_super_admin;
+  const [searchParams, setSearchParams] = useSearchParams();
   const [oltFilter, setOltFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get('filter') || 'all');
+  const [ponFilter, setPonFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -34,6 +35,9 @@ export function AllOnus() {
   const [editOnuId, setEditOnuId] = useState<number | ''>('');
   const [editTechnicianId, setEditTechnicianId] = useState<number | null>(null);
   const [editOdpPortId, setEditOdpPortId] = useState<number | null>(null);
+  const [editLatitude, setEditLatitude] = useState<string>('');
+  const [editLongitude, setEditLongitude] = useState<string>('');
+  const [showMap, setShowMap] = useState(false);
   const [inlineEdit, setInlineEdit] = useState<{ onuId: number; field: 'technician' | 'odp' } | null>(null);
   const [sortBy, setSortBy] = useState<string>('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -45,11 +49,14 @@ export function AllOnus() {
   }, [search]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['all-onus', oltFilter, statusFilter, debouncedSearch, page, pageSize, sortBy, sortDir],
-    queryFn: () => api.allOnus({ olt: oltFilter, status: statusFilter, search: debouncedSearch, page, page_size: pageSize, sort_by: sortBy || undefined, sort_dir: sortDir }),
-    refetchInterval: 120000,
+    queryKey: ['all-onus', oltFilter, statusFilter, ponFilter, debouncedSearch, page, pageSize, sortBy, sortDir],
+    queryFn: () => api.allOnus({ olt: oltFilter, status: statusFilter, pon: ponFilter, search: debouncedSearch, page, page_size: pageSize, sort_by: sortBy || undefined, sort_dir: sortDir }),
+    refetchInterval: 30000,
     placeholderData: keepPreviousData,
   });
+
+  // Track if we're fetching with changed filters (not just background refetch)
+  const isFilterFetching = isFetching && !isLoading;
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => api.updateOnu(id, data),
@@ -134,7 +141,7 @@ export function AllOnus() {
 
   if (isLoading) return <TableSkeleton />;
 
-  const { onus, signal_stats, olts, total, total_pages } = data as AllOnusData;
+  const { onus, signal_stats, olts, pon_ports, total, total_pages } = data as AllOnusData;
 
   const totalPages = total_pages || 1;
   const currentPage = Math.min(page, totalPages);
@@ -168,6 +175,8 @@ export function AllOnus() {
     setEditOnuId(onu.onu_id ?? '');
     setEditTechnicianId(onu.technician_id ?? null);
     setEditOdpPortId(onu.odp_port_id ?? null);
+    setEditLatitude(onu.latitude != null ? String(onu.latitude) : '');
+    setEditLongitude(onu.longitude != null ? String(onu.longitude) : '');
   };
 
   const saveEdit = () => {
@@ -179,6 +188,8 @@ export function AllOnus() {
         ...(editOnuId !== '' ? { onu_id: String(editOnuId) } : {}),
         technician_id: editTechnicianId ?? '',
         odp_port_id: editOdpPortId ?? '',
+        latitude: editLatitude || null,
+        longitude: editLongitude || null,
       },
     });
   };
@@ -192,8 +203,37 @@ export function AllOnus() {
           <p className="text-tx2 text-xs md:text-sm mt-1">{total} optical network units</p>
         </div>
         <div className="flex items-center gap-2">
+          <TutorialBanner
+            title="Panduan All ONUs"
+            steps={[
+              { title: 'Stat Cards & Filter', content: <><p>Kartu statistik di atas tabel menampilkan jumlah ONU per kategori: <strong>All</strong>, <strong>Online</strong>, <strong>Offline</strong>, <strong>DyingGasp</strong>, <strong>LOS</strong>. Klik kartu untuk filter tabel.</p><p className="text-xs text-tx3 mt-1">Signal cards menampilkan distribusi RX power berdasarkan color range yang dikonfigurasi di Customization.</p></> },
+              { title: 'Search & Filter', content: <><p>Gunakan search bar untuk cari ONU by name, OLT, serial number, PPPoE, atau type. Filter dropdown untuk OLT dan vendor.</p><p className="text-xs text-tx3 mt-1">Search di-debounce 400ms — otomatis trigger setelah berhenti mengetik.</p></> },
+              { title: 'Tabel ONU', content: <><p>Tabel menampilkan semua ONU dengan kolom: name, OLT, SN, type, status, RX power, PPPoE, technician, ODP port, dan actions.</p><p className="text-xs text-tx3 mt-1">Klik header kolom untuk sort. Server-side pagination — 50 ONU per halaman.</p><p className="text-xs text-tx3 mt-1">Klik <strong>View</strong> untuk detail ONU (ViewOnu page). Klik <strong>Edit</strong> untuk edit inline (name, PPPoE, technician, ODP port). Klik <strong>Delete</strong> untuk deregister ONU dari OLT.</p></> },
+              { title: 'Export & Signal Refresh', content: <><p><strong>Export CSV</strong>: download semua ONU ke file CSV (semua halaman, tidak hanya halaman current).</p><p className="text-xs text-tx3 mt-1"><strong>Signal Refresh</strong>: kirim SNMP get RX power ke semua OLT untuk update nilai terbaru. Bisa lambat jika OLT banyak.</p></> },
+            ]}
+            tips={
+              <>
+                <strong className="text-tx2">Tips:</strong>
+                <ul className="mt-1 ml-4 space-y-0.5">
+                  <li>WebSocket aktif: tabel auto-refresh saat OLT sync selesai</li>
+                  <li>Inline edit: klik cell Technician/ODP port untuk edit langsung di tabel</li>
+                  <li>Column visibility & order bisa diatur di Customization page</li>
+                  <li>Export CSV include semua ONU (tidak terfilter by pagination)</li>
+                </ul>
+              </>
+            }
+          />
           <button
-            onClick={() => window.open(api.allOnusExport(), '_blank')}
+            onClick={() => {
+              const params = new URLSearchParams();
+              if (oltFilter !== 'all') params.set('olt', oltFilter);
+              if (statusFilter !== 'all') params.set('status', statusFilter);
+              if (ponFilter !== 'all') params.set('pon', ponFilter);
+              if (debouncedSearch) params.set('search', debouncedSearch);
+              if (sortBy) { params.set('sort_by', sortBy); params.set('sort_dir', sortDir); }
+              const qs = params.toString();
+              window.open(`/api/all-onus/export${qs ? '?' + qs : ''}`, '_blank');
+            }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-glass border border-brd hover:border-accent/30 text-xs md:text-sm transition-all"
           >
             <Download size={15} /> <span className="hidden sm:inline">Export CSV</span><span className="sm:hidden">Export</span>
@@ -209,24 +249,32 @@ export function AllOnus() {
         </div>
       </div>
 
-      {/* Signal Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
-        <SignalCard icon={<CheckCircle2 size={18} />} label="Good ≥ -26 dBm"
-          rxOlt={signal_stats.good.rx_olt} rxOnu={signal_stats.good.rx_onu}
-          pct={signal_stats.good.pct} color="success" />
-        <SignalCard icon={<AlertTriangle size={18} />} label="Warning -26 ~ -28"
-          rxOlt={signal_stats.warning.rx_olt} rxOnu={signal_stats.warning.rx_onu}
-          pct={signal_stats.warning.pct} color="warning" />
-        <SignalCard icon={<XCircle size={18} />} label="Critical < -28 dBm"
-          rxOlt={signal_stats.critical.rx_olt} rxOnu={signal_stats.critical.rx_onu}
-          pct={signal_stats.critical.pct} color="danger" />
+      {/* Signal Stats Cards — dynamic from RX color ranges */}
+      <div className={`grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 transition-opacity ${isFilterFetching ? 'opacity-40' : ''}`}>
+        {rxColorRanges.map((r, i) => {
+          const colorKey = r.color || 'gray';
+          const stats = (signal_stats as Record<string, { count: number; pct: number; label?: string }>)[colorKey];
+          const cardColor = RX_COLOR_TO_CARD[colorKey] || 'muted';
+          const icons: Record<string, React.ReactNode> = {
+            green: <CheckCircle2 size={18} />, yellow: <AlertTriangle size={18} />,
+            red: <XCircle size={18} />, gray: <HelpCircle size={18} />,
+          };
+          return (
+            <SignalCard key={i}
+              icon={icons[colorKey] || <HelpCircle size={18} />}
+              label={`${r.label || colorKey} ${r.min}~${r.max} dBm`}
+              count={stats?.count ?? 0}
+              pct={stats?.pct ?? 0}
+              color={cardColor}
+            />
+          );
+        })}
         <SignalCard icon={<HelpCircle size={18} />} label="LOS / N/A"
-          rxOlt={signal_stats.los + signal_stats.na} rxOnu={signal_stats.los + signal_stats.na}
-          pct={signal_stats.na_pct} color="muted" />
+          count={signal_stats.los + signal_stats.na} pct={signal_stats.na_pct} color="muted" />
       </div>
 
       {/* Status Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+      <div className={`grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 transition-opacity ${isFilterFetching ? 'opacity-40' : ''}`}>
         <StatusCard icon={<Wifi size={16} />} label="Total ONU" count={signal_stats.total} color="accent" />
         <StatusCard icon={<Wifi size={16} />} label="Online" count={signal_stats.online} color="success" />
         <StatusCard icon={<XCircle size={16} />} label="LOS" count={signal_stats.los} color="danger" />
@@ -246,19 +294,32 @@ export function AllOnus() {
           />
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           <div className="flex gap-1 p-1 rounded-xl bg-glass border border-brd overflow-x-auto max-w-full">
-            <FilterBtn active={oltFilter === 'all'} onClick={() => setOltFilter('all')}>All</FilterBtn>
+            <FilterBtn active={oltFilter === 'all'} onClick={() => { setOltFilter('all'); setPonFilter('all'); }}>All</FilterBtn>
             {olts.map(o => (
-              <FilterBtn key={o.id} active={oltFilter === String(o.id)} onClick={() => setOltFilter(String(o.id))}>
+              <FilterBtn key={o.id} active={oltFilter === String(o.id)} onClick={() => { setOltFilter(String(o.id)); setPonFilter('all'); }}>
                 {o.name}
               </FilterBtn>
             ))}
           </div>
 
+          {oltFilter !== 'all' && pon_ports.length > 0 && (
+            <select
+              value={ponFilter}
+              onChange={e => { setPonFilter(e.target.value); setPage(1); }}
+              className="h-10 px-3 rounded-xl bg-glass border border-brd text-sm text-tx1 focus:outline-none focus:border-accent/50 flex-shrink-0"
+            >
+              <option value="all">All PON</option>
+              {pon_ports.map(p => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+          )}
+
           <select
             value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
+            onChange={e => { setStatusFilter(e.target.value); setPage(1); const p = new URLSearchParams(searchParams); if (e.target.value === 'all') p.delete('filter'); else p.set('filter', e.target.value); setSearchParams(p, { replace: true }); }}
             className="h-10 px-3 rounded-xl bg-glass border border-brd text-sm text-tx1 focus:outline-none focus:border-accent/50 flex-shrink-0"
           >
           <option value="all">All Status</option>
@@ -267,11 +328,14 @@ export function AllOnus() {
           <option value="los">LOS</option>
           <option value="dyinggasp">DyingGasp</option>
         </select>
+        {isFilterFetching && (
+          <span className="text-xs text-tx3 animate-pulse">Loading...</span>
+        )}
         </div>
       </div>
 
       {/* Table */}
-      <div className="glass-card overflow-hidden">
+      <div className={`glass-card overflow-hidden transition-opacity ${isFilterFetching ? 'opacity-40' : ''}`}>
         <div className="overflow-x-auto">
           {/* Desktop table */}
           <table className="hidden md:table w-full">
@@ -281,7 +345,7 @@ export function AllOnus() {
                 <SortTh col="name" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>Name</SortTh>
                 <SortTh col="status" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>Status</SortTh>
                 <SortTh col="rx_onu" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>RX ONU</SortTh>
-                <SortTh col="sn" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>SN</SortTh>
+                <SortTh col="sn" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>SN/MAC</SortTh>
                 <SortTh col="type" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>Type</SortTh>
                 <th className="px-4 py-3 text-left text-[11px] font-semibold text-tx3 uppercase tracking-wider">Distance</th>
                 <th className="px-4 py-3 text-left text-[11px] font-semibold text-tx3 uppercase tracking-wider">Technician</th>
@@ -317,7 +381,7 @@ export function AllOnus() {
                     <PowerBadge value={onu.status === 'online' ? onu.onu_rx_power : null} ranges={rxColorRanges} />
                   </td>
                   <td className="px-4 py-3">
-                    <code className="text-sm font-mono text-tx2">{onu.serial_number}</code>
+                    <code className="text-sm font-mono text-tx2">{formatSn(onu.serial_number)}</code>
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-sm text-tx2">{onu.actual_type || '-'}</span>
@@ -381,8 +445,8 @@ export function AllOnus() {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <ActionBtn icon={<Eye size={14} />} title="View" onClick={() => navigate(`/dashboard/all-onus/view-c3-r/gpon/${onu.olt_id}/${onu.frame}/${onu.port}/${onu.onu_id}`)} />
-                      {!isSuperAdmin && hasPerm('edit_onu_name') && <ActionBtn icon={<Edit3 size={14} />} title="Edit" onClick={() => openEdit(onu)} />}
-                      {!isSuperAdmin && hasPerm('delete_onu') && <ActionBtn icon={<Trash2 size={14} />} title="Delete" danger
+                      {hasPerm('edit_onu_name') && <ActionBtn icon={<Edit3 size={14} />} title="Edit" onClick={() => openEdit(onu)} />}
+                      {hasPerm('delete_onu') && <ActionBtn icon={<Trash2 size={14} />} title="Delete" danger
                         onClick={() => deleteMutation.mutate(onu.id)} />}
                     </div>
                   </td>
@@ -421,8 +485,8 @@ export function AllOnus() {
                     ) : <span className="text-tx3">N/A</span>}
                   </div>
                   <div>
-                    <span className="text-tx3">SN:</span>{' '}
-                    <code className="font-mono text-tx2">{onu.serial_number}</code>
+                    <span className="text-tx3">SN/MAC:</span>{' '}
+                    <code className="font-mono text-tx2">{formatSn(onu.serial_number)}</code>
                   </div>
                   <div>
                     <span className="text-tx3">Type:</span>{' '}
@@ -453,11 +517,11 @@ export function AllOnus() {
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass text-xs text-tx2 hover:text-tx1 transition-colors">
                     <Eye size={14} /> View
                   </button>
-                  {!isSuperAdmin && hasPerm('edit_onu_name') && <button onClick={() => openEdit(onu)}
+                  {hasPerm('edit_onu_name') && <button onClick={() => openEdit(onu)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass text-xs text-tx2 hover:text-tx1 transition-colors">
                     <Edit3 size={14} /> Edit
                   </button>}
-                  {!isSuperAdmin && hasPerm('delete_onu') && <button onClick={() => deleteMutation.mutate(onu.id)}
+                  {hasPerm('delete_onu') && <button onClick={() => deleteMutation.mutate(onu.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass text-xs text-tx2 hover:text-danger transition-colors ml-auto">
                     <Trash2 size={14} />
                   </button>}
@@ -535,7 +599,7 @@ export function AllOnus() {
       {/* Edit Modal */}
       {editingOnu && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setEditingOnu(null)} />
+          <div className="modal-overlay" onClick={() => setEditingOnu(null)} />
           <div className="relative glass-card p-4 md:p-6 w-full max-w-md rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in max-h-[90vh] overflow-y-auto">
             <h3 className="text-base md:text-lg font-semibold mb-1">Edit ONU</h3>
             {editingOnu && (
@@ -582,6 +646,21 @@ export function AllOnus() {
                   </select>
                 </div>
               )}
+              {/* Location Picker */}
+              <div className="border-t border-brd pt-4 mt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-tx2 flex items-center gap-1.5"><MapPin size={14} /> ONU Location</label>
+                  <button type="button" onClick={() => setShowMap(s => !s)}
+                    className="text-xs text-accent hover:text-accent-hover flex items-center gap-1">
+                    <MapPin size={12} /> {showMap ? 'Hide Map' : 'Show Map'}
+                  </button>
+                </div>
+                <LocationPicker
+                  latitude={editLatitude}
+                  longitude={editLongitude}
+                  onChange={(lat: string, lng: string) => { setEditLatitude(lat); setEditLongitude(lng); }}
+                />
+              </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setEditingOnu(null)} className="px-4 py-2 rounded-xl text-sm hover:bg-glass transition-colors">
@@ -601,8 +680,8 @@ export function AllOnus() {
 
 /* ─── Sub-components ─── */
 
-function SignalCard({ icon, label, rxOlt, rxOnu, pct, color }: {
-  icon: React.ReactNode; label: string; rxOlt: number; rxOnu: number; pct: number; color: string;
+function SignalCard({ icon, label, count, pct, color }: {
+  icon: React.ReactNode; label: string; count: number; pct: number; color: string;
 }) {
   const colors: Record<string, string> = {
     success: 'border-success/20 bg-success/5',
@@ -622,16 +701,7 @@ function SignalCard({ icon, label, rxOlt, rxOnu, pct, color }: {
       </div>
       <div className="flex items-end justify-between mb-2">
         <span className={cn('text-2xl font-bold', textColors[color])}>{pct}%</span>
-      </div>
-      <div className="flex gap-3 text-xs">
-        <div className="flex flex-col">
-          <span className="text-tx3">RX OLT</span>
-          <span className={cn('font-semibold', textColors[color])}>{rxOlt}</span>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-tx3">RX ONU</span>
-          <span className={cn('font-semibold', textColors[color])}>{rxOnu}</span>
-        </div>
+        <span className="text-sm text-tx3">{count} ONU{count !== 1 ? 's' : ''}</span>
       </div>
     </div>
   );
@@ -676,6 +746,11 @@ function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+
+const RX_COLOR_TO_CARD: Record<string, string> = {
+  green: 'success', yellow: 'warning', red: 'danger',
+  blue: 'info', purple: 'info', orange: 'warning', gray: 'muted',
+};
 
 const RX_COLOR_MAP: Record<string, string> = {
   green: 'bg-success/10 text-success',

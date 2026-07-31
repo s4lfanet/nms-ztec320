@@ -88,7 +88,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./deploy/nginx-multitenant.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx-fibernms.conf:/etc/nginx/conf.d/default.conf:ro
       - ./frontend/dist:/var/www/fibernms/frontend/dist:ro
     profiles:
       - production

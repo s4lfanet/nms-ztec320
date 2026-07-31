@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
+import { TutorialBanner } from '../components/TutorialBanner';
 import { api, type RoleData } from '../lib/api';
 import { useAuth } from '../stores/auth';
 import { useHasPerm } from '../hooks/useHasPerm';
@@ -86,17 +87,36 @@ export function UserManagement() {
           <h1 className="text-xl md:text-2xl font-bold">User Management</h1>
           <p className="text-tx2 text-xs md:text-sm mt-1">Manage users and roles</p>
         </div>
-        {tab === 'users' ? (
-          canManage && <button onClick={() => setUserModal({ mode: 'add' })}
-            className="flex items-center gap-1.5 px-3 md:px-4 py-2 md:py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all">
-            <Plus size={16} /> Add User
-          </button>
-        ) : (
-          canManage && <button onClick={() => setRoleModal({ mode: 'add' })}
-            className="flex items-center gap-1.5 px-3 md:px-4 py-2 md:py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all">
-            <Plus size={16} /> Add Role
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <TutorialBanner
+            title="Panduan User Management"
+            steps={[
+              { title: 'Users Tab', content: <><p>Daftar user di sistem. Tambah/edit/hapus user. Setiap user punya: username, name, role, phone, dan status (active/disabled).</p><p className="text-xs text-tx3 mt-1">Role menentukan permission apa yang dimiliki user (view, configure, manage, dll).</p></> },
+              { title: 'Roles Tab', content: <><p>Daftar role dengan permission. Tambah/edit/hapus role (kecuali system role). Setiap role punya set permission yang bisa di-toggle.</p><p className="text-xs text-tx3 mt-1">Permission contoh: <code>view_onus</code>, <code>configure_onu</code>, <code>settings_ip_olts</code>, <code>manage_users</code>.</p></> },
+            ]}
+            tips={
+              <>
+                <strong className="text-tx2">Tips:</strong>
+                <ul className="mt-1 ml-4 space-y-0.5">
+                  <li>System role (Admin, Operator, Viewer) tidak bisa dihapus</li>
+                  <li>Technician role untuk field technician — hanya bisa view ONU</li>
+                  <li>Disable user untuk sementara tanpa hapus (toggle status)</li>
+                </ul>
+              </>
+            }
+          />
+          {tab === 'users' ? (
+            canManage && <button onClick={() => setUserModal({ mode: 'add' })}
+              className="flex items-center gap-1.5 px-3 md:px-4 py-2 md:py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all">
+              <Plus size={16} /> Add User
+            </button>
+          ) : (
+            canManage && <button onClick={() => setRoleModal({ mode: 'add' })}
+              className="flex items-center gap-1.5 px-3 md:px-4 py-2 md:py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all">
+              <Plus size={16} /> Add Role
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-1 p-1 rounded-xl bg-glass border border-brd w-fit">
@@ -298,8 +318,9 @@ function UserModal({ mode, id, roles, onClose, onSave, loading }: {
   if (!loaded) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="glass-card w-full max-w-md p-5 md:p-6" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="modal-overlay" />
+      <div className="relative glass-card w-full max-w-md p-5 md:p-6" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-base flex items-center gap-2">
             <User size={18} className="text-accent" /> {mode === 'add' ? 'Add User' : 'Edit User'}
@@ -381,8 +402,9 @@ function RoleModal({ mode, id, roles, permissions, onClose, onSave, loading }: {
   const isSystem = role?.is_system ?? false;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="glass-card w-full max-w-lg p-5 md:p-6 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="modal-overlay" />
+      <div className="relative glass-card w-full max-w-lg p-5 md:p-6 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-base flex items-center gap-2">
             <Shield size={18} className="text-accent" /> {mode === 'add' ? 'Add Role' : 'Edit Role'}

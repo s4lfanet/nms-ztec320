@@ -5,13 +5,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn, formatDate } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
+import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Server, Activity, HardDrive, Network, Globe, Gauge, Settings,
   CheckCircle, XCircle, ChevronDown, ChevronRight, RefreshCw,
   Edit3, Trash2, Pause, Play, Wifi, Plus, ArrowUp, ArrowDown, Filter
 } from 'lucide-react';
 import { RackDiagramRouter } from '../components/rack/RackDiagramRouter';
-import { useAuth } from '../stores/auth';
 import { useHasPerm } from '../hooks/useHasPerm';
 
 const TABS = [
@@ -29,9 +29,8 @@ export function OltConfiguration() {
   const navigate = useNavigate();
   const id = Number(oltId);
   const [activeTab, setActiveTab] = useState('uplinks');
-  const { user } = useAuth();
   const hasPerm = useHasPerm();
-  const canManage = !user?.is_super_admin && hasPerm('settings_ip_olts');
+  const canManage = hasPerm('settings_ip_olts');
   const { data: oltData } = useQuery({ queryKey: ['dashboard'], queryFn: () => fetch('/api/dashboard', { credentials: 'include' }).then(r => r.json()) });
   const olt = oltData?.olts?.find((o: {id:number}) => o.id === id);
   if (!olt) return <div className="text-center py-20 text-tx3">OLT not found</div>;
@@ -41,6 +40,30 @@ export function OltConfiguration() {
         <button onClick={() => navigate('/dashboard')} className="hover:text-accent">Home</button><span>/</span>
         <button onClick={() => navigate('/dashboard/settings/olts')} className="hover:text-accent">Settings</button><span>/</span>
         <span className="text-tx1">Configurations</span>
+        <div className="ml-auto">
+          <TutorialBanner
+            title="Panduan OLT Configuration"
+            steps={[
+              { title: 'Uplinks', content: <><p>Konfigurasi port uplink OLT (ge_0/1, ge_0/2, dll). Menampilkan speed, duplex, VLAN mode (trunk/access/hybrid), dan trunk VLANs.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Sync Data</strong> untuk fetch uplink info dari OLT via Telnet. Edit untuk ubah VLAN mode dan trunk VLANs.</p></> },
+              { title: 'PON Cards', content: <><p>Menampilkan kartu GPON yang terpasang di slot OLT (show card). Termasuk card type, status, hardware version, dan port count.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Refresh</strong> untuk re-fetch card info. Rack diagram menampilkan visual chassis dengan slot dan port.</p></> },
+              { title: 'VLANs', content: <><p>Daftar semua VLAN di OLT (show vlan summary). Tambah/edit/hapus VLAN (vlan database context).</p><p className="text-xs text-tx3 mt-1">VLAN wajib dibuat di sini sebelum digunakan di service-port ONU atau uplink trunk.</p></> },
+              { title: 'ONU Types', content: <><p>Daftar ONU type terdaftar di OLT (show onu-type). Tambah/hapus type untuk provisioning ONU baru.</p><p className="text-xs text-tx3 mt-1">ONU type wajib ada sebelum register/provision ONU baru. Contoh: <code>ZTE-F660</code>, <code>ZTE-F670L</code>.</p></> },
+              { title: 'WAN-IP Profiles', content: <><p>Profile WAN IP untuk DHCP/PPPoE mode ONU. Berisi IP address, netmask, dan gateway.</p><p className="text-xs text-tx3 mt-1">Dibutuhkan jika ONU menggunakan WAN mode DHCP (bukan bridge). Buat profile sebelum provisioning.</p></> },
+              { title: 'Speed Profiles', content: <><p>TCONT profile (upload bandwidth) dan Traffic profile (download limit). TCONT wajib untuk provisioning.</p><p className="text-xs text-tx3 mt-1"><strong>TCONT</strong>: type 1-5, maximum bandwidth. <strong>Traffic</strong>: SIR (committed) + PIR (peak) rate.</p></> },
+              { title: 'System', content: <><p>Info sistem OLT: hostname, uptime, CPU, memory, temperature, fan status, dan power supply.</p><p className="text-xs text-tx3 mt-1">Data diambil via Telnet <code>show processor</code>, <code>show fan</code>, <code>show power</code>.</p></> },
+            ]}
+            tips={
+              <>
+                <strong className="text-tx2">Tips:</strong>
+                <ul className="mt-1 ml-4 space-y-0.5">
+                  <li>Urutan setup: VLANs → ONU Types → Speed Profiles → baru provision ONU</li>
+                  <li>Sync Data di tab Uplinks untuk fetch running-config dari OLT</li>
+                  <li>Rack diagram visual menampilkan chassis, slot, fan, dan PSU real-time</li>
+                </ul>
+              </>
+            }
+          />
+        </div>
       </div>
 
       {/* OLT Header */}
@@ -95,12 +118,12 @@ export function OltConfiguration() {
 
       {/* Configuration Tabs */}
       <div className="glass-card">
-        <div className="flex gap-2 flex-wrap p-3 md:p-4 border-b border-brd">
+        <div className="flex gap-2 p-3 md:p-4 border-b border-brd overflow-x-auto scrollbar-thin">
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={cn('flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-xl text-xs md:text-sm font-medium whitespace-nowrap transition-all flex-shrink-0',
+              className={cn('flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-xl text-[11px] md:text-sm font-medium whitespace-nowrap transition-all flex-shrink-0',
                 activeTab === tab.id ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1 border border-brd')}>
-              {tab.icon} {tab.label}
+              {tab.icon} <span className="hidden sm:inline">{tab.label}</span><span className="sm:hidden">{tab.label.split(' ')[0]}</span>
             </button>
           ))}
         </div>
@@ -304,8 +327,9 @@ function UplinksTab({ oltId, canManage }: { oltId: number; canManage: boolean })
           )}
           {liveTs && <span className="text-xs text-tx3">Live {new Date(liveTs * 1000).toLocaleTimeString()}</span>}
           <button onClick={() => refreshMut.mutate()} disabled={refreshMut.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
-            <RefreshCw size={13} className={refreshMut.isPending ? 'animate-spin' : ''} /> Sync Data
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
+            <RefreshCw size={14} className={refreshMut.isPending ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">Sync Data</span>
           </button>
         </div>
       </div>
@@ -380,28 +404,34 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
               <span className={cn('px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium', isUp ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>
                 {String(uplink.oper_status || '-').toUpperCase()}
               </span>
-              <span className="text-[10px] md:text-xs text-tx3 truncate">{String(uplink.speed || 'N/A')} {String(uplink.duplex || '').toUpperCase()} {String(uplink.medium || '')}</span>
+              <span className="text-[10px] md:text-xs text-tx3 truncate">{String(uplink.speed || 'N/A')} <span className="hidden sm:inline">{String(uplink.duplex || '').toUpperCase()} {String(uplink.medium || '')}</span></span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
-          <div className="text-right text-[10px] md:text-xs hidden sm:block">
-            <div className="text-tx3">DL / UL</div>
-            <div className="font-bold">{formatRate(uplink.input_rate)} / {formatRate(uplink.output_rate)}</div>
+        <div className="flex items-center gap-1.5 md:gap-3 flex-shrink-0">
+          <div className="text-right text-[9px] md:text-xs">
+            <div className="text-tx3 hidden sm:block">DL / UL</div>
+            <div className="font-bold">
+              <span className="hidden sm:inline">{formatRate(uplink.input_rate)} / {formatRate(uplink.output_rate)}</span>
+              <span className="sm:hidden text-[9px]">
+                <span className="text-accent">↓{formatRate(uplink.input_rate).replace(' ', '')}</span>{' '}
+                <span className="text-success">↑{formatRate(uplink.output_rate).replace(' ', '')}</span>
+              </span>
+            </div>
           </div>
           <div className="flex gap-1">
             {canManage && <button onClick={e => { e.stopPropagation(); onToggle.mutate({ uplinkId: Number(uplink.id), action: isAdminUp ? 'disable' : 'enable' }); }}
               className={cn('p-1.5 rounded-lg transition-colors', isAdminUp ? 'hover:bg-warning/15 text-tx3 hover:text-warning' : 'hover:bg-success/15 text-tx3 hover:text-success')}>
               {isAdminUp ? <Pause size={14} /> : <Play size={14} />}
             </button>}
-            {canManage && <button onClick={e => { e.stopPropagation(); setShowPortConfig(true); }} className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent"><Settings size={14} /></button>}
+            {canManage && <button onClick={e => { e.stopPropagation(); setShowPortConfig(true); }} className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent hidden sm:flex"><Settings size={14} /></button>}
           </div>
           {expanded ? <ChevronDown size={16} className="text-tx3" /> : <ChevronRight size={16} className="text-tx3" />}
         </div>
       </div>
 
       {expanded && (
-        <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-brd grid grid-cols-1 md:grid-cols-2 gap-3 animate-fade-in">
+        <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-brd grid grid-cols-1 gap-3 animate-fade-in">
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd">
             <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-1"><Settings size={12} /> Interface Configuration</h6>
             <div className="grid grid-cols-2 gap-2 text-xs md:text-sm">
@@ -559,11 +589,11 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
 
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd">
             <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-1"><Activity size={12} /> Traffic Statistics</h6>
-            <div className="grid grid-cols-2 gap-3 md:gap-4 mb-3">
+            <div className="grid grid-cols-2 gap-2 md:gap-4 mb-3">
               {/* IN */}
               <div className="text-center">
-                <div className="text-xs text-tx3 mb-1">▼ Download (IN)</div>
-                <div className="text-lg font-extrabold text-accent">{formatRate(uplink.input_rate)}</div>
+                <div className="text-[10px] md:text-xs text-tx3 mb-1">▼ Download (IN)</div>
+                <div className="text-base md:text-lg font-extrabold text-accent">{formatRate(uplink.input_rate)}</div>
                 <div className="text-xs text-tx3 mt-0.5">Util: {String(uplink.input_utilization || '0%')}</div>
                 <div className="h-2 rounded-full bg-glass overflow-hidden mt-1">
                   <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.min(parseFloat(String(uplink.input_utilization || '0').replace('%', '')) * 10, 100)}%` }} />
@@ -571,8 +601,8 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
               </div>
               {/* OUT */}
               <div className="text-center">
-                <div className="text-xs text-tx3 mb-1">▲ Upload (OUT)</div>
-                <div className="text-lg font-extrabold text-success">{formatRate(uplink.output_rate)}</div>
+                <div className="text-[10px] md:text-xs text-tx3 mb-1">▲ Upload (OUT)</div>
+                <div className="text-base md:text-lg font-extrabold text-success">{formatRate(uplink.output_rate)}</div>
                 <div className="text-xs text-tx3 mt-0.5">Util: {String(uplink.output_utilization || '0%')}</div>
                 <div className="h-2 rounded-full bg-glass overflow-hidden mt-1">
                   <div className="h-full rounded-full bg-success transition-all" style={{ width: `${Math.min(parseFloat(String(uplink.output_utilization || '0').replace('%', '')) * 10, 100)}%` }} />
@@ -621,8 +651,9 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
 
       {/* Port Configuration Modal */}
       {showPortConfig && (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50" onClick={() => setShowPortConfig(false)}>
-          <div className="glass-card w-full md:max-w-lg md:mx-4 animate-slide-up md:animate-fade-in rounded-t-2xl md:rounded-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+          <div className="modal-overlay" onClick={() => setShowPortConfig(false)} />
+          <div className="relative glass-card w-full md:max-w-lg md:mx-4 animate-slide-up md:animate-fade-in rounded-t-2xl md:rounded-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-brd sticky top-0 bg-surface">
               <h5 className="font-semibold flex items-center gap-2 text-sm md:text-base"><Settings size={16} /> Port Config: {String(uplink.port_name)}</h5>
               <button onClick={() => setShowPortConfig(false)} className="text-tx3 hover:text-tx1">✕</button>
@@ -672,7 +703,7 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
 }
 
 function PonCardsTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
-  const { data: ponData, isLoading } = useQuery({
+  const { data: ponData, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['olt-pon-ports', oltId],
     queryFn: async () => { const r = await fetch(`/api/olt/${oltId}/pon-ports`, { credentials: 'include' }); return r.json(); },
   });
@@ -701,7 +732,13 @@ function PonCardsTab({ oltId, canManage }: { oltId: number; canManage: boolean }
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-2">
         <h6 className="text-sm font-semibold flex items-center gap-2"><HardDrive size={16} /> PON Cards & Ports</h6>
-        <span className="text-xs text-tx3">{ports.length} Ports</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-tx3">{ports.length} Ports</span>
+          <button onClick={() => refetch()} disabled={isFetching}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
+            <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
       <div className="flex items-center gap-3 md:gap-6 p-3 md:p-4 rounded-xl bg-accent/5 border border-accent/20 mb-3">
         <div className="flex items-center gap-2"><HardDrive size={18} className="text-accent" /><strong className="text-xs md:text-sm">GPON</strong></div>
@@ -755,13 +792,13 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
             {String(port.description || '') && <div className="text-[10px] md:text-xs text-tx3 mt-0.5 truncate">{String(port.description)}</div>}
           </div>
         </div>
-        <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
-          <div className="flex gap-2 md:gap-4 text-center">
-            <div><div className="text-sm md:text-base font-extrabold">{onuCount}</div><div className="text-[10px] md:text-xs text-tx3">ONUs</div></div>
+        <div className="flex items-center gap-1.5 md:gap-4 flex-shrink-0">
+          <div className="flex gap-1.5 md:gap-4 text-center">
+            <div><div className="text-sm md:text-base font-extrabold">{onuCount}</div><div className="text-[10px] md:text-xs text-tx3">ONU</div></div>
             <div className="hidden sm:block"><div className="text-sm md:text-base font-extrabold text-success">{onuOnline}</div><div className="text-[10px] md:text-xs text-tx3">Online</div></div>
-            <div className="hidden sm:block"><div className="text-sm md:text-base font-extrabold text-danger">{onuCount - onuOnline}</div><div className="text-[10px] md:text-xs text-tx3">Offline</div></div>
+            <div className="hidden sm:block"><div className="text-sm md:text-base font-extrabold text-danger">{onuCount - onuOnline}</div><div className="text-[10px] md:text-xs text-tx3">Off</div></div>
           </div>
-          <div className="w-16 md:w-20">
+          <div className="w-10 md:w-20 hidden md:block">
             <div className="h-1.5 rounded-full bg-glass overflow-hidden">
               <div className={cn('h-full rounded-full', util > 80 ? 'bg-success' : util > 50 ? 'bg-warning' : 'bg-danger')} style={{ width: `${util}%` }} />
             </div>
@@ -772,7 +809,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
               className={cn('p-1.5 rounded-lg transition-colors', isUp ? 'hover:bg-warning/15 text-tx3 hover:text-warning' : 'hover:bg-success/15 text-tx3 hover:text-success')}>
               {isUp ? <Pause size={14} /> : <Play size={14} />}
             </button>}
-            {canManage && <button onClick={e => { e.stopPropagation(); setEditing(true); }} className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent"><Edit3 size={14} /></button>}
+            {canManage && <button onClick={e => { e.stopPropagation(); setEditing(true); }} className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent hidden sm:flex"><Edit3 size={14} /></button>}
           </div>
           {expanded ? <ChevronDown size={16} className="text-tx3" /> : <ChevronRight size={16} className="text-tx3" />}
         </div>
@@ -862,7 +899,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
 
 function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['olt-vlans', oltId],
     queryFn: async () => {
       try {
@@ -909,6 +946,10 @@ function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
         <h6 className="text-sm font-semibold flex items-center gap-2"><Globe size={16} /> VLAN Configuration</h6>
         <div className="flex items-center gap-2">
           <span className="text-xs text-tx3">{vlans.length} VLANs</span>
+          <button onClick={() => refetch()} disabled={isFetching}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
+            <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
+          </button>
           {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90 transition-colors"><Plus size={13} /> Add VLAN</button>}
         </div>
       </div>
@@ -1025,7 +1066,7 @@ function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
 
 function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['olt-onu-types', oltId],
     queryFn: async () => { const r = await fetch(`/api/olt/${oltId}/onu-types-full`, { credentials: 'include' }); return r.json(); },
   });
@@ -1102,7 +1143,13 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
     <div>
       <div className="flex justify-between items-center mb-3">
         <h6 className="text-sm font-semibold">ONU Types</h6>
-        {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> Create</button>}
+        <div className="flex items-center gap-2">
+          <button onClick={() => refetch()} disabled={isFetching}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
+            <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
+          </button>
+          {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> Create</button>}
+        </div>
       </div>
       <EmptyTab message="No ONU types found. Run Sync or click Create." />
     </div>
@@ -1118,6 +1165,10 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
         <button onClick={() => setSubTab('gpon')} className={cn('px-3 py-1.5 rounded-lg text-xs font-medium transition-all', subTab === 'gpon' ? 'bg-accent text-white' : 'bg-glass text-tx3 hover:text-tx1')}>GPON</button>
         <button onClick={() => setSubTab('epon')} className={cn('px-3 py-1.5 rounded-lg text-xs font-medium transition-all', subTab === 'epon' ? 'bg-accent text-white' : 'bg-glass text-tx3 hover:text-tx1')}>EPON</button>
         <div className="flex-1" />
+        <button onClick={() => refetch()} disabled={isFetching}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
+          <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
+        </button>
         {canManage && <button onClick={() => { setAddForm({ name: '', pon_type: subTab, description: '', max_tcont: 7, max_gem: 32, max_switch: 8, max_flow: 32, max_ip_host: 5 }); setEthPorts(new Set([1, 2, 3, 4])); setPotsPorts(new Set([1])); setWifiPorts(new Set([1, 2])); setShowAdd(true); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> Create</button>}
       </div>
 
@@ -1180,7 +1231,7 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
           {/* CLI Preview */}
           <div>
             <label className="text-xs font-semibold text-tx2 mb-1 block">CLI Preview</label>
-            <pre className="p-3 rounded-lg bg-[#1a1a2e] text-xs font-mono text-green-300 overflow-x-auto max-h-48">{cliPreview()}</pre>
+            <pre className="code-block text-xs overflow-x-auto max-h-48">{cliPreview()}</pre>
           </div>
 
           {/* Actions */}
@@ -1249,7 +1300,7 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
 
 function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['olt-wan-ip', oltId],
     queryFn: async () => { const r = await fetch(`/api/olt/${oltId}/wan-ip-profiles`, { credentials: 'include' }); return r.json(); },
   });
@@ -1283,7 +1334,13 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
     <div>
       <div className="flex items-center justify-between mb-3">
         <h6 className="text-sm font-semibold flex items-center gap-2"><Globe size={16} /> WAN-IP Profiles</h6>
-        {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> Add Profile</button>}
+        <div className="flex items-center gap-2">
+          <button onClick={() => refetch()} disabled={isFetching}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
+            <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
+          </button>
+          {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> Add Profile</button>}
+        </div>
       </div>
 
       {showAdd && (
@@ -1381,7 +1438,7 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
 
 function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['olt-speed-profiles', oltId],
     queryFn: async () => { const r = await fetch(`/api/olt/${oltId}/speed-profiles-full`, { credentials: 'include' }); return r.json(); },
   });
@@ -1417,7 +1474,13 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
 
   return (
     <div>
-      <h6 className="text-sm font-semibold flex items-center gap-2 mb-4"><Gauge size={16} /> Speed Profiles</h6>
+      <div className="flex items-center justify-between mb-4">
+        <h6 className="text-sm font-semibold flex items-center gap-2"><Gauge size={16} /> Speed Profiles</h6>
+        <button onClick={() => refetch()} disabled={isFetching}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
+          <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="rounded-xl bg-glass p-4">
           <div className="flex items-center justify-between mb-3">

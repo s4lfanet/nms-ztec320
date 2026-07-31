@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, useCallback } from 'react';
 import { cn } from '../lib/utils';
 import { api } from '../lib/api';
-import { Search, ChevronLeft, ChevronRight, User, Server, Radio, Shield, KeyRound, Activity } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, ChevronFirst, ChevronLast, User, Server, Radio, Shield, KeyRound, Activity } from 'lucide-react';
+import { TutorialBanner } from '../components/TutorialBanner';
 
 const categoryIcons: Record<string, React.ReactNode> = {
   auth: <KeyRound size={14} />,
@@ -33,7 +34,7 @@ export function ActionLogs() {
   const [category, setCategory] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const perPage = 50;
+  const perPage = 20;
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['action-logs', page, category, search],
@@ -58,6 +59,22 @@ export function ActionLogs() {
           <h1 className="text-xl md:text-2xl font-bold">Action Logs</h1>
           <p className="text-tx2 text-xs md:text-sm mt-1">Audit trail of all user activities</p>
         </div>
+        <TutorialBanner
+          title="Panduan Action Logs"
+          steps={[
+            { title: 'Filter & Search', content: <><p>Filter log by kategori (auth, olt, onu, user, role, general) dan search by keyword. Log entries menampilkan: timestamp, user, action, target, dan detail.</p><p className="text-xs text-tx3 mt-1">Server-side pagination — 50 entries per halaman. Klik page number untuk navigasi.</p></> },
+            { title: 'Log Categories', content: <><p><strong>Auth</strong>: login/logout. <strong>OLT</strong>: sync, add/edit/delete OLT. <strong>ONU</strong>: provision, edit, delete, reboot, clear-config. <strong>User</strong>: add/edit/delete user. <strong>Role</strong>: role management.</p></> },
+          ]}
+          tips={
+            <>
+              <strong className="text-tx2">Tips:</strong>
+              <ul className="mt-1 ml-4 space-y-0.5">
+                <li>Log tidak bisa dihapus — audit trail permanen</li>
+                <li>Search by username, action type, atau target ONU/OLT</li>
+              </ul>
+            </>
+          }
+        />
       </div>
 
       {/* Filters */}
@@ -91,8 +108,9 @@ export function ActionLogs() {
       </div>
 
       {/* Stats */}
-      <div className="text-xs text-tx3">
-        {isFetching && !isLoading ? 'Refreshing...' : ''} {total} log entries
+      <div className="flex items-center justify-between text-xs text-tx3">
+        <span>{isFetching && !isLoading ? 'Refreshing...' : ''} {total} log entries</span>
+        <span>Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, total)} of {total}</span>
       </div>
 
       {/* Desktop table */}
@@ -100,7 +118,8 @@ export function ActionLogs() {
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-brd">
+              <tr className="border-b border-brd bg-glass/30">
+                <th className="px-3 py-3 text-center text-xs font-medium text-tx3 uppercase w-12">#</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Time</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">User</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Category</th>
@@ -112,11 +131,12 @@ export function ActionLogs() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-tx3">Loading...</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-tx3">Loading...</td></tr>
               ) : logs.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-tx3">No log entries found</td></tr>
-              ) : logs.map(l => (
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-tx3">No log entries found</td></tr>
+              ) : logs.map((l, i) => (
                 <tr key={l.id} className="border-b border-brd/50 hover:bg-glass/50 transition-colors">
+                  <td className="px-3 py-2.5 text-center text-xs text-tx3 font-mono">{(page - 1) * perPage + i + 1}</td>
                   <td className="px-4 py-2.5 text-xs text-tx3 whitespace-nowrap">{formatDate(l.created_at)}</td>
                   <td className="px-4 py-2.5">
                     <span className="font-medium text-tx2">{l.username || '—'}</span>
@@ -145,10 +165,13 @@ export function ActionLogs() {
             <div className="p-6 text-center text-tx3 text-sm">Loading...</div>
           ) : logs.length === 0 ? (
             <div className="p-6 text-center text-tx3 text-sm">No log entries found</div>
-          ) : logs.map(l => (
+          ) : logs.map((l, i) => (
             <div key={l.id} className="p-3.5 space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="font-medium text-sm">{l.username || '—'}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-tx3 font-mono bg-glass rounded px-1.5 py-0.5">#{(page - 1) * perPage + i + 1}</span>
+                  <span className="font-medium text-sm">{l.username || '—'}</span>
+                </div>
                 <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium', categoryColors[l.category] || categoryColors.general)}>
                   {categoryIcons[l.category] || categoryIcons.general}
                   {l.category}
@@ -167,29 +190,63 @@ export function ActionLogs() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <div className="text-xs text-tx3">
-            Page {page} of {totalPages}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-glass border border-brd text-sm hover:bg-glass/80 transition-all disabled:opacity-40"
-            >
-              <ChevronLeft size={14} /> Prev
-            </button>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-glass border border-brd text-sm hover:bg-glass/80 transition-all disabled:opacity-40"
-            >
-              Next <ChevronRight size={14} />
-            </button>
-          </div>
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="text-xs text-tx3">
+          Page <span className="font-semibold text-tx2">{page}</span> of {totalPages}
         </div>
-      )}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setPage(1)}
+            disabled={page <= 1}
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-glass border border-brd text-sm hover:bg-glass/80 transition-all disabled:opacity-40"
+            title="First page"
+          >
+            <ChevronFirst size={14} />
+          </button>
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-glass border border-brd text-sm hover:bg-glass/80 transition-all disabled:opacity-40"
+          >
+            <ChevronLeft size={14} /> Prev
+          </button>
+          {(() => {
+            const pages: number[] = [];
+            const start = Math.max(1, page - 2);
+            const end = Math.min(totalPages, page + 2);
+            for (let p = start; p <= end; p++) pages.push(p);
+            return pages.map(p => (
+              <button
+                key={p}
+                onClick={() => setPage(p)}
+                className={cn(
+                  'flex items-center justify-center w-8 h-8 rounded-lg text-sm font-medium transition-all',
+                  p === page
+                    ? 'bg-accent text-white'
+                    : 'bg-glass border border-brd text-tx2 hover:bg-glass/80'
+                )}
+              >
+                {p}
+              </button>
+            ));
+          })()}
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-glass border border-brd text-sm hover:bg-glass/80 transition-all disabled:opacity-40"
+          >
+            Next <ChevronRight size={14} />
+          </button>
+          <button
+            onClick={() => setPage(totalPages)}
+            disabled={page >= totalPages}
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-glass border border-brd text-sm hover:bg-glass/80 transition-all disabled:opacity-40"
+            title="Last page"
+          >
+            <ChevronLast size={14} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

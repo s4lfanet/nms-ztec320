@@ -34,13 +34,14 @@ export const api = {
     request<{ success: boolean; status: string; tenant_status: string; tenant_name: string; subdomain: string; amount: number }>(`/api/public/registration-status/${orderId}`),
 
   // Dashboard
-  dashboard: () => request<DashboardData>('/api/dashboard'),
+  dashboard: (opts?: { nocache?: boolean } | unknown) => request<DashboardData>(`/api/dashboard${opts && typeof opts === 'object' && 'nocache' in opts && opts.nocache ? '?nocache=1' : ''}`),
 
   // All ONUs
-  allOnus: (params?: { olt?: string; status?: string; search?: string; page?: number; page_size?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }) => {
+  allOnus: (params?: { olt?: string; status?: string; pon?: string; search?: string; page?: number; page_size?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }) => {
     const q = new URLSearchParams();
     if (params?.olt && params.olt !== 'all') q.set('olt', params.olt);
     if (params?.status && params.status !== 'all') q.set('status', params.status);
+    if (params?.pon && params.pon !== 'all') q.set('pon', params.pon);
     if (params?.search) q.set('search', params.search);
     if (params?.page) q.set('page', String(params.page));
     if (params?.page_size) q.set('page_size', String(params.page_size));
@@ -75,12 +76,14 @@ export const api = {
   syncAllOlts: () => request(`/api/olt/sync-all`, { method: 'POST' }),
   syncStatus: (oltId: number) => request<SyncStatus>(`/api/olt/${oltId}/sync-status`),
   getOlt: (oltId: number) => request<OltFullData>(`/api/olt/${oltId}`),
+  discoverSlots: (oltId: number) => request<{ success: boolean; message: string; cards: unknown[]; fans: unknown[]; temperature: number | null }>(`/api/olt/${oltId}/discover-slots`, { method: 'POST' }),
   testConnection: (oltId: number | null, data: Record<string, unknown>) => {
     const url = oltId ? `/api/olt/${oltId}/test-connection` : '/api/olt/test-connection';
     return request<TestConnectionResult>(url, { method: 'POST', body: JSON.stringify(data) });
   },
 
   // FTTH Infrastructure
+  ftthStats: () => request<FTTHStats>('/api/ftth/stats'),
   ftthTree: () => request<{ success: boolean; tree: FTTHItem[] }>('/api/ftth/tree'),
   ftthMap: () => request<{ success: boolean; markers: FTTHMarker[]; lines: FTTHLine[] }>('/api/ftth/map'),
   ftthOtbList: () => request<{ success: boolean; items: FTTHOtb[] }>('/api/ftth/otb'),
@@ -97,18 +100,48 @@ export const api = {
   ftthOdpDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/odp/${id}`, { method: 'DELETE' }),
   ftthOdpPorts: (odpId: number) => request<{ success: boolean; ports: FTTHOdpPort[] }>(`/api/ftth/odp/${odpId}/ports`),
   ftthOdpPortUpdate: (id: number, data: Partial<FTTHOdpPort>) => request<{ success: boolean; port: FTTHOdpPort }>(`/api/ftth/odp-port/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  ftthOdpPortDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/odp-port/${id}`, { method: 'DELETE' }),
   ftthAvailableOnus: (oltId?: number) => request<{ success: boolean; onus: FTTHAvailableOnu[] }>(`/api/ftth/available-onus${oltId ? '?olt_id=' + oltId : ''}`),
   ftthPonList: () => request<{ success: boolean; items: FTTHPonPort[] }>('/api/ftth/pon'),
   ftthPonCreate: (data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>('/api/ftth/pon', { method: 'POST', body: JSON.stringify(data) }),
   ftthPonUpdate: (id: number, data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>(`/api/ftth/pon/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthPonDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/pon/${id}`, { method: 'DELETE' }),
   ftthExport: () => '/api/ftth/export',
+  ftthPathsList: () => request<{ success: boolean; paths: FTTHFiberPath[] }>('/api/ftth/paths'),
+  ftthPathCreate: (data: { from_type: string; from_id: number; to_type: string; to_id: number; coordinates: [number, number][]; path_type?: string }) => request<{ success: boolean; id: number }>('/api/ftth/paths', { method: 'POST', body: JSON.stringify(data) }),
+  ftthPathUpdate: (id: number, data: Partial<{ coordinates: [number, number][]; path_type: string }>) => request<{ success: boolean }>(`/api/ftth/paths/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  ftthPathDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/paths/${id}`, { method: 'DELETE' }),
+  ftthAutoRoute: (data: { from_lat: number; from_lng: number; to_lat: number; to_lng: number; from_type?: string; from_id?: number; to_type?: string; to_id?: number }) => request<{ success: boolean; id: number; coordinates: [number, number][] }>('/api/ftth/auto-route', { method: 'POST', body: JSON.stringify(data) }),
   ftthImport: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
     return request<{ success: boolean; imported: Record<string, number> }>('/api/ftth/import', { method: 'POST', body: formData });
   },
   allOnusExport: () => '/api/all-onus/export',
+
+  metricsHistory: (params: { type: string; olt_id?: number; onu_id?: number; hours?: number }) => {
+    const qs = new URLSearchParams({ type: params.type });
+    if (params.olt_id) qs.set('olt_id', String(params.olt_id));
+    if (params.onu_id) qs.set('onu_id', String(params.onu_id));
+    if (params.hours) qs.set('hours', String(params.hours));
+    return request<{ success: boolean; data: Array<{ value: number; time: string; type: string }> }>(`/api/metrics/history?${qs}`);
+  },
+
+  // Traffic Monitoring
+  trafficMeta: () => request<TrafficMetaResponse>('/api/traffic/meta'),
+  trafficGrid: (params: { olt_id: number; port_type: 'uplink' | 'pon'; period: string; search?: string }) => {
+    const qs = new URLSearchParams({ olt_id: String(params.olt_id), port_type: params.port_type, period: params.period });
+    if (params.search) qs.set('search', params.search);
+    return request<TrafficGridResponse>(`/api/traffic/grid?${qs}`);
+  },
+  trafficHistory: (params: { olt_id: number; port_type: 'uplink' | 'pon'; port_name: string; period: string }) => {
+    const qs = new URLSearchParams({ olt_id: String(params.olt_id), port_type: params.port_type, port_name: params.port_name, period: params.period });
+    return request<TrafficHistoryResponse>(`/api/traffic/history?${qs}`);
+  },
+  trafficLive: (params: { olt_id: number; port_type: 'uplink' | 'pon'; port_name: string }) => {
+    const qs = new URLSearchParams({ olt_id: String(params.olt_id), port_type: params.port_type, port_name: params.port_name });
+    return request<TrafficLiveResponse>(`/api/traffic/live?${qs}`);
+  },
 
   // User & Role Management
   users: () => request<{ users: UserData[]; roles: RoleData[] }>('/api/users'),
@@ -206,6 +239,54 @@ export interface TechnicianData {
 
 export interface RxColorRange {
   min: number; max: number; color: string; label?: string;
+}
+
+export interface TrafficPortMeta {
+  port_name: string;
+  admin_status: string;
+  onu_count?: number;
+  onu_online?: number;
+}
+export interface TrafficOltMeta {
+  id: number;
+  name: string;
+  uplinks: TrafficPortMeta[];
+  pon_ports: TrafficPortMeta[];
+}
+export interface TrafficMetaResponse {
+  success: boolean;
+  olts: TrafficOltMeta[];
+}
+export interface TrafficPoint {
+  t: string;
+  rx: number;
+  tx: number;
+}
+export interface TrafficCard {
+  port_name: string;
+  points: TrafficPoint[];
+  current_rx: number;
+  current_tx: number;
+  has_data: boolean;
+}
+export interface TrafficGridResponse {
+  success: boolean;
+  olt_name: string;
+  port_type: string;
+  period: string;
+  cards: TrafficCard[];
+}
+export interface TrafficHistoryResponse {
+  success: boolean;
+  period: string;
+  points: TrafficPoint[];
+  has_data: boolean;
+}
+export interface TrafficLiveResponse {
+  success: boolean;
+  rx_mbps: number;
+  tx_mbps: number;
+  ts: number;
 }
 
 export interface ActionLogEntry {
@@ -497,6 +578,7 @@ export interface ONUData {
   id: number;
   olt_id: number;
   olt_name: string;
+  olt_vendor: string;
   name: string;
   description: string;
   pppoe: string;
@@ -507,6 +589,7 @@ export interface ONUData {
   tx_power: number | null;
   serial_number: string;
   actual_type: string;
+  onu_type: string;
   frame: number;
   slot: number;
   port: number;
@@ -520,15 +603,16 @@ export interface ONUData {
   odp_port_id: number | null;
   customer_name: string;
   customer_phone: string;
+  latitude: number | null;
+  longitude: number | null;
   last_seen: string | null;
   last_online: string | null;
   last_offline: string | null;
+  wifi_config: string;
 }
 
 export interface SignalStats {
-  good: { count: number; pct: number; rx_olt: number; rx_onu: number };
-  warning: { count: number; pct: number; rx_olt: number; rx_onu: number };
-  critical: { count: number; pct: number; rx_olt: number; rx_onu: number };
+  [key: string]: number | { count: number; pct: number; label?: string; min?: number; max?: number; rx_olt?: number; rx_onu?: number };
   los: number;
   na: number;
   na_pct: number;
@@ -542,6 +626,7 @@ export interface AllOnusData {
   onus: ONUData[];
   signal_stats: SignalStats;
   olts: OltInfo[];
+  pon_ports: { value: string; label: string }[];
   total: number;
   page: number;
   page_size: number;
@@ -571,9 +656,11 @@ export interface OltFullData {
   firmware_version: string;
   snmp_enabled: boolean;
   snmp_community: string;
+  snmp_community_write: string;
   snmp_port: number;
   telnet_enabled: boolean;
   telnet_port: number;
+  web_port: number;
   ssh_enabled: boolean;
   ssh_port: number;
   cli_username: string;
@@ -591,10 +678,61 @@ export interface TestConnectionResult {
   results: {
     snmp: { ok: boolean; message: string };
     telnet: { ok: boolean; message: string };
+    web?: { ok: boolean; message: string };
   };
 }
 
 // FTTH Types
+export interface FTTHStats {
+  success: boolean;
+  onu_stats: {
+    total: number;
+    online: number;
+    offline: number;
+    los: number;
+    dyinggasp: number;
+    unregister: number;
+  };
+  per_olt: {
+    olt_id: number;
+    olt_name: string;
+    total: number;
+    online: number;
+    offline: number;
+    los: number;
+    dyinggasp: number;
+    unregister: number;
+    is_online: boolean;
+  }[];
+  per_pon: {
+    port_id: number;
+    port_name: string;
+    olt_id: number;
+    olt_name: string;
+    total: number;
+    online: number;
+    offline: number;
+    admin_status: string;
+  }[];
+  infrastructure: {
+    total_otb: number;
+    total_odc: number;
+    total_odp: number;
+    total_odp_ports: number;
+    used_odp_ports: number;
+    available_odp_ports: number;
+  };
+  orphans: {
+    total: number;
+    onus_without_odp: number;
+    odps_without_odc: number;
+    odcs_without_otb: number;
+    otbs_without_olt: number;
+    onus_without_technician: number;
+    onus_without_coordinates: number;
+  };
+}
+
 export interface FTTHOtb {
   id: number;
   name: string;
@@ -609,6 +747,9 @@ export interface FTTHOtb {
   total_cores: number;
   description: string;
   odc_count: number;
+  used_cores: number;
+  available_cores: number;
+  is_active: boolean;
 }
 
 export interface FTTHOdc {
@@ -625,6 +766,9 @@ export interface FTTHOdc {
   splitter_model: string;
   description: string;
   odp_count: number;
+  used_cores: number;
+  available_cores: number;
+  is_active: boolean;
 }
 
 export interface FTTHOdp {
@@ -641,6 +785,8 @@ export interface FTTHOdp {
   splitter_model: string;
   description: string;
   used_ports: number;
+  available_ports: number;
+  is_active: boolean;
 }
 
 export interface FTTHOdpPort {
@@ -678,6 +824,14 @@ export interface FTTHMarker {
   lat: number;
   lng: number;
   subtype?: string;
+  status?: string;
+  serial?: string;
+  olt_id?: number;
+  olt_name?: string;
+  onu_id_str?: string;
+  rx_power?: number | null;
+  tx_power?: number | null;
+  onu_rx_power?: number | null;
 }
 
 export interface FTTHLine {
@@ -687,7 +841,19 @@ export interface FTTHLine {
   to_lng: number;
   from_type: string;
   to_type: string;
+  from_id?: number;
+  to_id?: number;
   label: string;
+}
+
+export interface FTTHFiberPath {
+  id: number;
+  from_type: string;
+  from_id: number;
+  to_type: string;
+  to_id: number;
+  coordinates: [number, number][];
+  path_type: string;
 }
 
 export interface FTTHPonPort {
@@ -702,6 +868,9 @@ export interface FTTHPonPort {
   otb_name: string;
   otb_core_number: number;
   description: string;
+  total_onu: number;
+  online_onu: number;
+  offline_onu: number;
 }
 
 export interface PublicPackage {

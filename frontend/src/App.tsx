@@ -19,6 +19,7 @@ const OltSettings = lazy(() => import('./pages/OltSettings').then(m => ({ defaul
 const UserManagement = lazy(() => import('./pages/UserManagement').then(m => ({ default: m.UserManagement })));
 const Customization = lazy(() => import('./pages/Customization').then(m => ({ default: m.Customization })));
 const RegisterWizard = lazy(() => import('./pages/RegisterWizard').then(m => ({ default: m.RegisterWizard })));
+const ProvisionWizard = lazy(() => import('./pages/ProvisionWizard').then(m => ({ default: m.ProvisionWizard })));
 const OltConfiguration = lazy(() => import('./pages/OltConfiguration').then(m => ({ default: m.OltConfiguration })));
 const MyProfile = lazy(() => import('./pages/MyProfile').then(m => ({ default: m.MyProfile })));
 const AlertSettings = lazy(() => import('./pages/AlertSettings').then(m => ({ default: m.AlertSettings })));
@@ -29,10 +30,14 @@ const ActionLogs = lazy(() => import('./pages/ActionLogs').then(m => ({ default:
 const AdminPanel = lazy(() => import('./pages/AdminPanel').then(m => ({ default: m.default })));
 const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage').then(m => ({ default: m.default })));
 const AlertHistoryPage = lazy(() => import('./pages/AlertHistory').then(m => ({ default: m.AlertHistory })));
+const Traffic = lazy(() => import('./pages/Traffic').then(m => ({ default: m.Traffic })));
 
 const routePermissions: Record<string, string> = {
+  '/dashboard/onus': 'view_onus',
   '/dashboard/onus/add': 'add_onu',
   '/dashboard/onus/register': 'add_onu',
+  '/dashboard/onus/provision': 'add_onu',
+  '/dashboard/onus/pre-config': 'add_onu',
   '/dashboard/settings/olts': 'settings_ip_olts',
   '/dashboard/customization': 'customization',
   '/dashboard/users': 'manage_users',
@@ -96,7 +101,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   if (requiredPerm) {
     const userPerms = new Set(user.permissions || []);
-    if (!userPerms.has('all_olt') && !userPerms.has(requiredPerm)) {
+    if (!user.is_super_admin && !userPerms.has('all_olt') && !userPerms.has(requiredPerm)) {
       return <Navigate to="/dashboard" replace />;
     }
   }
@@ -124,7 +129,7 @@ function TenantNotFound({ reason }: { reason: string }) {
         <h1 className="text-xl font-bold text-tx1 mb-2">{isSuspended ? 'Tenant Suspended' : 'Tenant Not Found'}</h1>
         <p className="text-sm text-tx3 mb-1">{window.location.hostname}</p>
         <p className="text-sm text-tx3 mb-6">{isSuspended ? 'This tenant account has been suspended. Please contact support.' : 'This subdomain does not exist or has been removed.'}</p>
-        <a href="https://nms.salfa.my.id/spa/" className="inline-block px-6 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors">Back to Home</a>
+        <a href="https://nms.salfa.my.id/" className="inline-block px-6 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors">Back to Home</a>
       </div>
     </div>
   );
@@ -139,7 +144,7 @@ export default function App() {
   const isMainDomain = hostname === 'nms.salfa.my.id' || hostname === 'localhost' || hostname === '127.0.0.1';
 
   useEffect(() => {
-    const path = window.location.pathname.replace(/^\/spa/, '') || '/';
+    const path = window.location.pathname || '/';
     const isPublicRoute = path === '/' || path === '/login' || path === '/secure-portal-x7k2' || path === '/register' || path === '/payment-result' || path.startsWith('/renewal/');
     if (!isPublicRoute) {
       fetchUser();
@@ -198,6 +203,8 @@ export default function App() {
         <Route path="onus" element={<AllOnus />} />
         <Route path="onus/add" element={<AddOnu />} />
         <Route path="onus/register" element={<RegisterWizard />} />
+        <Route path="onus/provision" element={<ProvisionWizard />} />
+        <Route path="onus/pre-config" element={<ProvisionWizard manualMode />} />
         <Route path="onus/:id" element={<ViewOnu />} />
         <Route path="all-onus/view-c3-r/gpon/:oltId/:frame/:slot/:onuNum" element={<ViewOnu />} />
         <Route path="settings/olts" element={<OltSettings />} />
@@ -210,6 +217,7 @@ export default function App() {
         <Route path="ftth" element={<FtthInfrastructure />} />
         <Route path="templates" element={<Templates />} />
         <Route path="templates/tr069-profile" element={<Tr069Profile />} />
+        <Route path="traffic" element={<Traffic />} />
         <Route path="logs" element={<ActionLogs />} />
         <Route path="admin" element={<AdminPanel />} />
         <Route path="subscription" element={<SubscriptionPage />} />

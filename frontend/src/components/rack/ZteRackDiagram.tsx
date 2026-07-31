@@ -141,17 +141,17 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
     const isControlPort = cardTypeUpper.includes('SCXN') || cardTypeUpper.includes('SCUN');
     const isUplinkPort = cardTypeUpper.includes('HUVQ');
 
-    let portBg = 'bg-gray-400';
+    let portBg = 'bg-tx3';
     let portIcon: React.ReactNode = null;
     if (isCardStatus && isControlPort) {
-      portBg = slot.cardStatus === 'inservice' ? 'bg-blue-500' : 'bg-gray-400';
-      portIcon = slot.cardStatus === 'inservice' ? <Cpu className="w-3 h-3 text-white" /> : <LockKeyhole className="w-3 h-3 text-gray-700" />;
+      portBg = slot.cardStatus === 'inservice' ? 'bg-blue-500' : 'bg-tx3';
+      portIcon = slot.cardStatus === 'inservice' ? <Cpu className="w-3 h-3 text-white" /> : <LockKeyhole className="w-3 h-3 text-tx1" />;
     } else if (isCardStatus && isUplinkPort) {
-      portBg = slot.cardStatus === 'inservice' ? 'bg-blue-500' : 'bg-gray-400';
-      portIcon = slot.cardStatus === 'inservice' ? <Shield className="w-3 h-3 text-white" /> : <LockKeyhole className="w-3 h-3 text-gray-700" />;
+      portBg = slot.cardStatus === 'inservice' ? 'bg-blue-500' : 'bg-tx3';
+      portIcon = slot.cardStatus === 'inservice' ? <Shield className="w-3 h-3 text-white" /> : <LockKeyhole className="w-3 h-3 text-tx1" />;
     } else if (isCardStatus) {
-      portBg = slot.cardStatus === 'inservice' ? 'bg-blue-500' : 'bg-gray-400';
-      portIcon = slot.cardStatus === 'inservice' ? <Cpu className="w-3 h-3 text-white" /> : <LockKeyhole className="w-3 h-3 text-gray-700" />;
+      portBg = slot.cardStatus === 'inservice' ? 'bg-blue-500' : 'bg-tx3';
+      portIcon = slot.cardStatus === 'inservice' ? <Cpu className="w-3 h-3 text-white" /> : <LockKeyhole className="w-3 h-3 text-tx1" />;
     } else if (port.adminUp !== false) {
       portBg = port.operUp === true ? 'bg-green-500' : 'bg-yellow-500';
     }
@@ -176,17 +176,17 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
         )}
         <div className="text-[9px] text-tx3 mt-0.5">Sumber: {sourceLabel}</div>
         {isPonPort && (
-          <div className="border-t border-gray-700 mt-1 pt-1 space-y-0.5">
+          <div className="border-t border-brd mt-1 pt-1 space-y-0.5">
             <div>Total ONU: <span className="font-medium">{port.total}</span></div>
             {port.online > 0 && <div className="text-green-400">Online: {port.online}</div>}
-            {port.offline > 0 && <div className="text-gray-300">Offline: {port.offline}</div>}
+            {port.offline > 0 && <div className="text-tx2">Offline: {port.offline}</div>}
             {port.los > 0 && <div className="text-red-400">LOS: {port.los}</div>}
             {port.dyinggasp > 0 && <div className="text-purple-400">Dying Gasp: {port.dyinggasp}</div>}
             {port.unconfigCount > 0 && <div className="text-orange-400">Unconfig: {port.unconfigCount}</div>}
           </div>
         )}
         {port.sfpTxPower != null && (
-          <div className="border-t border-gray-700 mt-1 pt-1 space-y-0.5">
+          <div className="border-t border-brd mt-1 pt-1 space-y-0.5">
             <div className="font-semibold text-cyan-400 mb-0.5">SFP / OPTICAL</div>
             <div>TX: <span className="text-cyan-300">{port.sfpTxPower.toFixed(3)} dBm</span></div>
             {port.sfpRxPower != null && <div>RX: <span className="text-cyan-300">{port.sfpRxPower.toFixed(3)} dBm</span></div>}
@@ -194,8 +194,8 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
             {port.sfpBiasCurrent != null && <div>Bias: <span className="text-yellow-300">{port.sfpBiasCurrent.toFixed(1)} mA</span></div>}
             {port.sfpVoltage != null && <div>VCC: <span className="text-green-300">{port.sfpVoltage.toFixed(3)} V</span></div>}
             {port.sfpWavelength != null && <div>λ: <span className="text-purple-300">{port.sfpWavelength} nm</span></div>}
-            {port.sfpVendor && <div>OEM: <span className="text-gray-300">{port.sfpVendor}</span></div>}
-            {port.sfpModel && <div>Model: <span className="text-gray-300">{port.sfpModel}</span></div>}
+            {port.sfpVendor && <div>OEM: <span className="text-tx2">{port.sfpVendor}</span></div>}
+            {port.sfpModel && <div>Model: <span className="text-tx2">{port.sfpModel}</span></div>}
           </div>
         )}
       </div>
@@ -209,7 +209,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
         onMouseLeave={() => { setHoveredPort(null); hideTip(); }}
         onClick={(e) => { e.stopPropagation(); if (onPortClick) { onPortClick(slot.slotIndex, port.portIndex); } else { setSelectedPort({ slot, port }); } }}
       >
-        {isDisabled && !isCardStatus && <LockKeyhole className="w-2.5 h-2.5 text-gray-700" />}
+        {isDisabled && !isCardStatus && <LockKeyhole className="w-2.5 h-2.5 text-tx1" />}
         {isOnline && !isCardStatus && <ArrowDownUp className="w-2.5 h-2.5 text-white" />}
         {isOperDown && !isCardStatus && <ChevronsLeftRightEllipsis className="w-2.5 h-2.5 text-yellow-900" />}
         {isCardStatus && portIcon}
@@ -251,11 +251,11 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
       : slot.operStatus === 'down'
       ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
       : 'bg-glass border-brd';
-    const tempHeaderBg = slot.temperature == null ? 'bg-gray-800'
+    const tempHeaderBg = slot.temperature == null ? 'bg-glass'
       : slot.temperature >= 65 ? 'bg-red-700'
       : slot.temperature >= 55 ? 'bg-orange-600'
       : slot.temperature >= 50 ? 'bg-amber-600'
-      : 'bg-gray-800';
+      : 'bg-glass';
     const cardTypeUpper = (slot.cardType ?? '').toUpperCase();
     const isControl = cardTypeUpper.startsWith('SCXN') || cardTypeUpper.startsWith('SCUN') || cardTypeUpper.startsWith('SMXA');
     const roleLabel = slot.cardRole === 'main' ? 'MAIN' : slot.cardRole === 'standby' ? 'STB' : isControl ? 'CTRL' : null;
@@ -271,7 +271,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
           {slot.temperature != null && <div>Temp: {slot.temperature}°C</div>}
           {slot.voltageMv != null && <div>Voltage: {(slot.voltageMv / 1000).toFixed(1)} V</div>}
           {slot.currentMa != null && <div>Current: {(slot.currentMa / 1000).toFixed(2)} A</div>}
-          <div className="border-t border-gray-700 mt-1 pt-1">Ports: {slot.ports.length}</div>
+          <div className="border-t border-brd mt-1 pt-1">Ports: {slot.ports.length}</div>
           {slot.ports.length > 0 && (
             <div>ONUs: {slot.ports.reduce((a, p) => a + p.total, 0)} ({slot.ports.reduce((a, p) => a + p.online, 0)} online)</div>
           )}
@@ -286,14 +286,14 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
         onMouseLeave={() => { setHoveredSlot(null); hideTip(); }}
         onClick={() => { if (!hoveredPort) { if (onPortClick) { onPortClick(slot.slotIndex, 0); } else if (slot.ports.length > 0) { setSelectedPort({ slot, port: slot.ports[0] }); } } }}
       >
-        <div className={`${tempHeaderBg} text-white text-[8px] font-bold px-0.5 py-0.5 text-center border-b border-gray-700 w-full flex-shrink-0`}>
+        <div className={`${tempHeaderBg} text-tx1 text-[8px] font-bold px-0.5 py-0.5 text-center border-b border-brd w-full flex-shrink-0`}>
           {formatCardType(slot.cardType)}
           {slot.temperature != null && slot.temperature >= 50 && (
             <div className="text-[6px] font-normal leading-tight">{slot.temperature}°C</div>
           )}
         </div>
         {roleLabel && (
-          <div className="bg-yellow-400 text-gray-900 text-[7px] text-center py-0.5 font-bold border-b border-gray-700 w-full flex-shrink-0">
+          <div className="bg-yellow-400 text-gray-900 text-[7px] text-center py-0.5 font-bold border-b border-brd w-full flex-shrink-0">
             {roleLabel}
           </div>
         )}
@@ -326,7 +326,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
         <div className={`absolute top-0.5 right-0.5 w-2 h-2 rounded-full border ${
           fan.status === 'active' ? 'bg-green-500 border-green-600' :
           fan.status === 'inactive' ? 'bg-red-500 border-red-600' :
-          'bg-gray-400 border-gray-500'
+          'bg-tx3 border-brd'
         }`} />
       </div>
     );
@@ -407,8 +407,9 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
     const isCardStatus = port.source === 'card-status';
 
     return createPortal(
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setSelectedPort(null)}>
-        <div className="w-[calc(100vw-2rem)] max-w-sm mx-4 rounded-xl border shadow-2xl overflow-y-auto max-h-[90vh]"
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setSelectedPort(null)}>
+        <div className="modal-overlay" />
+        <div className="relative w-[calc(100vw-2rem)] max-w-sm mx-4 rounded-xl border shadow-2xl overflow-y-auto max-h-[90vh]"
           style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-hover)' }}
           onClick={e => e.stopPropagation()}>
           {/* Header */}
@@ -606,7 +607,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
       <div className="mt-3 flex flex-wrap gap-2 sm:gap-4 text-[10px] text-tx3">
         {[
           { color: 'bg-green-500', Icon: ArrowDownUp, label: 'Online' },
-          { color: 'bg-gray-400', Icon: LockKeyhole, label: 'Disabled' },
+          { color: 'bg-tx3', Icon: LockKeyhole, label: 'Disabled' },
           { color: 'bg-yellow-500', Icon: ChevronsLeftRightEllipsis, label: 'Admin UP / Port DOWN' },
         ].map(l => (
           <div key={l.label} className="flex items-center gap-1">

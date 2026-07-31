@@ -4,17 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type TechnicianData } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
+import { TutorialBanner } from '../components/TutorialBanner';
 import {
   ArrowLeft, ArrowRight, Server, Cpu, Settings, Check,
-  Loader2, Zap, Wifi, Globe, Search, HelpCircle, ChevronDown, ChevronUp, Plus, Trash2, Wrench
+  Loader2, Zap, Wifi, Globe, Search, Wrench
 } from 'lucide-react';
 
-const VENDORS = [
-  { vendor: 'huawei', onu_type: 'HG8145V5', description: 'Huawei — 4GE, 1POTS, WiFi', lan: 'ETH 1-4', topo: 'Single TCONT/GEM, wan-ip vlan-profile', tr069: 'Supported via OMCI' },
-  { vendor: 'zte', onu_type: 'F660', description: 'ZTE — 4GE, 2POTS, WiFi', lan: 'ETH 1-4', topo: 'Single TCONT/GEM, vlan-port eth', tr069: 'Supported via OMCI' },
-  { vendor: 'fiberhome', onu_type: 'FHTT', description: 'Fiberhome — 4GE, 2POTS, WiFi', lan: 'VEIP', topo: 'Multi TCONT (TR069/INET/VOIP), VEIP mode', tr069: 'Supported via OMCI' },
-  { vendor: 'universal', onu_type: 'All', description: 'Universal — Auto-detect', lan: 'Auto', topo: 'Minimal config, auto-detect', tr069: 'May not work on all firmware' },
-];
 
 const STEPS = [
   { id: 1, label: 'Select OLT', icon: <Server size={16} /> },
@@ -43,8 +38,7 @@ export function AddOnu() {
   const [oltId, setOltId] = useState(0);
   // Step 2
   const [serialNumber, setSerialNumber] = useState('');
-  const [vendor, setVendor] = useState('universal');
-  const [onuType, setOnuType] = useState('All');
+  const [onuType, setOnuType] = useState('F660');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [frame, setFrame] = useState(1);
@@ -67,18 +61,11 @@ export function AddOnu() {
   const [tr069TagMode, setTr069TagMode] = useState<'tag' | 'untag'>('tag');
   const [tr069Profiles, setTr069Profiles] = useState<Array<{ id: number; name: string; acs_url: string; acs_username: string; acs_password: string; vlan: number; vlan_mode: string }>>([]);
   const [selectedTr069Profile, setSelectedTr069Profile] = useState('');
-  // Multi-VLAN for huawei vendor
-  const [huaweiVlans, setHuaweiVlans] = useState<Array<{ vlan: string; label: string }>>([
-    { vlan: '1010', label: 'Mgmt' },
-    { vlan: '30', label: 'Internet' },
-    { vlan: '151', label: 'VoIP' },
-  ]);
-  const [huaweiVlanProfile, setHuaweiVlanProfile] = useState('genieacs');
   const [technicianId, setTechnicianId] = useState<number | null>(null);
 
   // Scan state
   const [scanning, setScanning] = useState(false);
-  const [scannedOnus, setScannedOnus] = useState<Array<{pon_port: string; sn: string; vendor: string; model: string; onu_id?: number; matched_type?: string}>>([]);
+  const [scannedOnus, setScannedOnus] = useState<Array<{pon_port: string; sn: string; model: string; onu_id?: number; matched_type?: string}>>([]);
   const [showScan, setShowScan] = useState(false);
   const [registeredTypes, setRegisteredTypes] = useState<string[]>([]);
 
@@ -95,6 +82,26 @@ export function AddOnu() {
     enabled: !!oltId,
   });
   const vlanList: Array<{vlan_id: number; name: string}> = vlanData?.vlans || [];
+
+  // Fetch PON structure (slots/ports) from selected OLT
+  const { data: ponStructure } = useQuery({
+    queryKey: ['olt-pon-structure', oltId],
+    queryFn: async () => { const r = await fetch(`/api/olt/${oltId}/pon-structure`, { credentials: 'include' }); return r.json(); },
+    enabled: !!oltId,
+  });
+  const slots: Array<{ card: number; ports: number[] }> = ponStructure?.structure || [];
+
+  // Auto-set slot/port when structure loads
+  useEffect(() => {
+    if (slots.length > 0) {
+      const found = slots.find(s => s.card === slot);
+      if (!found) setSlot(slots[0].card);
+      const currentSlot = found || slots[0];
+      if (currentSlot.ports.length > 0 && !currentSlot.ports.includes(port)) {
+        setPort(currentSlot.ports[0]);
+      }
+    }
+  }, [slots]);
 
   // Auto-set serviceVlan when VLAN list loads
   useEffect(() => {
@@ -127,13 +134,8 @@ export function AddOnu() {
     setScanning(false);
   };
 
-  const selectScannedOnu = (onu: {pon_port: string; sn: string; vendor: string; model: string; onu_id?: number; matched_type?: string}) => {
+  const selectScannedOnu = (onu: {pon_port: string; sn: string; model: string; onu_id?: number; matched_type?: string}) => {
     setSerialNumber(onu.sn);
-    // Auto-detect vendor
-    const vendorMap: Record<string, string> = { 'ZTEG': 'zte', 'ZICG': 'zte', 'HWTC': 'huawei', 'FHTT': 'fiberhome' };
-    const prefix = onu.sn.substring(0, 4).toUpperCase();
-    const detectedVendor = vendorMap[prefix] || 'universal';
-    setVendor(detectedVendor);
     // Use matched_type (registered ONU type on OLT) — NOT the raw model
     // F670LV9.0 (scan model) → F670L (registered type)
     if (onu.matched_type) {
@@ -200,51 +202,24 @@ export function AddOnu() {
   const provision = async (dryRun: boolean) => {
     setLoading(true);
     try {
-      let res: Response;
-      if (vendor === 'huawei') {
-        // Use pre-register with huawei_full template (supports multi-VLAN)
-        res = await fetch('/api/pre-register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            olt_id: oltId, frame, slot, port,
-            onu_id: 1, onu_type: onuType, serial: serialNumber,
-            vlan: serviceVlan, tcont_profile: tcontProfile,
-            traffic_profile: trafficProfile || tcontProfile,
-            name, description, configure: true,
-            technician_id: technicianId,
-            template: 'huawei_full',
-            extra: {
-              vlans: huaweiVlans.filter(v => v.vlan),
-              vlan_profile: huaweiVlanProfile,
-              enable_tr069: tr069Enabled ? 'true' : '',
-              acs_url: acsUrl, acs_user: acsUsername, acs_pass: acsPassword,
-              tr069_vlan: tr069TagMode === 'tag' ? String(tr069Vlan) : '',
-              tr069_vlan_mode: tr069TagMode,
-            },
-          }),
-        });
-      } else {
-        res = await fetch('/api/provision/ont', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            olt_id: oltId, frame, slot, port,
-            serial_number: serialNumber, vendor, onu_type: onuType,
-            name, description, tcont_profile: tcontProfile,
-            traffic_profile: trafficProfile || tcontProfile,
-            service_vlan: serviceVlan, wan_mode: wanMode,
-            wan_ip_profile: wanIpProfile,
-            pppoe_username: pppoeUsername, pppoe_password: pppoePassword,
-            tr069_enabled: tr069Enabled, acs_url: acsUrl,
-            acs_username: acsUsername, acs_password: acsPassword,
-            tr069_vlan: tr069TagMode === 'tag' ? tr069Vlan : 0, dry_run: dryRun,
-            technician_id: technicianId,
-          }),
-        });
-      }
+      const res = await fetch('/api/provision/ont', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          olt_id: oltId, frame, slot, port,
+          serial_number: serialNumber, vendor: 'zte', onu_type: onuType,
+          name, description, tcont_profile: tcontProfile,
+          traffic_profile: trafficProfile || tcontProfile,
+          service_vlan: serviceVlan, wan_mode: wanMode,
+          wan_ip_profile: wanIpProfile,
+          pppoe_username: pppoeUsername, pppoe_password: pppoePassword,
+          tr069_enabled: tr069Enabled, acs_url: acsUrl,
+          acs_username: acsUsername, acs_password: acsPassword,
+          tr069_vlan: tr069TagMode === 'tag' ? tr069Vlan : 0, dry_run: dryRun,
+          technician_id: technicianId,
+        }),
+      });
       const d = await res.json();
       setResult(d);
       if (d.success && !dryRun) {
@@ -266,8 +241,6 @@ export function AddOnu() {
     return true;
   };
 
-  const [showTutor, setShowTutor] = useState(false);
-
   return (
     <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 animate-fade-in">
       <div className="flex items-center gap-2 md:gap-3">
@@ -277,91 +250,45 @@ export function AddOnu() {
         </button>
         <div className="min-w-0">
           <h1 className="text-xl md:text-2xl font-bold truncate">Add New ONU</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">Cross-vendor ONT provisioning</p>
+          <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">ZTE ONT provisioning</p>
         </div>
-        <button onClick={() => setShowTutor(!showTutor)}
-          className="ml-auto flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 rounded-lg bg-glass border border-brd text-xs text-tx2 hover:text-tx1 hover:border-accent/30 transition-all flex-shrink-0">
-          <HelpCircle size={14} /> <span className="hidden sm:inline">Tutor</span>
-          {showTutor ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
-      </div>
-
-      {/* Tutorial */}
-      {showTutor && (
-        <div className="glass-card p-3 md:p-5 space-y-3 md:space-y-4 border border-accent/20">
-          <h3 className="text-sm font-semibold flex items-center gap-2 text-accent">
-            <HelpCircle size={16} /> Panduan Provisioning ONU
-          </h3>
-
-          {/* Prerequisites */}
-          <div className="p-3 rounded-lg bg-warning/5 border border-warning/20 text-xs text-tx2">
-            <strong className="text-warning">Sebelum Mulai — Pastikan hal berikut sudah dikonfigurasi di OLT:</strong>
-            <ul className="mt-1.5 ml-4 space-y-0.5 text-tx3">
-              <li>1. <strong className="text-tx2">ONU Type</strong> sudah terdaftar di OLT (OLT Configuration → ONU Types tab)</li>
-              <li>2. <strong className="text-tx2">TCONT Profile</strong> sudah dibuat (OLT Configuration → Speed Profiles tab, type=tcont)</li>
-              <li>3. <strong className="text-tx2">VLAN</strong> sudah dibuat di OLT (OLT Configuration → VLANs tab)</li>
-              <li>4. <strong className="text-tx2">WAN-IP Profile</strong> sudah dibuat jika menggunakan DHCP/PPPoE mode (OLT Configuration → WAN-IP tab)</li>
-              <li>5. <strong className="text-tx2">CLI/Telnet access</strong> OLT sudah dikonfigurasi (OLT Settings → CLI Username & Password)</li>
-              <li>6. ONU sudah terhubung fisik ke PON port OLT dan menyala (LED PON menyala hijau)</li>
-            </ul>
-          </div>
-
-          <div className="space-y-3 text-xs md:text-sm text-tx2">
-            <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-xs font-bold">1</span>
-              <div>
-                <strong className="text-tx1">Select OLT</strong>
-                <p>Pilih OLT tempat ONU akan didaftarkan. Pastikan OLT berstatus <span className="text-success">Online</span>.</p>
-                <p className="text-xs text-tx3 mt-1">Jika OLT belum ada, tambahkan di halaman OLT Settings terlebih dahulu.</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-xs font-bold">2</span>
-              <div>
-                <strong className="text-tx1">ONU Info</strong>
-                <p>Pilih vendor ONU (Huawei/ZTE/Fiberhome/Universal) dan masukkan Serial Number.</p>
-                <p className="text-xs text-tx3 mt-1">Gunakan tombol <strong>Scan ONUs</strong> untuk menemukan ONU yang belum terdaftar di OLT secara otomatis. Klik ONU dari hasil scan untuk auto-fill Serial Number, Vendor, ONU Type, Frame/Slot/Port — tidak perlu input manual.</p>
-                <p className="text-xs text-tx3 mt-1">Format SN: 4 huruf vendor + 8 hex (contoh: HWTCF95F8CAC, ZTEG0A1B2C3D, FHTT12345678)</p>
-                <p className="text-xs text-tx3 mt-1">ONU Type: Jika OLT sudah punya type terdaftar, dropdown akan menampilkan pilihan dari OLT. Jika belum, ketik manual atau gunakan "All" untuk auto-detect.</p>
-                <p className="text-xs text-tx3 mt-1">Name & Description: Isi untuk memudahkan identifikasi ONU (contoh: "ODP-RW03-03 | Budi")</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-xs font-bold">3</span>
-              <div>
-                <strong className="text-tx1">Configuration</strong>
-                <p>Atur TCONT profile (upload bandwidth), Traffic profile (download), Service VLAN, dan WAN mode:</p>
-                <ul className="text-xs text-tx3 mt-1 ml-4 space-y-0.5">
-                  <li><strong className="text-tx2">Bridge</strong> — L2 transparent, VLAN via service-port saja. Cocok untuk ONU yang dikelola router eksternal</li>
-                  <li><strong className="text-tx2">DHCP</strong> — ONU dapat IP via DHCP, butuh <strong>VLAN Profile (wan-ip)</strong>. Buat WAN-IP Profile di OLT Configuration → WAN-IP tab terlebih dahulu</li>
-                  <li><strong className="text-tx2">PPPoE</strong> — ONU dial via PPPoE. Untuk ZTE ONU, isi username & password. Untuk vendor lain, credentials dikelola via ONU atau TR-069 ACS</li>
+        <div className="ml-auto">
+          <TutorialBanner
+            title="Panduan Provisioning ONU"
+            prerequisites={
+              <>
+                <strong className="text-warning">Sebelum Mulai — Pastikan hal berikut sudah dikonfigurasi di OLT:</strong>
+                <ul className="mt-1.5 ml-4 space-y-0.5 text-tx3">
+                  <li>1. <strong className="text-tx2">ONU Type</strong> sudah terdaftar di OLT (OLT Configuration → ONU Types tab)</li>
+                  <li>2. <strong className="text-tx2">TCONT Profile</strong> sudah dibuat (OLT Configuration → Speed Profiles tab, type=tcont)</li>
+                  <li>3. <strong className="text-tx2">VLAN</strong> sudah dibuat di OLT (OLT Configuration → VLANs tab)</li>
+                  <li>4. <strong className="text-tx2">WAN-IP Profile</strong> sudah dibuat jika menggunakan DHCP/PPPoE mode (OLT Configuration → WAN-IP tab)</li>
+                  <li>5. <strong className="text-tx2">CLI/Telnet access</strong> OLT sudah dikonfigurasi (OLT Settings → CLI Username & Password)</li>
+                  <li>6. ONU sudah terhubung fisik ke PON port OLT dan menyala (LED PON menyala hijau)</li>
                 </ul>
-                <p className="mt-2">Aktifkan <strong>TR-069</strong> untuk manajemen remote via ACS (GenieACS). Pilih VLAN tag/untag sesuai topologi jaringan.</p>
-                <p className="text-xs text-tx3 mt-1">TR069 Profile: Buat TR069 Profile di halaman TR069 Profile terlebih dahulu untuk menyimpan ACS URL, Username, Password, dan VLAN config — tinggal pilih saat provisioning.</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-xs font-bold">4</span>
-              <div>
-                <strong className="text-tx1">Review & Provision</strong>
-                <p>Periksa semua parameter. Klik <strong>Preview</strong> untuk melihat CLI commands yang akan dikirim tanpa eksekusi — berguna untuk verifikasi sebelum commit.</p>
-                <p className="text-xs text-tx3 mt-1">Klik <strong>Provision Now</strong> untuk eksekusi. Proses provisioning mengirim CLI via Telnet ke OLT: register ONU → TCONT → GEM port → service-port → pon-onu-mng (LAN/WAN/TR069).</p>
-                <p className="text-xs text-tx3 mt-1">Setelah provisioning berhasil, OLT akan <strong>auto-sync</strong> untuk update status ONU di All ONUs page. Anda akan otomatis diarahkan ke halaman All ONUs.</p>
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-glass border border-brd text-xs text-tx3">
-              <strong className="text-tx2">Tips:</strong>
-              <ul className="mt-1 ml-4 space-y-0.5">
-                <li>Gunakan <strong>Preview</strong> dulu untuk verifikasi commands sebelum eksekusi</li>
-                <li>Jika ada error CLI, cek apakah ONU type dan TCONT profile sudah terdaftar di OLT (OLT Configuration page)</li>
-                <li>Untuk DHCP/PPPoE mode, pastikan WAN-IP Profile sudah dibuat di OLT Configuration → WAN-IP tab</li>
-                <li>Scan ONUs auto-fills Serial Number, Vendor, ONU Type, dan Frame/Slot/Port — lebih cepat dari input manual</li>
-                <li>Setelah provisioning berhasil, OLT akan auto-sync — tunggu beberapa detik lalu refresh All ONUs page</li>
-              </ul>
-            </div>
-          </div>
+              </>
+            }
+            steps={[
+              { title: 'Select OLT', content: <><p>Pilih OLT tempat ONU akan didaftarkan. Pastikan OLT berstatus <span className="text-success">Online</span>.</p><p className="text-xs text-tx3 mt-1">Jika OLT belum ada, tambahkan di halaman OLT Settings terlebih dahulu.</p></> },
+              { title: 'ONU Info', content: <><p>Masukkan Serial Number ONU.</p><p className="text-xs text-tx3 mt-1">Gunakan tombol <strong>Scan ONUs</strong> untuk menemukan ONU yang belum terdaftar di OLT secara otomatis. Klik ONU dari hasil scan untuk auto-fill Serial Number, ONU Type, Frame/Slot/Port — tidak perlu input manual.</p><p className="text-xs text-tx3 mt-1">Format SN: 4 huruf vendor + 8 hex (contoh: ZTEG0A1B2C3D)</p></> },
+              { title: 'Configuration', content: <><p>Atur TCONT profile (upload bandwidth), Traffic profile (download), Service VLAN, dan WAN mode:</p><ul className="text-xs text-tx3 mt-1 ml-4 space-y-0.5"><li><strong className="text-tx2">Bridge</strong> — L2 transparent, VLAN via service-port saja. Cocok untuk ONU yang dikelola router eksternal</li><li><strong className="text-tx2">DHCP</strong> — ONU dapat IP via DHCP, butuh <strong>VLAN Profile (wan-ip)</strong>. Buat WAN-IP Profile di OLT Configuration → WAN-IP tab terlebih dahulu</li><li><strong className="text-tx2">PPPoE</strong> — ONU dial via PPPoE. Isi username & password untuk ZTE ONU.</li></ul><p className="mt-2">Aktifkan <strong>TR-069</strong> untuk manajemen remote via ACS (GenieACS). Pilih VLAN tag/untag sesuai topologi jaringan.</p><p className="text-xs text-tx3 mt-1">TR069 Profile: Buat TR069 Profile di halaman TR069 Profile terlebih dahulu untuk menyimpan ACS URL, Username, Password, dan VLAN config — tinggal pilih saat provisioning.</p></> },
+              { title: 'Review & Provision', content: <><p>Periksa semua parameter. Klik <strong>Preview</strong> untuk melihat CLI commands yang akan dikirim tanpa eksekusi — berguna untuk verifikasi sebelum commit.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Provision Now</strong> untuk eksekusi. Proses provisioning mengirim CLI via Telnet ke OLT: register ONU → TCONT → GEM port → service-port → pon-onu-mng (LAN/WAN/TR069).</p><p className="text-xs text-tx3 mt-1">Setelah provisioning berhasil, OLT akan <strong>auto-sync</strong> untuk update status ONU di All ONUs page. Anda akan otomatis diarahkan ke halaman All ONUs.</p></> },
+            ]}
+            tips={
+              <>
+                <strong className="text-tx2">Tips:</strong>
+                <ul className="mt-1 ml-4 space-y-0.5">
+                  <li>Gunakan <strong>Preview</strong> dulu untuk verifikasi commands sebelum eksekusi</li>
+                  <li>Jika ada error CLI, cek apakah ONU type dan TCONT profile sudah terdaftar di OLT (OLT Configuration page)</li>
+                  <li>Untuk DHCP/PPPoE mode, pastikan WAN-IP Profile sudah dibuat di OLT Configuration → WAN-IP tab</li>
+                  <li>Scan ONUs auto-fills Serial Number, ONU Type, dan Frame/Slot/Port — lebih cepat dari input manual</li>
+                  <li>Setelah provisioning berhasil, OLT akan auto-sync — tunggu beberapa detik lalu refresh All ONUs page</li>
+                </ul>
+              </>
+            }
+          />
         </div>
-      )}
+      </div>
 
       {/* Step Indicator */}
       {step <= 4 && (
@@ -416,26 +343,6 @@ export function AddOnu() {
       {step === 2 && (
         <div className="glass-card p-4 md:p-6 space-y-4 md:space-y-5">
           <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Cpu size={18} /> ONU Information</h2>
-          <div>
-            <label className="label-sm mb-2">Vendor</label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-              {VENDORS.map(v => (
-                <button key={v.vendor} onClick={() => { setVendor(v.vendor); setOnuType(v.onu_type); }}
-                  className={cn('p-3 rounded-xl border text-left transition-all',
-                    vendor === v.vendor ? 'border-accent bg-accent/10' : 'border-brd hover:border-accent/30 bg-glass')}>
-                  <div className="text-sm font-medium">{v.vendor}</div>
-                  <div className="text-xs text-tx3">{v.onu_type}</div>
-                  <div className="text-[10px] text-tx3 mt-1">LAN: {v.lan}</div>
-                  {vendor === v.vendor && (
-                    <div className="mt-2 pt-2 border-t border-brd">
-                      <div className="text-[10px] text-tx3">{v.topo}</div>
-                      <div className="text-[10px] text-tx3">{v.tr069}</div>
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
           {/* Scan Button */}
           <div className="flex items-center gap-2 md:gap-3 flex-wrap">
             <button onClick={scanOnus} disabled={scanning || !oltId}
@@ -467,7 +374,6 @@ export function AddOnu() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold font-mono">{onu.sn}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-glass text-tx3">{onu.vendor}</span>
                         {onu.model && <span className="text-xs text-tx3">{onu.model}</span>}
                         {onu.matched_type && <span className="text-xs px-1.5 py-0.5 rounded bg-accent/15 text-accent">→ {onu.matched_type}</span>}
                       </div>
@@ -484,7 +390,7 @@ export function AddOnu() {
             <div>
               <label className="label-sm mb-1">Serial Number *</label>
               <input type="text" value={serialNumber} onChange={e => setSerialNumber(e.target.value.toUpperCase())}
-                placeholder="HWTCF95F8CAC" className="input-field" />
+                placeholder="ZTEG0A1B2C3D" className="input-field" />
             </div>
             <div>
               <label className="label-sm mb-1">ONU Type</label>
@@ -515,12 +421,33 @@ export function AddOnu() {
               <input type="number" value={frame} onChange={e => setFrame(Number(e.target.value))} className="input-field" />
             </div>
             <div>
-              <label className="label-sm mb-1">Slot</label>
-              <input type="number" value={slot} onChange={e => setSlot(Number(e.target.value))} className="input-field" />
+              <label className="label-sm mb-1">Slot (Card)</label>
+              {slots.length > 0 ? (
+                <select value={slot} onChange={e => {
+                  const newSlot = Number(e.target.value);
+                  setSlot(newSlot);
+                  const s = slots.find(s => s.card === newSlot);
+                  if (s && s.ports.length > 0) setPort(s.ports[0]);
+                }} className="input-field">
+                  {slots.map(s => <option key={s.card} value={s.card}>Card {s.card}</option>)}
+                </select>
+              ) : (
+                <input type="number" value={slot} onChange={e => setSlot(Number(e.target.value))} className="input-field" placeholder="Auto" />
+              )}
+              {slots.length === 0 && oltId && <p className="text-[10px] text-tx3 mt-1">Sync OLT to load cards</p>}
             </div>
             <div>
               <label className="label-sm mb-1">PON Port</label>
-              <input type="number" value={port} onChange={e => setPort(Number(e.target.value))} className="input-field" />
+              {slots.length > 0 ? (() => {
+                const currentSlot = slots.find(s => s.card === slot);
+                return (
+                  <select value={port} onChange={e => setPort(Number(e.target.value))} className="input-field">
+                    {(currentSlot?.ports || []).map(p => <option key={p} value={p}>Port {p}</option>)}
+                  </select>
+                );
+              })() : (
+                <input type="number" value={port} onChange={e => setPort(Number(e.target.value))} className="input-field" placeholder="Auto" />
+              )}
             </div>
           </div>
           {technicians.length > 0 && (
@@ -579,42 +506,6 @@ export function AddOnu() {
             </div>
           </div>
 
-          {/* Multi-VLAN config for Huawei vendor */}
-          {vendor === 'huawei' && (
-            <div className="p-3 md:p-4 rounded-lg bg-glass border border-accent/20 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold text-accent">Huawei Multi-VLAN Config</h4>
-                <button type="button" onClick={() => setHuaweiVlans([...huaweiVlans, { vlan: '', label: '' }])}
-                  className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-1">
-                  <Plus size={12} /> Add VLAN
-                </button>
-              </div>
-              <div className="space-y-2">
-                {huaweiVlans.map((v, i) => (
-                  <div key={i} className="flex gap-2 items-center">
-                    <span className="text-[10px] text-tx3 w-6 flex-shrink-0">#{i + 1}</span>
-                    <input type="number" value={v.vlan} placeholder="VLAN ID" min={1} max={4094}
-                      onChange={e => { const c = [...huaweiVlans]; c[i] = { ...c[i], vlan: e.target.value }; setHuaweiVlans(c); }}
-                      className="input-field flex-1" />
-                    <input type="text" value={v.label} placeholder="Label (opt)"
-                      onChange={e => { const c = [...huaweiVlans]; c[i] = { ...c[i], label: e.target.value }; setHuaweiVlans(c); }}
-                      className="input-field flex-1" />
-                    <button type="button" onClick={() => setHuaweiVlans(huaweiVlans.filter((_, idx) => idx !== i))}
-                      className="p-1.5 rounded text-red-400 hover:bg-red-500/10 flex-shrink-0">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <label className="label-sm mb-1">VLAN Profile Name</label>
-                <input type="text" value={huaweiVlanProfile} onChange={e => setHuaweiVlanProfile(e.target.value)}
-                  className="input-field" placeholder="genieacs" />
-              </div>
-              <p className="text-[10px] text-tx3">Setiap VLAN akan dibuatkan service-port pada ONU. Jumlah fleksibel sesuai kebutuhan tenant.</p>
-            </div>
-          )}
-
           <div>
             <label className="label-sm mb-1">WAN Mode</label>
             <div className="flex gap-2 md:gap-3 flex-wrap">
@@ -648,7 +539,7 @@ export function AddOnu() {
                   {wanMode === 'pppoe' ? 'PPPoE profile name — ONU handles auth via this profile' : 'DHCP profile name (e.g. genieacs)'}
                 </p>
               </div>
-              {wanMode === 'pppoe' && vendor === 'zte' && (
+              {wanMode === 'pppoe' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="label-sm mb-1">PPPoE Username</label>
@@ -662,9 +553,6 @@ export function AddOnu() {
                   </div>
                 </div>
               )}
-              {wanMode === 'pppoe' && vendor !== 'zte' && (
-                <p className="text-xs text-tx3">PPPoE credentials managed via ONU or TR-069 ACS ({vendor} ONT supports wan-ip pppoe mode via OMCI)</p>
-              )}
             </div>
           )}
           <hr className="border-brd" />
@@ -674,10 +562,7 @@ export function AddOnu() {
               <Wifi size={16} /><span className="text-sm font-medium">Enable TR-069</span>
             </label>
             <p className="text-xs text-tx3 mt-1 ml-6">
-              TR069 commands are sent via OLT OMCI — works for {vendor} ONTs.
-              {vendor === 'fiberhome' && ' Fiberhome uses VEIP for management. VLAN tagging recommended.'}
-              {vendor === 'huawei' && ' Huawei supports TR069 via standard OMCI.'}
-              {vendor === 'zte' && ' ZTE supports TR069 via standard OMCI.'}
+              TR069 commands are sent via OLT OMCI — ZTE supports TR069 via standard OMCI.
             </p>
           </div>
           {tr069Enabled && (
@@ -728,7 +613,7 @@ export function AddOnu() {
               )}
               <div>
                 <label className="label-sm mb-1">Preview Commands</label>
-                <div className="p-3 rounded-lg bg-[#1a1a2e] text-xs font-mono text-green-300 space-y-0.5">
+                <div className="code-block text-xs space-y-0.5">
                   <div>tr069-mgmt 1 state unlock</div>
                   <div>tr069-mgmt 1 acs {acsUrl || '...'} validate basic username {acsUsername || '...'} password ***</div>
                   {tr069TagMode === 'tag' && tr069Vlan > 0 && <div>tr069-mgmt 1 tag pri 0 vlan {tr069Vlan}</div>}
@@ -748,7 +633,7 @@ export function AddOnu() {
             {[
               ['OLT', olts.find((o: {id:number}) => o.id === oltId)?.name || ''],
               ['PON Port', `${frame}/${slot}/${port}`],
-              ['Vendor', vendor], ['SN', serialNumber], ['ONU Type', onuType],
+              ['SN', serialNumber], ['ONU Type', onuType],
               ['TCONT', tcontProfile], ['Download', trafficProfile || tcontProfile], ['VLAN', String(serviceVlan)],
               ['WAN Mode', wanMode], ...(wanMode !== 'bridge' ? [['WAN Profile', wanIpProfile]] : []),
               ...(tr069Enabled ? [['TR069 ACS', acsUrl], ['TR069 Mode', tr069TagMode === 'tag' ? `VLAN ${tr069Vlan}` : 'untag']] : []),
@@ -778,14 +663,14 @@ export function AddOnu() {
                 <span className="text-xs text-tx3">{String(result['message'] || '')}</span>
               </div>
               {result['log'] && (result['log'] as string[]).length > 0 && (
-                <pre className="p-3 rounded-lg bg-[#1a1a2e] text-xs text-green-300 font-mono overflow-auto max-h-60">
+                <pre className="code-block text-xs overflow-auto max-h-60">
                   {(result['log'] as string[]).join('\n')}
                 </pre>
               )}
               {result['commands'] && (result['commands'] as string[]).length > 0 && (
                 <div className="mt-2">
                   <div className="text-xs text-tx3 mb-1">Commands:</div>
-                  <pre className="p-3 rounded-lg bg-[#1a1a2e] text-xs text-yellow-300 font-mono overflow-auto max-h-40">
+                  <pre className="code-block text-xs overflow-auto max-h-40">
                     {(result['commands'] as string[]).map((c: string) => `> ${c}`).join('\n')}
                   </pre>
                 </div>

@@ -32,6 +32,21 @@ from snmp_core import (
 logger = logging.getLogger(__name__)
 
 
+def _rate_to_mbps(value, unit):
+    """Convert a rate value with unit (Bps/Kbps/Mbps/Gbps) to Mbps.
+    ZTE 'Bps' unit is Bytes-per-second; Kbps/Mbps/Gbps are bits-per-second."""
+    unit = (unit or '').lower()
+    if unit == 'bps':
+        return (value * 8) / 1_000_000  # Bytes/s -> bits/s -> Mbps
+    elif unit == 'kbps':
+        return value / 1_000
+    elif unit == 'mbps':
+        return value
+    elif unit == 'gbps':
+        return value * 1_000
+    return 0.0
+
+
 # ==================== TELNET CLIENT ====================
 
 class SimpleTelnet:
@@ -79,6 +94,9 @@ class SimpleTelnet:
     def write(self, data):
         if isinstance(data, str):
             data = data.encode()
+        # Telnet protocol requires \r\n (CR+LF) for line endings
+        if data.endswith(b'\n') and not data.endswith(b'\r\n'):
+            data = data[:-1] + b'\r\n'
         try:
             self.sock.sendall(data)
         except Exception as e:
@@ -152,7 +170,7 @@ class TelnetCollector:
                 return None
             tn.write(self.password + '\n')
 
-            # Read response after password — should get '#' prompt on success
+            # Read response after password — should get '#' or '>' prompt on success
             login_resp = tn.read_until(b'#', timeout=10)
             login_text = login_resp.decode('utf-8', errors='replace')
 
@@ -162,8 +180,22 @@ class TelnetCollector:
                 tn.close()
                 return None
 
-            tn.write('terminal length 0\n')
-            tn.read_until(b'#', timeout=5)
+            # Some OLTs use '>' instead of '#' for user mode
+            if b'#' not in login_resp and b'>' not in login_resp:
+                # Try reading more for '>' prompt
+                extra = tn.read_until(b'>', timeout=5)
+                login_text += extra.decode('utf-8', errors='replace')
+                if b'>' not in extra and b'#' not in extra:
+                    logger.warning(f"Telnet {self.ip}: no prompt after login: {login_text.strip()[:100]}")
+                    tn.close()
+                    return None
+
+            # Try terminal length 0 (ZTE/Cisco style)
+            try:
+                tn.write('terminal length 0\n')
+                tn.read_until(b'#', timeout=3)
+            except Exception:
+                pass
             return tn
         except Exception as e:
             logger.error(f"Telnet login {self.ip} failed: {e}")
@@ -174,10 +206,16 @@ class TelnetCollector:
     def _send_command(self, tn, command, timeout=15):
         tn.write(command + '\n')
         output = tn.read_until(b'#', timeout=timeout).decode('utf-8', errors='replace')
+        # If no '#' found, try reading for '>' prompt
+        if '#' not in output:
+            try:
+                output += tn.read_until(b'>', timeout=5).decode('utf-8', errors='replace')
+            except Exception:
+                pass
         output = output.replace('\r\n', '\n').replace('\r', '')
         lines = output.split('\n')
         if lines: lines = lines[1:]
-        if lines and lines[-1].strip().endswith('#'): lines = lines[:-1]
+        if lines and (lines[-1].strip().endswith('#') or lines[-1].strip().endswith('>')): lines = lines[:-1]
         return '\n'.join(lines)
 
     def _send_cmd_check(self, tn, command, timeout=15):
@@ -457,24 +495,26 @@ class TelnetCollector:
 
 
     def reset_onu(self, frame, slot, port, onu_id):
-        """Reboot/reset an ONU via CLI - must be in configure terminal > interface gpon-onu context"""
+        """Reboot/reset an ONU via CLI — uses pon-onu-mng context + reboot command.
+        ZTE C320: configure terminal > pon-onu-mng gpon-onu_X/Y/Z:N > reboot"""
+        iface = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
             tn.write('configure terminal\n')
             tn.read_until(b'#', timeout=5)
-            tn.write(f'interface gpon-onu_{frame}/{slot}/{port}:{onu_id}\n')
+            tn.write(f'pon-onu-mng {iface}\n')
             tn.read_until(b'#', timeout=5)
-            tn.write('reset\n')
-            output = tn.read_until(b'#', timeout=15).decode('utf-8', errors='replace')
+            tn.write('reboot\n')
+            output = tn.read_until(b'#', timeout=20).decode('utf-8', errors='replace')
             tn.write('exit\n')
             tn.read_until(b'#', timeout=5)
             tn.write('exit\n')
             tn.read_until(b'#', timeout=5)
             tn.write('exit\n'); tn.close()
-            if 'error' in output.lower() and 'ambiguous' in output.lower():
+            if 'error' in output.lower() and 'ambiguous' not in output.lower():
                 return False, f'CLI error: {output.strip()[:100]}'
-            return True, f'ONU {frame}/{slot}/{port}:{onu_id} reset successfully'
+            return True, f'ONU {iface} rebooted successfully'
         except Exception as e:
             logger.error(f"reset_onu failed: {e}")
             try: tn.close()
@@ -483,6 +523,7 @@ class TelnetCollector:
 
     def deregister_onu(self, frame, slot, port, onu_id):
         """Delete/deregister an ONU from OLT - must be in interface gpon-olt context"""
+        iface = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
@@ -492,6 +533,7 @@ class TelnetCollector:
             tn.read_until(b'#', timeout=5)
             tn.write(f'no onu {onu_id}\n')
             output = tn.read_until(b'#', timeout=15).decode('utf-8', errors='replace')
+            logger.info(f"deregister_onu: 'no onu {onu_id}' output for {iface}: {output.strip()[:200]}")
             tn.write('exit\n')
             tn.read_until(b'#', timeout=5)
             tn.write('exit\n')
@@ -499,7 +541,7 @@ class TelnetCollector:
             tn.write('exit\n'); tn.close()
             if 'error' in output.lower() and 'ambiguous' not in output.lower():
                 return False, f'CLI error: {output.strip()[:100]}'
-            return True, f'ONU {frame}/{slot}/{port}:{onu_id} deregistered successfully'
+            return True, f'ONU {iface} deregistered successfully'
         except Exception as e:
             logger.error(f"deregister_onu failed: {e}")
             try: tn.close()
@@ -554,10 +596,11 @@ class TelnetCollector:
         IMPORTANT: Only removes service configuration, NOT the ONU itself.
         Does NOT send 'shutdown' — the ONU stays registered and online.
         """
+        iface = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
-            cfg = self._send_command(tn, f'show running-config interface gpon-onu_{frame}/{slot}/{port}:{onu_id}', timeout=15)
+            cfg = self._send_command(tn, f'show running-config interface {iface}', timeout=15)
             if not cfg or 'error' in cfg.lower():
                 return False, 'Failed to read ONU running-config'
 
@@ -575,7 +618,7 @@ class TelnetCollector:
                         tn.read_until(b'#', timeout=5)
 
             # Enter interface context to remove gemport/tcont
-            tn.write(f'interface gpon-onu_{frame}/{slot}/{port}:{onu_id}\n')
+            tn.write(f'interface {iface}\n')
             tn.read_until(b'#', timeout=5)
 
             # Remove gemports first (they depend on tcont)
@@ -604,7 +647,13 @@ class TelnetCollector:
             tn.write('exit\n')
             tn.read_until(b'#', timeout=5)
             tn.write('exit\n'); tn.close()
-            return True, f'ONU {frame}/{slot}/{port}:{onu_id} config cleared (ONU still registered)'
+
+            # Count what was cleared
+            svc_count = sum(1 for line in cfg.split('\n') if line.strip().startswith('service-port '))
+            gem_count = sum(1 for line in cfg.split('\n') if line.strip().startswith('gemport '))
+            tcont_count = sum(1 for line in cfg.split('\n') if line.strip().startswith('tcont '))
+            logger.info(f"clear_onu_config: {iface} — cleared {svc_count} service-port(s), {gem_count} gemport(s), {tcont_count} tcont(s)")
+            return True, f'ONU {frame}/{slot}/{port}:{onu_id} config cleared — {svc_count} svc, {gem_count} gem, {tcont_count} tcont removed (ONU still registered)'
         except Exception as e:
             logger.error(f"clear_onu_config failed: {e}")
             try: tn.close()
@@ -612,24 +661,81 @@ class TelnetCollector:
             return False, str(e)
 
     def restore_factory_onu(self, frame, slot, port, onu_id):
-        """Factory reset an ONU via OMCI — all config wiped, ONU stays registered."""
+        """Factory reset an ONU — clears OLT-side config (service-ports, tconts, gemports)
+        AND resets ONU's internal OMCI config via 'restore factory'.
+        ONU stays registered but all service config is wiped from both sides."""
+        iface = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
+            # Step 1: Read current running-config to find service-ports, tconts, gemports
+            cfg = self._send_command(tn, f'show running-config interface {iface}', timeout=15)
+            if not cfg or 'error' in cfg.lower():
+                logger.warning(f"restore_factory: could not read running-config for {iface}")
+                cfg = ''
+
+            # Step 2: Remove service-ports from global context
             tn.write('configure terminal\n')
             tn.read_until(b'#', timeout=5)
-            tn.write(f'pon-onu-mng gpon-onu_{frame}/{slot}/{port}:{onu_id}\n')
+
+            svc_count = 0
+            for line in cfg.split('\n'):
+                ls = line.strip()
+                if ls.startswith('service-port '):
+                    parts = ls.split()
+                    svc_num = parts[1] if len(parts) > 1 else ''
+                    if svc_num:
+                        tn.write(f'no service-port {svc_num}\n')
+                        tn.read_until(b'#', timeout=5)
+                        svc_count += 1
+
+            # Step 3: Enter interface context, remove gemports then tconts
+            tn.write(f'interface {iface}\n')
+            tn.read_until(b'#', timeout=5)
+
+            gem_count = 0
+            for line in cfg.split('\n'):
+                ls = line.strip()
+                if ls.startswith('gemport '):
+                    parts = ls.split()
+                    gem_id = parts[1] if len(parts) > 1 else ''
+                    if gem_id:
+                        tn.write(f'no gemport {gem_id}\n')
+                        tn.read_until(b'#', timeout=5)
+                        gem_count += 1
+
+            tcont_count = 0
+            for line in cfg.split('\n'):
+                ls = line.strip()
+                if ls.startswith('tcont '):
+                    parts = ls.split()
+                    tcont_id = parts[1] if len(parts) > 1 else ''
+                    if tcont_id:
+                        tn.write(f'no tcont {tcont_id}\n')
+                        tn.read_until(b'#', timeout=5)
+                        tcont_count += 1
+
+            tn.write('exit\n')
+            tn.read_until(b'#', timeout=5)
+
+            logger.info(f"restore_factory: cleared {svc_count} service-port(s), {gem_count} gemport(s), {tcont_count} tcont(s) for {iface}")
+
+            # Step 4: Enter pon-onu-mng context and send 'restore factory' (OMCI reset)
+            tn.write(f'pon-onu-mng {iface}\n')
             tn.read_until(b'#', timeout=5)
             tn.write('restore factory\n')
-            output = tn.read_until(b'#', timeout=15).decode('utf-8', errors='replace')
+            output = tn.read_until(b'#', timeout=20).decode('utf-8', errors='replace')
+            logger.info(f"restore_factory: 'restore factory' output for {iface}: {output.strip()[:200]}")
+
             tn.write('exit\n')
             tn.read_until(b'#', timeout=5)
             tn.write('exit\n')
             tn.read_until(b'#', timeout=5)
             tn.write('exit\n'); tn.close()
+
             if 'error' in output.lower() and 'ambiguous' not in output.lower():
                 return False, f'CLI error: {output.strip()[:100]}'
-            return True, f'ONU {frame}/{slot}/{port}:{onu_id} factory reset successfully'
+            return True, f'ONU {iface} factory reset — {svc_count} svc, {gem_count} gem, {tcont_count} tcont cleared + OMCI reset'
         except Exception as e:
             logger.error(f"restore_factory_onu failed: {e}")
             try: tn.close()
@@ -864,14 +970,43 @@ class TelnetCollector:
 
             # Step 2b: Ensure ONU type has wifi UNI ports defined (for OMCI SSID config)
             # This prevents 'UNI does not exist' error when configuring SSID
-            needs_wifi = (template == 'zte_single' and extra.get('ssid_name')) or \
-                         (template == 'zte_full' and (extra.get('ssid1_name') or extra.get('ssid2_name'))) or \
-                         (template == 'zte_multi' and (extra.get('ssid1_name') or extra.get('ssid2_name')))
+            # Parse dynamic SSID list from extra.ssids (JSON array) or fall back to old fields
+            import json as _json_ssid
+            ssids_raw = extra.get('ssids', '[]')
+            if isinstance(ssids_raw, str):
+                ssids_list = _json_ssid.loads(ssids_raw) if ssids_raw else []
+            else:
+                ssids_list = ssids_raw or []
+            # Backward compat: build ssids_list from old ssid1/ssid2 fields if no dynamic list
+            if not ssids_list:
+                if template == 'zte_single' and extra.get('ssid_name'):
+                    ssids_list = [{'port': 'wifi_0/1', 'name': extra.get('ssid_name', ''),
+                                   'pass': extra.get('ssid_pass', ''), 'auth': extra.get('ssid_auth', 'wpa2'),
+                                   'vlan': '', 'enabled': True, 'hidden': False}]
+                elif template in ('zte_full', 'zte_multi'):
+                    if extra.get('ssid1_name'):
+                        ssids_list.append({'port': 'wifi_0/1', 'name': extra.get('ssid1_name', ''),
+                                          'pass': extra.get('ssid1_pass', ''), 'auth': extra.get('ssid1_auth', 'wpa2'),
+                                          'vlan': '', 'enabled': True, 'hidden': False})
+                    if extra.get('ssid2_name'):
+                        ssids_list.append({'port': 'wifi_0/5', 'name': extra.get('ssid2_name', ''),
+                                          'pass': extra.get('ssid2_pass', ''), 'auth': extra.get('ssid2_auth', 'wpa2'),
+                                          'vlan': '', 'enabled': True, 'hidden': False})
+            needs_wifi = any(s.get('name') for s in ssids_list)
             if needs_wifi:
                 self._send_command(tn, 'pon')
-                wifi_ports = ['wifi_0/1', 'wifi_0/2']
+                # Collect unique wifi ports from ssids_list + defaults
+                wifi_ports_set = set()
+                for s in ssids_list:
+                    port = s.get('port', 'wifi_0/1')
+                    if s.get('name'):
+                        wifi_ports_set.add(port)
+                # Always include default ports for compatibility
+                wifi_ports_set.update(['wifi_0/1', 'wifi_0/2'])
                 if template in ('zte_full', 'zte_multi'):
-                    wifi_ports += ['wifi_0/5', 'wifi_0/6']
+                    wifi_ports_set.update(['wifi_0/5', 'wifi_0/6'])
+                # Sort by port number
+                wifi_ports = sorted(wifi_ports_set, key=lambda p: int(p.split('/')[-1]))
                 for wp in wifi_ports:
                     _, werr = self._send_cmd_check(tn, f'onu-type-if {onu_type} {wp}', timeout=10)
                     if werr:
@@ -963,6 +1098,14 @@ class TelnetCollector:
                 sc(f'service-port 3 vport 3 user-vlan {voip_vlan} vlan {voip_vlan}')
                 self._send_command(tn, 'exit')
                 self._send_command(tn, f'pon-onu-mng {onu_if}')
+                # Safe-replace: delete old service entries to prevent error 63869
+                for sn in ['service1', 'service2', 'service3']:
+                    self._send_command(tn, f'no service {sn}', timeout=10)
+                for n in [1, 2, 3]:
+                    self._send_command(tn, f'no wan {n} service', timeout=10)
+                    self._send_command(tn, f'no wan-ip {n}', timeout=10)
+                    self._send_command(tn, f'no pppoe {n}', timeout=10)
+                import time as _t; _t.sleep(1)
                 # Service names matching running-config: service1, 2, 3
                 sc(f'service service1 gemport 1 vlan {tr069_vlan}')
                 sc(f'service 2 gemport 2 vlan {internet_vlan}')
@@ -1016,6 +1159,14 @@ class TelnetCollector:
 
                 # pon-onu-mng config
                 self._send_command(tn, f'pon-onu-mng {onu_if}')
+                # Safe-replace: delete old service entries to prevent error 63869
+                for n in [1, 2]:
+                    self._send_command(tn, f'no service VLAN{n:04d}', timeout=10)
+                    self._send_command(tn, f'no service service{n}', timeout=10)
+                    self._send_command(tn, f'no wan {n} service', timeout=10)
+                    self._send_command(tn, f'no wan-ip {n}', timeout=10)
+                    self._send_command(tn, f'no pppoe {n}', timeout=10)
+                import time as _t; _t.sleep(1)
                 service1_name = f'VLAN{primary_vlan:04d}'
                 use_veip = extra.get('use_veip', '') == 'true'
                 if use_veip:
@@ -1039,17 +1190,27 @@ class TelnetCollector:
                 else:
                     sc('wan 1 service internet host 1')
 
-                # ETH port VLAN tagging
-                sc(f'vlan port eth_0/1 mode tag vlan {primary_vlan}')
-                sc(f'vlan port eth_0/2 mode tag vlan {primary_vlan}')
-                sc(f'vlan port eth_0/3 mode tag vlan {primary_vlan}')
-                sc(f'vlan port eth_0/4 mode tag vlan {primary_vlan}')
+                # ETH port VLAN tagging — use lan_vlans if provided, else default to primary_vlan
+                lan_vlans_raw = extra.get('lan_vlans', '[]')
+                if isinstance(lan_vlans_raw, str):
+                    lan_vlans = _json_ssid.loads(lan_vlans_raw) if lan_vlans_raw else []
+                else:
+                    lan_vlans = lan_vlans_raw or []
+                for eth_port in range(1, 5):
+                    port_vlan = lan_vlans[eth_port - 1] if eth_port - 1 < len(lan_vlans) and lan_vlans[eth_port - 1] else primary_vlan
+                    sc(f'vlan port eth_0/{eth_port} mode tag vlan {port_vlan}')
 
-                # WiFi VLAN tagging (non-fatal: wifi port may not exist in ONU type)
-                sc_warn(f'vlan port wifi_0/1 mode tag vlan {primary_vlan}')  # 2.4GHz
-                sc_warn(f'vlan port wifi_0/5 mode tag vlan {primary_vlan}')  # 5GHz
-                if enable_dual_ssid:
-                    sc_warn(f'vlan port wifi_0/2 mode tag vlan {secondary_vlan}')  # 2.4GHz guest
+                # WiFi VLAN tagging — use per-SSID VLAN from ssids_list if provided
+                for s in ssids_list:
+                    if s.get('name') and s.get('vlan'):
+                        wp = s.get('port', 'wifi_0/1')
+                        sc_warn(f'vlan port {wp} mode tag vlan {s["vlan"]}')
+                # Default: tag wifi_0/1 and wifi_0/5 to primary_vlan if no per-SSID VLAN
+                if not any(s.get('vlan') for s in ssids_list if s.get('name')):
+                    sc_warn(f'vlan port wifi_0/1 mode tag vlan {primary_vlan}')  # 2.4GHz
+                    sc_warn(f'vlan port wifi_0/5 mode tag vlan {primary_vlan}')  # 5GHz
+                    if enable_dual_ssid:
+                        sc_warn(f'vlan port wifi_0/2 mode tag vlan {secondary_vlan}')  # 2.4GHz guest
 
                 # Firewall
                 if enable_firewall:
@@ -1091,6 +1252,13 @@ class TelnetCollector:
                 sc(f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
                 self._send_command(tn, 'exit')
                 self._send_command(tn, f'pon-onu-mng {onu_if}')
+                # Safe-replace: delete old service entries to prevent error 63869
+                self._send_command(tn, 'no service INTERNET', timeout=10)
+                self._send_command(tn, 'no service service1', timeout=10)
+                self._send_command(tn, 'no wan 1 service', timeout=10)
+                self._send_command(tn, 'no wan-ip 1', timeout=10)
+                self._send_command(tn, 'no pppoe 1', timeout=10)
+                import time as _t; _t.sleep(1)
                 use_veip = extra.get('use_veip', '') == 'true'
                 if use_veip:
                     sc(f'service INTERNET gemport 1 vlan {vlan}')
@@ -1244,8 +1412,10 @@ class TelnetCollector:
 
                     # WAN config based on service type and wan_mode
                     if svc_type == 'bridge':
-                        # Bridge: no wan-ip, no ETH VLAN tagging — just service definition
-                        pass
+                        # Bridge: no wan-ip, but apply VLAN to ETH ports so traffic flows
+                        if not use_veip:
+                            for eth_port in (1, 2, 3, 4):
+                                sc(f'vlan port eth_0/{eth_port} mode hybrid def-vlan {svc_vlan_for_service}')
                     elif svc_type == 'tr069' and vlan_profile:
                         # TR069: force DHCP via WAN-IP with VLAN profile
                         sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
@@ -1278,6 +1448,34 @@ class TelnetCollector:
                     sc('vlan port veip_1 mode hybrid')
                     sc('vlan port veip_1 vlan 1')
 
+                # LAN port VLAN tagging — use lan_vlans if provided, else auto-tag from services
+                lan_vlans_raw = extra.get('lan_vlans', '[]')
+                if isinstance(lan_vlans_raw, str):
+                    lan_vlans = _json_ssid.loads(lan_vlans_raw) if lan_vlans_raw else []
+                else:
+                    lan_vlans = lan_vlans_raw or []
+                if lan_vlans:
+                    for eth_port in range(1, 5):
+                        port_vlan = lan_vlans[eth_port - 1] if eth_port - 1 < len(lan_vlans) and lan_vlans[eth_port - 1] else None
+                        if port_vlan:
+                            sc(f'vlan port eth_0/{eth_port} mode tag vlan {port_vlan}')
+                else:
+                    # Auto-tag: ETH port N → service N VLAN (if not already tagged by bridge service)
+                    for idx, svc in enumerate(services):
+                        n = idx + 1
+                        if n <= 4:
+                            svc_vlans = svc.get('vlans', [])
+                            pv = int(svc_vlans[0]) if svc_vlans else vlan
+                            svc_type = svc.get('service_type', 'internet')
+                            if svc_type != 'bridge':  # bridge already tagged above
+                                sc(f'vlan port eth_0/{n} mode tag vlan {pv}')
+
+                # WiFi VLAN tagging — per-SSID VLAN from ssids_list
+                for s in ssids_list:
+                    if s.get('name') and s.get('vlan'):
+                        wp = s.get('port', 'wifi_0/1')
+                        sc_warn(f'vlan port {wp} mode tag vlan {s["vlan"]}')
+
                 # Global: firewall + security-mgmt (only if non-bridge service exists)
                 if has_non_bridge:
                     sc('firewall enable level low')
@@ -1299,9 +1497,7 @@ class TelnetCollector:
 
             # Step 5: SSID config — separate session after delay for ONU config state "success"
             # OMCI SSID commands require ONU to have processed initial config first
-            ssid_needed = (template == 'zte_single' and extra.get('ssid_name')) or \
-                          (template == 'zte_full' and (extra.get('ssid1_name') or extra.get('ssid2_name'))) or \
-                          (template == 'zte_multi' and (extra.get('ssid1_name') or extra.get('ssid2_name')))
+            ssid_needed = any(s.get('name') for s in ssids_list)
             if ssid_needed:
                 self._send_command(tn, 'end')
                 logger.info("[register] Waiting 5s for ONU config state to reach 'success' before SSID config...")
@@ -1309,70 +1505,39 @@ class TelnetCollector:
                 self._send_command(tn, 'configure terminal')
                 self._send_command(tn, f'pon-onu-mng {onu_if}')
 
-                if template == 'zte_full':
-                    ssid1_name = extra.get('ssid1_name', '').replace(' ', '_')
-                    ssid1_pass = extra.get('ssid1_pass', '')
-                    ssid1_auth = extra.get('ssid1_auth', 'wpa2')
-                    ssid2_name = extra.get('ssid2_name', '').replace(' ', '_')
-                    ssid2_pass = extra.get('ssid2_pass', '')
-                    ssid2_auth = extra.get('ssid2_auth', 'wpa2')
-                    # SSID 2.4GHz (wifi_0/1)
-                    if ssid1_name:
-                        sc_warn(f'ssid ctrl wifi_0/1 name {ssid1_name}')
-                        if ssid1_auth != 'open':
-                            auth1_mode = {'wpa2': 'wpa2-psk', 'wpa': 'wpa-psk', 'mixed': 'wpa-wpa2-psk'}.get(ssid1_auth, 'wpa2-psk')
-                            sc_warn(f'ssid auth wpa wifi_0/1 {auth1_mode}')
-                            sc_warn('ssid auth wpa wifi_0/1 encrypt aes')
-                            if ssid1_pass:
-                                sc_warn(f'ssid auth wpa wifi_0/1 key {ssid1_pass}')
-                    # SSID 5GHz (wifi_0/5)
-                    if ssid2_name:
-                        sc_warn(f'ssid ctrl wifi_0/5 name {ssid2_name}')
-                        if ssid2_auth != 'open':
-                            auth2_mode = {'wpa2': 'wpa2-psk', 'wpa': 'wpa-psk', 'mixed': 'wpa-wpa2-psk'}.get(ssid2_auth, 'wpa2-psk')
-                            sc_warn(f'ssid auth wpa wifi_0/5 {auth2_mode}')
-                            sc_warn('ssid auth wpa wifi_0/5 encrypt aes')
-                            if ssid2_pass:
-                                sc_warn(f'ssid auth wpa wifi_0/5 key {ssid2_pass}')
-
-                elif template == 'zte_single':
-                    ssid_name = extra.get('ssid_name', '').replace(' ', '_')
-                    ssid_pass = extra.get('ssid_pass', '')
-                    ssid_auth = extra.get('ssid_auth', 'wpa2')
-                    if ssid_name:
-                        sc_warn(f'ssid ctrl wifi_0/1 name {ssid_name}')
-                        if ssid_auth != 'open':
-                            auth_mode = {'wpa2': 'wpa2-psk', 'wpa': 'wpa-psk', 'mixed': 'wpa-wpa2-psk'}.get(ssid_auth, 'wpa2-psk')
-                            sc_warn(f'ssid auth wpa wifi_0/1 {auth_mode}')
-                            sc_warn('ssid auth wpa wifi_0/1 encrypt aes')
-                            if ssid_pass:
-                                sc_warn(f'ssid auth wpa wifi_0/1 key {ssid_pass}')
-
-                elif template == 'zte_multi':
-                    ssid1_name = extra.get('ssid1_name', '').replace(' ', '_')
-                    ssid1_pass = extra.get('ssid1_pass', '')
-                    ssid1_auth = extra.get('ssid1_auth', 'wpa2')
-                    ssid2_name = extra.get('ssid2_name', '').replace(' ', '_')
-                    ssid2_pass = extra.get('ssid2_pass', '')
-                    ssid2_auth = extra.get('ssid2_auth', 'wpa2')
-                    # SSID 2.4GHz (wifi_0/1)
-                    if ssid1_name:
-                        sc_warn(f'ssid ctrl wifi_0/1 name {ssid1_name}')
-                        if ssid1_auth != 'open':
-                            auth1_mode = {'wpa2': 'wpa2-psk', 'wpa': 'wpa-psk', 'mixed': 'wpa-wpa2-psk'}.get(ssid1_auth, 'wpa2-psk')
-                            sc_warn(f'ssid auth wpa wifi_0/1 {auth1_mode}')
-                            sc_warn('ssid auth wpa wifi_0/1 encrypt aes')
-                            if ssid1_pass:
-                                sc_warn(f'ssid auth wpa wifi_0/1 key {ssid1_pass}')
-                    # SSID 5GHz (wifi_0/5)
-                    if ssid2_name:
-                        sc_warn(f'ssid ctrl wifi_0/5 name {ssid2_name}')
-                        if ssid2_auth != 'open':
-                            auth2_mode = {'wpa2': 'wpa2-psk', 'wpa': 'wpa-psk', 'mixed': 'wpa-wpa2-psk'}.get(ssid2_auth, 'wpa2-psk')
-                            sc_warn(f'ssid auth wpa wifi_0/5 {auth2_mode}')
-                            sc_warn('ssid auth wpa wifi_0/5 encrypt aes')
-                            if ssid2_pass:
-                                sc_warn(f'ssid auth wpa wifi_0/5 key {ssid2_pass}')
+                # Dynamic SSID config — iterate over all SSIDs in ssids_list
+                for s in ssids_list:
+                    ssid_name = (s.get('name') or '').replace(' ', '_')
+                    if not ssid_name:
+                        continue
+                    wp = s.get('port', 'wifi_0/1')
+                    ssid_pass = s.get('pass', '')
+                    ssid_auth = s.get('auth', 'wpa2')
+                    ssid_enabled = s.get('enabled', True)
+                    ssid_hidden = s.get('hidden', False)
+                    # Enable/disable WiFi radio interface
+                    if ssid_enabled:
+                        sc_warn(f'interface wifi {wp} state unlock')
+                    else:
+                        sc_warn(f'interface wifi {wp} state lock')
+                        continue  # No need to config SSID if disabled
+                    # Set SSID name + hide/show
+                    hide_str = 'enable' if ssid_hidden else 'disable'
+                    sc_warn(f'ssid ctrl {wp} name {ssid_name} hide {hide_str}')
+                    if ssid_auth != 'open':
+                        auth_mode = {'wpa2': 'wpa2-psk', 'wpa': 'wpa-psk', 'mixed': 'wpa-wpa2-psk'}.get(ssid_auth, 'wpa2-psk')
+                        sc_warn(f'ssid auth wpa {wp} {auth_mode}')
+                        sc_warn(f'ssid auth wpa {wp} encrypt aes')
+                        if ssid_pass:
+                            sc_warn(f'ssid auth wpa {wp} key {ssid_pass}')
+                    else:
+                        # Open auth: set WEP open-system (ZTE's way of truly open auth)
+                        # Also clear any previous WPA config to override stale settings
+                        sc_warn(f'ssid auth wpa {wp} no-auth')
+                        sc_warn(f'ssid auth wpa {wp} encrypt none')
+                        sc_warn(f'ssid auth wpa {wp} no-key')
+                        sc_warn(f'ssid auth wep {wp} open-system')
+                        logger.info(f'[register_onu_template] Open auth set for {wp}: no-auth, encrypt none, no-key, wep open-system')
 
             # Exit all contexts
             self._send_command(tn, 'end')
@@ -1382,6 +1547,305 @@ class TelnetCollector:
             return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered ({template})'
         except Exception as e:
             logger.error(f"register_vendor_template failed: {e}")
+            try: tn.close()
+            except: pass
+            return False, str(e)
+
+    def register_unified(self, frame, slot, port, onu_id, serial, onu_type,
+                         tcont_profile, services, use_veip=None,
+                         traffic_profile='', wifi_config=None,
+                         tr069_config=None, name='', description='',
+                         extra=None):
+        """Unified ONU registration — works for all vendors.
+        
+        Args:
+            services: list of dicts, each with:
+                - service_type: 'internet'|'iptv'|'tr069'|'bridge'
+                - vlan: int (primary VLAN)
+                - wan_mode: 'bridge'|'nat'|'wan' (default: 'bridge')
+                - wan_ip_mode: 'PPPoE'|'DHCP'|'STATIC' (when wan_mode='wan')
+                - pppoe_user, pppoe_pass: PPPoE credentials (when wan_mode='nat' or wan_ip_mode='PPPoE')
+                - vlan_profile: str (wan-ip profile name for DHCP/PPPoE/STATIC)
+                - mvlan: int (multicast VLAN for IPTV)
+                - ip_address, subnet_mask: for STATIC mode
+                - ip_profile: wan-ip profile name for STATIC mode
+            use_veip: bool or None (None = auto-detect from SN: ZTE→False, non-ZTE→True)
+            wifi_config: dict with ssid1_name, ssid1_pass, ssid1_auth, ssid2_name, ssid2_pass, ssid2_auth
+            tr069_config: dict with acs_url, acs_user, acs_pass, tr069_vlan, tr069_vlan_mode
+        """
+        extra = extra or {}
+        # Auto-detect VEIP
+        if use_veip is None:
+            use_veip = not (serial or '').upper().startswith('ZTEG')
+
+        tn = self._connect()
+        if not tn:
+            return False, 'Telnet connection failed'
+        try:
+            import time
+            onu_if = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
+            pon_if = f'gpon-olt_{frame}/{slot}/{port}'
+
+            last_err = None
+            def sc(cmd):
+                nonlocal last_err
+                out, err = self._send_cmd_check(tn, cmd, timeout=10)
+                if err:
+                    logger.warning(f"[register_unified] CMD FAIL: '{cmd}' -> {err}")
+                    last_err = err
+                else:
+                    logger.info(f"[register_unified] CMD OK: '{cmd}'")
+
+            def sc_warn(cmd):
+                out, err = self._send_cmd_check(tn, cmd, timeout=10)
+                if err:
+                    logger.warning(f"[register_unified] WARN: '{cmd}' -> {err}")
+
+            # Step 1: Enter config
+            self._send_command(tn, 'end')
+            self._send_command(tn, 'configure terminal')
+
+            # Step 2: Register ONU on PON interface
+            _, err = self._send_cmd_check(tn, f'interface {pon_if}')
+            if err:
+                self._send_command(tn, 'end'); tn.close()
+                return False, f'PON interface error: {err}'
+
+            _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} sn {serial}')
+            if err:
+                self._send_command(tn, 'end'); tn.close()
+                return False, f'Registration failed: {err}'
+            self._send_command(tn, 'exit')
+
+            # Step 2b: Ensure WiFi UNI ports exist if WiFi config provided
+            # Parse dynamic SSID list from wifi_config.ssids or fall back to old fields
+            import json as _json_pw
+            pw_ssids_raw = wifi_config.get('ssids', '[]') if wifi_config else '[]'
+            if isinstance(pw_ssids_raw, str):
+                pw_ssids = _json_pw.loads(pw_ssids_raw) if pw_ssids_raw else []
+            else:
+                pw_ssids = pw_ssids_raw or []
+            # Backward compat: build from old ssid1/ssid2 fields
+            if not pw_ssids and wifi_config:
+                if wifi_config.get('ssid1_name'):
+                    pw_ssids.append({'port': 'wifi_0/1', 'name': wifi_config.get('ssid1_name', ''),
+                                    'pass': wifi_config.get('ssid1_pass', ''), 'auth': wifi_config.get('ssid1_auth', 'wpa2'),
+                                    'vlan': '', 'enabled': True, 'hidden': False})
+                if wifi_config.get('ssid2_name'):
+                    pw_ssids.append({'port': 'wifi_0/5', 'name': wifi_config.get('ssid2_name', ''),
+                                    'pass': wifi_config.get('ssid2_pass', ''), 'auth': wifi_config.get('ssid2_auth', 'wpa2'),
+                                    'vlan': '', 'enabled': True, 'hidden': False})
+            pw_needs_wifi = any(s.get('name') for s in pw_ssids)
+            if pw_needs_wifi:
+                self._send_command(tn, 'pon')
+                pw_ports = set()
+                for s in pw_ssids:
+                    if s.get('name'):
+                        pw_ports.add(s.get('port', 'wifi_0/1'))
+                pw_ports.update(['wifi_0/1', 'wifi_0/2', 'wifi_0/5', 'wifi_0/6'])
+                for wp in sorted(pw_ports, key=lambda p: int(p.split('/')[-1])):
+                    self._send_cmd_check(tn, f'onu-type-if {onu_type} {wp}', timeout=10)
+                self._send_command(tn, 'exit')
+
+            # Step 3: Wait for ONU init
+            time.sleep(2)
+
+            # Step 4: Enter ONU interface — TCONT + GEM + service-port
+            _, err = self._send_cmd_check(tn, f'interface {onu_if}')
+            if err:
+                self._send_command(tn, 'end'); tn.close()
+                return True, f'ONU registered but config skipped (interface not ready)'
+
+            if name:
+                sc(f'name {name}')
+            if description:
+                sc(f'description {description}')
+            if traffic_profile:
+                pass  # applied per-gemport below
+
+            for idx, svc in enumerate(services):
+                n = idx + 1
+                svc_vlan = int(svc.get('vlan', 100))
+                svc_name = f'service{n}'
+                tcont = tcont_profile
+                down_profile = svc.get('traffic_profile', '') or traffic_profile
+
+                sc(f'tcont {n} name {svc_name} profile {tcont}')
+                sc(f'gemport {n} tcont {n}')
+                if down_profile:
+                    sc(f'gemport {n} traffic-limit downstream {down_profile}')
+
+                svc_type = svc.get('service_type', 'internet')
+                if svc_type == 'iptv':
+                    mvlan = int(svc.get('mvlan', 0))
+                    sc(f'service-port {n} vport {n} user-vlan {mvlan or svc_vlan} vlan {mvlan or svc_vlan}')
+                else:
+                    sc(f'service-port {n} vport {n} user-vlan {svc_vlan} vlan {svc_vlan}')
+
+            self._send_command(tn, 'exit')
+
+            # Step 5: pon-onu-mng config
+            self._send_command(tn, f'pon-onu-mng {onu_if}')
+
+            # Safe-replace: clean up any existing ONU-side service entries to prevent
+            # error 63869 "Record already exists" when re-provisioning
+            for idx, svc in enumerate(services):
+                n = idx + 1
+                svc_name = f'service{n}'
+                self._send_command(tn, f'no service {svc_name}', timeout=10)
+                self._send_command(tn, f'no wan {n} service', timeout=10)
+                self._send_command(tn, f'no wan-ip {n}', timeout=10)
+                self._send_command(tn, f'no pppoe {n}', timeout=10)
+            time.sleep(1)  # Brief pause for OLT to process OMCI deletions
+
+            has_non_bridge = False
+            for idx, svc in enumerate(services):
+                n = idx + 1
+                svc_vlan = int(svc.get('vlan', 100))
+                svc_type = svc.get('service_type', 'internet')
+                wan_mode = svc.get('wan_mode', 'bridge')
+                wan_ip_mode = svc.get('wan_ip_mode', 'PPPoE')
+                vlan_profile = svc.get('vlan_profile', '')
+                username = svc.get('pppoe_user', '') or svc.get('username', '')
+                password = svc.get('pppoe_pass', '') or svc.get('password', '')
+                svc_name = f'service{n}'
+
+                # Service definition
+                needs_iphost = (not use_veip) and svc_type in ('internet', 'tr069') and wan_mode in ('nat', 'wan')
+                if needs_iphost:
+                    sc(f'service {svc_name} gemport {n} iphost {n} vlan {svc_vlan}')
+                elif not use_veip and n == 1:
+                    sc(f'service {svc_name} gemport {n} iphost 1 vlan {svc_vlan}')
+                else:
+                    sc(f'service {svc_name} gemport {n} vlan {svc_vlan}')
+
+                # WAN config
+                if svc_type == 'bridge':
+                    pass
+                elif svc_type == 'tr069' and vlan_profile:
+                    sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
+                    sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+                    has_non_bridge = True
+                elif svc_type == 'iptv':
+                    pass  # bridge-like
+                elif wan_mode == 'nat':
+                    if username:
+                        sc(f'pppoe {n} nat enable user {username} password {password}')
+                        sc(f'wan {n} service internet host {n}')
+                        has_non_bridge = True
+                elif wan_mode == 'wan':
+                    if wan_ip_mode == 'PPPoE' and username:
+                        sc(f'wan-ip {n} mode pppoe username {username} password {password} vlan-profile {vlan_profile} host {n}')
+                        sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+                        has_non_bridge = True
+                    elif wan_ip_mode == 'DHCP':
+                        sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
+                        sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+                        has_non_bridge = True
+                    elif wan_ip_mode == 'STATIC':
+                        ip_addr = svc.get('ip_address', '')
+                        subnet = svc.get('subnet_mask', '')
+                        ip_prof = svc.get('ip_profile', '')
+                        if ip_prof:
+                            sc(f'wan-ip {n} mode static ip-profile {ip_prof} vlan-profile {vlan_profile} host {n}')
+                        elif ip_addr:
+                            sc(f'wan-ip {n} mode static ip-address {ip_addr} mask {subnet} vlan-profile {vlan_profile} host {n}')
+                        sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+                        has_non_bridge = True
+
+            # VEIP config (non-ZTE)
+            if use_veip:
+                sc('vlan port veip_1 mode hybrid')
+                sc('vlan port veip_1 vlan 1')
+
+            # Auto-tag LAN ports to matching service VLAN
+            # eth_0/1 → service 1 VLAN, eth_0/2 → service 2 VLAN, etc.
+            # Remaining ports → primary (first) service VLAN
+            if services:
+                primary_vlan = int(services[0].get('vlan', 100))
+                for lp in range(1, 5):  # eth_0/1 through eth_0/4
+                    svc_idx = lp - 1
+                    if svc_idx < len(services):
+                        port_vlan = int(services[svc_idx].get('vlan', primary_vlan))
+                    else:
+                        port_vlan = primary_vlan
+                    sc_warn(f'vlan port eth_0/{lp} mode tag vlan {port_vlan}')
+
+            # WiFi VLAN tagging — per-SSID VLAN if provided, else use first service VLAN
+            if pw_ssids:
+                wifi_vlan = int(services[0].get('vlan', 100)) if services else 100
+                has_per_ssid_vlan = any(s.get('vlan') for s in pw_ssids if s.get('name'))
+                if has_per_ssid_vlan:
+                    for s in pw_ssids:
+                        if s.get('name') and s.get('vlan'):
+                            wp = s.get('port', 'wifi_0/1')
+                            sc_warn(f'vlan port {wp} mode tag vlan {s["vlan"]}')
+                else:
+                    for s in pw_ssids:
+                        if s.get('name'):
+                            wp = s.get('port', 'wifi_0/1')
+                            sc_warn(f'vlan port {wp} mode tag vlan {wifi_vlan}')
+
+            # Firewall + security (if any non-bridge service)
+            if has_non_bridge:
+                sc('firewall enable level low')
+                sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
+
+            # TR069 global
+            if tr069_config and tr069_config.get('enabled'):
+                sc('tr069-mgmt 1 state unlock')
+                acs_url = tr069_config.get('acs_url', '') or 'http://192.168.54.254:7547'
+                acs_user = tr069_config.get('acs_user', '') or 'acs'
+                acs_pass = tr069_config.get('acs_pass', '') or 'acs'
+                sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
+                tr069_vlan = tr069_config.get('tr069_vlan', '')
+                tr069_vlan_mode = tr069_config.get('tr069_vlan_mode', 'tag')
+                if tr069_vlan and tr069_vlan_mode == 'tag':
+                    sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+                else:
+                    sc('tr069-mgmt 1 untag')
+
+            # WiFi config (ZTE only — after pon-onu-mng) — dynamic SSID list
+            for s in pw_ssids:
+                ssid_name = (s.get('name') or '').replace(' ', '_')
+                if not ssid_name:
+                    continue
+                wp = s.get('port', 'wifi_0/1')
+                ssid_pass = s.get('pass', '')
+                ssid_auth = s.get('auth', 'wpa2')
+                ssid_enabled = s.get('enabled', True)
+                ssid_hidden = s.get('hidden', False)
+                # Enable/disable WiFi radio interface
+                if ssid_enabled:
+                    sc_warn(f'interface wifi {wp} state unlock')
+                else:
+                    sc_warn(f'interface wifi {wp} state lock')
+                    continue  # No need to config SSID if disabled
+                # Set SSID name + hide/show
+                hide_str = 'enable' if ssid_hidden else 'disable'
+                sc_warn(f'ssid ctrl {wp} name {ssid_name} hide {hide_str}')
+                if ssid_auth != 'open':
+                    auth_mode = {'wpa2': 'wpa2-psk', 'wpa': 'wpa-psk', 'mixed': 'wpa-wpa2-psk'}.get(ssid_auth, 'wpa2-psk')
+                    sc_warn(f'ssid auth wpa {wp} {auth_mode}')
+                    sc_warn(f'ssid auth wpa {wp} encrypt aes')
+                    if ssid_pass:
+                        sc_warn(f'ssid auth wpa {wp} key {ssid_pass}')
+                else:
+                    # Open auth: set WEP open-system (ZTE's way of truly open auth)
+                    # Also clear any previous WPA config to override stale settings
+                    sc_warn(f'ssid auth wpa {wp} no-auth')
+                    sc_warn(f'ssid auth wpa {wp} encrypt none')
+                    sc_warn(f'ssid auth wpa {wp} no-key')
+                    sc_warn(f'ssid auth wep {wp} open-system')
+                    logger.info(f'[register_unified] Open auth set for {wp}: no-auth, encrypt none, no-key, wep open-system')
+
+            self._send_command(tn, 'end')
+            tn.close()
+            if last_err:
+                return False, f'CLI error: {last_err}'
+            return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered (unified, {"VEIP" if use_veip else "iphost"})'
+        except Exception as e:
+            logger.error(f"register_unified failed: {e}")
             try: tn.close()
             except: pass
             return False, str(e)
@@ -1982,6 +2446,50 @@ class TelnetCollector:
             try: tn.close()
             except: pass
         return uplinks
+
+    def get_ports_traffic_rate(self, port_names):
+        """Fetch instantaneous input/output rate (in Mbps) for a list of arbitrary
+        port names (uplink gei_x/xgei_x or PON gpon-olt_x) in a single Telnet session.
+        Returns dict: {port_name: {'in_mbps': float, 'out_mbps': float}}.
+        Works off the '20 seconds input/output rate : X Bps' counters exposed by
+        'show interface <port>' on ZTE C320/C300."""
+        result = {}
+        tn = self._connect()
+        if not tn:
+            return {pn: {'in_mbps': 0.0, 'out_mbps': 0.0} for pn in port_names}
+        try:
+            for port_name in port_names:
+                in_mbps = out_mbps = 0.0
+                try:
+                    out = self._send_command(tn, f'show interface {port_name}', timeout=10)
+                    if out.strip() and '%Error' not in out:
+                        for line in out.split('\n'):
+                            ls = line.strip()
+                            if 'input rate' in ls.lower():
+                                m = re.search(r':\s+([\d.]+)\s+(Bps|Kbps|Mbps|Gbps)', ls, re.IGNORECASE)
+                                if m:
+                                    in_mbps = _rate_to_mbps(float(m.group(1)), m.group(2))
+                            elif 'output rate' in ls.lower():
+                                m = re.search(r':\s+([\d.]+)\s+(Bps|Kbps|Mbps|Gbps)', ls, re.IGNORECASE)
+                                if m:
+                                    out_mbps = _rate_to_mbps(float(m.group(1)), m.group(2))
+                except Exception as e:
+                    logger.debug(f'get_ports_traffic_rate {port_name}: {e}')
+                result[port_name] = {'in_mbps': round(in_mbps, 3), 'out_mbps': round(out_mbps, 3)}
+            try:
+                tn.write('exit\n')
+                tn.close()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.error(f'get_ports_traffic_rate failed: {e}')
+            try:
+                tn.close()
+            except Exception:
+                pass
+        for pn in port_names:
+            result.setdefault(pn, {'in_mbps': 0.0, 'out_mbps': 0.0})
+        return result
 
     def get_uplinks_live_traffic(self, port_ids):
         """Fetch live traffic rates for uplink ports in a single Telnet session.
@@ -3161,6 +3669,26 @@ class TelnetCollector:
                     if m:
                         eth_locked_ports.add(m.group(1))
 
+                # ssid ctrl wifi_0/1 name MySSID — actual SSID name set via OMCI
+                elif ls.startswith('ssid ctrl wifi_'):
+                    m = re.match(r'ssid ctrl wifi_0/(\d+)\s+name\s+(.+)', ls)
+                    if m:
+                        wifi_num = m.group(1)
+                        ssid_name = m.group(2).strip()
+                        # Update existing entry or create new one
+                        existing = next((w for w in result['wifi_entries'] if w.get('wifi_num') == wifi_num), None)
+                        if existing:
+                            existing['ssid_name'] = ssid_name
+                        else:
+                            result['wifi_entries'].append({
+                                'wifi_num': wifi_num,
+                                'ssid_name': ssid_name,
+                                'status': 'up',
+                                'mode': 'DHCP From Onu',
+                                'vlan': '',
+                                'priority': '0'
+                            })
+
                 # vlan port wifi_0/1 mode tag vlan 30
                 elif ls.startswith('vlan port wifi_'):
                     m = re.match(r'vlan port wifi_0/(\d+)\s+mode\s+(\S+)(?:\s+vlan\s+(\S+))?', ls)
@@ -3169,14 +3697,67 @@ class TelnetCollector:
                         mode = m.group(2)
                         vlan = m.group(3) or ''
                         wifi_mode = 'Access' if mode in ('tag', 'tagged') else 'DHCP From Onu'
-                        result['wifi_entries'].append({
-                            'wifi_num': wifi_num,
-                            'ssid_name': f'Wifi {wifi_num}',
-                            'status': 'up',
-                            'mode': wifi_mode,
-                            'vlan': vlan or '',
-                            'priority': '0'
-                        })
+                        # Update existing entry (from ssid ctrl) or create new
+                        existing = next((w for w in result['wifi_entries'] if w.get('wifi_num') == wifi_num), None)
+                        if existing:
+                            existing['mode'] = wifi_mode
+                            if vlan:
+                                existing['vlan'] = vlan
+                        else:
+                            result['wifi_entries'].append({
+                                'wifi_num': wifi_num,
+                                'ssid_name': f'Wifi {wifi_num}',
+                                'status': 'up',
+                                'mode': wifi_mode,
+                                'vlan': vlan or '',
+                                'priority': '0'
+                            })
+
+                # vlan port wifi_0/1 priority 5
+                elif ls.startswith('vlan port wifi_') and 'priority' in ls:
+                    m = re.match(r'vlan port wifi_0/(\d+)\s+priority\s+(\d+)', ls)
+                    if m:
+                        wifi_num = m.group(1)
+                        pri = m.group(2)
+                        existing = next((w for w in result['wifi_entries'] if w.get('wifi_num') == wifi_num), None)
+                        if existing:
+                            existing['priority'] = pri
+
+                # ssid auth wpa wifi_0/1 encrypt aes key fatimah1 — ZTE typical format (WPA2-PSK implied)
+                # ssid auth wpa wifi_0/1 wpa2-psk — explicit auth type (some firmware versions)
+                # ssid auth wpa wifi_0/1 encrypt aes — encryption only (no key = no password set)
+                # ssid auth wpa wifi_0/1 key MyPassword — password on separate line
+                # ssid auth wpa wifi_0/1 no-auth — open auth (no password)
+                # ssid auth wep wifi_0/2 open-system — WEP open-system (also open auth)
+                elif ls.startswith('ssid auth ') and 'wifi_' in ls:
+                    m = re.match(r'ssid auth (\w+) wifi_0/(\d+)\s+(.*)', ls)
+                    if m:
+                        auth_proto = m.group(1)  # 'wpa' or 'wep'
+                        wifi_num = m.group(2)
+                        rest = m.group(3).strip()
+                        existing = next((w for w in result['wifi_entries'] if w.get('wifi_num') == wifi_num), None)
+                        if existing:
+                            first_word = rest.split()[0] if rest.split() else ''
+                            # Auth type detection — normalize to canonical values
+                            if first_word in ('wpa2-psk', 'wpa-psk', 'wpa-wpa2-psk'):
+                                existing['ssid_auth_type'] = first_word
+                            elif first_word in ('no-auth', 'open', 'open-system'):
+                                existing['ssid_auth_type'] = 'open'
+                            elif first_word in ('encrypt', 'key') or not first_word:
+                                # ZTE typical: 'ssid auth wpa wifi_0/N encrypt aes key PASS'
+                                # No explicit auth mode → WPA with AES = WPA2-PSK
+                                if auth_proto == 'wpa':
+                                    existing['ssid_auth_type'] = existing.get('ssid_auth_type', 'wpa2-psk')
+                                elif auth_proto == 'wep':
+                                    existing['ssid_auth_type'] = 'open'
+                            # Password: "encrypt aes key MyPassword" (combined) or "key MyPassword" (separate)
+                            km = re.match(r'encrypt\s+\S+\s+key\s+(.+)', rest)
+                            if km:
+                                existing['ssid_password'] = km.group(1).strip()
+                            else:
+                                km2 = re.match(r'key\s+(.+)', rest)
+                                if km2:
+                                    existing['ssid_password'] = km2.group(1).strip()
 
                 # tr069-mgmt 1 state unlock
                 elif ls.startswith('tr069-mgmt') and 'state' in ls and 'acs' not in ls:
@@ -3535,17 +4116,26 @@ class TelnetCollector:
                                 'access_vlan': vlan, 'dhcp_mode': 'Auto', 'changes': '0'
                             })
 
-            # ── 10. Ensure WiFi entries (R-Config always shows Wifi 1 & Wifi 2) ──
+            # ── 10. Ensure WiFi entries ──
+            # Only add defaults if NO wifi config found at all (neither ssid ctrl nor vlan port)
+            has_real_ssid = any(not w.get('ssid_name', '').startswith('Wifi ') for w in result['wifi_entries'])
             if not result['wifi_entries']:
+                # No WiFi config at all — show default Wifi 1 & 2
                 result['wifi_entries'] = [
                     {'wifi_num': '1', 'ssid_name': 'Wifi 1', 'status': 'up', 'mode': 'DHCP From Onu', 'vlan': '', 'priority': '0'},
                     {'wifi_num': '2', 'ssid_name': 'Wifi 2', 'status': 'up', 'mode': 'DHCP From Onu', 'vlan': '', 'priority': '0'}
                 ]
-            elif len(result['wifi_entries']) == 1:
+            elif not has_real_ssid and len(result['wifi_entries']) == 1:
+                # Only 1 entry with generic name — add a second default
                 existing_num = result['wifi_entries'][0].get('wifi_num', '1')
                 missing_num = '2' if existing_num == '1' else '1'
                 result['wifi_entries'].append({'wifi_num': missing_num, 'ssid_name': f'Wifi {missing_num}', 'status': 'up', 'mode': 'DHCP From Onu', 'vlan': '', 'priority': '0'})
-                result['wifi_entries'].sort(key=lambda x: int(x.get('wifi_num', 1)))
+            # Sort by wifi_num
+            result['wifi_entries'].sort(key=lambda x: int(x.get('wifi_num', 1)))
+            # Ensure every WiFi entry has ssid_auth_type — default to 'open' if no auth line was found
+            for w in result['wifi_entries']:
+                if not w.get('ssid_auth_type'):
+                    w['ssid_auth_type'] = 'open'
 
             # ── 10b. Ensure Ethernet always has 4 LAN ports (R-Config always shows LAN 1-4) ──
             existing_eth = {e.get('gemport') for e in result['eth_entries']}
@@ -3669,6 +4259,7 @@ class TelnetCollector:
             'service ', 'name ', 'description ', 'switchport ', 'wifi ',
             'security-mgmt', 'reboot', 'restore', 'firewall', 'igmp',
             'pon-onu-mng ', 'interface ', '!', 'end', 'ZXAN', '#',
+            'ssid ctrl ', 'ssid auth ', 'interface wifi ', 'wan ',
         )
         for line in lines:
             stripped = line.strip()

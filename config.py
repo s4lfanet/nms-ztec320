@@ -15,6 +15,7 @@ Usage:
 """
 import os
 from pathlib import Path
+from datetime import timedelta
 
 # Load .env file if it exists (simple dotenv implementation)
 _base_dir = Path(__file__).resolve().parent
@@ -35,7 +36,20 @@ class Config:
     """Base configuration."""
 
     # --- Core ---
-    SECRET_KEY = os.environ.get("SECRET_KEY", "fiber-nms-secret-key-2024")
+    # Generate a random SECRET_KEY if not set, but persist it to .env so sessions survive restarts
+    _secret = os.environ.get("SECRET_KEY")
+    if not _secret:
+        import secrets as _secrets
+        _secret = _secrets.token_hex(32)
+        # Persist to .env so the key survives restarts
+        _env_path = _base_dir / ".env"
+        try:
+            with open(_env_path, 'a') as _f:
+                _f.write(f"\nSECRET_KEY={_secret}\n")
+            os.environ["SECRET_KEY"] = _secret
+        except Exception:
+            pass
+    SECRET_KEY = _secret
     DEBUG = os.environ.get("FLASK_DEBUG", "0") == "1"
 
     # --- Database ---
@@ -56,12 +70,20 @@ class Config:
         "pool_recycle": 300,
     }
 
+    # SQLite-specific settings: increase busy timeout to handle concurrent writes
+    if "sqlite" in SQLALCHEMY_DATABASE_URI:
+        SQLALCHEMY_ENGINE_OPTIONS["connect_args"] = {
+            "timeout": 30,
+            "check_same_thread": False,
+        }
+
     # PostgreSQL-specific pool settings (only applied when using PostgreSQL)
     if "postgresql" in SQLALCHEMY_DATABASE_URI:
         SQLALCHEMY_ENGINE_OPTIONS.update({
             "pool_size": 10,
             "max_overflow": 20,
             "pool_timeout": 30,
+            "connect_args": {"options": "-c timezone=UTC"},
         })
 
     # --- Session ---
@@ -69,19 +91,15 @@ class Config:
     SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
     SESSION_COOKIE_HTTPONLY = True
     PREFERRED_URL_SCHEME = os.environ.get("PREFERRED_URL_SCHEME", "https")
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=12)
 
     # --- Server ---
     HOST = os.environ.get("HOST", "0.0.0.0")
     PORT = int(os.environ.get("PORT", "5000"))
     WS_PORT = int(os.environ.get("WS_PORT", "8765"))
 
-    # --- Redis (optional, Phase 4) ---
+    # --- Redis (optional) ---
     REDIS_URL = os.environ.get("REDIS_URL", "")
-
-    # --- Cloudflare (optional) ---
-    CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
-    CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "")
-    CF_TUNNEL_ID = os.environ.get("CF_TUNNEL_ID", "")
 
     # --- WhatsApp Gateway (optional) ---
     WA_GATEWAY_URL = os.environ.get("WA_GATEWAY_URL", "")

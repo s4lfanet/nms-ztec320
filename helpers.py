@@ -26,7 +26,6 @@ def log_action(action, category='general', target='', detail=''):
     try:
         uid = getattr(current_user, 'id', None) if current_user else None
         uname = getattr(current_user, 'username', '') if current_user else ''
-        tid = getattr(current_user, 'tenant_id', None) if current_user else None
         ip = ''
         if request:
             ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
@@ -35,7 +34,7 @@ def log_action(action, category='general', target='', detail=''):
             if not ip:
                 ip = request.remote_addr or ''
         entry = ActionLog(
-            user_id=uid, username=uname or '', tenant_id=tid,
+            user_id=uid, username=uname or '',
             action=action, category=category,
             target=str(target)[:200], detail=str(detail)[:2000],
             ip_address=ip or '',
@@ -48,83 +47,44 @@ def log_action(action, category='general', target='', detail=''):
 
 def permission_required(perm):
     """Decorator that checks if current user has the given permission.
-    Falls back to @login_required behavior. 403 if logged-in but missing perm."""
+    Returns JSON 403 for API calls, redirects for HTML pages.
+    Logs unauthorized access attempts."""
     def decorator(f):
         @wraps(f)
         @login_required
         def decorated_function(*args, **kwargs):
             if not current_user.has_permission(perm):
+                # Log unauthorized access attempt
+                logger.warning(
+                    f'Unauthorized access: user={current_user.username} '
+                    f'perm={perm} path={request.path} method={request.method}'
+                )
+                try:
+                    log_action('unauthorized_access', 'security',
+                               target=request.path,
+                               detail=f'Required permission: {perm}')
+                except Exception:
+                    pass
+                if request.path.startswith('/api/'):
+                    return jsonify({'success': False, 'message': 'Permission denied'}), 403
                 flash('You do not have permission to access this page.', 'danger')
-                return redirect(url_for('my_profile'))
+                return redirect('/dashboard')
             return f(*args, **kwargs)
         return decorated_function
     return decorator
 
 
 def super_admin_required(f):
-    """Decorator that checks if current user is a super admin AND on the main domain."""
+    """Decorator that checks if current user is a super admin."""
     @wraps(f)
     @login_required
     def decorated_function(*args, **kwargs):
-        hostname = request.host.split(':')[0].lower()
-        main_domains = {'nms.salfa.my.id', 'localhost', '127.0.0.1'}
-        if hostname not in main_domains:
-            if request.path.startswith('/api/'):
-                return jsonify({'success': False, 'message': 'Super admin access is restricted to the main domain'}), 403
-            return redirect('/spa/')
         if not current_user.is_super_admin:
             if request.path.startswith('/api/'):
                 return jsonify({'success': False, 'message': 'Super admin access required'}), 403
-            return redirect('/spa/')
+            return redirect('/')
         return f(*args, **kwargs)
     return decorated_function
-
-
-def get_tenant_id():
-    """Get current user's tenant_id. Returns None for super admin (no filter)."""
-    if not current_user or not current_user.is_authenticated:
-        return None
-    if current_user.is_super_admin:
-        return None
-    return current_user.tenant_id
-
-
-def tenant_filter(model):
-    """Return a SQLAlchemy filter for the current tenant on the given model.
-    Returns a no-op filter for super admin."""
-    tid = get_tenant_id()
-    if tid is None:
-        return model.id >= 0
-    return model.tenant_id == tid
-
-
-def check_subscription():
-    """Check if current user's subscription is active.
-    Returns (ok, message). Super admin always passes."""
-    if not current_user or not current_user.is_authenticated:
-        return (True, '')
-    if current_user.is_super_admin:
-        return (True, '')
-    if not current_user.is_subscription_active:
-        return (False, 'Your subscription has expired. Please renew to continue.')
-    return (True, '')
-
-
-def check_olt_limit():
-    """Check if tenant can add more OLTs based on subscription.
-    Returns (ok, message)."""
-    if not current_user or not current_user.is_authenticated:
-        return (True, '')
-    if current_user.is_super_admin:
-        return (True, '')
-    sub = current_user.subscription
-    if not sub:
-        return (False, 'No active subscription found.')
-    tid = current_user.tenant_id
-    current_count = OLT.query.filter_by(tenant_id=tid).count()
-    if current_count >= sub.max_olts:
-        return (False, f'OLT limit reached ({sub.max_olts}). Upgrade your package to add more OLTs.')
-    return (True, '')
 
 
 # Login rate limiting

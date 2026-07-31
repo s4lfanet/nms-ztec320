@@ -19,9 +19,9 @@ export default defineConfig({
         background_color: '#0f0a1e',
         display: 'standalone',
         orientation: 'portrait',
-        scope: '/spa/',
-        start_url: '/spa/',
-        id: '/spa/',
+        scope: '/',
+        start_url: '/',
+        id: '/',
         categories: ['utilities', 'productivity'],
         icons: [
           { src: 'pwa/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
@@ -33,7 +33,17 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/auth/, /^\/static/],
+        navigateFallbackDenylist: [/^\/api/, /^\/auth/, /^\/static/, /^\/ws/, /^\/health/, /^\/docs/, /^\/openapi/],
+        runtimeCaching: [
+          {
+            urlPattern: /^https?:\/\/.*\/api\/.*/i,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https?:\/\/.*\/ws\/.*/i,
+            handler: 'NetworkOnly',
+          },
+        ],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
@@ -44,7 +54,7 @@ export default defineConfig({
       },
     }),
   ],
-  base: '/spa/',
+  base: '/',
   server: {
     port: 3000,
     proxy: {

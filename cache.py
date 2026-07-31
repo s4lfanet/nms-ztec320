@@ -40,8 +40,10 @@ def _get_redis():
         import os
         redis_url = os.environ.get("REDIS_URL", "")
         if not redis_url:
+            logger.warning("REDIS_URL not set in environment — using memory cache")
             return None
 
+        logger.info(f"Attempting Redis connection to {redis_url}")
         import redis
         _redis_client = redis.from_url(redis_url, decode_responses=True)
         _redis_client.ping()

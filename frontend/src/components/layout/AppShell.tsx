@@ -63,7 +63,7 @@ export function AppShell() {
         collapsed ? 'lg:ml-[70px]' : 'lg:ml-[260px]',
       )}>
         <Topbar onMenuClick={() => setMobileOpen(!mobileOpen)} />
-        <main className="p-3 pb-20 lg:pb-6 md:p-4 lg:p-6 overflow-x-hidden">
+        <main className="p-3 pb-20 lg:pb-6 md:p-4 lg:p-6 overflow-x-hidden max-w-[100vw]">
           <Outlet />
         </main>
       </div>

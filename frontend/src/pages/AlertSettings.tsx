@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../components/Toast';
+import { TutorialBanner } from '../components/TutorialBanner';
 import { cn } from '../lib/utils';
 import { useAuth } from '../stores/auth';
 import {
@@ -26,9 +27,31 @@ export function AlertSettings() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold">Alert Settings</h1>
-        <p className="text-tx2 text-xs md:text-sm mt-1">{isSuperAdmin ? 'Configure WA Native notifications for tenants & cron job monitoring' : 'Configure monitoring rules and notification channels'}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold">Alert Settings</h1>
+          <p className="text-tx2 text-xs md:text-sm mt-1">{isSuperAdmin ? 'Configure WA Native notifications for tenants & cron job monitoring' : 'Configure monitoring rules and notification channels'}</p>
+        </div>
+        <TutorialBanner
+          title="Panduan Alert Settings"
+          steps={[
+            { title: 'Alert Rules', content: <><p>Konfigurasi rule monitoring ONU: ONU Offline, DyingGasp, LOS, RX Power Critical, OLT Offline, OLT High Temperature, OLT CPU High.</p><p className="text-xs text-tx3 mt-1">Toggle enable/disable per rule. Set threshold untuk RX power (dBm), temperature (°C), dan CPU (%).</p></> },
+            { title: 'Telegram', content: <><p>Setup Telegram Bot untuk notifikasi alert. Masukkan Bot Token dan Chat ID. Test notification untuk verifikasi.</p></> },
+            { title: 'WhatsApp Gateway', content: <><p>Setup WhatsApp Gateway (WAPanel/WAHA) untuk kirim notifikasi via WhatsApp. Masukkan API URL dan API Token.</p></> },
+            { title: 'WA Native (Super Admin)', content: <><p>Konfigurasi WhatsApp Native untuk notifikasi ke semua tenant. Scan QR code untuk login, pilih tenant yang aktif.</p><p className="text-xs text-tx3 mt-1">Hanya super admin yang bisa konfigurasi WA Native. Tenant menerima notifikasi jika WA Native aktif.</p></> },
+            { title: 'Cron Job Monitor', content: <><p>Monitor cron job auto-sync: interval, timezone, last run, next run, dan status. Start/stop cron job dari sini.</p></> },
+          ]}
+          tips={
+            <>
+              <strong className="text-tx2">Tips:</strong>
+              <ul className="mt-1 ml-4 space-y-0.5">
+                <li>Alert history bisa dilihat di Alert History page</li>
+                <li>Notifikasi dikirim ke semua channel yang aktif (Telegram + WhatsApp)</li>
+                <li>WA Native butuh QR scan ulang jika session expired</li>
+              </ul>
+            </>
+          }
+        />
       </div>
 
       <div className="flex gap-2 flex-wrap pb-1">

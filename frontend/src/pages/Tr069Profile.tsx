@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, X, Server, Lock, Unlock } from 'lucide-react';
 import { api } from '../lib/api';
 import { toast } from '../components/Toast';
-import { useAuth } from '../stores/auth';
+import { TutorialBanner } from '../components/TutorialBanner';
 import { useHasPerm } from '../hooks/useHasPerm';
 
 interface Tr069Profile {
@@ -20,9 +20,8 @@ interface Tr069Profile {
 
 export default function Tr069Profile() {
   const qc = useQueryClient();
-  const { user } = useAuth();
   const hasPerm = useHasPerm();
-  const canManage = !user?.is_super_admin && hasPerm('manage_tr069');
+  const canManage = hasPerm('manage_tr069');
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; profile?: Tr069Profile } | null>(null);
   const [showPass, setShowPass] = useState<Record<number, boolean>>({});
 
@@ -65,10 +64,28 @@ export default function Tr069Profile() {
           <h1 className="text-xl md:text-2xl font-bold">TR069 Profile</h1>
           <p className="text-tx2 text-xs md:text-sm mt-1">Manage ACS profiles for TR069 remote management</p>
         </div>
-        {canManage && <button onClick={() => setModal({ mode: 'add' })} className="btn-primary flex items-center gap-2 text-sm">
-          <Plus size={16} />
-          Create
-        </button>}
+        <div className="flex items-center gap-2">
+          <TutorialBanner
+            title="Panduan TR069 Profile"
+            steps={[
+              { title: 'Create Profile', content: <><p>Buat TR069 profile untuk ACS (Auto Configuration Server) seperti GenieACS. Setiap profile berisi: ACS URL, username, password, VLAN, dan VLAN mode.</p><p className="text-xs text-tx3 mt-1">Profile bisa di-assign ke default OLT tertentu untuk auto-fill saat provisioning.</p></> },
+              { title: 'Use in Provisioning', content: <><p>Saat register/provision ONU, pilih TR069 profile dari dropdown — ACS URL, username, password, dan VLAN akan auto-fill.</p><p className="text-xs text-tx3 mt-1">Tanpa profile, TR069 config harus diinput manual setiap kali provisioning.</p></> },
+            ]}
+            tips={
+              <>
+                <strong className="text-tx2">Tips:</strong>
+                <ul className="mt-1 ml-4 space-y-0.5">
+                  <li>Buat satu profile per ACS server (contoh: GenieACS-Production, GenieACS-Test)</li>
+                  <li>Password terenkripsi di database — tidak ditampilkan plain text</li>
+                </ul>
+              </>
+            }
+          />
+          {canManage && <button onClick={() => setModal({ mode: 'add' })} className="btn-primary flex items-center gap-2 text-sm">
+            <Plus size={16} />
+            Create
+          </button>}
+        </div>
       </div>
 
       {/* Table */}
@@ -244,8 +261,9 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-0 md:p-4">
-      <div className="w-full max-w-md rounded-t-2xl md:rounded-2xl border border-brd bg-surface shadow-xl max-h-[90vh] overflow-y-auto animate-slide-up md:animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="modal-overlay" />
+      <div className="relative w-full max-w-md rounded-t-2xl md:rounded-2xl border border-brd bg-surface shadow-xl max-h-[90vh] overflow-y-auto animate-slide-up md:animate-fade-in">
         <div className="flex items-center justify-between p-4 border-b border-brd sticky top-0 bg-surface z-10">
           <h3 className="font-semibold">{mode === 'add' ? 'Add TR069 Profile' : 'Edit TR069 Profile'}</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-glass text-tx3"><X size={18} /></button>

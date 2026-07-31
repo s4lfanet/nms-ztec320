@@ -1,7 +1,7 @@
-from flask import Flask, redirect, request, jsonify, g, session
+﻿from flask import Flask, redirect, request, jsonify, g, session
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, User, Role, OLT, ONU, Template, TR069Profile, ONUCustomColumn, Fan, OLTSyncStatus, OLTCard, OLTUplink, ONUVlan, ONUType, SpeedProfile, WanIpProfile, OLTPort, AVAILABLE_PERMISSIONS, Notification, AlertRule, AlertHistory, BotConfig, FTTHOTB, FTTHODC, FTTHODP, FTTHODPPort, FTTHPonPort, SystemConfig, ActionLog, Tenant, SubscriptionPackage, Subscription, SubscriptionNotification, PaymentTransaction, Invoice
+from models import db, User, Role, OLT, ONU, Template, TR069Profile, ONUCustomColumn, Fan, OLTSyncStatus, OLTCard, OLTUplink, ONUVlan, ONUType, SpeedProfile, WanIpProfile, OLTPort, AVAILABLE_PERMISSIONS, Notification, AlertRule, AlertHistory, BotConfig, FTTHOTB, FTTHODC, FTTHODP, FTTHODPPort, FTTHPonPort, FTTHFiberPath, SystemConfig, ActionLog, MetricHistory, TrafficLog, TrafficLogHourly, OLTConfigBackup
 from datetime import datetime, timezone, timedelta
 from functools import wraps
 import logging
@@ -17,24 +17,15 @@ from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 
 # --- Refactored modules (extracted from monolithic app.py) ---
-from extensions import db as _ext_db, login_manager, migrate, logger, MultiTenantSessionInterface
+from extensions import db as _ext_db, login_manager, migrate, logger
 from helpers import (
     utc_iso, log_action, permission_required, super_admin_required,
-    get_tenant_id, tenant_filter, check_subscription, check_olt_limit,
     check_rate_limit as _check_rate_limit,
     record_failed_login as _record_failed_login,
     clear_failed_logins as _clear_failed_logins,
 )
-from services_cf import (
-    get_cloudflare_config as _get_cloudflare_config,
-    add_tunnel_hostname as _add_cloudflare_tunnel_hostname,
-    remove_tunnel_hostname as _remove_cloudflare_tunnel_hostname,
-)
 from services_wa import (
     get_nms_branding as _get_nms_branding,
-    send_payment_notification as _send_payment_wa_notification,
-    send_registration_notification as _send_registration_wa_notification,
-    send_subscription_notification as _send_subscription_wa_notification,
 )
 from services_sync import (
     start_single_sync, start_sync_all,
@@ -46,15 +37,12 @@ from config import ActiveConfig
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 app.config.from_object(ActiveConfig)
-# Use custom session interface for isolated admin/tenant cookies
-app.session_interface = MultiTenantSessionInterface()
 
 # Rate limiting moved to helpers.py (check_rate_limit, record_failed_login, clear_failed_logins)
 
 db.init_app(app)
 migrate.init_app(app, db)
 login_manager.init_app(app)
-login_manager.login_view = 'auth.login'
 login_manager.login_message = 'Please login to access this page.'
 
 app.register_blueprint(auth_bp)
@@ -68,6 +56,15 @@ def add_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "img-src 'self' data: blob: https:; "
+        "connect-src 'self' wss: https:; "
+        "frame-ancestors 'none';"
+    )
     if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https':
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     # Prevent Cloudflare/browser from caching API responses (especially 401s)
@@ -85,85 +82,12 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
-# Domain sets for session isolation
-_MAIN_DOMAINS = frozenset({'nms.salfa.my.id', 'localhost', '127.0.0.1'})
-
-
-def _is_main_domain():
-    """Check if current request is on main (admin) domain."""
-    hostname = request.host.split(':')[0].lower()
-    return hostname in _MAIN_DOMAINS
-
-
-@app.before_request
-def enforce_domain_session_isolation():
-    """Defense-in-depth: ensure authenticated user matches the domain they're on.
-
-    - Main domain (nms.salfa.my.id) → only superadmin sessions valid
-    - Tenant subdomain → only matching tenant user sessions valid
-    Clears the session if mismatch detected (e.g., stale cookie from other domain).
-    """
-    if not current_user or not current_user.is_authenticated:
-        return None
-
-    hostname = request.host.split(':')[0].lower()
-    is_main = hostname in _MAIN_DOMAINS
-
-    # Super admin on tenant subdomain → invalid, clear session
-    if not is_main and current_user.is_super_admin:
-        logout_user()
-        session.clear()
-        if request.path.startswith('/api/'):
-            return jsonify({'success': False, 'message': 'Session invalid for this domain.'}), 401
-        return redirect('/spa/login')
-
-    # Tenant user on main domain → invalid, clear session
-    if is_main and not current_user.is_super_admin and current_user.tenant_id:
-        logout_user()
-        session.clear()
-        if request.path.startswith('/api/'):
-            return jsonify({'success': False, 'message': 'Session invalid for this domain.'}), 401
-        return redirect('/spa/login')
-
-    # Tenant user on wrong tenant subdomain → invalid, clear session
-    if not is_main and not current_user.is_super_admin and current_user.tenant_id:
-        tenant = Tenant.query.get(current_user.tenant_id)
-        if tenant and not hostname.startswith(tenant.subdomain.lower() + '.'):
-            logout_user()
-            session.clear()
-            if request.path.startswith('/api/'):
-                return jsonify({'success': False, 'message': 'Session invalid for this tenant.'}), 401
-            return redirect('/spa/login')
-
-    return None
-
-
-@app.before_request
-def check_tenant_access():
-    """Block access for expired/suspended tenants (except super admin and auth/static routes)."""
-    if not current_user or not current_user.is_authenticated:
-        return None
-    if current_user.is_super_admin:
-        return None
-    # Allow access to login/logout/subscription status even if expired
-    path = request.path
-    if path.startswith('/api/auth/') or path.startswith('/api/subscription/') or path.startswith('/static/') or path.startswith('/api/public/') or path.startswith('/api/payment/'):
-        return None
-    # Allow SPA page routes (HTML) — only block API calls
-    if not path.startswith('/api/'):
-        return None
-    # Check subscription
-    ok, msg = check_subscription()
-    if not ok:
-        return jsonify({'success': False, 'message': msg, 'subscription_expired': True}), 403
-    return None
-
 
 @login_manager.unauthorized_handler
 def unauthorized():
     if request.path.startswith('/api/'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
-    return redirect('/spa/login')
+    return redirect('/login')
 
 
 @app.errorhandler(500)
@@ -178,7 +102,7 @@ def handle_500(e):
 def handle_404(e):
     if request.path.startswith('/api/'):
         return jsonify({'success': False, 'message': 'Not found'}), 404
-    return redirect('/spa/')
+    return redirect('/')
 
 
 @app.errorhandler(Exception)
@@ -195,7 +119,16 @@ def handle_unexpected(e):
 @app.route('/api/dashboard')
 @login_required
 def api_dashboard():
-    olts = OLT.query.filter(tenant_filter(OLT)).all()
+    nocache = request.args.get('nocache', '0') == '1'
+    # Try Redis cache (15s TTL — dashboard auto-refreshes every 15-30s)
+    from cache import cache_get, cache_set
+    cache_key = "dashboard:global"
+    if not nocache:
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return jsonify(cached)
+
+    olts = OLT.query.all()
     total_onu = sum(o.total_onu for o in olts)
     online_onu = sum(o.online_onu for o in olts)
     los_onu = sum(o.los_onu for o in olts)
@@ -229,24 +162,13 @@ def api_dashboard():
         'polling_interval': o.polling_interval or 300,
         'total_fan': o.total_fan or 0,
     } for o in olts]
-    # Include subscription info for tenant users
-    sub_info = None
-    if not current_user.is_super_admin:
-        sub = current_user.subscription
-        if sub:
-            renewal_ref = f"T{sub.id}{(sub.tenant_id or 0):04d}SUB"
-            sub_info = {
-                'is_active': sub.is_active,
-                'days_remaining': sub.days_remaining,
-                'max_olts': sub.max_olts,
-                'used_olts': len(olts),
-                'remaining_olts': max(0, sub.max_olts - len(olts)),
-                'package_name': sub.package.name if sub and sub.package else '',
-                'start_date': utc_iso(sub.start_date),
-                'end_date': utc_iso(sub.end_date),
-                'renewal_ref': renewal_ref,
-            }
-    return jsonify({'stats': stats, 'olts': olt_list, 'subscription': sub_info})
+    result = {'stats': stats, 'olts': olt_list}
+    try:
+        cache_set(cache_key, result, ttl=15)
+        logger.info(f"Dashboard cache SET: {cache_key}")
+    except Exception as e:
+        logger.warning(f"Dashboard cache SET failed: {e}")
+    return jsonify(result)
 
 
 @app.route('/api/all-onus')
@@ -254,6 +176,7 @@ def api_dashboard():
 def api_all_onus():
     olt_filter = request.args.get('olt', 'all')
     status_filter = request.args.get('status', 'all')
+    pon_filter = request.args.get('pon', 'all')
     search = request.args.get('search', '').strip()
     page = max(int(request.args.get('page', 1)), 1)
     page_size = min(max(int(request.args.get('page_size', 20)), 1), 200)
@@ -262,15 +185,17 @@ def api_all_onus():
 
     # Build base query with eager loading to avoid N+1
     query = ONU.query.options(joinedload(ONU.odp_port).joinedload(FTTHODPPort.odp))
-    # Tenant filter — only show ONUs belonging to tenant's OLTs
-    tid = get_tenant_id()
-    if tid is not None:
-        tenant_olt_ids = [o.id for o in OLT.query.filter_by(tenant_id=tid).with_entities(OLT.id).all()]
-        query = query.filter(ONU.olt_id.in_(tenant_olt_ids))
     if olt_filter != 'all':
         query = query.filter_by(olt_id=int(olt_filter))
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
+    if pon_filter != 'all' and olt_filter != 'all':
+        try:
+            parts = pon_filter.split('/')
+            if len(parts) == 3:
+                query = query.filter_by(frame=int(parts[0]), slot=int(parts[1]), port=int(parts[2]))
+        except (ValueError, IndexError):
+            pass
 
     # SQL-side search (replaces Python filtering)
     if search:
@@ -310,44 +235,114 @@ def api_all_onus():
     # Signal stats — single lightweight query (no ONU objects loaded)
     total = query.count()
     stats_rows = query.with_entities(ONU.rx_power, ONU.onu_rx_power, ONU.status).all()
-    # RX OLT (rx_power) stats
-    olt_good = sum(1 for r in stats_rows if r[0] is not None and r[0] >= -26.0)
-    olt_warning = sum(1 for r in stats_rows if r[0] is not None and -28.0 <= r[0] < -26.0)
-    olt_critical = sum(1 for r in stats_rows if r[0] is not None and r[0] < -28.0)
-    # RX ONU (onu_rx_power) stats
-    onu_good = sum(1 for r in stats_rows if r[1] is not None and r[1] >= -26.0)
-    onu_warning = sum(1 for r in stats_rows if r[1] is not None and -28.0 <= r[1] < -26.0)
-    onu_critical = sum(1 for r in stats_rows if r[1] is not None and r[1] < -28.0)
+
+    # Read RX color ranges from SystemConfig (customization)
+    import json as _json_stats
+    rx_ranges = [
+        {'min': -25, 'max': 0, 'color': 'green', 'label': 'Good'},
+        {'min': -28, 'max': -25, 'color': 'yellow', 'label': 'Warning'},
+        {'min': -99, 'max': -28, 'color': 'red', 'label': 'Critical'},
+    ]
+    rx_cfg = SystemConfig.query.filter_by(key='rx_color_ranges').first()
+    if rx_cfg and rx_cfg.value:
+        try:
+            rx_ranges = _json_stats.loads(rx_cfg.value)
+        except Exception:
+            pass
+
+    # Sort ranges by min descending so we match the highest (best) range first
+    sorted_ranges = sorted(rx_ranges, key=lambda r: r['min'], reverse=True)
+
+    def classify_rx(val):
+        if val is None:
+            return 'na'
+        for r in sorted_ranges:
+            if r['min'] <= val < r['max']:
+                return r.get('color', 'gray')
+        # Below all ranges → use the lowest range's color
+        if sorted_ranges:
+            return sorted_ranges[-1].get('color', 'red')
+        return 'red'
+
+    # RX ONU (onu_rx_power) stats — using customized ranges
+    onu_counts = {}
+    for r in rx_ranges:
+        color = r.get('color', 'gray')
+        onu_counts[color] = 0
+    onu_na = 0
+    for r in stats_rows:
+        cat = classify_rx(r[1])  # r[1] = onu_rx_power
+        if cat == 'na':
+            onu_na += 1
+        elif cat in onu_counts:
+            onu_counts[cat] += 1
+
+    # Also compute RX OLT (rx_power) stats
+    olt_counts = {}
+    for r in rx_ranges:
+        color = r.get('color', 'gray')
+        olt_counts[color] = 0
+    olt_na = 0
+    for r in stats_rows:
+        cat = classify_rx(r[0])  # r[0] = rx_power
+        if cat == 'na':
+            olt_na += 1
+        elif cat in olt_counts:
+            olt_counts[cat] += 1
+
     # Status counts
     los_count = sum(1 for r in stats_rows if r[2] == 'los')
     online_count = sum(1 for r in stats_rows if r[2] == 'online')
     offline_count = sum(1 for r in stats_rows if r[2] == 'offline')
     dyinggasp_count = sum(1 for r in stats_rows if r[2] == 'dyinggasp')
-    na_count = sum(1 for r in stats_rows if r[0] is None)
+    na_count = sum(1 for r in stats_rows if r[1] is None)  # Based on onu_rx_power
     stats_total = max(len(stats_rows), 1)
-    signal_stats = {
-        'good': {'count': olt_good, 'pct': round(olt_good / stats_total * 100, 1),
-                 'rx_olt': olt_good, 'rx_onu': onu_good},
-        'warning': {'count': olt_warning, 'pct': round(olt_warning / stats_total * 100, 1),
-                    'rx_olt': olt_warning, 'rx_onu': onu_warning},
-        'critical': {'count': olt_critical, 'pct': round(olt_critical / stats_total * 100, 1),
-                     'rx_olt': olt_critical, 'rx_onu': onu_critical},
-        'los': los_count, 'na': na_count,
-        'na_pct': round(na_count / stats_total * 100, 1),
-        'online': online_count,
-        'offline': offline_count,
-        'dyinggasp': dyinggasp_count,
-        'total': len(stats_rows),
-    }
+
+    # Build signal_stats dynamically from rx_ranges
+    signal_stats = {}
+    for r in rx_ranges:
+        color = r.get('color', 'gray')
+        label = r.get('label', color.capitalize())
+        cnt = onu_counts.get(color, 0)
+        signal_stats[color] = {
+            'count': cnt,
+            'pct': round(cnt / stats_total * 100, 1),
+            'label': label,
+            'min': r['min'],
+            'max': r['max'],
+            'rx_olt': olt_counts.get(color, 0),
+            'rx_onu': cnt,
+        }
+    signal_stats['los'] = los_count
+    signal_stats['na'] = na_count
+    signal_stats['na_pct'] = round(na_count / stats_total * 100, 1)
+    signal_stats['online'] = online_count
+    signal_stats['offline'] = offline_count
+    signal_stats['dyinggasp'] = dyinggasp_count
+    signal_stats['total'] = len(stats_rows)
 
     # Paginated results
     paginated = query.limit(page_size).offset((page - 1) * page_size).all()
 
-    olts = OLT.query.filter(tenant_filter(OLT)).all()
+    olts = OLT.query.all()
     olt_list = [{'id': o.id, 'name': o.name} for o in olts]
     olt_map = {o.id: o.name for o in olts}
+    olt_vendor_map = {o.id: (o.vendor or '').lower() for o in olts}
+
+    # Build PON port list per OLT (for frontend filter dropdown)
+    pon_ports = []
+    if olt_filter != 'all':
+        try:
+            olt_id_int = int(olt_filter)
+            pon_rows = ONU.query.filter_by(olt_id=olt_id_int).with_entities(
+                ONU.frame, ONU.slot, ONU.port
+            ).distinct().order_by(ONU.frame, ONU.slot, ONU.port).all()
+            pon_ports = [{'value': f'{r[0]}/{r[1]}/{r[2]}', 'label': f'PON {r[0]}/{r[1]}/{r[2]}'} for r in pon_rows]
+        except (ValueError, TypeError):
+            pass
     onu_list = [{
         'id': o.id, 'olt_id': o.olt_id, 'olt_name': olt_map.get(o.olt_id, ''),
+        'olt_vendor': olt_vendor_map.get(o.olt_id, ''),
         'name': o.name, 'description': o.description, 'pppoe': o.pppoe,
         'onu_id_str': o.onu_id_str, 'status': o.status,
         'rx_power': o.rx_power, 'onu_rx_power': o.onu_rx_power, 'tx_power': o.tx_power,
@@ -362,13 +357,15 @@ def api_all_onus():
         'odp_port_id': o.odp_port.id if o.odp_port else None,
         'customer_name': o.odp_port.customer_name if o.odp_port else '',
         'customer_phone': o.odp_port.customer_phone if o.odp_port else '',
+        'latitude': o.latitude,
+        'longitude': o.longitude,
         'last_seen': utc_iso(o.last_seen),
         'last_online': utc_iso(o.last_online),
         'last_offline': utc_iso(o.last_offline),
     } for o in paginated]
     return jsonify({
         'onus': onu_list, 'signal_stats': signal_stats,
-        'olts': olt_list, 'total': total,
+        'olts': olt_list, 'pon_ports': pon_ports, 'total': total,
         'page': page, 'page_size': page_size,
         'total_pages': max(1, (total + page_size - 1) // page_size),
     })
@@ -396,19 +393,25 @@ def api_onu_detail(onu_id):
     onu = db.session.get(ONU, onu_id)
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
-    olt_map = {o.id: o.name for o in OLT.query.filter(tenant_filter(OLT)).all()}
+    olt_map = {o.id: o.name for o in OLT.query.all()}
+    olt_vendor_map = {o.id: (o.vendor or '').lower() for o in OLT.query.all()}
     return jsonify({
         'onu': {
             'id': onu.id, 'olt_id': onu.olt_id, 'olt_name': olt_map.get(onu.olt_id, ''),
+            'olt_vendor': olt_vendor_map.get(onu.olt_id, ''),
             'name': onu.name, 'description': onu.description, 'pppoe': onu.pppoe,
             'onu_id_str': onu.onu_id_str, 'status': onu.status,
             'rx_power': onu.rx_power, 'onu_rx_power': onu.onu_rx_power, 'tx_power': onu.tx_power,
             'serial_number': onu.serial_number, 'actual_type': onu.actual_type,
+            'onu_type': onu.onu_type,
             'frame': onu.frame, 'slot': onu.slot, 'port': onu.port, 'onu_id': onu.onu_id,
             'distance': onu.distance,
+            'latitude': onu.latitude,
+            'longitude': onu.longitude,
             'last_seen': utc_iso(onu.last_seen),
             'last_online': utc_iso(onu.last_online),
             'last_offline': utc_iso(onu.last_offline),
+            'wifi_config': onu.wifi_config or '',
         },
         'live_detail': None,
         'history': [],
@@ -419,8 +422,7 @@ def api_onu_detail(onu_id):
 @app.route('/api/onu/<int:onu_id>/live-detail')
 @login_required
 def api_onu_live_detail(onu_id):
-    """Fetch live ONU data from OLT via Telnet — slow, call lazily."""
-    from snmp_collector import TelnetCollector, create_cli_collector
+    """Fetch live ONU data from OLT via Telnet (ZTE only)."""
     import json as _json
     onu = db.session.get(ONU, onu_id)
     if not onu:
@@ -428,7 +430,10 @@ def api_onu_live_detail(onu_id):
     olt = onu.olt
     live_detail = None
     history = []
+
     if olt and olt.cli_username:
+        # ZTE: Telnet-based live detail
+        from snmp_collector import TelnetCollector, create_cli_collector
         try:
             tc = create_cli_collector(olt)
             live_detail = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id)
@@ -443,6 +448,34 @@ def api_onu_live_detail(onu_id):
                     onu.onu_rx_power = live_detail['onu_rx_power']; updated = True
                 if live_detail.get('tx_power') is not None:
                     onu.tx_power = live_detail['tx_power']; updated = True
+                # Read-back WiFi config from ONU running-config
+                wifi_entries = live_detail.get('wifi_entries', [])
+                if wifi_entries:
+                    import json as _json_wb
+                    # Preserve existing passwords from DB (ZTE doesn't expose WPA keys in read-back)
+                    existing_pw = {}
+                    if onu.wifi_config:
+                        try:
+                            _prev = _json_wb.loads(onu.wifi_config)
+                            for s in _prev.get('ssids', []):
+                                existing_pw[int(s.get('ssid_num', 0))] = s.get('ssid_password', '')
+                        except Exception:
+                            pass
+                    ssids = []
+                    for w in wifi_entries:
+                        num = int(w.get('wifi_num', 0))
+                        rb_pw = w.get('ssid_password', '')
+                        ssids.append({
+                            'ssid_num': num,
+                            'ssid_name': w.get('ssid_name', ''),
+                            'ssid_auth_type': w.get('ssid_auth_type', ''),
+                            'ssid_password': rb_pw if rb_pw and rb_pw != '--' else existing_pw.get(num, ''),
+                            'wifi_mode': w.get('mode', ''),
+                            'wifi_status': w.get('status', 'up'),
+                            'vlan': w.get('vlan', ''),
+                        })
+                    onu.wifi_config = _json_wb.dumps({'ssids': ssids})
+                    updated = True
                 if updated: db.session.commit()
         except Exception as e:
             logger.warning(f"Failed to collect ONU detail: {e}")
@@ -463,11 +496,7 @@ def api_onu_live_detail(onu_id):
 @app.route('/api/users')
 @permission_required('manage_users')
 def api_users():
-    tid = get_tenant_id()
-    if tid is not None:
-        users = User.query.filter_by(tenant_id=tid).all()
-    else:
-        users = User.query.all()
+    users = User.query.all()
     roles = Role.query.all()
     return jsonify({
         'users': [{
@@ -486,11 +515,7 @@ def api_users():
 @login_required
 def api_technicians():
     """List users with receive_alerts permission (technicians) for dropdown selection."""
-    tid = get_tenant_id()
-    if tid is not None:
-        users = User.query.filter_by(tenant_id=tid, is_super_admin=False).all()
-    else:
-        users = User.query.filter_by(is_super_admin=False).all()
+    users = User.query.filter_by(is_super_admin=False).all()
     technicians = [{
         'id': u.id, 'full_name': u.full_name, 'username': u.username,
         'phone': u.phone or '',
@@ -501,10 +526,7 @@ def api_technicians():
 @app.route('/api/customization/columns')
 @login_required
 def api_customization_columns():
-    tid = get_tenant_id()
     q = ONUCustomColumn.query
-    if tid is not None:
-        q = q.filter_by(tenant_id=tid)
     columns = q.order_by(ONUCustomColumn.sort_order).all()
     if not columns:
         defaults = [
@@ -514,7 +536,7 @@ def api_customization_columns():
             ('Actual Type', 'actual_type'),
         ]
         for i, (name, key) in enumerate(defaults):
-            col = ONUCustomColumn(tenant_id=tid, column_name=name, column_key=key, sort_order=i,
+            col = ONUCustomColumn(column_name=name, column_key=key, sort_order=i,
                                   visible_desktop=True, visible_mobile=(i < 4))
             db.session.add(col)
         db.session.commit()
@@ -537,7 +559,7 @@ def api_customization_columns():
 @app.route('/api/olt/<int:olt_id>/refresh-signal', methods=['POST'])
 @login_required
 def refresh_onu_signal(olt_id):
-    """Fast SNMP-only refresh of RX/TX power and status for all ONUs."""
+    """Fast SNMP-only refresh of RX/TX power and status for all ONUs (ZTE)."""
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
@@ -607,15 +629,20 @@ def refresh_onu_signal(olt_id):
         updated = 0
         for o in onus:
             sn = o.serial_number or ''
-            # Only update ONU RX (OID .10 — correct on ZTE C320 V2.1.0)
-            # Do NOT update rx_power (OLT RX) — SNMP OID .18 gives wrong values.
-            # OLT RX is only collected via Telnet 'show pon power attenuation' during full sync.
             if sn in onu_rx_map and onu_rx_map[sn] is not None:
                 o.onu_rx_power = onu_rx_map[sn]
                 updated += 1
         db.session.commit()
+        # Invalidate cache
+        try:
+            from cache import cache_clear
+            cache_clear("dashboard:*")
+            cache_clear("all-onus:*")
+        except Exception:
+            pass
         return jsonify({'success': True, 'updated': updated, 'total': len(onus)})
     except Exception as e:
+        logger.error(f"refresh-signal OLT {olt_id} failed: {e}")
         return jsonify({'success': False, 'message': str(e)})
 
 
@@ -628,14 +655,18 @@ def update_onu(onu_id):
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     data = request.get_json()
+    olt = db.session.get(OLT, onu.olt_id) if onu.olt_id else None
+    cli_cmds = []  # Collect CLI commands to send to OLT after DB save
     if 'name' in data:
         if not current_user.has_permission('edit_onu_name'):
             return jsonify({'success': False, 'message': 'Permission denied: edit_onu_name'}), 403
         onu.name = data['name']
+        cli_cmds.append(f'name {data["name"]}')
     if 'description' in data:
         if not current_user.has_permission('edit_onu_description'):
             return jsonify({'success': False, 'message': 'Permission denied: edit_onu_description'}), 403
         onu.description = data['description']
+        cli_cmds.append(f'description {data["description"]}')
     if 'pppoe' in data:
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
@@ -648,6 +679,23 @@ def update_onu(onu_id):
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
         onu.onu_type = data['onu_type'].strip()
+        # Re-register ONU with new type on OLT (preserves existing config)
+        if olt and olt.telnet_enabled and olt.cli_username and onu.serial_number:
+            try:
+                from snmp_collector import create_cli_collector
+                tc = create_cli_collector(olt)
+                tn = tc._connect()
+                if tn:
+                    pon_if = f'gpon-olt_{onu.frame}/{onu.slot}/{onu.port}'
+                    tc._send_command(tn, 'end')
+                    tc._send_command(tn, 'configure terminal')
+                    tc._send_command(tn, f'interface {pon_if}')
+                    tc._send_command(tn, f'onu {onu.onu_id} type {data["onu_type"].strip()} sn {onu.serial_number}')
+                    tc._send_command(tn, 'end')
+                    tn.close()
+                    logger.info(f"[update_onu] CLI: re-registered ONU {onu.onu_id} type={data['onu_type'].strip()}")
+            except Exception as e:
+                logger.warning(f"[update_onu] onu_type CLI failed: {e}")
     if 'serial_number' in data:
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
@@ -663,6 +711,10 @@ def update_onu(onu_id):
             pass
     if 'technician_id' in data:
         onu.technician_id = data['technician_id'] or None
+    if 'latitude' in data:
+        onu.latitude = float(data['latitude']) if data['latitude'] else None
+    if 'longitude' in data:
+        onu.longitude = float(data['longitude']) if data['longitude'] else None
     if 'odp_port_id' in data:
         from models import FTTHODPPort
         # Unlink old ODP port if any
@@ -682,8 +734,91 @@ def update_onu(onu_id):
                 new_port.status = 'used'
         db.session.flush()
     db.session.commit()
+
+    # Push name/description changes to OLT via Telnet CLI (ZTE)
+    if cli_cmds and olt and olt.telnet_enabled and olt.cli_username:
+        try:
+            from snmp_collector import create_cli_collector
+            tc = create_cli_collector(olt)
+            tn = tc._connect()
+            if tn:
+                onu_if = f'gpon-onu_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
+                tc._send_command(tn, 'end')
+                tc._send_command(tn, 'configure terminal')
+                tc._send_command(tn, f'interface {onu_if}')
+                for cmd in cli_cmds:
+                    tc._send_command(tn, cmd)
+                tc._send_command(tn, 'end')
+                tn.close()
+                logger.info(f"[update_onu] CLI: {cli_cmds} on {onu_if}")
+            else:
+                logger.warning(f"[update_onu] Telnet connect failed to {olt.ip_address}, DB saved but OLT not updated")
+        except Exception as e:
+            logger.warning(f"[update_onu] CLI failed: {e}")
+
+    # Invalidate dashboard cache so frontend sees fresh data
+    try:
+        from cache import cache_clear
+        cache_clear("dashboard:*")
+    except Exception:
+        pass
+
     log_action('onu_update', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'Updated {onu.name} — fields: {list(data.keys())}')
+    # Auto-save config to startup-config if CLI commands were sent to OLT
+    if cli_cmds:
+        _auto_write_config(onu.olt_id)
     return jsonify({'success': True})
+
+
+@app.route('/api/olt/<int:olt_id>/discover-slots', methods=['POST'])
+@permission_required('settings_ip_olts')
+def discover_olt_slots(olt_id):
+    """Real-time slot discovery via CLI 'show card' — no full sync needed.
+    Connects to OLT, collects chassis info, saves cards to DB, returns result."""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    if not olt.cli_username:
+        return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+    try:
+        from snmp_collector import create_cli_collector
+        tc = create_cli_collector(olt)
+        chassis = tc.collect_chassis_info()
+        cards = chassis.get('cards', [])
+        if not cards:
+            return jsonify({'success': False, 'message': 'No cards discovered. Check CLI connection.'})
+        # Save discovered cards to DB
+        OLTCard.query.filter_by(olt_id=olt_id).delete()
+        for cd in cards:
+            card = OLTCard(
+                olt_id=olt_id, slot=cd.get('slot', 0),
+                card_type=cd.get('type', ''), status=cd.get('status', ''),
+                total_ports=cd.get('port_count', 0),
+            )
+            db.session.add(card)
+        # Save fans if available
+        if chassis.get('fans'):
+            Fan.query.filter_by(olt_id=olt_id).delete()
+            for f in chassis['fans']:
+                fan = Fan(
+                    olt_id=olt_id, fan_number=f.get('number', 0),
+                    status=f.get('status', ''), rpm=f.get('rpm', 0),
+                    speed_level=f.get('speed_level', ''),
+                )
+                db.session.add(fan)
+        db.session.commit()
+        log_action('olt_discover_slots', 'olt', target=olt.name,
+                   detail=f'Discovered {len(cards)} cards via CLI')
+        return jsonify({
+            'success': True,
+            'message': f'Discovered {len(cards)} card(s) from OLT',
+            'cards': cards,
+            'fans': chassis.get('fans', []),
+            'temperature': chassis.get('temperature'),
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Discovery failed: {str(e)[:200]}'})
 
 
 @app.route('/api/olt/<int:olt_id>/pon-structure', methods=['GET'])
@@ -742,6 +877,7 @@ def move_onu(onu_id):
     onu.port = new_pon
     onu.onu_id = new_oid
     db.session.commit()
+    log_action('onu_move', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'Moved to {onu.frame}/{new_card}/{new_pon}:{new_oid}')
     return jsonify({'success': True, 'message': f'ONU moved to {onu.frame}/{new_card}/{new_pon}:{new_oid}'})
 
 
@@ -975,7 +1111,8 @@ def delete_onu(onu_id):
 
 def _auto_sync_olt(olt_id):
     """Trigger a background sync for an OLT after ONU actions (clear-config, delete, etc.).
-    Non-blocking — runs in a thread so the API response is not delayed."""
+    Non-blocking — runs in a thread so the API response is not delayed.
+    Uses LIGHT sync (SNMP-only) to minimize OLT CPU load."""
     import threading
     from flask import current_app
 
@@ -993,7 +1130,7 @@ def _auto_sync_olt(olt_id):
                     db.session.add(sync)
                 sync.status = 'running'
                 sync.progress = 0
-                sync.message = 'Auto-sync after ONU action...'
+                sync.message = 'Auto-sync (light) after ONU action...'
                 sync.started_at = datetime.now(timezone.utc)
                 sync.completed_at = None
                 db.session.commit()
@@ -1003,20 +1140,23 @@ def _auto_sync_olt(olt_id):
                     sync.message = msg
                     db.session.commit()
 
-                from olt_adapters import RackAdapterRegistry
-                adapter = RackAdapterRegistry.get_adapter(olt)
-                if adapter and hasattr(adapter, 'poll_olt'):
-                    result = adapter.poll_olt(progress_cb=update_progress)
-                else:
-                    from snmp_collector import poll_olt
-                    result = poll_olt(olt, progress_cb=update_progress)
+                from snmp_collector import poll_olt
+                result = poll_olt(olt, progress_cb=update_progress, light=True)
 
                 if result.get('success'):
                     from sync_helper import save_sync_result, check_unregistered_onus
-                    onu_count, stale_count = save_sync_result(olt, result, sync)
-                    unreg_count = check_unregistered_onus(olt)
-                    sync.message = f'Auto-sync OK: {onu_count} ONUs' + (f', {unreg_count} unregistered' if unreg_count else '')
+                    onu_count, stale_count = save_sync_result(olt, result, sync, light=True)
+                    sync.progress = 100
+                    sync.status = 'completed'
+                    sync.message = f'Auto-sync OK: {onu_count} ONUs'
+                    sync.completed_at = datetime.now(timezone.utc)
                     db.session.commit()
+                    try:
+                        from ws_bridge import ws_broadcast_sync, ws_broadcast_dashboard
+                        ws_broadcast_sync(olt_id, 100, "Sync complete", "done")
+                        ws_broadcast_dashboard("onu_change", {"olt_id": olt_id, "action": "sync_complete"})
+                    except Exception:
+                        pass
                 else:
                     olt.is_online = False
                     olt.connection_status = 'error'
@@ -1038,8 +1178,43 @@ def _auto_sync_olt(olt_id):
     thread.start()
 
 
+def _auto_write_config(olt_id):
+    """Auto-save OLT running-config to startup-config via 'write' command.
+    Non-blocking — runs in a background thread so API response is not delayed.
+    Called after provisioning ONU, config changes, etc. to ensure config persists across reboots."""
+    import threading
+    from flask import current_app
+
+    app = current_app._get_current_object()
+
+    def _do_write():
+        with app.app_context():
+            try:
+                olt = db.session.get(OLT, olt_id)
+                if not olt or not olt.cli_username:
+                    return
+                from snmp_collector import create_cli_collector
+                tc = create_cli_collector(olt)
+                tn = tc._connect()
+                if not tn:
+                    logger.warning(f"Auto-write: Telnet connect failed for OLT {olt_id}")
+                    return
+                out = tc._send_command(tn, 'write', timeout=30)
+                tn.close()
+                if 'error' in out.lower() or '%' in out:
+                    logger.warning(f"Auto-write: write command failed for OLT {olt_id}: {out.strip()[:200]}")
+                else:
+                    logger.info(f"Auto-write: Config saved to startup-config for OLT {olt_id}")
+                    log_action('olt_auto_write', 'olt', target=olt.name, detail='Auto-saved running-config to startup after provisioning')
+            except Exception as e:
+                logger.warning(f"Auto-write: Failed for OLT {olt_id}: {e}")
+
+    thread = threading.Thread(target=_do_write, daemon=True)
+    thread.start()
+
+
 @app.route('/api/onu/<int:onu_id>/action', methods=['POST'])
-@permission_required('configure_onu')
+@login_required
 def onu_action(onu_id):
     onu = db.session.get(ONU, onu_id)
     if not onu:
@@ -1072,12 +1247,19 @@ def onu_action(onu_id):
             db.session.commit()
             # Auto-trigger OLT sync after delete
             _auto_sync_olt(olt_id_for_sync)
+            # Auto-save config to startup-config
+            _auto_write_config(olt_id_for_sync)
     elif action == 'clear-config':
         if not current_user.has_permission('clear_config_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: clear_config_onu'}), 403
         success, msg = tc.clear_onu_config(onu.frame, onu.slot, onu.port, onu.onu_id)
         if success:
+            # Clear service-related fields in DB
+            onu.pppoe = ''
+            db.session.commit()
             _auto_sync_olt(onu.olt_id)
+            # Auto-save config to startup-config
+            _auto_write_config(onu.olt_id)
     elif action == 'disable':
         if not current_user.has_permission('disable_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: disable_onu'}), 403
@@ -1118,7 +1300,12 @@ def onu_action(onu_id):
             return jsonify({'success': False, 'message': 'Permission denied: reset_onu'}), 403
         success, msg = tc.restore_factory_onu(onu.frame, onu.slot, onu.port, onu.onu_id)
         if success:
+            # Clear service-related fields in DB — factory reset wipes all ONU config
+            onu.pppoe = ''
+            db.session.commit()
             _auto_sync_olt(onu.olt_id)
+            # Auto-save config to startup-config
+            _auto_write_config(onu.olt_id)
     elif action == 'restore-wifi':
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
@@ -1391,11 +1578,12 @@ def onu_get_status(onu_id):
 @app.route('/api/onu/<int:onu_id>/refresh-status', methods=['POST'])
 @login_required
 def onu_refresh_status(onu_id):
-    """Re-fetch ONU status from OLT and update DB."""
+    """Re-fetch ONU status from OLT and update DB (ZTE via Telnet)."""
     onu = db.session.get(ONU, onu_id)
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
+
     if not olt or not olt.telnet_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured'})
     from snmp_collector import TelnetCollector, create_cli_collector
@@ -1460,12 +1648,14 @@ def onu_save_config(onu_id):
 @app.route('/api/onu/<int:onu_id>/resync-config', methods=['POST'])
 @permission_required('configure_onu')
 def onu_resync_config(onu_id):
-    """Re-collect ONU detail from OLT and update DB.
-    This is a READ-ONLY operation — does NOT modify OLT config."""
+    """Re-collect ONU detail from OLT and update DB (ZTE via Telnet).
+    This is a READ-ONLY operation — does NOT modify OLT config.
+    """
     onu = db.session.get(ONU, onu_id)
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
+
     if not olt or not olt.telnet_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured'})
     try:
@@ -1485,6 +1675,34 @@ def onu_resync_config(onu_id):
             elif state == 'dyinggasp': onu.status = 'dyinggasp'
             elif state == 'los': onu.status = 'los'
             else: onu.status = state
+            updated = True
+        # Read-back WiFi config from ONU running-config
+        wifi_entries = data.get('wifi_entries', [])
+        if wifi_entries:
+            import json as _json_rc
+            # Preserve existing passwords from DB (ZTE doesn't expose WPA keys in read-back)
+            existing_pw = {}
+            if onu.wifi_config:
+                try:
+                    _prev = _json_rc.loads(onu.wifi_config)
+                    for s in _prev.get('ssids', []):
+                        existing_pw[int(s.get('ssid_num', 0))] = s.get('ssid_password', '')
+                except Exception:
+                    pass
+            ssids = []
+            for w in wifi_entries:
+                num = int(w.get('wifi_num', 0))
+                rb_pw = w.get('ssid_password', '')
+                ssids.append({
+                    'ssid_num': num,
+                    'ssid_name': w.get('ssid_name', ''),
+                    'ssid_auth_type': w.get('ssid_auth_type', ''),
+                    'ssid_password': rb_pw if rb_pw and rb_pw != '--' else existing_pw.get(num, ''),
+                    'wifi_mode': w.get('mode', ''),
+                    'wifi_status': w.get('status', 'up'),
+                    'vlan': w.get('vlan', ''),
+                })
+            onu.wifi_config = _json_rc.dumps({'ssids': ssids})
             updated = True
         if updated: db.session.commit()
         return jsonify({'success': True, 'message': 'Config resynced from OLT'})
@@ -1533,6 +1751,7 @@ def onu_wan_service_edit(onu_id, svc_idx):
             return jsonify({'success': False, 'message': 'Telnet connection failed'})
         onu_path = f'gpon-onu_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
         tc._send_command(tn, 'configure terminal', timeout=10)
+        import time as _t
 
         mode = data.get('mode', 'Bridge / ONU Webpage')
         vlan = str(data.get('vlan', '')).strip()
@@ -1550,6 +1769,36 @@ def onu_wan_service_edit(onu_id, svc_idx):
                 # Ignore: "does not exist", ONU firmware limitation codes
                 if 'does not exist' in low or '%code 63990' in low or 'ont return error' in low:
                     logger.debug(f"Ignored CLI: {cmd[:60]} -> {err[:80]}")
+                # Handle 63869 "Record already exists" — force delete and retry once
+                elif '63869' in low or 'already exists' in low:
+                    logger.warning(f"Record exists, force-replacing: {cmd[:60]}")
+                    # Extract pppoe/wan-ip index from command
+                    if cmd.startswith('pppoe '):
+                        idx = cmd.split()[1]
+                        tc._send_command(tn, f'no wan {idx} service', timeout=10)
+                        tc._send_command(tn, f'no pppoe {idx}', timeout=10)
+                        _t.sleep(0.5)
+                        _, err2 = tc._send_cmd_check(tn, cmd, timeout=10)
+                        if err2 and ('63869' in err2.lower() or 'already exists' in err2.lower()):
+                            last_err = err2  # Still fails after retry
+                        elif err2:
+                            last_err = err2
+                    elif cmd.startswith('wan-ip '):
+                        idx = cmd.split()[1]
+                        tc._send_command(tn, f'no wan-ip {idx}', timeout=10)
+                        _t.sleep(0.5)
+                        _, err2 = tc._send_cmd_check(tn, cmd, timeout=10)
+                        if err2:
+                            last_err = err2
+                    elif cmd.startswith('service '):
+                        # Service record exists — delete and retry
+                        tc._send_command(tn, f'no {cmd}', timeout=10)
+                        _t.sleep(0.5)
+                        _, err2 = tc._send_cmd_check(tn, cmd, timeout=10)
+                        if err2:
+                            last_err = err2
+                    else:
+                        last_err = err
                 else:
                     last_err = err
 
@@ -1582,11 +1831,15 @@ def onu_wan_service_edit(onu_id, svc_idx):
         # ── Step 2: pon-onu-mng context ──────────────────────────────────────
         tc._send_command(tn, f'pon-onu-mng {onu_path}', timeout=10)
 
-        # Clean up old ONU-side service entries
+        # Clean up old ONU-side service entries — order matters on ZTE!
+        # Must remove WAN service binding BEFORE pppoe/wan-ip, else "Record already exists" (63869)
         tc._send_command(tn, f'no service {service_name}', timeout=10)
         tc._send_command(tn, f'no service {svc_idx}', timeout=10)
+        tc._send_command(tn, f'no wan {svc_idx} service', timeout=10)
         tc._send_command(tn, f'no wan-ip {svc_idx}', timeout=10)
         tc._send_command(tn, f'no pppoe {svc_idx}', timeout=10)
+        # Brief pause for OLT to process OMCI deletions before re-creating
+        import time as _t; _t.sleep(1)
 
         # PPPoE NAT and Wan-IP use iphost — must remove VEIP (mutually exclusive on ZTE C320)
         if status == 'enable' and mode in ('PPPoE NAT', 'Wan-IP'):
@@ -1709,6 +1962,7 @@ def update_onu_field(onu_id):
     onu = db.session.get(ONU, onu_id)
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
+    olt = db.session.get(OLT, onu.olt_id) if onu.olt_id else None
     data = request.get_json()
     field = data.get('field')
     value = data.get('value', '').strip()
@@ -1725,14 +1979,54 @@ def update_onu_field(onu_id):
     if not current_user.has_permission(required_perm):
         return jsonify({'success': False, 'message': f'Permission denied: {required_perm}'}), 403
 
+    def _send_onu_cli(olt, onu, cmd):
+        """Helper: send CLI command to ONU interface on OLT (ZTE only)."""
+        if not olt or not olt.telnet_enabled or not olt.cli_username:
+            return
+        try:
+            from snmp_collector import create_cli_collector
+            tc = create_cli_collector(olt)
+            tn = tc._connect()
+            if tn:
+                onu_if = f'gpon-onu_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
+                tc._send_command(tn, 'end')
+                tc._send_command(tn, 'configure terminal')
+                tc._send_command(tn, f'interface {onu_if}')
+                tc._send_command(tn, cmd)
+                tc._send_command(tn, 'end')
+                tn.close()
+                logger.info(f"[update_onu_field] CLI: '{cmd}' on {onu_if}")
+        except Exception as e:
+            logger.warning(f"[update_onu_field] CLI failed: {e}")
+
     if field == 'name':
         onu.name = value
+        _send_onu_cli(olt, onu, f'name {value}')
     elif field == 'description':
         onu.description = value
+        _send_onu_cli(olt, onu, f'description {value}')
     elif field == 'actual_type':
         onu.actual_type = value
     elif field == 'onu_type':
         onu.onu_type = value
+        # Send CLI to OLT — re-register ONU with new type (preserves existing config)
+        if olt and olt.telnet_enabled and olt.cli_username:
+            try:
+                from snmp_collector import create_cli_collector
+                tc = create_cli_collector(olt)
+                tn = tc._connect()
+                if tn:
+                    pon_if = f'gpon-olt_{onu.frame}/{onu.slot}/{onu.port}'
+                    tc._send_command(tn, 'end')
+                    tc._send_command(tn, 'configure terminal')
+                    tc._send_command(tn, f'interface {pon_if}')
+                    # Re-register with new type WITHOUT removing first — preserves config
+                    tc._send_command(tn, f'onu {onu.onu_id} type {value} sn {onu.serial_number}')
+                    tc._send_command(tn, 'end')
+                    tn.close()
+                    logger.info(f"[update_onu_type] CLI: re-registered ONU {onu.onu_id} type={value}")
+            except Exception as e:
+                logger.warning(f"[update_onu_type] CLI failed: {e}")
     elif field == 'serial_number':
         onu.serial_number = value
     elif field == 'onu_id':
@@ -1747,6 +2041,18 @@ def update_onu_field(onu_id):
     else:
         return jsonify({'success': False, 'message': f'Unknown field: {field}'})
     db.session.commit()
+
+    # Invalidate dashboard cache so frontend sees fresh data
+    try:
+        from cache import cache_clear
+        cache_clear("dashboard:*")
+    except Exception:
+        pass
+
+    log_action('onu_field_update', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'{field}="{value}"')
+    # Auto-save config to startup-config for fields that modify OLT running-config
+    if field in ('name', 'description', 'onu_type'):
+        _auto_write_config(onu.olt_id)
     return jsonify({'success': True, 'message': f'{field} updated to "{value}"'})
 
 
@@ -1772,6 +2078,7 @@ def olt_write_config(olt_id):
         tn.close()
         if 'error' in out.lower() or '%' in out:
             return jsonify({'success': False, 'message': f'Save failed: {out.strip()[:200]}'})
+        log_action('olt_write_config', 'olt', target=olt.name, detail='Saved running-config to startup')
         return jsonify({'success': True, 'message': 'Configuration saved to startup-config'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
@@ -1804,6 +2111,149 @@ def backup_olt_config(olt_id):
         return jsonify({'success': False, 'message': str(e)})
 
 
+@app.route('/api/olt/<int:olt_id>/backups', methods=['GET'])
+@login_required
+def list_olt_backups(olt_id):
+    """List config backups for an OLT."""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    backups = OLTConfigBackup.query.filter_by(olt_id=olt_id).order_by(
+        OLTConfigBackup.created_at.desc()
+    ).limit(50).all()
+    return jsonify({
+        'success': True,
+        'auto_backup_enabled': olt.auto_backup_enabled,
+        'auto_backup_interval': olt.auto_backup_interval,
+        'auto_backup_unit': olt.auto_backup_unit,
+        'auto_backup_time': olt.auto_backup_time,
+        'last_backup_at': utc_iso(olt.last_backup_at),
+        'backups': [{
+            'id': b.id,
+            'backup_type': b.backup_type,
+            'status': b.status,
+            'config_size': b.config_size,
+            'error_message': b.error_message,
+            'created_at': utc_iso(b.created_at),
+        } for b in backups],
+    })
+
+
+@app.route('/api/olt/<int:olt_id>/backup-save', methods=['POST'])
+@permission_required('settings_ip_olts')
+def backup_olt_config_to_db(olt_id):
+    """Backup OLT running-config and save to DB."""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    if not olt.cli_username:
+        return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+    from snmp_collector import create_cli_collector
+    tc = create_cli_collector(olt)
+    try:
+        tn = tc._connect()
+        if not tn:
+            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+        config = tc._send_command(tn, 'show running-config', timeout=60)
+        tn.close()
+        if not config or len(config) < 50:
+            return jsonify({'success': False, 'message': 'Failed to retrieve config'})
+        backup = OLTConfigBackup(
+            olt_id=olt_id,
+            config_text=config,
+            config_size=len(config),
+            backup_type='manual',
+            status='success',
+        )
+        db.session.add(backup)
+        olt.last_backup_at = datetime.now(timezone.utc)
+        db.session.commit()
+        log_action('backup_olt_config', 'olt', target=olt.name, detail=f'Manual backup saved ({len(config)} bytes)')
+        return jsonify({'success': True, 'message': f'Backup saved ({len(config)} bytes)', 'backup_id': backup.id})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/olt/<int:olt_id>/backup/<int:backup_id>/download', methods=['GET'])
+@login_required
+def download_olt_backup(olt_id, backup_id):
+    """Download a specific config backup."""
+    backup = db.session.get(OLTConfigBackup, backup_id)
+    if not backup or backup.olt_id != olt_id:
+        return jsonify({'success': False, 'message': 'Backup not found'}), 404
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    from flask import Response
+    filename = f'{olt.name}_backup_{backup.created_at.strftime("%Y%m%d_%H%M%S")}.cfg'
+    return Response(
+        backup.config_text,
+        mimetype='text/plain',
+        headers={'Content-Disposition': f'attachment;filename={filename}'},
+    )
+
+
+@app.route('/api/olt/<int:olt_id>/backup/<int:backup_id>', methods=['DELETE'])
+@permission_required('settings_ip_olts')
+def delete_olt_backup(olt_id, backup_id):
+    """Delete a config backup."""
+    backup = db.session.get(OLTConfigBackup, backup_id)
+    if not backup or backup.olt_id != olt_id:
+        return jsonify({'success': False, 'message': 'Backup not found'}), 404
+    db.session.delete(backup)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Backup deleted'})
+
+
+@app.route('/api/olt/<int:olt_id>/auto-backup', methods=['PUT'])
+@permission_required('settings_ip_olts')
+def toggle_auto_backup(olt_id):
+    """Toggle auto-backup settings for an OLT."""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    data = request.get_json() or {}
+    if 'enabled' in data:
+        olt.auto_backup_enabled = bool(data['enabled'])
+    if 'interval' in data:
+        interval = int(data['interval'])
+        if interval < 1:
+            interval = 1
+        olt.auto_backup_interval = interval
+    if 'unit' in data:
+        unit = data['unit']
+        if unit not in ('hours', 'days'):
+            unit = 'hours'
+        olt.auto_backup_unit = unit
+    if 'time' in data:
+        t = str(data['time']).strip()
+        if t and ':' in t:
+            parts = t.split(':')
+            try:
+                h, m = int(parts[0]), int(parts[1])
+                if 0 <= h <= 23 and 0 <= m <= 59:
+                    olt.auto_backup_time = f'{h:02d}:{m:02d}'
+                else:
+                    olt.auto_backup_time = ''
+            except (ValueError, IndexError):
+                olt.auto_backup_time = ''
+        else:
+            olt.auto_backup_time = ''
+    db.session.commit()
+    detail = f'Auto-backup {"enabled" if olt.auto_backup_enabled else "disabled"}, interval={olt.auto_backup_interval}{olt.auto_backup_unit[:1]}'
+    if olt.auto_backup_time:
+        detail += f', time={olt.auto_backup_time}'
+    log_action('toggle_auto_backup', 'olt', target=olt.name, detail=detail)
+    return jsonify({
+        'success': True,
+        'message': f'Auto-backup {"enabled" if olt.auto_backup_enabled else "disabled"}',
+        'auto_backup_enabled': olt.auto_backup_enabled,
+        'auto_backup_interval': olt.auto_backup_interval,
+        'auto_backup_unit': olt.auto_backup_unit,
+        'auto_backup_time': olt.auto_backup_time,
+    })
+
+
 @app.route('/api/onu/<int:onu_id>/section-config', methods=['POST'])
 @permission_required('configure_onu')
 def onu_section_config(onu_id):
@@ -1815,6 +2265,15 @@ def onu_section_config(onu_id):
     olt = onu.olt
     if not olt or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+    # Every command below is ZTE C320 pon-onu-mng syntax. Running it against
+    # another vendor produces confusing CLI syntax errors, so refuse up front.
+    vendor = (olt.vendor or 'zte').lower()
+    if vendor != 'zte':
+        return jsonify({
+            'success': False,
+            'message': f'Section config is not supported for {vendor.upper()} OLTs. '
+                       f'This feature uses ZTE C320 CLI commands.',
+        }), 400
     data = request.get_json()
     section = data.get('section')
     # CLI indices are always 1-based. Frontend sends 0-based array index.
@@ -1836,15 +2295,31 @@ def onu_section_config(onu_id):
         ok = False
         last_err = None
 
-        def sc(cmd):
+        # Errors meaning "the ONU/firmware cannot do this" rather than
+        # "the operation failed" — always tolerated.
+        firmware_limit_errors = ('%code 63990', 'ont return error', '%error 20202')
+        # Syntax rejections — the keyword does not exist on this firmware build.
+        syntax_errors = ('%error 20201', 'invalid input', 'invalid command')
+
+        def sc(cmd, optional=False):
+            """Send a command; return the error string, or None on success.
+
+            optional=True marks firmware-dependent command variants, where a
+            syntax rejection means "not supported on this build" and must not
+            fail the whole request.
+            """
             nonlocal last_err
             _, err = tc._send_cmd_check(tn, cmd, timeout=10)
-            if err and 'does not exist' not in err.lower():
-                low = err.lower()
-                if '%code 63990' in low or 'ont return error' in low or '%error 20202' in low:
-                    logger.debug(f"ONU firmware limitation: {cmd[:60]} -> {err[:80]}")
-                else:
-                    last_err = err
+            if not err or 'does not exist' in err.lower():
+                return None
+            low = err.lower()
+            if any(e in low for e in firmware_limit_errors):
+                logger.debug(f"ONU firmware limitation: {cmd[:60]} -> {err[:80]}")
+                return err
+            if optional and any(e in low for e in syntax_errors):
+                logger.debug(f"Command unsupported on this firmware: {cmd[:60]} -> {err[:80]}")
+                return err
+            last_err = err
             return err
 
         if section == 'wifi':
@@ -1855,8 +2330,15 @@ def onu_section_config(onu_id):
             mode = cfg_data.get('wifiMode', 'N/A')
             status = cfg_data.get('wifiStatus', 'enable')
             new_vlan = cfg_data.get('vlan', '')
+            new_priority = cfg_data.get('priority', '')
 
-            # Set VLAN config
+            # Enable/disable WiFi radio interface (lock = disable, unlock = enable)
+            if status == 'disable':
+                sc(f'interface wifi_0/{cli_idx} state lock')
+            else:
+                sc(f'interface wifi_0/{cli_idx} state unlock', optional=True)
+
+            # Set VLAN config (only when enabled and mode is not N/A)
             if status == 'enable' and mode != 'N/A':
                 tc._send_command(tn, f'no vlan port wifi_0/{cli_idx} mode', timeout=10)
                 if mode == 'Access' and new_vlan:
@@ -1865,25 +2347,72 @@ def onu_section_config(onu_id):
                     sc(f'vlan port wifi_0/{cli_idx} mode hybrid def-vlan {new_vlan}')
                 elif mode == 'Trunk':
                     sc(f'vlan port wifi_0/{cli_idx} mode trunk')
+                # Try priority as separate optional command (not all firmware supports it)
+                if new_priority and str(new_priority) != '0':
+                    err = sc(f'vlan port wifi_0/{cli_idx} priority {new_priority}', optional=True)
+                    logger.info(f'[WIFI] priority {new_priority} for wifi_0/{cli_idx}: {"unsupported" if err else "ok"}')
             elif mode == 'N/A' or status == 'disable':
                 tc._send_command(tn, f'no vlan port wifi_0/{cli_idx} mode', timeout=10)
-            # SSID broadcast name (correct ZTE C320 pon-onu-mng syntax)
-            ssid_name = cfg_data.get('ssid_name', '').strip()
+            # SSID broadcast name — correct ZTE C320 pon-onu-mng syntax: 'ssid ctrl wifi_0/N name'
+            ssid_name = cfg_data.get('ssid_name', '').strip().replace(' ', '_')
             if ssid_name:
-                sc(f'wifi ssid {cli_idx} name {ssid_name}')
-                if new_vlan:
-                    # Secondary command — ignored if ONU firmware doesn't support it
-                    tc._send_command(tn, f'wifi ssid {cli_idx} vlan {new_vlan}', timeout=10)
+                sc(f'ssid ctrl wifi_0/{cli_idx} name {ssid_name}')
 
-            # SSID authentication
-            ssid_auth = cfg_data.get('ssid_auth_type', '').strip()  # 'wpa2-psk' or 'open'
+            # SSID authentication — correct ZTE C320 syntax: 'ssid auth wpa wifi_0/N ...'
+            ssid_auth = cfg_data.get('ssid_auth_type', '').strip()  # 'wpa2-psk', 'wpa-psk', 'wpa-wpa2-psk', or 'open'
             ssid_pass = cfg_data.get('ssid_password', '').strip()
-            if ssid_auth == 'wpa2-psk' and ssid_pass:
-                sc(f'wifi ssid {cli_idx} auth wpa2-psk key {ssid_pass}')
+            if ssid_auth in ('wpa2-psk', 'wpa-psk', 'wpa-wpa2-psk') and ssid_pass:
+                sc(f'ssid auth wpa wifi_0/{cli_idx} {ssid_auth}')
+                sc(f'ssid auth wpa wifi_0/{cli_idx} encrypt aes')
+                sc(f'ssid auth wpa wifi_0/{cli_idx} key {ssid_pass}')
             elif ssid_auth == 'open':
-                sc(f'wifi ssid {cli_idx} auth open')
+                # Firmware builds express "open" auth differently and reject the
+                # variants they don't implement with %Error 20201. Try them all
+                # and treat the SSID as configured if any one is accepted.
+                open_cmds = (
+                    f'ssid auth wpa wifi_0/{cli_idx} no-auth',
+                    f'ssid auth wpa wifi_0/{cli_idx} encrypt none',
+                    f'ssid auth wpa wifi_0/{cli_idx} no-key',
+                    f'ssid auth wep wifi_0/{cli_idx} open-system',
+                )
+                accepted = [c for c in open_cmds if sc(c, optional=True) is None]
+                if accepted:
+                    logger.info(f'[WIFI] Open auth set for wifi_0/{cli_idx} via: {"; ".join(accepted)}')
+                else:
+                    last_err = f'ONU firmware rejected all open-auth commands for wifi_0/{cli_idx}'
+                    logger.warning(last_err)
 
             ok, msg = True, f'WiFi SSID {cli_idx} config updated'
+
+            # Save WiFi config to database
+            import json as _json_wifi
+            existing_wifi = {}
+            if onu.wifi_config:
+                try:
+                    existing_wifi = _json_wifi.loads(onu.wifi_config)
+                except Exception:
+                    existing_wifi = {}
+            ssids_list = existing_wifi.get('ssids', [])
+            ssid_entry = {
+                'ssid_num': cli_idx,
+                'ssid_name': ssid_name,
+                'ssid_auth_type': ssid_auth,
+                'ssid_password': ssid_pass,
+                'wifi_mode': mode,
+                'wifi_status': status,
+                'vlan': new_vlan,
+            }
+            found = False
+            for i, s in enumerate(ssids_list):
+                if s.get('ssid_num') == cli_idx:
+                    ssids_list[i] = ssid_entry
+                    found = True
+                    break
+            if not found:
+                ssids_list.append(ssid_entry)
+            existing_wifi['ssids'] = ssids_list
+            onu.wifi_config = _json_wifi.dumps(existing_wifi)
+            db.session.commit()
 
         elif section == 'lan':
             cli_idx = raw_idx + 1
@@ -2006,6 +2535,11 @@ def onu_section_config(onu_id):
         tn.close()
         if last_err:
             return jsonify({'success': False, 'message': f'CLI error: {last_err}'})
+        if ok:
+            log_action('onu_section_config', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'{section} {action}')
+            # Auto-sync OLT after config change (light, SNMP-only)
+            if section in ('wifi', 'lan', 'veip', 'tr069'):
+                _auto_sync_olt(onu.olt_id)
         return jsonify({'success': ok, 'message': msg})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
@@ -2150,6 +2684,78 @@ def format_speed(bps):
         return f'{bps:.0f} bps'
 
 
+@app.route('/api/provision/unified', methods=['POST'])
+@permission_required('add_onu')
+def provision_unified():
+    """Unified ONU provisioning — works for all vendors with dynamic services."""
+    data = request.get_json() or {}
+    olt_id = data.get('olt_id')
+    olt = db.session.get(OLT, olt_id) if olt_id else None
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'})
+    if not olt.telnet_enabled or not olt.cli_username:
+        return jsonify({'success': False, 'message': 'OLT CLI access not configured'})
+
+    from snmp_collector import create_cli_collector
+    tc = create_cli_collector(olt)
+
+    frame = data.get('frame', 1)
+    slot = data.get('slot', 1)
+    port = data.get('port', 1)
+    onu_id = data.get('onu_id', 1)
+    serial = data.get('serial', '')
+    onu_type = data.get('onu_type', 'All')
+    tcont_profile = data.get('tcont_profile', '1G')
+    traffic_profile = data.get('traffic_profile', '')
+    name = data.get('name', '')
+    description = data.get('description', '')
+    services = data.get('services', [])
+    use_veip = data.get('use_veip')  # None = auto-detect
+    wifi_config = data.get('wifi_config')  # None = no wifi
+    tr069_config = data.get('tr069_config')  # None = no tr069
+    technician_id = data.get('technician_id')
+
+    if not serial:
+        return jsonify({'success': False, 'message': 'Serial number required'})
+    if not services:
+        return jsonify({'success': False, 'message': 'At least one service required'})
+
+    success, msg = tc.register_unified(
+        frame=frame, slot=slot, port=port, onu_id=onu_id,
+        serial=serial, onu_type=onu_type, tcont_profile=tcont_profile,
+        services=services, use_veip=use_veip, traffic_profile=traffic_profile,
+        wifi_config=wifi_config, tr069_config=tr069_config,
+        name=name, description=description,
+    )
+
+    # Save to DB on success
+    if success:
+        # Compute onu_index matching sync format: frame*100000 + slot*10000 + port*100 + onu_id
+        computed_index = frame * 100000 + slot * 10000 + port * 100 + onu_id
+        existing = ONU.query.filter_by(
+            olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id
+        ).first()
+        if not existing:
+            onu = ONU(
+                olt_id=olt_id, frame=frame, slot=slot, port=port,
+                onu_id=onu_id, serial_number=serial,
+                onu_index=computed_index,
+                name=name or 'Unnamed', description=description or '',
+                status='offline', actual_type=onu_type, onu_type=onu_type,
+                technician_id=technician_id or None,
+            )
+            db.session.add(onu)
+            db.session.commit()
+
+        # Trigger background sync to update status from OLT
+        _auto_sync_olt(olt_id)
+        # Auto-save config to startup-config so changes persist across reboots
+        _auto_write_config(olt_id)
+        log_action('onu_provision', 'onu', target=f'gpon-onu_{frame}/{slot}/{port}:{onu_id}', detail=f'Provisioned SN={serial} on {olt.name} as {onu_type}')
+
+    return jsonify({'success': success, 'message': msg})
+
+
 @app.route('/api/pre-register', methods=['POST'])
 @permission_required('add_onu')
 def pre_register_onu():
@@ -2213,6 +2819,8 @@ def pre_register_onu():
             if onu:
                 onu.technician_id = technician_id
                 db.session.commit()
+        # Auto-save config to startup-config so changes persist across reboots
+        _auto_write_config(olt_id)
     return jsonify({'success': success, 'message': msg})
 
 
@@ -2397,6 +3005,7 @@ def sync_olt(olt_id):
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
     start_single_sync(app, olt.id)
+    log_action('olt_sync', 'olt', target=olt.name, detail='Manual sync triggered')
     return jsonify({'success': True, 'message': 'Synchronization started'})
 
 
@@ -2404,15 +3013,16 @@ def sync_olt(olt_id):
 @permission_required('settings_ip_olts')
 def sync_all_olts():
     """Sync all OLTs sequentially in a background thread."""
-    olts = OLT.query.filter(tenant_filter(OLT)).all()
+    olts = OLT.query.all()
     if not olts:
         return jsonify({'success': False, 'message': 'No OLTs found'})
 
-    olt_ids = [olt.id for olt in olts if olt.cli_username]
+    olt_ids = [olt.id for olt in olts if olt.snmp_enabled or olt.cli_username]
     if not olt_ids:
-        return jsonify({'success': False, 'message': 'No OLTs with CLI access configured'})
+        return jsonify({'success': False, 'message': 'No OLTs with SNMP or CLI access configured'})
 
     start_sync_all(app, olt_ids)
+    log_action('olt_sync_all', 'olt', target='all', detail=f'Synced {len(olt_ids)} OLTs')
     return jsonify({'success': True, 'message': f'Syncing {len(olt_ids)} OLT(s)'})
 
 
@@ -2441,21 +3051,22 @@ def test_olt_connection(olt_id):
         return jsonify({'success': False, 'message': 'OLT not found'})
 
     data = request.get_json() or {}
-    results = {'snmp': {'ok': False, 'message': ''}, 'telnet': {'ok': False, 'message': ''}}
+    results = {'snmp': {'ok': False, 'message': ''}, 'telnet': {'ok': False, 'message': ''}, 'web': {'ok': False, 'message': ''}}
     both_ok = True
+
+    ip = data.get('ip_address', olt.ip_address)
 
     # Test SNMP
     try:
         from snmp_collector import SNMPCollector
         collector = SNMPCollector(
-            data.get('ip_address', olt.ip_address),
+            ip,
             data.get('snmp_community', olt.snmp_community),
             int(data.get('snmp_port', olt.snmp_port))
         )
         info = collector.collect_system_info()
         if info.get('description'):
             results['snmp'] = {'ok': True, 'message': f'Connected - {info["description"][:60]}'}
-            # Extract version string from description (e.g. "C320 Version V2.1.0 Software...")
             import re
             ver_match = re.search(r'Version\s+([\w.]+)', info['description'])
             olt.firmware_version = ver_match.group(1) if ver_match else info['description'][:30]
@@ -2476,8 +3087,7 @@ def test_olt_connection(olt_id):
         try:
             from snmp_collector import TelnetCollector, create_cli_collector
             tc = TelnetCollector(
-                data.get('ip_address', olt.ip_address),
-                cli_user, cli_pass,
+                ip, cli_user, cli_pass,
                 int(data.get('telnet_port', olt.telnet_port))
             )
             tn = tc._connect()
@@ -2497,6 +3107,29 @@ def test_olt_connection(olt_id):
     else:
         both_ok = False
 
+    # Test Web (HTTP Basic Auth)
+    web_port = int(data.get('web_port', olt.web_port or 80))
+    if cli_user and cli_pass:
+        try:
+            import urllib.request, base64
+            url = f'http://{ip}:{web_port}/'
+            req = urllib.request.Request(url, method='GET')
+            cred = base64.b64encode(f'{cli_user}:{cli_pass}'.encode()).decode()
+            req.add_header('Authorization', f'Basic {cred}')
+            req.add_header('User-Agent', 'Mozilla/5.0')
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    results['web'] = {'ok': True, 'message': f'Connected (HTTP {resp.status})'}
+                else:
+                    results['web'] = {'ok': False, 'message': f'HTTP {resp.status}'}
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                results['web'] = {'ok': False, 'message': 'Auth failed (401)'}
+            else:
+                results['web'] = {'ok': False, 'message': f'HTTP {e.code}'}
+        except Exception as e:
+            results['web'] = {'ok': False, 'message': f'Web Error: {str(e)[:80]}'}
+
     # Update connection status
     if both_ok:
         olt.is_online = True
@@ -2510,7 +3143,7 @@ def test_olt_connection(olt_id):
 def test_new_olt_connection():
     """Test connection for a new OLT (no ID yet)"""
     data = request.get_json() or {}
-    results = {'snmp': {'ok': False, 'message': ''}, 'telnet': {'ok': False, 'message': ''}}
+    results = {'snmp': {'ok': False, 'message': ''}, 'telnet': {'ok': False, 'message': ''}, 'web': {'ok': False, 'message': ''}}
 
     ip = data.get('ip_address', '')
     if not ip:
@@ -2547,6 +3180,29 @@ def test_new_olt_connection():
         except Exception as e:
             results['telnet'] = {'ok': False, 'message': f'Telnet Error: {str(e)[:80]}'}
 
+    # Test Web (HTTP Basic Auth)
+    web_port = int(data.get('web_port', 80))
+    if cli_user and cli_pass:
+        try:
+            import urllib.request, base64
+            url = f'http://{ip}:{web_port}/'
+            req = urllib.request.Request(url, method='GET')
+            cred = base64.b64encode(f'{cli_user}:{cli_pass}'.encode()).decode()
+            req.add_header('Authorization', f'Basic {cred}')
+            req.add_header('User-Agent', 'Mozilla/5.0')
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    results['web'] = {'ok': True, 'message': f'Connected (HTTP {resp.status})'}
+                else:
+                    results['web'] = {'ok': False, 'message': f'HTTP {resp.status}'}
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                results['web'] = {'ok': False, 'message': 'Auth failed (401)'}
+            else:
+                results['web'] = {'ok': False, 'message': f'HTTP {e.code}'}
+        except Exception as e:
+            results['web'] = {'ok': False, 'message': f'Web Error: {str(e)[:80]}'}
+
     return jsonify({'success': True, 'results': results})
 
 
@@ -2576,6 +3232,7 @@ def toggle_uplink_port(olt_id, uplink_id):
             uplink.admin_status = 'down'
     if success:
         db.session.commit()
+        log_action('uplink_toggle', 'olt', target=olt.name, detail=f'{uplink.port_name} {action}d')
     return jsonify({'success': success, 'message': msg, 'admin_status': uplink.admin_status})
 
 
@@ -3355,6 +4012,8 @@ def create_vlan(olt_id):
             vlan = ONUVlan(olt_id=olt_id, vlan_id=int(vlan_id), vlan_name=vlan_name or f'VLAN{vlan_id}', vlan_type='L2')
             db.session.add(vlan)
             db.session.commit()
+    if success:
+        log_action('vlan_create', 'olt', target=olt.name, detail=f'VLAN {vlan_id} ({vlan_name})')
     return jsonify({'success': success, 'message': msg})
 
 
@@ -3377,6 +4036,7 @@ def rename_vlan(olt_id, vlan_id):
         if vlan:
             vlan.vlan_name = new_name
             db.session.commit()
+        log_action('vlan_rename', 'olt', target=olt.name, detail=f'VLAN {vlan_id} -> {new_name}')
     return jsonify({'success': success, 'message': msg})
 
 
@@ -3395,6 +4055,7 @@ def delete_vlan(olt_id, vlan_id):
         if vlan:
             db.session.delete(vlan)
             db.session.commit()
+        log_action('vlan_delete', 'olt', target=olt.name, detail=f'VLAN {vlan_id}')
     return jsonify({'success': success, 'message': msg})
 
 
@@ -3440,6 +4101,7 @@ def add_onu_type(olt_id):
         )
         db.session.add(otype)
         db.session.commit()
+        log_action('onu_type_create', 'olt', target=olt.name, detail=f'Type {type_name}')
     return jsonify({'success': success, 'message': msg})
 
 
@@ -3457,6 +4119,7 @@ def delete_onu_type(olt_id, type_id):
     if success:
         db.session.delete(otype)
         db.session.commit()
+        log_action('onu_type_delete', 'olt', target=olt.name, detail=f'Type {otype.type_name}')
     return jsonify({'success': success, 'message': msg})
 
 
@@ -3507,6 +4170,7 @@ def delete_tcont_profile(olt_id, profile_id):
     if success:
         db.session.delete(profile)
         db.session.commit()
+        log_action('tcont_delete', 'olt', target=olt.name, detail=f'Profile {profile.name}')
     return jsonify({'success': success, 'message': msg})
 
 
@@ -3553,6 +4217,7 @@ def delete_traffic_profile(olt_id, profile_id):
     if success:
         db.session.delete(profile)
         db.session.commit()
+        log_action('traffic_profile_delete', 'olt', target=olt.name, detail=f'Profile {profile.name}')
     return jsonify({'success': success, 'message': msg})
 
 
@@ -3605,6 +4270,7 @@ def delete_wan_ip_profile(olt_id, profile_id):
     if success:
         db.session.delete(profile)
         db.session.commit()
+        log_action('wan_ip_delete', 'olt', target=olt.name, detail=f'Profile {profile.name}')
     return jsonify({'success': success, 'message': msg})
 
 
@@ -3779,15 +4445,13 @@ def get_pon_port_onus(olt_id, port_id):
     port = db.session.get(OLTPort, port_id)
     if not port or port.olt_id != olt_id:
         return jsonify({'success': False, 'message': 'Port not found'}), 404
-    onus = ONU.query.filter_by(olt_id=olt_id).filter(
-        ONU.frame == port.port_name.split('/')[0].split('_')[-1] if '_' in port.port_name else True,
-    ).order_by(ONU.onu_id).all()
-    # Better: filter by matching port_number
     # Extract frame/slot/port from port_name like gpon-olt_1/1/1
     parts = port.port_name.replace('gpon-olt_', '').replace('gpon-onu_', '').split('/')
     if len(parts) >= 3:
         frame, slot, pon_port = int(parts[0]), int(parts[1]), int(parts[2])
         onus = ONU.query.filter_by(olt_id=olt_id, frame=frame, slot=slot, port=pon_port).order_by(ONU.onu_id).all()
+    else:
+        onus = []
     return jsonify({
         'success': True,
         'onus': [{
@@ -3808,7 +4472,6 @@ def get_pon_port_onus(olt_id, port_id):
 def create_template():
     data = request.get_json()
     t = Template(
-        tenant_id=get_tenant_id(),
         name=data.get('name', ''), vendor=data.get('vendor', ''),
         model=data.get('model', ''), onu_type=data.get('onu_type', ''),
         tcont_profile=data.get('tcont_profile', ''), traffic_profile=data.get('traffic_profile', ''),
@@ -3850,10 +4513,10 @@ def delete_template(tid):
 @login_required
 def api_tr069():
     if request.method == 'GET':
-        profiles = TR069Profile.query.filter(tenant_filter(TR069Profile)).all()
+        profiles = TR069Profile.query.all()
         return jsonify([{
             'id': p.id, 'name': p.name, 'acs_url': p.acs_url,
-            'acs_username': p.acs_username, 'acs_password': p.acs_password,
+            'acs_username': p.acs_username, 'acs_password': '***' if p.acs_password else '',
             'default_olt_id': p.default_olt_id, 'vlan': p.vlan, 'vlan_mode': p.vlan_mode or 'tag',
             'default_olt_name': p.default_olt.name if p.default_olt else None,
         } for p in profiles])
@@ -3862,7 +4525,6 @@ def api_tr069():
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
     data = request.get_json()
     p = TR069Profile(
-        tenant_id=get_tenant_id(),
         name=data.get('name', ''), acs_url=data.get('acs_url', ''),
         acs_username=data.get('acs_username', ''), acs_password=data.get('acs_password', ''),
         default_olt_id=data.get('default_olt_id'), vlan=data.get('vlan', 0),
@@ -3880,9 +4542,11 @@ def update_tr069(pid):
     if not p:
         return jsonify({'success': False}), 404
     data = request.get_json()
-    for field in ['name', 'acs_url', 'acs_username', 'acs_password', 'default_olt_id', 'vlan', 'vlan_mode']:
+    for field in ['name', 'acs_url', 'acs_username', 'default_olt_id', 'vlan', 'vlan_mode']:
         if field in data:
             setattr(p, field, data[field])
+    if 'acs_password' in data and data['acs_password'] and not data['acs_password'].startswith('***'):
+        p.acs_password = data['acs_password']
     db.session.commit()
     return jsonify({'success': True})
 
@@ -3903,19 +4567,16 @@ def delete_tr069(pid):
 @app.route('/api/olt', methods=['POST'])
 @permission_required('settings_ip_olts')
 def create_olt():
-    # Subscription check — OLT limit
-    ok, msg = check_olt_limit()
-    if not ok:
-        return jsonify({'success': False, 'message': msg}), 403
     data = request.get_json()
     olt = OLT(
-        tenant_id=get_tenant_id(),
         name=data.get('name', ''), ip_address=data.get('ip_address', ''),
         model=data.get('model', 'C320'), vendor=data.get('vendor', 'zte'),
         snmp_community=data.get('snmp_community', 'public'),
+        snmp_community_write=data.get('snmp_community_write', ''),
         snmp_port=data.get('snmp_port', 161),
         telnet_enabled=data.get('telnet_enabled', True),
         telnet_port=data.get('telnet_port', 23),
+        web_port=data.get('web_port', 80),
         ssh_enabled=data.get('ssh_enabled', False),
         ssh_port=data.get('ssh_port', 22),
         cli_username=data.get('cli_username', ''),
@@ -3945,13 +4606,15 @@ def get_olt(olt_id):
         'firmware_version': olt.firmware_version or '',
         'snmp_enabled': olt.snmp_enabled,
         'snmp_community': olt.snmp_community,
+        'snmp_community_write': olt.snmp_community_write or '',
         'snmp_port': olt.snmp_port,
         'telnet_enabled': olt.telnet_enabled,
         'telnet_port': olt.telnet_port,
+        'web_port': olt.web_port or 80,
         'ssh_enabled': olt.ssh_enabled,
         'ssh_port': olt.ssh_port,
         'cli_username': olt.cli_username,
-        'cli_password': olt.cli_password,
+        'cli_password': '***' if olt.cli_password else '',
         'monitoring_enabled': olt.monitoring_enabled,
         'polling_interval': olt.polling_interval,
         'is_online': olt.is_online,
@@ -3968,11 +4631,14 @@ def update_olt(olt_id):
     if not olt:
         return jsonify({'success': False}), 404
     data = request.get_json()
-    for field in ['name', 'ip_address', 'model', 'vendor', 'snmp_community', 'snmp_port',
-                  'telnet_enabled', 'telnet_port', 'ssh_enabled', 'ssh_port',
-                  'cli_username', 'cli_password', 'polling_interval', 'monitoring_enabled']:
+    for field in ['name', 'ip_address', 'model', 'vendor', 'snmp_community', 'snmp_community_write', 'snmp_port',
+                  'telnet_enabled', 'telnet_port', 'web_port', 'ssh_enabled', 'ssh_port',
+                  'cli_username', 'polling_interval', 'monitoring_enabled']:
         if field in data:
             setattr(olt, field, data[field])
+    # Only update password if a real value is provided (not masked placeholder)
+    if 'cli_password' in data and data['cli_password'] and not data['cli_password'].startswith('***'):
+        olt.cli_password = data['cli_password']
     db.session.commit()
     log_action('olt_update', 'olt', target=olt.name, detail=f'Updated OLT {olt.name} — fields: {list(data.keys())}')
     return jsonify({'success': True, 'id': olt.id})
@@ -3984,10 +4650,6 @@ def delete_olt(olt_id):
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
-    # Tenant isolation: ensure the OLT belongs to the current tenant
-    tid = get_tenant_id()
-    if tid is not None and olt.tenant_id != tid:
-        return jsonify({'success': False, 'message': 'Access denied: this OLT does not belong to your tenant.'}), 403
     try:
         # Delete all child records explicitly to avoid FK constraint errors
         ONU.query.filter_by(olt_id=olt_id).delete()
@@ -4028,7 +4690,7 @@ def update_profile():
         if not current_user.is_super_admin:
             return jsonify({'success': False, 'message': 'Only super admin can change branding name.'}), 403
         current_user.sidebar_name = data['sidebar_name']
-        # Also update SystemConfig so all tenant users see consistent branding
+        # Also update SystemConfig so all users see consistent branding
         cfg = SystemConfig.query.filter_by(key='nms_name').first()
         if cfg:
             cfg.value = data['sidebar_name']
@@ -4037,6 +4699,7 @@ def update_profile():
     if 'password' in data and data['password']:
         current_user.set_password(data['password'])
     db.session.commit()
+    log_action('profile_update', 'user', target=current_user.username, detail=f'Updated own profile — fields: {list(data.keys())}')
     return jsonify({'success': True})
 
 
@@ -4059,7 +4722,6 @@ def create_user():
         full_name=data.get('full_name', ''),
         username=data.get('username', ''),
         role_id=data.get('role_id'),
-        tenant_id=get_tenant_id(),
         is_super_admin=False,
         phone=data.get('phone', ''),
     )
@@ -4182,9 +4844,6 @@ def api_action_logs():
     user_filter = request.args.get('username', '').strip()
 
     q = ActionLog.query
-    tid = get_tenant_id()
-    if tid is not None:
-        q = q.filter_by(tenant_id=tid)
     if category:
         q = q.filter(ActionLog.category == category)
     if user_filter:
@@ -4223,538 +4882,12 @@ def api_action_logs():
     })
 
 
-# ==================== ADMIN — SUBSCRIPTION PACKAGES ====================
-
-@app.route('/api/admin/packages', methods=['GET'])
-@super_admin_required
-def admin_list_packages():
-    pkgs = SubscriptionPackage.query.order_by(SubscriptionPackage.id).all()
-    return jsonify([{
-        'id': p.id, 'name': p.name, 'description': p.description,
-        'price': p.price, 'max_olts': p.max_olts, 'duration_days': p.duration_days,
-        'features': p.features, 'is_active': p.is_active,
-        'created_at': utc_iso(p.created_at),
-    } for p in pkgs])
-
-
-@app.route('/api/admin/package', methods=['POST'])
-@super_admin_required
-def admin_create_package():
-    data = request.get_json()
-    pkg = SubscriptionPackage(
-        name=data.get('name', ''),
-        description=data.get('description', ''),
-        price=data.get('price', 0),
-        max_olts=data.get('max_olts', 1),
-        duration_days=data.get('duration_days', 30),
-        features=data.get('features', ''),
-        is_active=data.get('is_active', True),
-    )
-    db.session.add(pkg)
-    db.session.commit()
-    log_action('package_create', 'admin', target=pkg.name, detail=f'Created package {pkg.name}')
-    return jsonify({'success': True, 'id': pkg.id})
-
-
-@app.route('/api/admin/package/<int:pkg_id>', methods=['PUT'])
-@super_admin_required
-def admin_update_package(pkg_id):
-    pkg = db.session.get(SubscriptionPackage, pkg_id)
-    if not pkg:
-        return jsonify({'success': False, 'message': 'Package not found'}), 404
-    data = request.get_json()
-    for field in ['name', 'description', 'price', 'max_olts', 'duration_days', 'features', 'is_active']:
-        if field in data:
-            setattr(pkg, field, data[field])
-    db.session.commit()
-    log_action('package_update', 'admin', target=pkg.name, detail=f'Updated package {pkg.name}')
-    return jsonify({'success': True})
-
-
-@app.route('/api/admin/package/<int:pkg_id>', methods=['DELETE'])
-@super_admin_required
-def admin_delete_package(pkg_id):
-    pkg = db.session.get(SubscriptionPackage, pkg_id)
-    if not pkg:
-        return jsonify({'success': False, 'message': 'Package not found'}), 404
-    if pkg.subscriptions:
-        return jsonify({'success': False, 'message': 'Cannot delete package with active subscriptions'}), 400
-    try:
-        # Delete payment transactions and invoices referencing this package
-        PaymentTransaction.query.filter_by(package_id=pkg_id).delete()
-        Invoice.query.filter_by(package_id=pkg_id).delete()
-        db.session.delete(pkg)
-        db.session.commit()
-        log_action('package_delete', 'admin', target=pkg.name, detail=f'Deleted package {pkg.name}')
-        return jsonify({'success': True, 'message': f'Package "{pkg.name}" deleted successfully.'})
-    except Exception as e:
-        db.session.rollback()
-        logging.error(f'Delete package {pkg_id} failed: {e}')
-        return jsonify({'success': False, 'message': f'Delete failed: {str(e)[:200]}'}), 500
-
-
-# ==================== ADMIN — TENANTS ====================
-
-@app.route('/api/admin/dashboard', methods=['GET'])
-@super_admin_required
-def admin_dashboard():
-    """Dashboard for super admin — tenant overview, subscription stats."""
-    tenants = Tenant.query.all()
-    total_tenants = len(tenants)
-    active_subs = Subscription.query.filter_by(status='active').all()
-    expired_subs = Subscription.query.filter_by(status='expired').all()
-    total_olts = OLT.query.count()
-    total_onus = ONU.query.count()
-    total_users = User.query.filter_by(is_super_admin=False).count()
-
-    # Per-tenant breakdown
-    tenant_list = []
-    for t in tenants:
-        sub = Subscription.query.filter_by(tenant_id=t.id, status='active').first()
-        olt_count = OLT.query.filter_by(tenant_id=t.id).count()
-        onu_count = ONU.query.filter(ONU.olt_id.in_(
-            db.session.query(OLT.id).filter_by(tenant_id=t.id)
-        )).count() if olt_count > 0 else 0
-        tenant_list.append({
-            'id': t.id, 'name': t.name, 'subdomain': t.subdomain,
-            'olt_count': olt_count, 'onu_count': onu_count,
-            'subscription': {
-                'package_name': sub.package.name if sub and sub.package else '',
-                'max_olts': sub.max_olts if sub else 0,
-                'days_remaining': sub.days_remaining if sub else 0,
-                'is_active': sub.is_active if sub else False,
-                'start_date': utc_iso(sub.start_date) if sub else None,
-                'end_date': utc_iso(sub.end_date) if sub else None,
-            } if sub else None,
-        })
-
-    # Expiring soon (within 7 days)
-    expiring_soon = [t for t in tenant_list if t['subscription'] and t['subscription']['is_active'] and t['subscription']['days_remaining'] <= 7]
-    expired = [t for t in tenant_list if t['subscription'] is None or not t['subscription']['is_active']]
-
-    return jsonify({
-        'stats': {
-            'total_tenants': total_tenants,
-            'active_subscriptions': len(active_subs),
-            'expired_subscriptions': len(expired_subs),
-            'expiring_soon': len(expiring_soon),
-            'total_olts': total_olts,
-            'total_onus': total_onus,
-            'total_users': total_users,
-        },
-        'tenants': tenant_list,
-        'expiring_soon': expiring_soon,
-        'expired': expired,
-    })
-
-
-@app.route('/api/admin/tenants', methods=['GET'])
-@super_admin_required
-def admin_list_tenants():
-    tenants = Tenant.query.order_by(Tenant.id.desc()).all()
-    result = []
-    for t in tenants:
-        sub = Subscription.query.filter_by(tenant_id=t.id, status='active').first()
-        user_count = User.query.filter_by(tenant_id=t.id).count()
-        olt_count = OLT.query.filter_by(tenant_id=t.id).count()
-        result.append({
-            'id': t.id, 'name': t.name, 'subdomain': t.subdomain,
-            'contact_name': t.contact_name, 'contact_email': t.contact_email,
-            'contact_phone': t.contact_phone, 'status': t.status,
-            'created_at': utc_iso(t.created_at),
-            'user_count': user_count, 'olt_count': olt_count,
-            'subscription': {
-                'package_name': sub.package.name if sub and sub.package else '',
-                'end_date': utc_iso(sub.end_date) if sub else None,
-                'days_remaining': sub.days_remaining if sub else 0,
-                'is_active': sub.is_active if sub else False,
-            } if sub else None,
-        })
-    return jsonify(result)
-
-
-@app.route('/api/admin/tenant', methods=['POST'])
-@super_admin_required
-def admin_create_tenant():
-    data = request.get_json()
-    subdomain = (data.get('subdomain') or '').lower().strip()
-    if not subdomain:
-        return jsonify({'success': False, 'message': 'Subdomain is required'}), 400
-    if Tenant.query.filter_by(subdomain=subdomain).first():
-        return jsonify({'success': False, 'message': 'Subdomain already taken'}), 400
-    tenant = Tenant(
-        name=data.get('name', ''),
-        subdomain=subdomain,
-        contact_name=data.get('contact_name', ''),
-        contact_email=data.get('contact_email', ''),
-        contact_phone=data.get('contact_phone', ''),
-    )
-    db.session.add(tenant)
-    db.session.commit()
-    # Create admin user for this tenant
-    admin_user = User(
-        full_name=data.get('admin_name', tenant.name + ' Admin'),
-        username=data.get('admin_username', subdomain + '_admin'),
-        role_id=Role.query.filter_by(name='Full Access').first().id if Role.query.filter_by(name='Full Access').first() else None,
-        tenant_id=tenant.id,
-        is_super_admin=False,
-    )
-    admin_user.set_password(data.get('admin_password', 'changeme123'))
-    db.session.add(admin_user)
-    db.session.commit()
-    # Seed default alert rules for this tenant
-    default_rule = AlertRule(
-        tenant_id=tenant.id,
-        name='Default ONU Monitor',
-        enabled=True,
-        check_offline=True, check_dyinggasp=True, check_los=True, check_rx_power=True,
-        rx_threshold=-27.0, rx_change_threshold=3.0,
-        notify_bell=True, notify_telegram=False, notify_whatsapp=False,
-        target_roles='',
-    )
-    db.session.add(default_rule)
-    # Seed default custom columns for this tenant
-    default_columns = [
-        ('OLT', 'olt_name', True, False, 0),
-        ('Name', 'name', True, True, 1),
-        ('Status', 'status', True, True, 2),
-        ('RX OLT', 'rx_power', True, False, 3),
-        ('RX ONU', 'onu_rx_power', True, False, 4),
-        ('PPPoE', 'pppoe', True, False, 5),
-        ('Serial Number', 'serial_number', True, False, 6),
-        ('Type', 'actual_type', True, False, 7),
-        ('ONU ID', 'onu_id_str', True, True, 8),
-    ]
-    for col_name, col_key, vis_d, vis_m, order in default_columns:
-        db.session.add(ONUCustomColumn(
-            tenant_id=tenant.id,
-            column_name=col_name, column_key=col_key,
-            visible_desktop=vis_d, visible_mobile=vis_m,
-            sort_order=order,
-        ))
-    db.session.commit()
-    log_action('tenant_create', 'admin', target=tenant.name, detail=f'Created tenant {tenant.name} ({subdomain})')
-    return jsonify({'success': True, 'id': tenant.id})
-
-
-@app.route('/api/admin/tenant/<int:tenant_id>', methods=['PUT'])
-@super_admin_required
-def admin_update_tenant(tenant_id):
-    tenant = db.session.get(Tenant, tenant_id)
-    if not tenant:
-        return jsonify({'success': False, 'message': 'Tenant not found'}), 404
-    data = request.get_json()
-    if 'subdomain' in data:
-        subdomain = (data['subdomain'] or '').lower().strip()
-        if not subdomain:
-            return jsonify({'success': False, 'message': 'Subdomain cannot be empty'}), 400
-        existing = Tenant.query.filter_by(subdomain=subdomain).first()
-        if existing and existing.id != tenant_id:
-            return jsonify({'success': False, 'message': 'Subdomain already taken'}), 400
-        tenant.subdomain = subdomain
-    for field in ['contact_name', 'contact_email', 'contact_phone', 'status']:
-        if field in data:
-            setattr(tenant, field, data[field])
-    try:
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': f'Update failed: {str(e)[:200]}'}), 500
-    log_action('tenant_update', 'admin', target=tenant.name, detail=f'Updated tenant {tenant.name}')
-    return jsonify({'success': True})
-
-
-@app.route('/api/admin/tenant/<int:tenant_id>', methods=['DELETE'])
-@super_admin_required
-def admin_delete_tenant(tenant_id):
-    tenant = db.session.get(Tenant, tenant_id)
-    if not tenant:
-        return jsonify({'success': False, 'message': 'Tenant not found'}), 404
-    try:
-        # Delete all tenant-related records (order matters for FK constraints)
-        # 1. Payment transactions & invoices (nullable=False tenant_id)
-        PaymentTransaction.query.filter_by(tenant_id=tenant_id).delete()
-        Invoice.query.filter_by(tenant_id=tenant_id).delete()
-        # 2. Subscription notifications (depends on subscriptions)
-        SubscriptionNotification.query.filter_by(tenant_id=tenant_id).delete()
-        # 3. Subscriptions
-        Subscription.query.filter_by(tenant_id=tenant_id).delete()
-        # 4. OLTs and their child records
-        olt_ids = [o.id for o in OLT.query.filter_by(tenant_id=tenant_id).all()]
-        for oid in olt_ids:
-            ONU.query.filter_by(olt_id=oid).delete()
-            Fan.query.filter_by(olt_id=oid).delete()
-            OLTCard.query.filter_by(olt_id=oid).delete()
-            OLTUplink.query.filter_by(olt_id=oid).delete()
-            OLTPort.query.filter_by(olt_id=oid).delete()
-            ONUVlan.query.filter_by(olt_id=oid).delete()
-            ONUType.query.filter_by(olt_id=oid).delete()
-            SpeedProfile.query.filter_by(olt_id=oid).delete()
-            WanIpProfile.query.filter_by(olt_id=oid).delete()
-            OLTSyncStatus.query.filter_by(olt_id=oid).delete()
-            Notification.query.filter_by(olt_id=oid).delete()
-            AlertHistory.query.filter_by(olt_id=oid).delete()
-            FTTHOTB.query.filter_by(olt_id=oid).update({'olt_id': None})
-            FTTHPonPort.query.filter_by(olt_id=oid).update({'olt_id': None})
-            TR069Profile.query.filter_by(default_olt_id=oid).update({'default_olt_id': None})
-        OLT.query.filter_by(tenant_id=tenant_id).delete()
-        # 5. Other tenant-scoped records
-        Notification.query.filter_by(tenant_id=tenant_id).delete()
-        AlertRule.query.filter_by(tenant_id=tenant_id).delete()
-        BotConfig.query.filter_by(tenant_id=tenant_id).delete()
-        Template.query.filter_by(tenant_id=tenant_id).delete()
-        TR069Profile.query.filter_by(tenant_id=tenant_id).delete()
-        ONUCustomColumn.query.filter_by(tenant_id=tenant_id).delete()
-        FTTHOTB.query.filter_by(tenant_id=tenant_id).delete()
-        ActionLog.query.filter_by(tenant_id=tenant_id).delete()
-        # 6. Users
-        User.query.filter_by(tenant_id=tenant_id).delete()
-        # 7. Remove Cloudflare Tunnel DNS + ingress rule
-        cf_success, cf_message = _remove_cloudflare_tunnel_hostname(tenant.subdomain)
-        logger.info(f"[DELETE TENANT] Cloudflare cleanup for {tenant.subdomain}: {cf_message}")
-        # 8. Finally delete the tenant
-        db.session.delete(tenant)
-        db.session.commit()
-        log_action('tenant_delete', 'admin', target=tenant.name, detail=f'Deleted tenant {tenant.name}')
-        return jsonify({'success': True, 'message': f'Tenant "{tenant.name}" deleted successfully.'})
-    except Exception as e:
-        db.session.rollback()
-        logging.error(f'Delete tenant {tenant_id} failed: {e}')
-        return jsonify({'success': False, 'message': f'Delete failed: {str(e)[:200]}'}), 500
-
-
-# ==================== ADMIN — SUBSCRIPTIONS ====================
-
-@app.route('/api/admin/subscriptions', methods=['GET'])
-@super_admin_required
-def admin_list_subscriptions():
-    subs = Subscription.query.order_by(Subscription.id.desc()).all()
-    return jsonify([{
-        'id': s.id, 'tenant_id': s.tenant_id,
-        'tenant_name': s.tenant.name if s.tenant else '',
-        'package_id': s.package_id,
-        'package_name': s.package.name if s.package else '',
-        'start_date': utc_iso(s.start_date),
-        'end_date': utc_iso(s.end_date),
-        'status': s.status, 'auto_renew': s.auto_renew,
-        'is_active': s.is_active, 'days_remaining': s.days_remaining,
-    } for s in subs])
-
-
-@app.route('/api/admin/subscription', methods=['POST'])
-@super_admin_required
-def admin_create_subscription():
-    data = request.get_json()
-    tenant_id = data.get('tenant_id')
-    package_id = data.get('package_id')
-    pkg = db.session.get(SubscriptionPackage, package_id)
-    if not pkg:
-        return jsonify({'success': False, 'message': 'Package not found'}), 404
-    # Deactivate existing active subscriptions for this tenant
-    Subscription.query.filter_by(tenant_id=tenant_id, status='active').update({'status': 'cancelled'})
-    start = datetime.now(timezone.utc)
-    end = start + timedelta(days=pkg.duration_days)
-    sub = Subscription(
-        tenant_id=tenant_id, package_id=package_id,
-        start_date=start, end_date=end,
-        status='active', auto_renew=data.get('auto_renew', False),
-    )
-    db.session.add(sub)
-    # Re-activate tenant
-    tenant = db.session.get(Tenant, tenant_id)
-    if tenant:
-        tenant.status = 'active'
-    db.session.commit()
-    log_action('subscription_create', 'admin', target=f'tenant:{tenant_id}', detail=f'Assigned package {pkg.name} for {pkg.duration_days} days')
-    return jsonify({'success': True, 'id': sub.id, 'end_date': utc_iso(end)})
-
-
-@app.route('/api/admin/subscription/<int:sub_id>', methods=['PUT'])
-@super_admin_required
-def admin_update_subscription(sub_id):
-    sub = db.session.get(Subscription, sub_id)
-    if not sub:
-        return jsonify({'success': False, 'message': 'Subscription not found'}), 404
-    data = request.get_json()
-    if 'status' in data:
-        sub.status = data['status']
-    if 'auto_renew' in data:
-        sub.auto_renew = data['auto_renew']
-    if 'end_date' in data:
-        try:
-            sub.end_date = datetime.fromisoformat(data['end_date'].replace('Z', '+00:00'))
-        except Exception:
-            pass
-    db.session.commit()
-    log_action('subscription_update', 'admin', target=f'sub:{sub_id}', detail=f'Updated subscription {sub_id}')
-    return jsonify({'success': True})
-
-
-@app.route('/api/admin/subscription/<int:sub_id>', methods=['DELETE'])
-@super_admin_required
-def admin_delete_subscription(sub_id):
-    sub = db.session.get(Subscription, sub_id)
-    if not sub:
-        return jsonify({'success': False, 'message': 'Subscription not found'}), 404
-    db.session.delete(sub)
-    db.session.commit()
-    return jsonify({'success': True})
-
-
-@app.route('/api/admin/subscription/<int:sub_id>/extend', methods=['POST'])
-@super_admin_required
-def admin_extend_subscription(sub_id):
-    sub = db.session.get(Subscription, sub_id)
-    if not sub:
-        return jsonify({'success': False, 'message': 'Subscription not found'}), 404
-    data = request.get_json()
-    days = data.get('days', 30)
-    # Extend from current end_date or now, whichever is later
-    base = sub.end_date if sub.end_date and sub.end_date > datetime.now(timezone.utc) else datetime.now(timezone.utc)
-    sub.end_date = base + timedelta(days=days)
-    sub.status = 'active'
-    db.session.commit()
-    log_action('subscription_extend', 'admin', target=f'sub:{sub_id}', detail=f'Extended by {days} days')
-    return jsonify({'success': True, 'end_date': utc_iso(sub.end_date)})
-
-
-# ==================== ADMIN — TRANSACTIONS & INVOICES ====================
-
-@app.route('/api/admin/transactions', methods=['GET'])
-@super_admin_required
-def admin_list_transactions():
-    """List all payment transactions for super admin."""
-    txns = PaymentTransaction.query.order_by(PaymentTransaction.created_at.desc()).all()
-    result = []
-    for t in txns:
-        tenant = db.session.get(Tenant, t.tenant_id)
-        pkg = db.session.get(SubscriptionPackage, t.package_id)
-        result.append({
-            'id': t.id,
-            'merchant_order_id': t.merchant_order_id,
-            'tenant_name': tenant.name if tenant else '-',
-            'tenant_id': t.tenant_id,
-            'package_name': pkg.name if pkg else '-',
-            'amount': t.amount,
-            'status': t.status,
-            'payment_method': t.payment_method,
-            'reference': t.reference,
-            'created_at': utc_iso(t.created_at),
-            'paid_at': utc_iso(t.paid_at) if t.paid_at else None,
-        })
-    return jsonify(result)
-
-
-@app.route('/api/admin/invoices', methods=['GET'])
-@super_admin_required
-def admin_list_invoices():
-    """List all invoices for super admin."""
-    invoices = Invoice.query.order_by(Invoice.created_at.desc()).all()
-    result = []
-    for inv in invoices:
-        tenant = db.session.get(Tenant, inv.tenant_id)
-        pkg = db.session.get(SubscriptionPackage, inv.package_id)
-        result.append({
-            'id': inv.id,
-            'invoice_number': inv.invoice_number,
-            'tenant_name': tenant.name if tenant else '-',
-            'tenant_id': inv.tenant_id,
-            'package_id': inv.package_id,
-            'package_name': pkg.name if pkg else '-',
-            'amount': inv.amount,
-            'status': inv.status,
-            'invoice_type': inv.invoice_type,
-            'description': inv.description,
-            'due_date': utc_iso(inv.due_date) if inv.due_date else None,
-            'created_at': utc_iso(inv.created_at),
-            'paid_at': utc_iso(inv.paid_at) if inv.paid_at else None,
-        })
-    return jsonify(result)
-
-
-def _generate_invoice_number():
-    """Generate unique invoice number: INV-YYYYMMDD-XXXX"""
-    today = datetime.now(timezone.utc).strftime('%Y%m%d')
-    count = Invoice.query.filter(
-        Invoice.invoice_number.like(f'INV-{today}-%')
-    ).count()
-    return f'INV-{today}-{count + 1:04d}'
-
-
-def _create_invoice(tenant_id, subscription_id, package_id, amount, invoice_type='auto', description='', due_date=None):
-    """Create an invoice record. Returns the Invoice object."""
-    inv = Invoice(
-        invoice_number=_generate_invoice_number(),
-        tenant_id=tenant_id,
-        subscription_id=subscription_id,
-        package_id=package_id,
-        amount=amount,
-        status='unpaid',
-        invoice_type=invoice_type,
-        description=description,
-        due_date=due_date,
-    )
-    db.session.add(inv)
-    db.session.commit()
-    logger.info(f"[INVOICE] Created {inv.invoice_number} for tenant_id={tenant_id} amount={amount} type={invoice_type}")
-    return inv
-
-
-# ==================== SUBSCRIPTION STATUS (for current user) ====================
-
-@app.route('/api/subscription/status')
-@login_required
-def subscription_status():
-    if current_user.is_super_admin:
-        return jsonify({'is_super_admin': True})
-    sub = current_user.subscription
-    if not sub:
-        return jsonify({'is_active': False, 'message': 'No active subscription'})
-    renewal_ref = f"T{sub.id}{(sub.tenant_id or 0):04d}SUB"
-    return jsonify({
-        'is_active': sub.is_active,
-        'days_remaining': sub.days_remaining,
-        'max_olts': sub.max_olts,
-        'package_name': sub.package.name if sub.package else '',
-        'end_date': utc_iso(sub.end_date),
-        'start_date': utc_iso(sub.start_date),
-        'renewal_ref': renewal_ref,
-    })
-
-
-@app.route('/api/subscription/invoices', methods=['GET'])
-@login_required
-def tenant_invoices():
-    """Get invoices for current tenant."""
-    if current_user.is_super_admin or not current_user.tenant_id:
-        return jsonify([])
-    invoices = Invoice.query.filter_by(tenant_id=current_user.tenant_id).order_by(Invoice.created_at.desc()).all()
-    result = []
-    for inv in invoices:
-        pkg = db.session.get(SubscriptionPackage, inv.package_id)
-        result.append({
-            'id': inv.id,
-            'invoice_number': inv.invoice_number,
-            'package_id': inv.package_id,
-            'package_name': pkg.name if pkg else '-',
-            'amount': inv.amount,
-            'status': inv.status,
-            'invoice_type': inv.invoice_type,
-            'description': inv.description,
-            'due_date': utc_iso(inv.due_date) if inv.due_date else None,
-            'created_at': utc_iso(inv.created_at),
-            'paid_at': utc_iso(inv.paid_at) if inv.paid_at else None,
-        })
-    return jsonify(result)
-
-
 # ==================== CUSTOMIZATION ====================
 
 @app.route('/api/customization/reset', methods=['POST'])
 @permission_required('customization')
 def reset_customization_columns():
-    tid = get_tenant_id()
-    ONUCustomColumn.query.filter_by(tenant_id=tid).delete()
+    ONUCustomColumn.query.delete()
     defaults = [
         ('OLT', 'olt'), ('Name', 'name'), ('Description', 'description'),
         ('PPPoE', 'pppoe'), ('ONU ID', 'onu_id_str'), ('Status', 'status'),
@@ -4762,9 +4895,10 @@ def reset_customization_columns():
         ('Actual Type', 'actual_type'), ('Action', 'action')
     ]
     for i, (name, key) in enumerate(defaults):
-        col = ONUCustomColumn(tenant_id=tid, column_name=name, column_key=key, sort_order=i)
+        col = ONUCustomColumn(column_name=name, column_key=key, sort_order=i)
         db.session.add(col)
     db.session.commit()
+    log_action('customization_reset', 'general', target='columns', detail='Reset to default columns')
     return jsonify({'success': True})
 
 
@@ -4773,29 +4907,24 @@ def reset_customization_columns():
 def save_custom_columns():
     data = request.get_json()
     columns = data.get('columns', [])
-    tid = get_tenant_id()
-    del_q = ONUCustomColumn.query
-    if tid is not None:
-        del_q = del_q.filter_by(tenant_id=tid)
-    del_q.delete()
+    ONUCustomColumn.query.delete()
     for i, col in enumerate(columns):
         c = ONUCustomColumn(
-            tenant_id=get_tenant_id(),
             column_name=col['name'], column_key=col['key'],
             visible_desktop=col.get('desktop', True),
             visible_mobile=col.get('mobile', False), sort_order=i
         )
         db.session.add(c)
     db.session.commit()
+    log_action('customization_save', 'general', target='columns', detail=f'Saved {len(columns)} custom columns')
     return jsonify({'success': True})
 
 
 @app.route('/api/customization/signal-filter', methods=['GET'])
 @login_required
 def api_get_signal_filter():
-    """Get signal filter thresholds for the current tenant."""
-    tid = get_tenant_id()
-    rule = AlertRule.query.filter_by(tenant_id=tid).first()
+    """Get signal filter thresholds."""
+    rule = AlertRule.query.first()
     if not rule:
         return jsonify({'critical_threshold': -28.0, 'good_threshold': -26.0})
     # rx_threshold is the critical level; good_threshold is rx_threshold + rx_change_threshold
@@ -4807,8 +4936,7 @@ def api_get_signal_filter():
 @app.route('/api/customization/signal-filter', methods=['POST'])
 @permission_required('customization')
 def api_save_signal_filter():
-    """Save signal filter thresholds for the current tenant."""
-    tid = get_tenant_id()
+    """Save signal filter thresholds."""
     data = request.get_json() or {}
     critical = float(data.get('critical_threshold', -28.0))
     good = float(data.get('good_threshold', -26.0))
@@ -4818,15 +4946,16 @@ def api_save_signal_filter():
     if critical < -40 or good > -10:
         return jsonify({'success': False, 'message': 'Thresholds must be between -40 and -10 dBm'}), 400
 
-    rule = AlertRule.query.filter_by(tenant_id=tid).first()
+    rule = AlertRule.query.first()
     if not rule:
-        rule = AlertRule(name='Default Alert Rule', tenant_id=tid, enabled=True,
+        rule = AlertRule(name='Default Alert Rule', enabled=True,
                          check_offline=True, check_dyinggasp=True, check_los=True, check_rx_power=True,
                          notify_bell=True)
         db.session.add(rule)
     rule.rx_threshold = critical
     rule.rx_change_threshold = round(good - critical, 1)
     db.session.commit()
+    log_action('customization_save', 'general', target='signal-filter', detail=f'Critical={critical} Good={good}')
     return jsonify({'success': True})
 
 
@@ -4868,49 +4997,67 @@ def api_save_rx_colors():
     else:
         db.session.add(SystemConfig(key='rx_color_ranges', value=_json.dumps(ranges)))
     db.session.commit()
+    log_action('customization_save', 'general', target='rx-colors', detail=f'Saved {len(ranges)} color ranges')
     return jsonify({'success': True})
 
 
 # ==================== NOTIFICATIONS API ====================
 
+ALARM_CATEGORIES = {'offline', 'dyinggasp', 'los', 'olt_offline', 'signal', 'signal_drop',
+                    'offline_batch', 'dyinggasp_batch', 'los_batch', 'signal_drop_batch',
+                    'olt_cpu_high', 'olt_mem_high', 'olt_temp_high'}
+UNREGISTER_CATEGORIES = {'unconfig', 'unconfigured'}
+
+
+def _notif_type(category):
+    if category in ALARM_CATEGORIES:
+        return 'alarm'
+    if category in UNREGISTER_CATEGORIES:
+        return 'unregister'
+    return 'general'
+
+
 @app.route('/api/notifications', methods=['GET'])
 @login_required
 def get_notifications():
-    """Get notifications for current user's role."""
+    """Get notifications for current user's role, optionally filtered by type."""
     limit = request.args.get('limit', 50, type=int)
     unread_only = request.args.get('unread', 'false') == 'true'
+    notif_type = request.args.get('type', '')  # alarm | unregister | general
 
     query = Notification.query
-    tid = get_tenant_id()
-    if tid is not None:
-        query = query.filter_by(tenant_id=tid)
-    else:
-        # Super admin: only see global notifications (tenant_id=None), not tenant-specific alerts
-        query = query.filter_by(tenant_id=None)
     if unread_only:
         query = query.filter_by(is_read=False)
 
     # Filter by target roles if user is not admin
     if current_user.role and not current_user.role.has_permission('all_olt'):
         role_id = current_user.role_id
-        # Show notifications that target all roles (empty) or this user's role
         query = query.filter(
             (Notification.target_roles == '') |
             (Notification.target_roles.contains(str(role_id)))
         )
 
+    # Filter by type using category mapping
+    if notif_type == 'alarm':
+        query = query.filter(Notification.category.in_(ALARM_CATEGORIES))
+    elif notif_type == 'unregister':
+        query = query.filter(Notification.category.in_(UNREGISTER_CATEGORIES))
+    elif notif_type == 'general':
+        query = query.filter(~Notification.category.in_(ALARM_CATEGORIES | UNREGISTER_CATEGORIES))
+
     notifications = query.order_by(Notification.created_at.desc()).limit(limit).all()
-    unread_q = Notification.query.filter_by(is_read=False)
-    if tid is not None:
-        unread_q = unread_q.filter_by(tenant_id=tid)
-    else:
-        # Super admin: only count global unread notifications
-        unread_q = unread_q.filter_by(tenant_id=None)
-    unread_count = unread_q.count()
+
+    # Per-type unread counts
+    base_unread = Notification.query.filter_by(is_read=False)
+    alarm_unread = base_unread.filter(Notification.category.in_(ALARM_CATEGORIES)).count()
+    unreg_unread = base_unread.filter(Notification.category.in_(UNREGISTER_CATEGORIES)).count()
+    general_unread = base_unread.filter(~Notification.category.in_(ALARM_CATEGORIES | UNREGISTER_CATEGORIES)).count()
+    unread_count = alarm_unread + unreg_unread + general_unread
 
     return jsonify({
         'notifications': [{
             'id': n.id, 'severity': n.severity, 'category': n.category,
+            'type': _notif_type(n.category),
             'title': n.title, 'message': n.message, 'is_read': n.is_read,
             'acknowledged': n.acknowledged, 'acknowledged_by': n.acknowledged_by,
             'acknowledged_at': utc_iso(n.acknowledged_at),
@@ -4918,6 +5065,9 @@ def get_notifications():
             'created_at': utc_iso(n.created_at),
         } for n in notifications],
         'unread_count': unread_count,
+        'alarm_unread': alarm_unread,
+        'unregister_unread': unreg_unread,
+        'general_unread': general_unread,
     })
 
 
@@ -4936,13 +5086,15 @@ def mark_notification_read(notif_id):
 @app.route('/api/notifications/read-all', methods=['POST'])
 @login_required
 def mark_all_notifications_read():
-    """Mark all notifications as read."""
+    """Mark all notifications as read, optionally filtered by type."""
+    notif_type = request.args.get('type', '')
     q = Notification.query.filter_by(is_read=False)
-    tid = get_tenant_id()
-    if tid is not None:
-        q = q.filter_by(tenant_id=tid)
-    else:
-        q = q.filter_by(tenant_id=None)
+    if notif_type == 'alarm':
+        q = q.filter(Notification.category.in_(ALARM_CATEGORIES))
+    elif notif_type == 'unregister':
+        q = q.filter(Notification.category.in_(UNREGISTER_CATEGORIES))
+    elif notif_type == 'general':
+        q = q.filter(~Notification.category.in_(ALARM_CATEGORIES | UNREGISTER_CATEGORIES))
     q.update({'is_read': True})
     db.session.commit()
     return jsonify({'success': True})
@@ -4967,13 +5119,15 @@ def acknowledge_notification(notif_id):
 @app.route('/api/notifications/acknowledge-all', methods=['POST'])
 @login_required
 def acknowledge_all_notifications():
-    """Acknowledge all unread/unacknowledged notifications."""
+    """Acknowledge all unread/unacknowledged notifications, optionally filtered by type."""
+    notif_type = request.args.get('type', '')
     q = Notification.query.filter_by(acknowledged=False)
-    tid = get_tenant_id()
-    if tid is not None:
-        q = q.filter_by(tenant_id=tid)
-    else:
-        q = q.filter_by(tenant_id=None)
+    if notif_type == 'alarm':
+        q = q.filter(Notification.category.in_(ALARM_CATEGORIES))
+    elif notif_type == 'unregister':
+        q = q.filter(Notification.category.in_(UNREGISTER_CATEGORIES))
+    elif notif_type == 'general':
+        q = q.filter(~Notification.category.in_(ALARM_CATEGORIES | UNREGISTER_CATEGORIES))
     now = datetime.now(timezone.utc)
     username = current_user.username or current_user.email or 'unknown'
     count = 0
@@ -5004,11 +5158,6 @@ def delete_notification(notif_id):
 def clear_notifications():
     """Clear all read notifications."""
     q = Notification.query.filter_by(is_read=True)
-    tid = get_tenant_id()
-    if tid is not None:
-        q = q.filter_by(tenant_id=tid)
-    else:
-        q = q.filter_by(tenant_id=None)
     q.delete()
     db.session.commit()
     return jsonify({'success': True})
@@ -5025,16 +5174,6 @@ def get_alert_history():
     olt_id = request.args.get('olt_id', type=int)
 
     query = AlertHistory.query
-
-    # Tenant isolation — only show alerts for OLTs in this tenant
-    tid = get_tenant_id()
-    if tid is not None:
-        olt_ids = [o.id for o in OLT.query.filter_by(tenant_id=tid).all()]
-        if olt_ids:
-            query = query.filter(AlertHistory.olt_id.in_(olt_ids))
-        else:
-            return jsonify({'history': [], 'total': 0, 'pages': 0})
-    # Super admin sees all (no filter)
 
     if alert_type:
         query = query.filter_by(alert_type=alert_type)
@@ -5083,10 +5222,7 @@ def get_alert_history():
 def get_maintenance_windows():
     """List maintenance windows."""
     from models import MaintenanceWindow
-    tid = get_tenant_id()
     query = MaintenanceWindow.query
-    if tid is not None:
-        query = query.filter((MaintenanceWindow.tenant_id == tid) | (MaintenanceWindow.tenant_id.is_(None)))
     windows = query.order_by(MaintenanceWindow.start_time.desc()).limit(50).all()
     return jsonify({
         'windows': [{
@@ -5120,7 +5256,6 @@ def create_maintenance_window():
         return jsonify({'success': False, 'message': 'Invalid datetime format'}), 400
 
     window = MaintenanceWindow(
-        tenant_id=get_tenant_id(),
         olt_id=data.get('olt_id'),
         start_time=start_dt,
         end_time=end_dt,
@@ -5229,12 +5364,7 @@ def get_olt_uptime(olt_id):
 def unregistered_count():
     """Quick check for unregistered ONUs across all OLTs.
     Returns count + per-OLT breakdown. Also creates notifications if found."""
-    tid = get_tenant_id()
-    if tid is not None:
-        olts = OLT.query.filter_by(monitoring_enabled=True, tenant_id=tid).all()
-    else:
-        # Super admin: only check global OLTs (tenant_id=None), not tenant OLTs
-        olts = OLT.query.filter_by(monitoring_enabled=True, tenant_id=None).all()
+    olts = OLT.query.filter_by(monitoring_enabled=True).all()
     total_unreg = 0
     breakdown = []
     from snmp_collector import TelnetCollector, create_cli_collector
@@ -5259,7 +5389,6 @@ def unregistered_count():
                     existing.message = message
                 else:
                     n = Notification(
-                        tenant_id=olt.tenant_id,
                         olt_id=olt.id,
                         title=title,
                         message=message,
@@ -5271,17 +5400,19 @@ def unregistered_count():
             pass
     if total_unreg > 0:
         db.session.commit()
-    # Also count offline/dyinggasp ONUs from DB (tenant-filtered)
-    offline_q = ONU.query.filter(ONU.status.in_(['offline', 'dyinggasp', 'los']))
-    if tid is not None:
-        offline_q = offline_q.join(OLT).filter(OLT.tenant_id == tid)
-    else:
-        offline_q = offline_q.join(OLT).filter(OLT.tenant_id == None)
-    offline_count = offline_q.count()
+    # Also count offline/dyinggasp/los ONUs from DB
+    base_q = ONU.query.filter(ONU.status.in_(['offline', 'dyinggasp', 'los']))
+    offline_count = base_q.filter(ONU.status == 'offline').count()
+    dyinggasp_count = base_q.filter(ONU.status == 'dyinggasp').count()
+    los_count = base_q.filter(ONU.status == 'los').count()
+    offline_dyinggasp = offline_count + dyinggasp_count + los_count
     return jsonify({
         'unregistered': total_unreg,
         'breakdown': breakdown,
-        'offline_dyinggasp': offline_count
+        'offline_dyinggasp': offline_dyinggasp,
+        'offline_count': offline_count,
+        'dyinggasp_count': dyinggasp_count,
+        'los_count': los_count,
     })
 
 
@@ -5290,14 +5421,8 @@ def unregistered_count():
 @app.route('/api/alert-rules', methods=['GET'])
 @login_required
 def get_alert_rules():
-    """Get alert rules for the current tenant only."""
-    tid = get_tenant_id()
-    if tid is None:
-        # Super admin sees only global rules (tenant_id=None)
-        rules = AlertRule.query.filter_by(tenant_id=None).all()
-    else:
-        # Tenant sees only their own rules
-        rules = AlertRule.query.filter_by(tenant_id=tid).all()
+    """Get alert rules."""
+    rules = AlertRule.query.all()
     return jsonify({'rules': [{
         'id': r.id, 'name': r.name, 'enabled': r.enabled,
         'check_offline': r.check_offline, 'check_dyinggasp': r.check_dyinggasp,
@@ -5315,10 +5440,6 @@ def update_alert_rule(rule_id):
     rule = db.session.get(AlertRule, rule_id)
     if not rule:
         return jsonify({'success': False, 'message': 'Not found'}), 404
-    # Tenant users can only update their own rules
-    tid = get_tenant_id()
-    if tid is not None and rule.tenant_id != tid:
-        return jsonify({'success': False, 'message': 'Not found'}), 404
     data = request.get_json() or {}
     for field in ['name', 'enabled', 'check_offline', 'check_dyinggasp', 'check_los',
                   'check_rx_power', 'rx_threshold', 'rx_change_threshold',
@@ -5334,12 +5455,8 @@ def update_alert_rule(rule_id):
 @app.route('/api/bot-config', methods=['GET'])
 @login_required
 def get_bot_config():
-    """Get bot configurations for the current tenant only."""
-    tid = get_tenant_id()
-    if tid is None:
-        configs = BotConfig.query.filter_by(tenant_id=None).all()
-    else:
-        configs = BotConfig.query.filter_by(tenant_id=tid).all()
+    """Get bot configurations."""
+    configs = BotConfig.query.all()
     return jsonify({'configs': [{
         'id': c.id, 'bot_type': c.bot_type, 'enabled': c.enabled,
         'bot_token': c.bot_token[:10] + '...' if c.bot_token and len(c.bot_token) > 10 else c.bot_token,
@@ -5351,12 +5468,10 @@ def get_bot_config():
 @app.route('/api/bot-config/<string:bot_type>', methods=['PUT'])
 @login_required
 def update_bot_config(bot_type):
-    """Update or create bot configuration for the current tenant."""
-    tid = get_tenant_id()
-    # Strictly filter by tenant_id — no cross-tenant access
-    config = BotConfig.query.filter_by(bot_type=bot_type, tenant_id=tid).first()
+    """Update or create bot configuration."""
+    config = BotConfig.query.filter_by(bot_type=bot_type).first()
     if not config:
-        config = BotConfig(tenant_id=tid, bot_type=bot_type)
+        config = BotConfig(bot_type=bot_type)
         db.session.add(config)
 
     data = request.get_json() or {}
@@ -5408,12 +5523,12 @@ def get_system_config():
 @login_required
 def update_system_config():
     """Update system configuration. Super admin can update all keys.
-    Tenant admins can only update alert_check_interval and timezone."""
+    Non-super-admin can only update alert_check_interval and timezone."""
     data = request.get_json() or {}
-    tenant_allowed_keys = {'alert_check_interval', 'timezone'}
+    allowed_keys = {'alert_check_interval', 'timezone'}
     if not current_user.is_super_admin:
         for key in data:
-            if key not in tenant_allowed_keys:
+            if key not in allowed_keys:
                 return jsonify({'success': False, 'message': f'Permission denied: only super admin can update {key}'}), 403
     for key, value in data.items():
         config = SystemConfig.query.filter_by(key=key).first()
@@ -5425,962 +5540,21 @@ def update_system_config():
     return jsonify({'success': True})
 
 
-# ==================== RENEWAL & PAYMENT GATEWAY APIs ====================
-# Cloudflare functions moved to services_cf.py
-# WhatsApp notification functions moved to services_wa.py
-
-
-def _get_duitku_config():
-    """Get Duitku payment gateway configuration from SystemConfig."""
-    cfg = {c.key: c.value for c in SystemConfig.query.all()}
-    return {
-        'merchant_code': cfg.get('duitku_merchant_code', ''),
-        'api_key': cfg.get('duitku_api_key', ''),
-        'callback_url': cfg.get('duitku_callback_url', ''),
-        'environment': cfg.get('duitku_environment', 'sandbox'),
-    }
-
-
-def _get_duitku_api_url(env):
-    """Get Duitku V2 API URL based on environment."""
-    if env == 'production':
-        return 'https://passport.duitku.com/webapi/api/merchant/v2/inquiry'
-    return 'https://sandbox.duitku.com/webapi/api/merchant/v2/inquiry'
-
-
-def _get_duitku_paymentmethod_url(env):
-    """Get Duitku V2 Get Payment Method URL."""
-    if env == 'production':
-        return 'https://passport.duitku.com/webapi/api/merchant/paymentmethod/getpaymentmethod'
-    return 'https://sandbox.duitku.com/webapi/api/merchant/paymentmethod/getpaymentmethod'
-
-
-@app.route('/api/payment/methods', methods=['GET'])
-def get_payment_methods():
-    """Get available Duitku payment methods for a given amount."""
-    amount = request.args.get('amount', '0')
-    duitku = _get_duitku_config()
-    if not duitku['merchant_code'] or not duitku['api_key']:
-        return jsonify({'success': False, 'message': 'Payment gateway not configured'}), 503
-
-    import hmac as _hmac
-    import hashlib as _hashlib
-    import urllib.request as _urllib
-    import ssl as _ssl
-    from datetime import datetime as _dt
-
-    datetime_str = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
-    string_to_sign = duitku['merchant_code'] + str(amount) + datetime_str
-    signature = _hmac.new(
-        duitku['api_key'].encode('utf-8'),
-        string_to_sign.encode('utf-8'),
-        _hashlib.sha256
-    ).hexdigest()
-
-    params = json.dumps({
-        'merchantcode': duitku['merchant_code'],
-        'amount': str(amount),
-        'datetime': datetime_str,
-        'signature': signature,
-    }).encode('utf-8')
-
-    try:
-        api_url = _get_duitku_paymentmethod_url(duitku['environment'])
-        req = _urllib.Request(api_url, data=params, headers={'Content-Type': 'application/json'})
-        ctx = _ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = _ssl.CERT_NONE
-        resp = _urllib.urlopen(req, timeout=15, context=ctx)
-        data = json.loads(resp.read().decode('utf-8'))
-        return jsonify({'success': True, 'payment_methods': data.get('paymentFee', [])})
-    except Exception as e:
-        logger.error(f"[DUITKU] Get payment methods failed: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@app.route('/api/renewal/<ref>', methods=['GET'])
-def get_renewal_info(ref):
-    """Get renewal info for a tenant based on ref code.
-    Ref format: T{sub_id}{tenant_id:04d}SUB
-    No auth required — public page for tenant to view and pay."""
-    try:
-        # Parse ref code
-        # Format: T{sub_id}{tenant_id:04d}SUB  e.g. T10001SUB
-        if not ref.startswith('T') or not ref.endswith('SUB'):
-            return jsonify({'success': False, 'message': 'Invalid renewal link'}), 400
-        inner = ref[1:-3]  # remove T prefix and SUB suffix
-        if len(inner) < 5:
-            return jsonify({'success': False, 'message': 'Invalid renewal link'}), 400
-        tenant_id = int(inner[-4:])
-        sub_id = int(inner[:-4])
-    except (ValueError, IndexError):
-        return jsonify({'success': False, 'message': 'Invalid renewal link'}), 400
-
-    tenant = db.session.get(Tenant, tenant_id)
-    if not tenant:
-        return jsonify({'success': False, 'message': 'Tenant not found'}), 404
-
-    sub = db.session.get(Subscription, sub_id)
-    if not sub or sub.tenant_id != tenant_id:
-        return jsonify({'success': False, 'message': 'Subscription not found'}), 404
-
-    pkg = sub.package
-    if not pkg:
-        return jsonify({'success': False, 'message': 'Package not found'}), 404
-
-    # Get all available packages for upgrade/downgrade
-    all_packages = SubscriptionPackage.query.filter_by(is_active=True).all()
-    packages_list = [{
-        'id': p.id, 'name': p.name, 'description': p.description,
-        'price': p.price, 'max_olts': p.max_olts, 'duration_days': p.duration_days,
-    } for p in all_packages]
-
-    end_date = sub.end_date
-    if end_date and end_date.tzinfo is None:
-        end_date = end_date.replace(tzinfo=timezone.utc)
-
-    return jsonify({
-        'success': True,
-        'tenant': {
-            'name': tenant.name,
-            'subdomain': tenant.subdomain,
-            'contact_name': tenant.contact_name,
-            'contact_phone': tenant.contact_phone,
-            'contact_email': tenant.contact_email,
-        },
-        'subscription': {
-            'id': sub.id,
-            'status': sub.status,
-            'start_date': utc_iso(sub.start_date),
-            'end_date': utc_iso(sub.end_date),
-            'days_remaining': sub.days_remaining,
-            'is_active': sub.is_active,
-        },
-        'package': {
-            'id': pkg.id,
-            'name': pkg.name,
-            'description': pkg.description,
-            'price': pkg.price,
-            'max_olts': pkg.max_olts,
-            'duration_days': pkg.duration_days,
-        },
-        'packages': packages_list,
-        'duitku_configured': bool(_get_duitku_config()['merchant_code']),
-    })
-
-
-@app.route('/api/renewal/<ref>/pay', methods=['POST'])
-def create_renewal_payment(ref):
-    """Create a Duitku payment transaction for subscription renewal.
-    Body: { package_id?: int } — optional for upgrade/downgrade, defaults to current package."""
-    try:
-        if not ref.startswith('T') or not ref.endswith('SUB'):
-            return jsonify({'success': False, 'message': 'Invalid renewal link'}), 400
-        inner = ref[1:-3]
-        if len(inner) < 5:
-            return jsonify({'success': False, 'message': 'Invalid renewal link'}), 400
-        tenant_id = int(inner[-4:])
-        sub_id = int(inner[:-4])
-    except (ValueError, IndexError):
-        return jsonify({'success': False, 'message': 'Invalid renewal link'}), 400
-
-    tenant = db.session.get(Tenant, tenant_id)
-    if not tenant:
-        return jsonify({'success': False, 'message': 'Tenant not found'}), 404
-
-    sub = db.session.get(Subscription, sub_id)
-    if not sub or sub.tenant_id != tenant_id:
-        return jsonify({'success': False, 'message': 'Subscription not found'}), 404
-
-    data = request.get_json() or {}
-    package_id = data.get('package_id', sub.package_id)
-    pkg = db.session.get(SubscriptionPackage, package_id)
-    if not pkg or not pkg.is_active:
-        return jsonify({'success': False, 'message': 'Package not available'}), 400
-
-    duitku = _get_duitku_config()
-    if not duitku['merchant_code'] or not duitku['api_key']:
-        return jsonify({'success': False, 'message': 'Payment gateway not configured. Please contact admin.'}), 503
-
-    if pkg.price < 10000:
-        return jsonify({'success': False, 'message': 'Minimum pembayaran Rp 10.000. Silakan pilih paket lain.'}), 400
-
-    # Generate unique merchant order ID
-    merchant_order_id = f"REN{tenant_id}{sub_id}{int(datetime.now(timezone.utc).timestamp())}"
-    amount = pkg.price
-    item_details = [{
-        'name': f'{pkg.name} - {pkg.duration_days} days',
-        'price': amount,
-        'quantity': 1,
-    }]
-    # Build base URL from SystemConfig (super admin base_url) — not tenant request host
-    brand = _get_nms_branding()
-    base_url = brand['nms_url'].rstrip('/')
-
-    # paymentMethod required by V2 API — default to BC (BCA VA) if not specified
-    payment_method = data.get('payment_method', '') or 'BC'
-
-    params = {
-        'merchantCode': duitku['merchant_code'],
-        'paymentAmount': amount,
-        'paymentMethod': payment_method,
-        'merchantOrderId': merchant_order_id,
-        'productDetails': f'Renewal {pkg.name} - {pkg.duration_days} days for {tenant.name}',
-        'additionalParam': '',
-        'merchantUserInfo': tenant.contact_name or tenant.name,
-        'customerVaName': tenant.contact_name or tenant.name,
-        'email': tenant.contact_email or 'noreply@salfanet.id',
-        'phoneNumber': tenant.contact_phone or '',
-        'itemDetails': item_details,
-        'callbackUrl': duitku['callback_url'] or base_url + '/api/payment/duitku-callback',
-        'returnUrl': base_url + '/api/payment/return',
-        'expiryPeriod': 60,  # 60 minutes
-    }
-
-    # V2 signature: HMAC_SHA256(merchantCode + merchantOrderId + paymentAmount, apiKey)
-    import hmac as _hmac
-    import hashlib as _hashlib
-    string_to_sign = duitku['merchant_code'] + merchant_order_id + str(amount)
-    signature = _hmac.new(
-        duitku['api_key'].encode('utf-8'),
-        string_to_sign.encode('utf-8'),
-        _hashlib.sha256
-    ).hexdigest()
-    params['signature'] = signature
-
-    # Save transaction record
-    txn = PaymentTransaction(
-        tenant_id=tenant_id,
-        subscription_id=sub_id,
-        package_id=package_id,
-        merchant_order_id=merchant_order_id,
-        amount=amount,
-        status='pending',
-        signature=signature,
-    )
-    db.session.add(txn)
-    db.session.commit()
-
-    # Create or update invoice for this payment
-    inv = Invoice.query.filter_by(
-        subscription_id=sub_id, status='unpaid'
-    ).first()
-    if inv:
-        # Link existing auto invoice to this transaction
-        inv.payment_transaction_id = txn.id
-        inv.invoice_type = 'pg'
-        inv.description = f'Tenant-initiated renewal - {pkg.name} ({pkg.duration_days} days)'
-        db.session.commit()
-    else:
-        # Create new manual invoice
-        inv = _create_invoice(
-            tenant_id=tenant_id,
-            subscription_id=sub_id,
-            package_id=package_id,
-            amount=amount,
-            invoice_type='pg',
-            description=f'Tenant-initiated renewal - {pkg.name} ({pkg.duration_days} days)',
-        )
-        inv.payment_transaction_id = txn.id
-        db.session.commit()
-
-    # Call Duitku V2 API to create payment
-    import urllib.request as _urllib
-    import ssl as _ssl
-    try:
-        api_url = _get_duitku_api_url(duitku['environment'])
-        payload = json.dumps(params).encode('utf-8')
-        req = _urllib.Request(api_url, data=payload, headers={'Content-Type': 'application/json'})
-        ctx = _ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = _ssl.CERT_NONE
-        resp = _urllib.urlopen(req, timeout=30, context=ctx)
-        resp_data = json.loads(resp.read().decode('utf-8'))
-        logger.info(f"[DUITKU] Create payment response: {resp_data}")
-
-        if resp_data.get('statusCode') == '00' or resp_data.get('status') == '00':
-            payment_url = resp_data.get('paymentUrl', '')
-            txn.duitku_transaction_id = resp_data.get('transactionId', '')
-            txn.reference = resp_data.get('reference', '')
-            txn.payment_url = payment_url
-            db.session.commit()
-
-            # Send WA notification: invoice created
-            try:
-                _send_payment_wa_notification(tenant, pkg, 'invoice_created', merchant_order_id, amount)
-            except Exception as e:
-                logger.error(f"[DUITKU] WA invoice notification failed: {e}")
-
-            return jsonify({
-                'success': True,
-                'payment_url': payment_url,
-                'merchant_order_id': merchant_order_id,
-            })
-        else:
-            logger.error(f"[DUITKU] Create payment failed: {resp_data}")
-            return jsonify({'success': False, 'message': resp_data.get('statusMessage', 'Payment creation failed')}), 500
-    except Exception as e:
-        logger.error(f"[DUITKU] API call failed: {e}")
-        return jsonify({'success': False, 'message': f'Payment gateway error: {str(e)}'}), 500
-
-
-@app.route('/api/payment/duitku-callback', methods=['POST'])
-def duitku_callback():
-    """Duitku POP v2 callback/webhook endpoint.
-    Duitku sends form-encoded POST (not JSON).
-    Signature: HMAC_SHA256(merchantCode + amount + merchantOrderId, apiKey)"""
-    # Duitku sends form POST data, not JSON
-    data = request.form or {}
-    logger.info(f"[DUITKU] Callback received: {dict(data)}")
-
-    duitku = _get_duitku_config()
-    if not duitku['merchant_code'] or not duitku['api_key']:
-        logger.error("[DUITKU] Callback received but gateway not configured")
-        return 'ERROR: Gateway not configured', 500
-
-    # Validate signature: HMAC_SHA256(merchantCode + amount + merchantOrderId, apiKey)
-    import hmac as _hmac
-    import hashlib as _hashlib
-    received_signature = data.get('signature', '')
-    merchant_code = data.get('merchantCode', '')
-    merchant_order_id = data.get('merchantOrderId', '')
-    amount = str(data.get('amount', ''))
-    result_code = data.get('resultCode', '')
-
-    string_to_sign = merchant_code + amount + merchant_order_id
-    expected_signature = _hmac.new(
-        duitku['api_key'].encode('utf-8'),
-        string_to_sign.encode('utf-8'),
-        _hashlib.sha256
-    ).hexdigest()
-
-    if received_signature != expected_signature:
-        logger.error(f"[DUITKU] Signature mismatch: received={received_signature}, expected={expected_signature}")
-        return 'ERROR: Bad Signature', 400
-
-    # Find transaction
-    txn = PaymentTransaction.query.filter_by(merchant_order_id=merchant_order_id).first()
-    if not txn:
-        logger.error(f"[DUITKU] Transaction not found: {merchant_order_id}")
-        return 'ERROR: Transaction not found', 404
-
-    # Update transaction status
-    txn.reference = data.get('reference', txn.reference)
-    txn.payment_method = data.get('paymentCode', '')
-
-    if result_code == '00':
-        # Payment success
-        txn.status = 'paid'
-        txn.paid_at = datetime.now(timezone.utc)
-
-        # Extend subscription
-        sub = db.session.get(Subscription, txn.subscription_id)
-        pkg = db.session.get(SubscriptionPackage, txn.package_id)
-        if sub and pkg:
-            # If upgrading/downgrading, update package
-            if sub.package_id != txn.package_id:
-                sub.package_id = txn.package_id
-                logger.info(f"[DUITKU] Package changed to {pkg.name} for sub {sub.id}")
-
-            # Extend end_date: add duration_days from current end_date or now (whichever is later)
-            now = datetime.now(timezone.utc)
-            current_end = sub.end_date
-            if current_end and current_end.tzinfo is None:
-                current_end = current_end.replace(tzinfo=timezone.utc)
-            base_date = max(current_end, now) if current_end else now
-            new_end = base_date + timedelta(days=pkg.duration_days)
-            sub.end_date = new_end
-            sub.status = 'active'
-
-            # Reactivate tenant if was expired/suspended
-            tenant = db.session.get(Tenant, txn.tenant_id)
-            if tenant and tenant.status != 'active':
-                tenant.status = 'active'
-                logger.info(f"[DUITKU] Tenant {tenant.name} reactivated")
-
-            logger.info(f"[DUITKU] Subscription {sub.id} extended to {new_end} ({pkg.duration_days} days)")
-
-            # Mark invoice as paid
-            inv = Invoice.query.filter_by(payment_transaction_id=txn.id).first()
-            if inv:
-                inv.status = 'paid'
-                inv.paid_at = datetime.now(timezone.utc)
-                logger.info(f"[INVOICE] {inv.invoice_number} marked as paid")
-
-            # Send WA notification: payment success
-            try:
-                _send_payment_wa_notification(tenant, pkg, 'payment_success', merchant_order_id, txn.amount, new_end)
-            except Exception as e:
-                logger.error(f"[DUITKU] WA payment success notification failed: {e}")
-
-        db.session.commit()
-        logger.info(f"[DUITKU] Payment success for order {merchant_order_id}")
-        return 'OK', 200
-    else:
-        # Payment failed
-        txn.status = 'failed'
-        db.session.commit()
-        logger.info(f"[DUITKU] Payment failed for order {merchant_order_id}: resultCode={result_code}")
-        return 'OK', 200
-
-
-@app.route('/api/payment/return', methods=['GET'])
-def payment_return():
-    """Duitku return URL — redirect after payment completion.
-    Duitku redirects here with query params: merchantOrderId, resultCode, etc.
-    If callback hasn't processed yet, process subscription extension here as fallback."""
-    merchant_order_id = request.args.get('merchantOrderId', '')
-    result_code = request.args.get('resultCode', '')
-    # Determine status from result code
-    if result_code == '00':
-        status = 'success'
-    elif result_code in ('01', '02'):
-        status = 'pending'
-    else:
-        status = 'failed'
-
-    # Find transaction
-    txn = PaymentTransaction.query.filter_by(merchant_order_id=merchant_order_id).first()
-    if txn and status == 'success' and txn.status == 'pending':
-        # Callback hasn't been processed yet — extend subscription here as fallback
-        logger.info(f"[DUITKU] Return: processing success for order {merchant_order_id} (callback not received yet)")
-        txn.status = 'paid'
-        txn.paid_at = datetime.now(timezone.utc)
-        txn.reference = request.args.get('reference', txn.reference)
-
-        sub = db.session.get(Subscription, txn.subscription_id)
-        pkg = db.session.get(SubscriptionPackage, txn.package_id)
-        if sub and pkg:
-            if sub.package_id != txn.package_id:
-                sub.package_id = txn.package_id
-                logger.info(f"[DUITKU] Package changed to {pkg.name} for sub {sub.id}")
-
-            now = datetime.now(timezone.utc)
-            current_end = sub.end_date
-            if current_end and current_end.tzinfo is None:
-                current_end = current_end.replace(tzinfo=timezone.utc)
-            base_date = max(current_end, now) if current_end else now
-            new_end = base_date + timedelta(days=pkg.duration_days)
-            sub.end_date = new_end
-            sub.status = 'active'
-
-            tenant = db.session.get(Tenant, txn.tenant_id)
-            if tenant and tenant.status != 'active':
-                tenant.status = 'active'
-                logger.info(f"[DUITKU] Tenant {tenant.name} reactivated")
-
-            logger.info(f"[DUITKU] Subscription {sub.id} extended to {new_end} ({pkg.duration_days} days)")
-
-            # Mark invoice as paid
-            inv = Invoice.query.filter_by(payment_transaction_id=txn.id).first()
-            if inv:
-                inv.status = 'paid'
-                inv.paid_at = datetime.now(timezone.utc)
-                logger.info(f"[INVOICE] {inv.invoice_number} marked as paid")
-
-            try:
-                _send_payment_wa_notification(tenant, pkg, 'payment_success', merchant_order_id, txn.amount, new_end)
-            except Exception as e:
-                logger.error(f"[DUITKU] WA payment success notification failed: {e}")
-
-        db.session.commit()
-        logger.info(f"[DUITKU] Return: payment success processed for order {merchant_order_id}")
-
-    # Redirect to tenant's own URL with status info
-    if txn:
-        sub = db.session.get(Subscription, txn.subscription_id)
-        tenant = db.session.get(Tenant, txn.tenant_id) if txn.tenant_id else None
-        if sub and tenant:
-            ref = f"T{sub.id}{(sub.tenant_id or 0):04d}SUB"
-            # Registration payments (REG prefix) → redirect to payment result page
-            if merchant_order_id.startswith('REG'):
-                brand = _get_nms_branding()
-                base_url = brand['nms_url'].rstrip('/')
-                return redirect(f"{base_url}/spa/payment-result?status={status}&order={merchant_order_id}")
-            # Build tenant URL from subdomain
-            subdomain = tenant.subdomain.strip()
-            if '.' in subdomain:
-                tenant_url = f"https://{subdomain}"
-            else:
-                brand = _get_nms_branding()
-                base_domain = brand['nms_url'].replace('https://', '').replace('http://', '').rstrip('/')
-                # Strip first subdomain part since tenant.subdomain already includes -nms prefix
-                parts = base_domain.split('.')
-                if len(parts) > 2:
-                    base_domain = '.'.join(parts[1:])
-                tenant_url = f"https://{subdomain}.{base_domain}"
-            # Success → redirect to tenant dashboard with success banner, failed/pending → renewal page
-            if status == 'success':
-                return redirect(f"{tenant_url}/spa/?payment=success")
-            else:
-                return redirect(f"{tenant_url}/spa/renewal/{ref}?status=return&result={status}&order={merchant_order_id}")
-    # Fallback: redirect to base URL
-    return redirect(f"/spa/?payment={status}")
-
-
-@app.route('/api/payment/status/<merchant_order_id>', methods=['GET'])
-def check_payment_status(merchant_order_id):
-    """Check payment status for a transaction."""
-    txn = PaymentTransaction.query.filter_by(merchant_order_id=merchant_order_id).first()
-    if not txn:
-        return jsonify({'success': False, 'message': 'Transaction not found'}), 404
-    return jsonify({
-        'success': True,
-        'status': txn.status,
-        'amount': txn.amount,
-        'payment_method': txn.payment_method,
-        'created_at': utc_iso(txn.created_at),
-        'paid_at': utc_iso(txn.paid_at) if txn.paid_at else None,
-    })
-
-
-# ==================== PUBLIC API (no auth — landing page, registration) ====================
+# ==================== PUBLIC API (no auth — branding) ====================
 
 @app.route('/api/public/branding', methods=['GET'])
 def public_branding():
     """Get NMS branding — public, no auth. Used by login page."""
     brand = _get_nms_branding()
-    # Extract base domain for subdomain suffix (e.g. nms.salfa.my.id → salfa.my.id)
     base = brand['nms_url'].replace('https://', '').replace('http://', '').rstrip('/')
     parts = base.split('.')
     if len(parts) > 2:
-        root_domain = '.'.join(parts[1:])  # salfa.my.id
-        nms_prefix = parts[0]  # nms
+        root_domain = '.'.join(parts[1:])
+        nms_prefix = parts[0]
     else:
         root_domain = base
         nms_prefix = ''
     return jsonify({'nms_name': brand['nms_name'], 'base_domain': root_domain, 'nms_prefix': nms_prefix})
-
-
-@app.route('/api/public/tenant-check', methods=['GET'])
-def public_tenant_check():
-    """Check if the current subdomain maps to an existing active tenant. Public, no auth."""
-    hostname = request.host.split(':')[0].lower()
-    main_domains = {'nms.salfa.my.id', 'localhost', '127.0.0.1'}
-    if hostname in main_domains:
-        return jsonify({'valid': True, 'is_main': True})
-    tenant = Tenant.query.filter(
-        db.func.lower(Tenant.subdomain) == hostname.split('.')[0]
-    ).first()
-    if not tenant:
-        return jsonify({'valid': False, 'reason': 'not_found'}), 404
-    if tenant.status != 'active':
-        return jsonify({'valid': False, 'reason': tenant.status}), 403
-    return jsonify({'valid': True, 'is_main': False, 'tenant_name': tenant.name})
-
-
-@app.route('/api/public/forgot-password', methods=['POST'])
-def public_forgot_password():
-    """Tenant forgot password — generate new password and send via WA to tenant.
-    Public, no auth. Only works on tenant subdomains."""
-    hostname = request.host.split(':')[0].lower()
-    main_domains = {'nms.salfa.my.id', 'localhost', '127.0.0.1'}
-    if hostname in main_domains:
-        return jsonify({'success': False, 'message': 'Forgot password is only available on tenant subdomains.'}), 400
-
-    data = request.get_json() or {}
-    identifier = (data.get('identifier') or '').strip()
-    if not identifier:
-        return jsonify({'success': False, 'message': 'Please enter your username or email.'}), 400
-
-    # Find tenant by subdomain
-    subdomain_prefix = hostname.split('.')[0].lower()
-    tenant = Tenant.query.filter(db.func.lower(Tenant.subdomain) == subdomain_prefix).first()
-    if not tenant:
-        return jsonify({'success': False, 'message': 'Tenant not found on this subdomain.'}), 404
-
-    # Find user by username within this tenant
-    user = User.query.filter_by(tenant_id=tenant.id, username=identifier).first()
-    # Also try matching tenant contact_email
-    if not user and tenant.contact_email and tenant.contact_email.lower() == identifier.lower():
-        user = User.query.filter_by(tenant_id=tenant.id).first()
-
-    if not user:
-        return jsonify({'success': False, 'message': 'User not found. Please check your username.'}), 404
-
-    # Need a phone number to send the new password
-    target_phone = tenant.contact_phone or ''
-    if not target_phone:
-        return jsonify({'success': False, 'message': 'No WhatsApp number registered for this tenant. Please contact superadmin.'}), 400
-
-    # Generate new random password
-    import secrets as _secrets
-    import string as _string
-    new_password = ''.join(_secrets.choice(_string.ascii_letters + _string.digits) for _ in range(10))
-    user.set_password(new_password)
-    db.session.commit()
-
-    # Get WA gateway config — try tenant's own first, then global
-    wa_native_config = BotConfig.query.filter_by(bot_type='whatsapp_native', enabled=True, tenant_id=tenant.id).first()
-    if not wa_native_config:
-        wa_native_config = BotConfig.query.filter_by(bot_type='whatsapp_native', enabled=True, tenant_id=None).first()
-    wa_config = BotConfig.query.filter_by(bot_type='whatsapp', enabled=True, tenant_id=tenant.id).first()
-    if not wa_config:
-        wa_config = BotConfig.query.filter_by(bot_type='whatsapp', enabled=True, tenant_id=None).first()
-
-    sys_cfg = {c.key: c.value for c in SystemConfig.query.all()}
-    nms_name = sys_cfg.get('nms_name', 'Salfanet NMS')
-
-    # Build message with new password
-    msg = (
-        f"🔐 *Reset Password Berhasil*\n\n"
-        f"*Sistem:* {nms_name}\n"
-        f"*Tenant:* {tenant.name}\n"
-        f"*User:* {user.username}\n\n"
-        f"*Password Baru:* `{new_password}`\n\n"
-        f"Silakan login dengan password baru ini.\n"
-        f"Demikian keamanan, mohon segera mengganti password Anda."
-    )
-
-    sent = False
-
-    # Try WhatsApp Native gateway first
-    if wa_native_config:
-        try:
-            import urllib.request as _urllib
-            payload = json.dumps({'phone': target_phone, 'message': msg}).encode('utf-8')
-            # Use tenant-assigned port (3000 + tenant_id)
-            gw_port = 3000 + tenant.id
-            url = f'http://localhost:{gw_port}/send'
-            req = _urllib.Request(url, data=payload, headers={'Content-Type': 'application/json'})
-            resp = _urllib.urlopen(req, timeout=15)
-            if resp.status in (200, 201):
-                sent = True
-                logger.info(f"[ForgotPW] WA Native sent to {target_phone} for user {user.username}")
-        except Exception as e:
-            logger.error(f"[ForgotPW] WA Native send failed: {e}")
-
-    # Fallback to WhatsApp third-party gateway
-    if not sent and wa_config and wa_config.api_url:
-        try:
-            import urllib.request as _urllib
-            import urllib.parse as _parse
-            url = wa_config.api_url
-            phone = target_phone
-            if 'fonnte.com' in url:
-                payload = _parse.urlencode({'target': phone, 'message': msg, 'countryCode': '62'}).encode('utf-8')
-                headers = {'Authorization': wa_config.api_key or ''}
-            elif 'wablas.com' in url:
-                payload = json.dumps({'phone': phone, 'message': msg}).encode('utf-8')
-                headers = {'Content-Type': 'application/json'}
-                if wa_config.api_key:
-                    headers['Authorization'] = wa_config.api_key
-            else:
-                payload = json.dumps({'phone': phone, 'message': msg, 'target': phone, 'text': msg}).encode('utf-8')
-                headers = {'Content-Type': 'application/json'}
-                if wa_config.api_key:
-                    headers['Authorization'] = f'Bearer {wa_config.api_key}'
-            req = _urllib.Request(url, data=payload, headers=headers)
-            resp = _urllib.urlopen(req, timeout=15)
-            if resp.status in (200, 201):
-                sent = True
-                logger.info(f"[ForgotPW] WA sent to {target_phone} for user {user.username}")
-        except Exception as e:
-            logger.error(f"[ForgotPW] WA send failed: {e}")
-
-    if sent:
-        log_action('password_reset', 'auth', target=user.username, detail=f'Self-reset via forgot-password, WA sent to {target_phone}')
-        return jsonify({'success': True, 'message': 'Password baru telah dikirim via WhatsApp ke nomor terdaftar tenant Anda.'})
-    else:
-        # Revert password if WA failed to send
-        return jsonify({'success': False, 'message': 'Gagal mengirim WhatsApp. Pastikan WA gateway aktif atau hubungi superadmin.'}), 500
-
-
-@app.route('/api/public/packages', methods=['GET'])
-def public_packages():
-    """List active subscription packages — public, no auth."""
-    packages = SubscriptionPackage.query.filter_by(is_active=True).order_by(SubscriptionPackage.price).all()
-    return jsonify([{
-        'id': p.id, 'name': p.name, 'description': p.description,
-        'price': p.price, 'max_olts': p.max_olts, 'duration_days': p.duration_days,
-    } for p in packages])
-
-
-@app.route('/api/public/register', methods=['POST'])
-def public_register():
-    """Register a new tenant — public, no auth.
-    Creates tenant (status=pending), admin user, pending subscription.
-    Returns registration info for payment step."""
-    data = request.get_json() or {}
-    # Validate required fields
-    required = ['name', 'subdomain', 'contact_name', 'contact_phone', 'admin_username', 'admin_password', 'package_id']
-    for field in required:
-        if not data.get(field):
-            return jsonify({'success': False, 'message': f'Field "{field}" is required'}), 400
-
-    subdomain = data['subdomain'].lower().strip()
-    if not subdomain.replace('-', '').isalnum():
-        return jsonify({'success': False, 'message': 'Subdomain must be alphanumeric (dashes allowed)'}), 400
-    # Append -nms prefix to match subdomain pattern: {input}-nms.salfa.my.id
-    brand = _get_nms_branding()
-    base_host = brand['nms_url'].replace('https://', '').replace('http://', '').rstrip('/')
-    base_parts = base_host.split('.')
-    nms_prefix = base_parts[0] if len(base_parts) > 2 else 'nms'
-    full_subdomain = f"{subdomain}-{nms_prefix}"
-    if Tenant.query.filter_by(subdomain=full_subdomain).first():
-        return jsonify({'success': False, 'message': 'Subdomain already taken'}), 400
-    if User.query.filter_by(username=data['admin_username']).first():
-        return jsonify({'success': False, 'message': 'Username already taken'}), 400
-    if len(data['admin_password']) < 6:
-        return jsonify({'success': False, 'message': 'Password must be at least 6 characters'}), 400
-
-    pkg = db.session.get(SubscriptionPackage, data['package_id'])
-    if not pkg or not pkg.is_active:
-        return jsonify({'success': False, 'message': 'Invalid package selected'}), 400
-
-    # Create tenant — immediately active with trial period
-    tenant = Tenant(
-        name=data['name'],
-        subdomain=full_subdomain,
-        contact_name=data['contact_name'],
-        contact_email=data.get('contact_email', ''),
-        contact_phone=data['contact_phone'],
-        status='active',
-    )
-    db.session.add(tenant)
-    db.session.commit()
-
-    # Create admin user for this tenant
-    admin_user = User(
-        full_name=data.get('admin_name', data['name'] + ' Admin'),
-        username=data['admin_username'],
-        role_id=Role.query.filter_by(name='Full Access').first().id if Role.query.filter_by(name='Full Access').first() else None,
-        tenant_id=tenant.id,
-        is_super_admin=False,
-    )
-    admin_user.set_password(data['admin_password'])
-    db.session.add(admin_user)
-
-    # Create active trial subscription — duration matches the selected package
-    trial_days = pkg.duration_days or 30
-    now_utc = datetime.now(timezone.utc)
-    sub = Subscription(
-        tenant_id=tenant.id,
-        package_id=pkg.id,
-        start_date=now_utc,
-        end_date=now_utc + timedelta(days=trial_days),
-        status='active',
-    )
-    db.session.add(sub)
-    db.session.commit()
-
-    # Seed default alert rules for this tenant
-    default_rule = AlertRule(
-        tenant_id=tenant.id,
-        name='Default ONU Monitor',
-        enabled=True,
-        check_offline=True, check_dyinggasp=True, check_los=True, check_rx_power=True,
-        rx_threshold=-27.0, rx_change_threshold=3.0,
-        notify_bell=True, notify_telegram=False, notify_whatsapp=False,
-        target_roles='',
-    )
-    db.session.add(default_rule)
-
-    # Seed default custom columns for this tenant
-    default_columns = [
-        ('OLT', 'olt_name', True, False, 0),
-        ('Name', 'name', True, True, 1),
-        ('Status', 'status', True, True, 2),
-        ('RX OLT', 'rx_power', True, False, 3),
-        ('RX ONU', 'onu_rx_power', True, False, 4),
-        ('PPPoE', 'pppoe', True, False, 5),
-        ('Serial Number', 'serial_number', True, False, 6),
-        ('Type', 'actual_type', True, False, 7),
-        ('ONU ID', 'onu_id_str', True, True, 8),
-    ]
-    for col_name, col_key, vis_d, vis_m, order in default_columns:
-        db.session.add(ONUCustomColumn(
-            tenant_id=tenant.id,
-            column_name=col_name, column_key=col_key,
-            visible_desktop=vis_d, visible_mobile=vis_m,
-            sort_order=order,
-        ))
-    db.session.commit()
-
-    # Create trial invoice (no payment needed — marked paid immediately)
-    inv = _create_invoice(
-        tenant_id=tenant.id,
-        subscription_id=sub.id,
-        package_id=pkg.id,
-        amount=0,
-        invoice_type='trial',
-        description=f'Trial {trial_days} hari - {pkg.name} (gratis)',
-    )
-    # Mark trial invoice as paid immediately
-    inv.status = 'paid'
-    inv.paid_at = datetime.now(timezone.utc)
-    db.session.commit()
-
-    log_action('tenant_register', 'public', target=tenant.name, detail=f'Self-registration (trial): {tenant.name} ({full_subdomain}), pkg={pkg.name}')
-
-    # Auto-add Cloudflare Tunnel public hostname for this tenant's subdomain
-    cf_success, cf_message = _add_cloudflare_tunnel_hostname(full_subdomain, base_domain='.'.join(base_parts[1:]) if len(base_parts) > 2 else base_host)
-    cf_status = 'ok' if cf_success else 'skipped'
-    logger.info(f"[REGISTER] Cloudflare tunnel setup for {full_subdomain}: {cf_status} — {cf_message}")
-
-    # Send WA notification to tenant with registration details
-    wa_sent = _send_registration_wa_notification(
-        tenant, pkg, sub, data['admin_username'], data['admin_password'], cf_success
-    )
-    logger.info(f"[REGISTER] WA notification for {tenant.name}: {'sent' if wa_sent else 'skipped/failed'}")
-
-    trial_end = sub.end_date
-    return jsonify({
-        'success': True,
-        'tenant_id': tenant.id,
-        'subscription_id': sub.id,
-        'invoice_id': inv.id,
-        'trial': True,
-        'trial_end': trial_end.strftime('%Y-%m-%d') if trial_end else None,
-        'subdomain': full_subdomain,
-        'cf_status': cf_status,
-        'cf_message': cf_message,
-        'package': {
-            'id': pkg.id, 'name': pkg.name, 'price': pkg.price,
-            'duration_days': pkg.duration_days, 'max_olts': pkg.max_olts,
-        },
-    })
-
-
-@app.route('/api/public/register/pay', methods=['POST'])
-def public_register_pay():
-    """Create Duitku payment for new registration — public, no auth.
-    Body: { tenant_id, subscription_id, package_id, payment_method }"""
-    data = request.get_json() or {}
-    tenant = db.session.get(Tenant, data.get('tenant_id'))
-    if not tenant or tenant.status != 'pending':
-        return jsonify({'success': False, 'message': 'Invalid registration'}), 400
-
-    sub = db.session.get(Subscription, data.get('subscription_id'))
-    if not sub or sub.tenant_id != tenant.id or sub.status != 'pending':
-        return jsonify({'success': False, 'message': 'Invalid subscription'}), 400
-
-    pkg = db.session.get(SubscriptionPackage, data.get('package_id'))
-    if not pkg or not pkg.is_active:
-        return jsonify({'success': False, 'message': 'Invalid package'}), 400
-
-    duitku = _get_duitku_config()
-    if not duitku['merchant_code'] or not duitku['api_key']:
-        return jsonify({'success': False, 'message': 'Payment gateway not configured. Please contact admin.'}), 503
-
-    if pkg.price < 10000:
-        return jsonify({'success': False, 'message': 'Minimum pembayaran Rp 10.000. Silakan pilih paket lain.'}), 400
-
-    # Generate unique merchant order ID (REG prefix for registration)
-    merchant_order_id = f"REG{tenant.id}{sub.id}{int(datetime.now(timezone.utc).timestamp())}"
-    amount = pkg.price
-    item_details = [{
-        'name': f'{pkg.name} - {pkg.duration_days} days (Registration)',
-        'price': amount,
-        'quantity': 1,
-    }]
-    brand = _get_nms_branding()
-    base_url = brand['nms_url'].rstrip('/')
-
-    payment_method = data.get('payment_method', '') or 'BC'
-
-    params = {
-        'merchantCode': duitku['merchant_code'],
-        'paymentAmount': amount,
-        'paymentMethod': payment_method,
-        'merchantOrderId': merchant_order_id,
-        'productDetails': f'Registration {pkg.name} - {pkg.duration_days} days for {tenant.name}',
-        'additionalParam': '',
-        'merchantUserInfo': tenant.contact_name or tenant.name,
-        'customerVaName': tenant.contact_name or tenant.name,
-        'email': tenant.contact_email or 'noreply@salfanet.id',
-        'phoneNumber': tenant.contact_phone or '',
-        'itemDetails': item_details,
-        'callbackUrl': duitku['callback_url'] or base_url + '/api/payment/duitku-callback',
-        'returnUrl': base_url + '/api/payment/return',
-        'expiryPeriod': 60,
-    }
-
-    import hmac as _hmac
-    import hashlib as _hashlib
-    string_to_sign = duitku['merchant_code'] + merchant_order_id + str(amount)
-    signature = _hmac.new(
-        duitku['api_key'].encode('utf-8'),
-        string_to_sign.encode('utf-8'),
-        _hashlib.sha256
-    ).hexdigest()
-    params['signature'] = signature
-
-    # Save transaction record
-    txn = PaymentTransaction(
-        tenant_id=tenant.id,
-        subscription_id=sub.id,
-        package_id=pkg.id,
-        merchant_order_id=merchant_order_id,
-        amount=amount,
-        status='pending',
-        signature=signature,
-    )
-    db.session.add(txn)
-    db.session.commit()
-
-    # Link invoice to this transaction
-    inv = Invoice.query.filter_by(tenant_id=tenant.id, status='unpaid').first()
-    if inv:
-        inv.payment_transaction_id = txn.id
-        db.session.commit()
-
-    # Call Duitku V2 API
-    import urllib.request as _urllib
-    import ssl as _ssl
-    try:
-        api_url = _get_duitku_api_url(duitku['environment'])
-        payload = json.dumps(params).encode('utf-8')
-        logger.info(f"[DUITKU] Registration payment request URL: {api_url}")
-        logger.info(f"[DUITKU] Registration payment params: merchantCode={params.get('merchantCode')}, orderId={params.get('merchantOrderId')}, amount={params.get('paymentAmount')}, method={params.get('paymentMethod')}")
-        req = _urllib.Request(api_url, data=payload, headers={'Content-Type': 'application/json'})
-        ctx = _ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = _ssl.CERT_NONE
-        try:
-            resp = _urllib.urlopen(req, timeout=30, context=ctx)
-            resp_data = json.loads(resp.read().decode('utf-8'))
-        except _urllib.HTTPError as he:
-            error_body = he.read().decode('utf-8') if he.fp else ''
-            logger.error(f"[DUITKU] Registration payment HTTP {he.code}: {error_body}")
-            logger.error(f"[DUITKU] Request params sent: {json.dumps({k: v for k, v in params.items() if k != 'signature'})}")
-            return jsonify({'success': False, 'message': f'Payment gateway returned HTTP {he.code}: {error_body[:200]}'}), 500
-        logger.info(f"[DUITKU] Registration payment response: {resp_data}")
-
-        if resp_data.get('statusCode') == '00' or resp_data.get('status') == '00':
-            payment_url = resp_data.get('paymentUrl', '')
-            txn.duitku_transaction_id = resp_data.get('transactionId', '')
-            txn.reference = resp_data.get('reference', '')
-            txn.payment_url = payment_url
-            db.session.commit()
-            return jsonify({
-                'success': True,
-                'payment_url': payment_url,
-                'merchant_order_id': merchant_order_id,
-            })
-        else:
-            logger.error(f"[DUITKU] Registration payment failed: {resp_data}")
-            return jsonify({'success': False, 'message': resp_data.get('statusMessage', 'Payment creation failed')}), 500
-    except Exception as e:
-        logger.error(f"[DUITKU] Registration payment API call failed: {e}")
-        return jsonify({'success': False, 'message': f'Payment gateway error: {str(e)}'}), 500
-
-
-@app.route('/api/public/registration-status/<merchant_order_id>', methods=['GET'])
-def public_registration_status(merchant_order_id):
-    """Check registration payment status — public, no auth."""
-    txn = PaymentTransaction.query.filter_by(merchant_order_id=merchant_order_id).first()
-    if not txn:
-        return jsonify({'success': False, 'message': 'Transaction not found'}), 404
-    tenant = db.session.get(Tenant, txn.tenant_id)
-    return jsonify({
-        'success': True,
-        'status': txn.status,
-        'tenant_status': tenant.status if tenant else 'unknown',
-        'tenant_name': tenant.name if tenant else '',
-        'subdomain': tenant.subdomain if tenant else '',
-        'amount': txn.amount,
-    })
 
 
 # WA notification functions moved to services_wa.py
@@ -6389,15 +5563,11 @@ def public_registration_status(merchant_order_id):
 @app.route('/api/alert-rules/recheck', methods=['POST'])
 @login_required
 def recheck_alerts():
-    """Manually trigger alert re-check now (only for current tenant)."""
+    """Manually trigger alert re-check now."""
     from alerts import _check_onus_for_tenant
     try:
-        tid = get_tenant_id()
-        _check_onus_for_tenant(tid, force_send=True)
-        if tid is not None:
-            unread = Notification.query.filter_by(is_read=False, tenant_id=tid).count()
-        else:
-            unread = Notification.query.filter_by(is_read=False, tenant_id=None).count()
+        _check_onus_for_tenant(force_send=True)
+        unread = Notification.query.filter_by(is_read=False).count()
         return jsonify({'success': True, 'message': f'Re-check complete. {unread} unread notifications. Alerts sent to enabled channels.'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
@@ -6407,13 +5577,7 @@ def recheck_alerts():
 @login_required
 def test_telegram():
     """Send test message via Telegram."""
-    tid = get_tenant_id()
-    q = BotConfig.query.filter_by(bot_type='telegram')
-    if tid is not None:
-        q = q.filter_by(tenant_id=tid)
-    else:
-        q = q.filter_by(tenant_id=None)
-    config = q.first()
+    config = BotConfig.query.filter_by(bot_type='telegram').first()
     if not config or not config.enabled:
         return jsonify({'success': False, 'message': 'Telegram not configured or disabled'})
     if not config.bot_token or not config.chat_id:
@@ -6439,13 +5603,7 @@ def test_telegram():
 @login_required
 def test_whatsapp():
     """Send test message via WhatsApp gateway."""
-    tid = get_tenant_id()
-    q = BotConfig.query.filter_by(bot_type='whatsapp')
-    if tid is not None:
-        q = q.filter_by(tenant_id=tid)
-    else:
-        q = q.filter_by(tenant_id=None)
-    config = q.first()
+    config = BotConfig.query.filter_by(bot_type='whatsapp').first()
     if not config or not config.enabled:
         return jsonify({'success': False, 'message': 'WhatsApp not configured or disabled'})
     if not config.api_url or not config.phone_number:
@@ -6500,17 +5658,16 @@ def test_whatsapp():
 
 # ==================== WHATSAPP NATIVE GATEWAY ====================
 
-def _wa_gateway_url(tid):
-    """Get the gateway URL for the current tenant based on assigned port."""
-    return f'http://localhost:{_wa_gateway_port(tid)}'
+def _wa_gateway_url():
+    """Get the gateway URL for the WA gateway."""
+    return f'http://localhost:{_wa_gateway_port()}'
 
 
 @app.route('/api/bot-config/whatsapp-native/status', methods=['GET'])
 @login_required
 def wa_native_status():
     """Proxy status check to native WA gateway."""
-    tid = get_tenant_id()
-    gw_url = _wa_gateway_url(tid)
+    gw_url = _wa_gateway_url()
     try:
         import urllib.request as _urllib
         url = gw_url.rstrip('/') + '/status'
@@ -6525,8 +5682,7 @@ def wa_native_status():
 @login_required
 def wa_native_qr():
     """Proxy QR code from native WA gateway."""
-    tid = get_tenant_id()
-    gw_url = _wa_gateway_url(tid)
+    gw_url = _wa_gateway_url()
     try:
         import urllib.request as _urllib
         url = gw_url.rstrip('/') + '/qr'
@@ -6541,14 +5697,8 @@ def wa_native_qr():
 @login_required
 def wa_native_test():
     """Send test message via native WA gateway."""
-    tid = get_tenant_id()
-    gw_url = _wa_gateway_url(tid)
-    q = BotConfig.query.filter_by(bot_type='whatsapp_native')
-    if tid is not None:
-        q = q.filter_by(tenant_id=tid)
-    else:
-        q = q.filter_by(tenant_id=None)
-    config = q.first()
+    gw_url = _wa_gateway_url()
+    config = BotConfig.query.filter_by(bot_type='whatsapp_native').first()
     if not config or not config.enabled:
         return jsonify({'success': False, 'message': 'WhatsApp Native not configured or disabled'})
     if not config.phone_number:
@@ -6577,8 +5727,7 @@ def wa_native_test():
 @login_required
 def wa_native_logout():
     """Logout and clear WA session."""
-    tid = get_tenant_id()
-    gw_url = _wa_gateway_url(tid)
+    gw_url = _wa_gateway_url()
     try:
         import urllib.request as _urllib
         url = gw_url.rstrip('/') + '/logout'
@@ -6593,8 +5742,7 @@ def wa_native_logout():
 @login_required
 def wa_native_reconnect():
     """Force reconnect WA gateway."""
-    tid = get_tenant_id()
-    gw_url = _wa_gateway_url(tid)
+    gw_url = _wa_gateway_url()
     try:
         import urllib.request as _urllib
         url = gw_url.rstrip('/') + '/reconnect'
@@ -6605,33 +5753,31 @@ def wa_native_reconnect():
         return jsonify({'success': False, 'message': str(e)})
 
 
-def _wa_gateway_port(tenant_id):
-    """Assign a unique port per tenant. Super admin (None) = 3000, tenant N = 3000 + N."""
-    return 3000 + (tenant_id if tenant_id else 0)
+def _wa_gateway_port():
+    """WA gateway port — single instance on 3000."""
+    return 3000
 
 
 PM2_BIN = '/usr/bin/pm2'
 
 
-def _wa_gateway_name(tenant_id):
-    """PM2 process name for the tenant's WA gateway."""
-    return f'wa-gateway-{tenant_id if tenant_id else "admin"}'
+def _wa_gateway_name():
+    """PM2 process name for the WA gateway."""
+    return 'wa-gateway-admin'
 
 
-def _wa_auth_dir(tenant_id):
-    """Auth state directory for the tenant's WA gateway."""
-    identifier = tenant_id if tenant_id else 'admin'
-    return f'/opt/fibernms/wa_gateway/auth_state_{identifier}'
+def _wa_auth_dir():
+    """Auth state directory for the WA gateway."""
+    return '/opt/fibernms/wa_gateway/auth_state_admin'
 
 
 @app.route('/api/bot-config/whatsapp-native/gateway', methods=['GET'])
 @login_required
 def wa_native_gateway_info():
-    """Get gateway port, PM2 status, and assigned URL for current tenant."""
-    tid = get_tenant_id()
-    port = _wa_gateway_port(tid)
-    name = _wa_gateway_name(tid)
-    auth_dir = _wa_auth_dir(tid)
+    """Get gateway port, PM2 status, and assigned URL."""
+    port = _wa_gateway_port()
+    name = _wa_gateway_name()
+    auth_dir = _wa_auth_dir()
     try:
         import subprocess
         result = subprocess.run([PM2_BIN, 'jlist'], capture_output=True, text=True, timeout=5)
@@ -6655,11 +5801,10 @@ def wa_native_gateway_info():
 @app.route('/api/bot-config/whatsapp-native/start', methods=['POST'])
 @login_required
 def wa_native_start():
-    """Start WA gateway instance for current tenant via PM2."""
-    tid = get_tenant_id()
-    port = _wa_gateway_port(tid)
-    name = _wa_gateway_name(tid)
-    auth_dir = _wa_auth_dir(tid)
+    """Start WA gateway instance via PM2."""
+    port = _wa_gateway_port()
+    name = _wa_gateway_name()
+    auth_dir = _wa_auth_dir()
     try:
         import subprocess
         import os
@@ -6694,9 +5839,8 @@ def wa_native_start():
 @app.route('/api/bot-config/whatsapp-native/stop', methods=['POST'])
 @login_required
 def wa_native_stop():
-    """Stop WA gateway instance for current tenant via PM2."""
-    tid = get_tenant_id()
-    name = _wa_gateway_name(tid)
+    """Stop WA gateway instance via PM2."""
+    name = _wa_gateway_name()
     try:
         import subprocess
         result = subprocess.run([PM2_BIN, 'stop', name], capture_output=True, text=True, timeout=10)
@@ -6742,14 +5886,6 @@ def seed_initial_data():
         if admin and not admin.is_super_admin:
             admin.is_super_admin = True
             db.session.commit()
-        # Always ensure subscription packages exist
-        if not SubscriptionPackage.query.first():
-            pkg1 = SubscriptionPackage(name='Starter', description='1 OLT, 30 days', price=150000, max_olts=1, duration_days=30)
-            pkg2 = SubscriptionPackage(name='Business', description='3 OLTs, 30 days', price=350000, max_olts=3, duration_days=30)
-            pkg3 = SubscriptionPackage(name='Enterprise', description='10 OLTs, 30 days', price=1000000, max_olts=10, duration_days=30)
-            db.session.add_all([pkg1, pkg2, pkg3])
-            db.session.commit()
-            logger.info("Default subscription packages seeded: Starter, Business, Enterprise")
         # For existing DBs: ensure Technician role exists
         if not Role.query.filter_by(name='Technician').first():
             tech_role = Role(name='Technician', description='Field technician — view ONUs, receive alerts', is_system=True,
@@ -6770,16 +5906,10 @@ def seed_initial_data():
     db.session.add_all([admin_role, viewer_role, limited_role, technician_role])
     db.session.flush()
 
-    # Create admin user (super admin — no tenant, sees all data)
+    # Create admin user (super admin)
     admin = User(full_name='Administrator', username='admin', role_id=admin_role.id, is_super_admin=True)
     admin.set_password('admin123')
     db.session.add(admin)
-
-    # Default subscription packages
-    pkg1 = SubscriptionPackage(name='Starter', description='1 OLT, 30 days', price=150000, max_olts=1, duration_days=30)
-    pkg2 = SubscriptionPackage(name='Business', description='3 OLTs, 30 days', price=350000, max_olts=3, duration_days=30)
-    pkg3 = SubscriptionPackage(name='Enterprise', description='10 OLTs, 30 days', price=1000000, max_olts=10, duration_days=30)
-    db.session.add_all([pkg1, pkg2, pkg3])
 
     # Default columns
     defaults = [
@@ -6798,19 +5928,15 @@ def seed_initial_data():
 
 
 def migrate_schema():
-    """Add missing columns to existing tables without losing data."""
-    import sqlite3
-    db_path = os.path.join(os.path.dirname(__file__), 'instance', 'nms.db')
-    if not os.path.exists(db_path):
-        return
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
+    """Add missing columns to existing tables without losing data.
+    Works with both SQLite and PostgreSQL using SQLAlchemy inspection."""
+    from sqlalchemy import inspect as sqla_inspect, text as sqla_text
+    inspector = sqla_inspect(db.engine)
 
     # Get existing columns for each table
     def table_cols(table):
         try:
-            c.execute(f"PRAGMA table_info({table})")
-            return {row[1] for row in c.fetchall()}
+            return {col['name'] for col in inspector.get_columns(table)}
         except:
             return set()
 
@@ -6820,7 +5946,9 @@ def migrate_schema():
             if default is not None:
                 stmt += f" DEFAULT {default}"
             try:
-                c.execute(stmt)
+                with db.engine.connect() as conn:
+                    conn.execute(sqla_text(stmt))
+                    conn.commit()
                 logger.info(f"  Migration: added {table}.{col}")
             except Exception as e:
                 logger.debug(f"  Migration skip {table}.{col}: {e}")
@@ -6843,9 +5971,11 @@ def migrate_schema():
 
     # Fix: update onu_custom_columns to use onu_rx_power instead of tx_power for RX ONU
     try:
-        c.execute("UPDATE onu_custom_columns SET column_key='onu_rx_power' WHERE column_key='tx_power' AND column_name='RX ONU'")
-        if c.rowcount > 0:
-            logger.info(f"  Migration: updated {c.rowcount} onu_custom_columns from tx_power to onu_rx_power")
+        with db.engine.connect() as conn:
+            result = conn.execute(sqla_text("UPDATE onu_custom_columns SET column_key='onu_rx_power' WHERE column_key='tx_power' AND column_name='RX ONU'"))
+            conn.commit()
+            if result.rowcount > 0:
+                logger.info(f"  Migration: updated {result.rowcount} onu_custom_columns from tx_power to onu_rx_power")
     except Exception as e:
         logger.debug(f"  Migration skip onu_custom_columns update: {e}")
 
@@ -6869,64 +5999,175 @@ def migrate_schema():
 
     # User table - add sidebar_name
     add_col('users', 'sidebar_name', 'VARCHAR(100)', "'FiberNMS'")
-    add_col('users', 'tenant_id', 'INTEGER', None)
     add_col('users', 'is_super_admin', 'BOOLEAN', '0')
-
-    # Tenant ID columns for multi-tenant tables
-    add_col('olts', 'tenant_id', 'INTEGER', None)
-    add_col('templates', 'tenant_id', 'INTEGER', None)
-    add_col('tr069_profiles', 'tenant_id', 'INTEGER', None)
-    add_col('onu_custom_columns', 'tenant_id', 'INTEGER', None)
-    add_col('notifications', 'tenant_id', 'INTEGER', None)
-    add_col('alert_rules', 'tenant_id', 'INTEGER', None)
-    add_col('bot_config', 'tenant_id', 'INTEGER', None)
-    add_col('ftth_otb', 'tenant_id', 'INTEGER', None)
-    add_col('action_logs', 'tenant_id', 'INTEGER', None)
 
     # Migrate existing admin user to super_admin
     try:
-        c.execute("UPDATE users SET is_super_admin=1 WHERE username='admin' AND (is_super_admin IS NULL OR is_super_admin=0)")
-        if c.rowcount > 0:
-            logger.info(f"  Migration: set admin user as super_admin")
+        with db.engine.connect() as conn:
+            result = conn.execute(sqla_text("UPDATE users SET is_super_admin=true WHERE username='admin' AND (is_super_admin IS NULL OR is_super_admin=false)"))
+            conn.commit()
+            if result.rowcount > 0:
+                logger.info(f"  Migration: set admin user as super_admin")
     except Exception as e:
         logger.debug(f"  Migration skip admin super_admin: {e}")
-
-    conn.commit()
-    conn.close()
 
 
 # ==================== FTTH INFRASTRUCTURE APIs ====================
 
+@app.route('/api/ftth/stats', methods=['GET'])
+@login_required
+def ftth_stats():
+    """FTTH Overview stats: aggregate ONU status counts, per-OLT/PON breakdown, infrastructure summary, orphans."""
+    olts = OLT.query.all()
+    onu_q = ONU.query
+
+    # Aggregate ONU status counts
+    onus = onu_q.all()
+    status_counts = {'online': 0, 'offline': 0, 'los': 0, 'dyinggasp': 0, 'unregister': 0}
+    for o in onus:
+        s = (o.status or 'offline').lower()
+        if s in status_counts:
+            status_counts[s] += 1
+        else:
+            status_counts['offline'] += 1
+    total_onu = len(onus)
+
+    # Per-OLT breakdown
+    per_olt = []
+    for olt in olts:
+        olt_onus = [o for o in onus if o.olt_id == olt.id]
+        olt_counts = {'online': 0, 'offline': 0, 'los': 0, 'dyinggasp': 0, 'unregister': 0}
+        for o in olt_onus:
+            s = (o.status or 'offline').lower()
+            if s in olt_counts:
+                olt_counts[s] += 1
+            else:
+                olt_counts['offline'] += 1
+        per_olt.append({
+            'olt_id': olt.id, 'olt_name': olt.name,
+            'total': len(olt_onus), **olt_counts,
+            'is_online': olt.is_online,
+        })
+
+    # Per-PON port breakdown (from OLTPort table)
+    pon_ports_db = OLTPort.query.all()
+    pon_olt_map = {p.id: p.olt_id for p in pon_ports_db}
+    per_pon = []
+    for pp in pon_ports_db:
+        parts = (pp.port_name or '').replace('gpon-olt_', '').replace('gpon-onu_', '').split('/')
+        if len(parts) >= 3:
+            try:
+                frame, slot, port = int(parts[0]), int(parts[1]), int(parts[2])
+                pon_onus = [o for o in onus if o.olt_id == pp.olt_id and o.frame == frame and o.slot == slot and o.port == port]
+                online_cnt = sum(1 for o in pon_onus if (o.status or '').lower() == 'online')
+                per_pon.append({
+                    'port_id': pp.id, 'port_name': pp.port_name or f'{frame}/{slot}/{port}',
+                    'olt_id': pp.olt_id, 'olt_name': next((olt.name for olt in olts if olt.id == pp.olt_id), ''),
+                    'total': len(pon_onus), 'online': online_cnt,
+                    'offline': len(pon_onus) - online_cnt,
+                    'admin_status': pp.admin_status,
+                })
+            except (ValueError, IndexError):
+                continue
+
+    # Infrastructure summary
+    otbs = FTTHOTB.query.all()
+    otb_ids = [o.id for o in otbs]
+    odcs = FTTHODC.query.all()
+    odc_ids = [o.id for o in odcs]
+    odps = FTTHODP.query.all()
+    odp_ids = [o.id for o in odps]
+    odp_ports_q = FTTHODPPort.query
+
+    total_otb = len(otbs)
+    total_odc = len(odcs)
+    total_odp = len(odps)
+    all_odp_ports = odp_ports_q.all()
+    total_odp_ports = len(all_odp_ports)
+    used_odp_ports = sum(1 for p in all_odp_ports if p.status == 'used')
+
+    # Orphan detection
+    orphan_onus = sum(1 for o in onus if not any(p.onu_id == o.id for p in all_odp_ports))
+    orphan_odps = sum(1 for odp in odps if not odp.odc_id)
+    orphan_odcs = sum(1 for odc in odcs if not odc.otb_id)
+    orphan_otbs = sum(1 for otb in otbs if not otb.olt_id)
+    # Data completeness checks
+    onus_without_technician = sum(1 for o in onus if not o.technician_id)
+    onus_without_coordinates = sum(1 for o in onus if o.latitude is None or o.longitude is None)
+    total_orphans = orphan_onus + orphan_odps + orphan_odcs + orphan_otbs
+
+    return jsonify({
+        'success': True,
+        'onu_stats': {
+            'total': total_onu,
+            **status_counts,
+        },
+        'per_olt': per_olt,
+        'per_pon': per_pon,
+        'infrastructure': {
+            'total_otb': total_otb,
+            'total_odc': total_odc,
+            'total_odp': total_odp,
+            'total_odp_ports': total_odp_ports,
+            'used_odp_ports': used_odp_ports,
+            'available_odp_ports': total_odp_ports - used_odp_ports,
+        },
+        'orphans': {
+            'total': total_orphans,
+            'onus_without_odp': orphan_onus,
+            'odps_without_odc': orphan_odps,
+            'odcs_without_otb': orphan_odcs,
+            'otbs_without_olt': orphan_otbs,
+            'onus_without_technician': onus_without_technician,
+            'onus_without_coordinates': onus_without_coordinates,
+        },
+    })
+
+
 def _otb_to_dict(o):
+    odc_count = FTTHODC.query.filter_by(otb_id=o.id).count()
+    total_cores = o.total_cores or 0
     return {
         'id': o.id, 'name': o.name, 'type': o.type, 'model': o.model,
         'location': o.location, 'latitude': o.latitude, 'longitude': o.longitude,
         'olt_id': o.olt_id, 'olt_name': o.olt.name if o.olt else '',
-        'pon_port': o.pon_port, 'total_cores': o.total_cores,
+        'pon_port': o.pon_port, 'total_cores': total_cores,
         'description': o.description or '',
-        'odc_count': FTTHODC.query.filter_by(otb_id=o.id).count(),
+        'odc_count': odc_count,
+        'used_cores': odc_count,
+        'available_cores': max(0, total_cores - odc_count),
+        'is_active': odc_count > 0,
     }
 
 def _odc_to_dict(o):
+    odp_count = FTTHODP.query.filter_by(odc_id=o.id).count()
+    total_cores = o.total_cores or 0
     return {
         'id': o.id, 'name': o.name, 'model': o.model,
         'location': o.location, 'latitude': o.latitude, 'longitude': o.longitude,
         'otb_id': o.otb_id, 'otb_name': o.otb.name if o.otb else '',
         'otb_core_number': o.otb_core_number,
-        'total_cores': o.total_cores, 'splitter_model': o.splitter_model,
+        'total_cores': total_cores, 'splitter_model': o.splitter_model,
         'description': o.description or '',
-        'odp_count': FTTHODP.query.filter_by(odc_id=o.id).count(),
+        'odp_count': odp_count,
+        'used_cores': odp_count,
+        'available_cores': max(0, total_cores - odp_count),
+        'is_active': odp_count > 0,
     }
 
 def _odp_to_dict(o):
+    used_ports_count = FTTHODPPort.query.filter_by(odp_id=o.id, status='used').count()
+    total_ports = o.total_ports or 0
     return {
         'id': o.id, 'name': o.name, 'model': o.model,
         'location': o.location, 'latitude': o.latitude, 'longitude': o.longitude,
         'odc_id': o.odc_id, 'odc_name': o.odc.name if o.odc else '',
         'odc_core_number': o.odc_core_number,
-        'total_ports': o.total_ports, 'splitter_model': o.splitter_model,
+        'total_ports': total_ports, 'splitter_model': o.splitter_model,
         'description': o.description or '',
-        'used_ports': FTTHODPPort.query.filter_by(odp_id=o.id, status='used').count(),
+        'used_ports': used_ports_count,
+        'available_ports': max(0, total_ports - used_ports_count),
+        'is_active': used_ports_count > 0,
     }
 
 def _odp_port_to_dict(p):
@@ -6946,7 +6187,7 @@ def _odp_port_to_dict(p):
 @app.route('/api/ftth/otb', methods=['GET'])
 @login_required
 def ftth_otb_list():
-    items = FTTHOTB.query.filter(tenant_filter(FTTHOTB)).order_by(FTTHOTB.name).all()
+    items = FTTHOTB.query.order_by(FTTHOTB.name).all()
     return jsonify({'success': True, 'items': [_otb_to_dict(o) for o in items]})
 
 @app.route('/api/ftth/otb', methods=['POST'])
@@ -6955,7 +6196,6 @@ def ftth_otb_list():
 def ftth_otb_create():
     d = request.get_json() or {}
     o = FTTHOTB(
-        tenant_id=get_tenant_id(),
         name=d.get('name', ''), type=d.get('type', 'otb'), model=d.get('model', ''),
         location=d.get('location', ''), latitude=d.get('latitude'), longitude=d.get('longitude'),
         olt_id=d.get('olt_id'), pon_port=d.get('pon_port', ''),
@@ -7141,7 +6381,7 @@ def ftth_odp_port_delete(port_id):
 @app.route('/api/ftth/tree', methods=['GET'])
 @login_required
 def ftth_tree():
-    otbs = FTTHOTB.query.filter(tenant_filter(FTTHOTB)).order_by(FTTHOTB.name).all()
+    otbs = FTTHOTB.query.order_by(FTTHOTB.name).all()
     result = []
     for otb in otbs:
         otb_d = _otb_to_dict(otb)
@@ -7163,28 +6403,150 @@ def ftth_tree():
 @login_required
 def ftth_map():
     markers = []
-    for o in FTTHOTB.query.filter(tenant_filter(FTTHOTB)).all():
+    # Build OLT name lookup
+    olts = OLT.query.all()
+    olt_name_map = {o.id: o.name for o in olts}
+
+    for o in FTTHOTB.query.all():
         if o.latitude and o.longitude:
             markers.append({'type': 'otb', 'id': o.id, 'name': o.name, 'lat': o.latitude, 'lng': o.longitude, 'subtype': o.type})
-    for o in FTTHODC.query.all():
+    odc_list = FTTHODC.query.all()
+    odc_ids = [o.id for o in odc_list]
+    for o in odc_list:
         if o.latitude and o.longitude:
             markers.append({'type': 'odc', 'id': o.id, 'name': o.name, 'lat': o.latitude, 'lng': o.longitude})
-    for o in FTTHODP.query.all():
+    odp_list = FTTHODP.query.all()
+    odp_ids = [o.id for o in odp_list]
+    for o in odp_list:
         if o.latitude and o.longitude:
             markers.append({'type': 'odp', 'id': o.id, 'name': o.name, 'lat': o.latitude, 'lng': o.longitude})
-    # Build connections (lines)
+    # ONU markers with status and details
+    onu_query = ONU.query
+    for o in onu_query.all():
+        if o.latitude and o.longitude:
+            markers.append({'type': 'onu', 'id': o.id, 'name': o.name or o.serial_number or f'ONU {o.onu_id_str}',
+                            'lat': o.latitude, 'lng': o.longitude, 'status': o.status,
+                            'serial': o.serial_number, 'olt_id': o.olt_id,
+                            'olt_name': olt_name_map.get(o.olt_id, ''),
+                            'onu_id_str': o.onu_id_str,
+                            'rx_power': o.rx_power, 'tx_power': o.tx_power,
+                            'onu_rx_power': o.onu_rx_power})
+    # Build connections (lines) with from_id/to_id for path highlighting
     lines = []
-    for odc in FTTHODC.query.all():
+    for odc in odc_list:
         if odc.otb_id:
             otb = db.session.get(FTTHOTB, odc.otb_id)
             if otb and otb.latitude and odc.latitude:
-                lines.append({'from_lat': otb.latitude, 'from_lng': otb.longitude, 'to_lat': odc.latitude, 'to_lng': odc.longitude, 'from_type': 'otb', 'to_type': 'odc', 'label': f'Core {odc.otb_core_number}'})
-    for odp in FTTHODP.query.all():
+                lines.append({'from_lat': otb.latitude, 'from_lng': otb.longitude, 'to_lat': odc.latitude, 'to_lng': odc.longitude, 'from_type': 'otb', 'to_type': 'odc', 'from_id': otb.id, 'to_id': odc.id, 'label': f'Core {odc.otb_core_number}'})
+    for odp in odp_list:
         if odp.odc_id:
             odc = db.session.get(FTTHODC, odp.odc_id)
             if odc and odc.latitude and odp.latitude:
-                lines.append({'from_lat': odc.latitude, 'from_lng': odc.longitude, 'to_lat': odp.latitude, 'to_lng': odp.longitude, 'from_type': 'odc', 'to_type': 'odp', 'label': f'Core {odp.odc_core_number}'})
+                lines.append({'from_lat': odc.latitude, 'from_lng': odc.longitude, 'to_lat': odp.latitude, 'to_lng': odp.longitude, 'from_type': 'odc', 'to_type': 'odp', 'from_id': odc.id, 'to_id': odp.id, 'label': f'Core {odp.odc_core_number}'})
+    # ODP → ONU connection lines
+    for odp in odp_list:
+        if odp.latitude and odp.odc_id:
+            for port in odp.ports:
+                if port.onu_id:
+                    onu = db.session.get(ONU, port.onu_id)
+                    if onu and onu.latitude:
+                        lines.append({'from_lat': odp.latitude, 'from_lng': odp.longitude,
+                                      'to_lat': onu.latitude, 'to_lng': onu.longitude,
+                                      'from_type': 'odp', 'to_type': 'onu',
+                                      'from_id': odp.id, 'to_id': onu.id,
+                                      'label': f'Port {port.port_number}'})
     return jsonify({'success': True, 'markers': markers, 'lines': lines})
+
+# --- FTTH Fiber Paths (manual/auto routing) ---
+@app.route('/api/ftth/paths', methods=['GET'])
+@login_required
+def ftth_paths_list():
+    paths = FTTHFiberPath.query.all()
+    return jsonify({'success': True, 'paths': [{
+        'id': p.id, 'from_type': p.from_type, 'from_id': p.from_id,
+        'to_type': p.to_type, 'to_id': p.to_id,
+        'coordinates': json.loads(p.coordinates) if p.coordinates else [],
+        'path_type': p.path_type,
+    } for p in paths]})
+
+@app.route('/api/ftth/paths', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_paths_create():
+    data = request.get_json()
+    path = FTTHFiberPath(
+        from_type=data['from_type'], from_id=data['from_id'],
+        to_type=data['to_type'], to_id=data['to_id'],
+        coordinates=json.dumps(data.get('coordinates', [])),
+        path_type=data.get('path_type', 'manual'),
+    )
+    db.session.add(path)
+    db.session.commit()
+    return jsonify({'success': True, 'id': path.id})
+
+@app.route('/api/ftth/paths/<int:path_id>', methods=['PUT'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_paths_update(path_id):
+    path = db.session.get(FTTHFiberPath, path_id)
+    if not path:
+        return jsonify({'success': False, 'message': 'Path not found'}), 404
+    data = request.get_json()
+    if 'coordinates' in data:
+        path.coordinates = json.dumps(data['coordinates'])
+    if 'path_type' in data:
+        path.path_type = data['path_type']
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/ftth/paths/<int:path_id>', methods=['DELETE'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_paths_delete(path_id):
+    path = db.session.get(FTTHFiberPath, path_id)
+    if not path:
+        return jsonify({'success': False, 'message': 'Path not found'}), 404
+    db.session.delete(path)
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/ftth/auto-route', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_auto_route():
+    """Auto-route between two coordinates using OSRM public API."""
+    data = request.get_json()
+    from_lat, from_lng = data['from_lat'], data['from_lng']
+    to_lat, to_lng = data['to_lat'], data['to_lng']
+    from_type, from_id = data.get('from_type', ''), data.get('from_id', 0)
+    to_type, to_id = data.get('to_type', ''), data.get('to_id', 0)
+
+    import urllib.request
+    import urllib.error
+    osrm_url = f'https://router.project-osrm.org/route/v1/driving/{from_lng},{from_lat};{to_lng},{to_lat}?overview=full&geometries=geojson'
+    try:
+        req = urllib.request.Request(osrm_url, headers={'User-Agent': 'Salfanet-NMS/1.0'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            osrm_data = json.loads(resp.read().decode())
+        if osrm_data.get('code') != 'Ok' or not osrm_data.get('routes'):
+            return jsonify({'success': False, 'message': 'OSRM routing failed'}), 400
+        coords = osrm_data['routes'][0]['geometry']['coordinates']  # [[lng, lat], ...]
+        # Convert to [lat, lng] for Leaflet
+        latlng_coords = [[c[1], c[0]] for c in coords]
+        # Save to DB
+        path = FTTHFiberPath(
+            from_type=from_type, from_id=from_id,
+            to_type=to_type, to_id=to_id,
+            coordinates=json.dumps(latlng_coords),
+            path_type='auto',
+        )
+        db.session.add(path)
+        db.session.commit()
+        return jsonify({'success': True, 'id': path.id, 'coordinates': latlng_coords})
+    except urllib.error.URLError as e:
+        return jsonify({'success': False, 'message': f'OSRM request failed: {str(e)}'}), 502
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 # --- Available ONUs (not yet linked to ODP) ---
 @app.route('/api/ftth/available-onus', methods=['GET'])
@@ -7200,6 +6562,11 @@ def ftth_available_onus():
 
 # --- PON Port CRUD ---
 def _pon_to_dict(p):
+    # Count ONUs on this PON port
+    onu_q = ONU.query.filter_by(olt_id=p.olt_id, frame=p.frame, slot=p.slot, port=p.port) if p.olt_id else ONU.query.filter_by(frame=p.frame, slot=p.slot, port=p.port)
+    onus = onu_q.all()
+    total_onu = len(onus)
+    online_onu = sum(1 for o in onus if (o.status or '').lower() == 'online')
     return {
         'id': p.id, 'olt_id': p.olt_id, 'olt_name': p.olt_name,
         'frame': p.frame, 'slot': p.slot, 'port': p.port,
@@ -7207,12 +6574,16 @@ def _pon_to_dict(p):
         'otb_id': p.otb_id, 'otb_name': p.otb.name if p.otb else '',
         'otb_core_number': p.otb_core_number,
         'description': p.description or '',
+        'total_onu': total_onu,
+        'online_onu': online_onu,
+        'offline_onu': total_onu - online_onu,
     }
 
 @app.route('/api/ftth/pon', methods=['GET'])
 @login_required
 def ftth_pon_list():
-    items = FTTHPonPort.query.order_by(FTTHPonPort.pon_name).all()
+    q = FTTHPonPort.query
+    items = q.order_by(FTTHPonPort.pon_name).all()
     return jsonify({'success': True, 'items': [_pon_to_dict(p) for p in items]})
 
 @app.route('/api/ftth/pon', methods=['POST'])
@@ -7267,7 +6638,7 @@ def ftth_export():
     }
     for p in FTTHPonPort.query.all():
         data['pon_ports'].append(_pon_to_dict(p))
-    for o in FTTHOTB.query.filter(tenant_filter(FTTHOTB)).all():
+    for o in FTTHOTB.query.all():
         data['otbs'].append(_otb_to_dict(o))
     for o in FTTHODC.query.all():
         data['odcs'].append(_odc_to_dict(o))
@@ -7324,7 +6695,7 @@ def ftth_import():
     section = None
     imported = {'pon_ports': 0, 'otbs': 0, 'odcs': 0, 'odps': 0, 'odp_ports': 0}
     # Build name→id maps for linking
-    otb_map = {o.name: o.id for o in FTTHOTB.query.filter(tenant_filter(FTTHOTB)).all()}
+    otb_map = {o.name: o.id for o in FTTHOTB.query.all()}
     odc_map = {o.name: o.id for o in FTTHODC.query.all()}
     odp_map = {o.name: o.id for o in FTTHODP.query.all()}
     i = 0
@@ -7401,17 +6772,69 @@ def all_onus_export():
     import csv as csv_mod
     from io import StringIO
     from flask import Response
-    onus = ONU.query.all()
-    olts = {o.id: o.name for o in OLT.query.filter(tenant_filter(OLT)).all()}
-    # Filter ONUs to only those belonging to tenant's OLTs
-    tid = get_tenant_id()
-    if tid is not None:
-        onus = [o for o in onus if o.olt_id in olts]
+    from sqlalchemy import or_
+
+    # Accept same filters as /api/all-onus
+    olt_filter = request.args.get('olt', 'all')
+    status_filter = request.args.get('status', 'all')
+    pon_filter = request.args.get('pon', 'all')
+    search = request.args.get('search', '').strip()
+    sort_by = request.args.get('sort_by', '')
+    sort_dir = 'desc' if request.args.get('sort_dir', 'asc') == 'desc' else 'asc'
+
+    query = ONU.query.options(joinedload(ONU.odp_port).joinedload(FTTHODPPort.odp))
+    olts = {o.id: o.name for o in OLT.query.all()}
+    if olt_filter != 'all':
+        query = query.filter_by(olt_id=int(olt_filter))
+    if status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+    if pon_filter != 'all' and olt_filter != 'all':
+        try:
+            parts = pon_filter.split('/')
+            if len(parts) == 3:
+                query = query.filter_by(frame=int(parts[0]), slot=int(parts[1]), port=int(parts[2]))
+        except (ValueError, IndexError):
+            pass
+    if search:
+        q = f'%{search}%'
+        olt_ids = [o.id for o in OLT.query.filter(OLT.name.ilike(q)).all()]
+        conditions = [
+            ONU.name.ilike(q), ONU.serial_number.ilike(q),
+            ONU.description.ilike(q), ONU.pppoe.ilike(q),
+            ONU.actual_type.ilike(q),
+        ]
+        if olt_ids:
+            conditions.append(ONU.olt_id.in_(olt_ids))
+        query = query.filter(or_(*conditions))
+
+    # Sorting
+    sort_map = {
+        'olt': ONU.olt_id, 'name': ONU.name, 'description': ONU.description,
+        'pppoe': ONU.pppoe, 'onu_id': ONU.onu_id, 'status': ONU.status,
+        'rx_olt': ONU.rx_power, 'rx_onu': ONU.onu_rx_power,
+        'sn': ONU.serial_number, 'type': ONU.actual_type, 'distance': ONU.distance,
+    }
+    sort_col = sort_map.get(sort_by)
+    if sort_col is not None:
+        query = query.order_by(sort_col.desc() if sort_dir == 'desc' else sort_col.asc())
+    else:
+        query = query.order_by(ONU.id.asc())
+
+    onus = query.all()
+
+    # Build technician lookup
+    tech_ids = {o.technician_id for o in onus if o.technician_id}
+    tech_names = {}
+    if tech_ids:
+        tech_names = {u.id: u.full_name for u in User.query.filter(User.id.in_(tech_ids)).all()}
+
     si = StringIO()
     writer = csv_mod.writer(si)
-    writer.writerow(['OLT', 'Name', 'Description', 'Status', 'ONU_ID', 'Serial_Number',
-                     'Actual_Type', 'PPPoE', 'RX_OLT_dBm', 'RX_ONU_dBm', 'TX_dBm',
-                     'Distance_m', 'ODP_Name', 'ODP_Port', 'Customer_Name', 'Customer_Phone',
+    writer.writerow(['OLT', 'Name', 'Description', 'Status', 'Frame', 'Slot', 'Port', 'ONU_ID',
+                     'Serial_Number', 'Actual_Type', 'PPPoE', 'RX_dBm',
+                     'Distance_m', 'Last_Dereg_Reason', 'Technician',
+                     'Latitude', 'Longitude',
+                     'ODP_Name', 'ODP_Port', 'Customer_Name', 'Customer_Phone',
                      'Last_Seen', 'Last_Online', 'Last_Offline'])
     for o in onus:
         odp_name = ''
@@ -7425,12 +6848,14 @@ def all_onus_export():
             cust_phone = o.odp_port.customer_phone
         writer.writerow([
             olts.get(o.olt_id, ''), o.name or '', o.description or '', o.status,
-            o.onu_id_str or '', o.serial_number or '', o.actual_type or '',
-            o.pppoe or '',
-            f'{o.rx_power:.2f}' if o.rx_power is not None else '',
+            o.frame, o.slot, o.port, o.onu_id_str or '',
+            o.serial_number or '', o.actual_type or '', o.pppoe or '',
             f'{o.onu_rx_power:.2f}' if o.onu_rx_power is not None else '',
-            f'{o.tx_power:.2f}' if o.tx_power is not None else '',
             f'{o.distance}' if o.distance is not None else '',
+            o.last_dereg_reason or '',
+            tech_names.get(o.technician_id, '') if o.technician_id else '',
+            f'{o.latitude:.6f}' if o.latitude is not None else '',
+            f'{o.longitude:.6f}' if o.longitude is not None else '',
             odp_name, odp_port, cust_name, cust_phone,
             utc_iso(o.last_seen) or '',
             utc_iso(o.last_online) or '',
@@ -7441,24 +6866,394 @@ def all_onus_export():
     return resp
 
 
+# ==================== TRAFFIC MONITORING ====================
+
+# Cache for live grid polling: {(olt_id, port_type): (timestamp, rates_dict)}
+# TTL 10s — all users viewing Live grid share the same OLT poll, reducing OLT load.
+_live_grid_cache = {}
+_LIVE_GRID_TTL = 10  # seconds
+
+_TRAFFIC_PERIODS = {
+    # period -> (lookback_hours, bucket_seconds)
+    'live': (0.25, 300),
+    '1h': (1, 300),
+    '6h': (6, 900),
+    '1d': (24, 1800),
+    '3d': (72, 3600),
+    '7d': (168, 7200),
+    '30d': (720, 21600),
+}
+
+
+def _bucket_traffic_rows(rows, bucket_seconds):
+    """Group TrafficLog rows into fixed-size time buckets, averaging rx/tx per bucket."""
+    buckets = {}
+    for r in rows:
+        ts = r.recorded_at
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        key = int(ts.timestamp() // bucket_seconds) * bucket_seconds
+        buckets.setdefault(key, []).append(r)
+    points = []
+    for key in sorted(buckets.keys()):
+        items = buckets[key]
+        rx_avg = sum(i.rx_mbps or 0 for i in items) / len(items)
+        tx_avg = sum(i.tx_mbps or 0 for i in items) / len(items)
+        points.append({
+            't': datetime.fromtimestamp(key, tz=timezone.utc).isoformat(),
+            'rx': round(rx_avg, 3),
+            'tx': round(tx_avg, 3),
+        })
+    return points
+
+
+@app.route('/api/traffic/meta', methods=['GET'])
+@login_required
+def traffic_meta():
+    """List OLTs (with CLI access) and their uplink/PON port names for Traffic page filters."""
+    q = OLT.query.filter(OLT.cli_username.isnot(None), OLT.cli_username != '')
+    olts = q.order_by(OLT.name).all()
+
+    data = []
+    for olt in olts:
+        uplinks = OLTUplink.query.filter_by(olt_id=olt.id).order_by(OLTUplink.port_number).all()
+        pon_ports = OLTPort.query.filter_by(olt_id=olt.id).order_by(OLTPort.port_number).all()
+        data.append({
+            'id': olt.id, 'name': olt.name,
+            'uplinks': [{'port_name': u.port_name, 'admin_status': u.admin_status} for u in uplinks if u.port_name],
+            'pon_ports': [{'port_name': p.port_name, 'onu_count': p.onu_count, 'onu_online': p.onu_online, 'admin_status': p.admin_status} for p in pon_ports if p.port_name],
+        })
+    return jsonify({'success': True, 'olts': data})
+
+
+@app.route('/api/traffic/grid', methods=['GET'])
+@login_required
+def traffic_grid():
+    """Bucketed traffic history for all ports of an OLT (for card mini-charts).
+    When period=live, polls current rates directly via Telnet for real-time display."""
+    olt_id = request.args.get('olt_id', type=int)
+    port_type = request.args.get('port_type', 'pon')
+    period = request.args.get('period', '6h')
+    search = request.args.get('search', '').strip().lower()
+    if not olt_id:
+        return jsonify({'success': False, 'message': 'olt_id is required'}), 400
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+
+    if port_type == 'uplink':
+        port_names = [u.port_name for u in OLTUplink.query.filter_by(olt_id=olt_id).order_by(OLTUplink.port_number).all() if u.port_name]
+    else:
+        port_names = [p.port_name for p in OLTPort.query.filter_by(olt_id=olt_id).order_by(OLTPort.port_number).all() if p.port_name]
+
+    if search:
+        port_names = [pn for pn in port_names if search in pn.lower()]
+
+    # For 'live' period: poll current rates via SNMP (lighter on OLT than Telnet)
+    # Uses server-side cache (10s TTL) so concurrent users share the same OLT poll
+    # Fallback: if SNMP fails (all zeros), use last DB traffic_logs values
+    if period == 'live' and port_names:
+        import time as _time
+        cache_key = (olt_id, port_type)
+        now_ts = _time.time()
+        cached = _live_grid_cache.get(cache_key)
+        if cached and (now_ts - cached[0]) < _LIVE_GRID_TTL:
+            live_rates = cached[1]
+        else:
+            from snmp_core import SNMPCollector
+            sc = SNMPCollector(olt.ip_address, olt.snmp_community, olt.snmp_port or 161)
+            snmp_names = [pn.replace('gpon-olt_', 'gpon_') for pn in port_names]
+            snmp_rates = sc.get_port_traffic_rates_snmp(snmp_names, double_read=True)
+            sc.close()
+            # Map back to DB port names
+            live_rates = {}
+            all_zero = True
+            for port_name in port_names:
+                snmp_name = port_name.replace('gpon-olt_', 'gpon_')
+                r = snmp_rates.get(snmp_name, {'in_mbps': 0.0, 'out_mbps': 0.0})
+                if r['in_mbps'] > 0 or r['out_mbps'] > 0:
+                    all_zero = False
+                live_rates[port_name] = r
+            # Fallback: if all zeros (OLT unreachable), use last DB values
+            if all_zero:
+                for port_name in port_names:
+                    last_log = TrafficLog.query.filter(
+                        TrafficLog.olt_id == olt_id, TrafficLog.port_type == port_type,
+                        TrafficLog.port_name == port_name,
+                    ).order_by(TrafficLog.recorded_at.desc()).first()
+                    if last_log:
+                        if port_type == 'uplink':
+                            live_rates[port_name] = {'in_mbps': last_log.rx_mbps, 'out_mbps': last_log.tx_mbps}
+                        else:
+                            live_rates[port_name] = {'out_mbps': last_log.rx_mbps, 'in_mbps': last_log.tx_mbps}
+            _live_grid_cache[cache_key] = (now_ts, live_rates)
+
+        # Also fetch recent logs (last 15 min) for mini-chart sparkline
+        since = datetime.now(timezone.utc) - timedelta(minutes=15)
+        rows = TrafficLog.query.filter(
+            TrafficLog.olt_id == olt_id, TrafficLog.port_type == port_type,
+            TrafficLog.recorded_at >= since, TrafficLog.port_name.in_(port_names),
+        ).order_by(TrafficLog.recorded_at.asc()).all() if port_names else []
+        rows_by_port = {}
+        for r in rows:
+            rows_by_port.setdefault(r.port_name, []).append(r)
+
+        cards = []
+        for port_name in port_names:
+            r = live_rates.get(port_name, {'in_mbps': 0.0, 'out_mbps': 0.0})
+            if port_type == 'uplink':
+                cur_rx, cur_tx = r['in_mbps'], r['out_mbps']
+            else:
+                cur_rx, cur_tx = r['out_mbps'], r['in_mbps']
+            port_rows = rows_by_port.get(port_name, [])
+            points = _bucket_traffic_rows(port_rows, 300)
+            # Append current live rate as an extra point so chart always has 2+ points
+            points.append({
+                't': datetime.now(timezone.utc).isoformat(),
+                'rx': round(cur_rx, 3),
+                'tx': round(cur_tx, 3),
+            })
+            cards.append({
+                'port_name': port_name,
+                'points': points,
+                'current_rx': round(cur_rx, 3),
+                'current_tx': round(cur_tx, 3),
+                'has_data': True,
+            })
+        return jsonify({'success': True, 'olt_name': olt.name, 'port_type': port_type, 'period': period, 'cards': cards})
+
+    lookback_hours, bucket_seconds = _TRAFFIC_PERIODS.get(period, _TRAFFIC_PERIODS['6h'])
+    since = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+
+    # Use hourly aggregated data for periods > 7 days
+    if lookback_hours > 168:
+        from models import TrafficLogHourly
+        h_rows = TrafficLogHourly.query.filter(
+            TrafficLogHourly.olt_id == olt_id, TrafficLogHourly.port_type == port_type,
+            TrafficLogHourly.hour_start >= since, TrafficLogHourly.port_name.in_(port_names),
+        ).order_by(TrafficLogHourly.hour_start.asc()).all() if port_names else []
+
+        rows_by_port = {}
+        for r in h_rows:
+            rows_by_port.setdefault(r.port_name, []).append(r)
+
+        cards = []
+        for port_name in port_names:
+            port_rows = rows_by_port.get(port_name, [])
+            points = []
+            for r in port_rows:
+                ts = r.hour_start
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                points.append({
+                    't': ts.isoformat(),
+                    'rx': round(r.rx_mbps_avg, 3),
+                    'tx': round(r.tx_mbps_avg, 3),
+                })
+            last = port_rows[-1] if port_rows else None
+            cards.append({
+                'port_name': port_name,
+                'points': points,
+                'current_rx': round(last.rx_mbps_avg, 3) if last else 0,
+                'current_tx': round(last.tx_mbps_avg, 3) if last else 0,
+                'has_data': len(port_rows) > 0,
+            })
+        return jsonify({'success': True, 'olt_name': olt.name, 'port_type': port_type, 'period': period, 'cards': cards})
+
+    rows = TrafficLog.query.filter(
+        TrafficLog.olt_id == olt_id, TrafficLog.port_type == port_type,
+        TrafficLog.recorded_at >= since, TrafficLog.port_name.in_(port_names),
+    ).order_by(TrafficLog.recorded_at.asc()).all() if port_names else []
+
+    rows_by_port = {}
+    for r in rows:
+        rows_by_port.setdefault(r.port_name, []).append(r)
+
+    cards = []
+    for port_name in port_names:
+        port_rows = rows_by_port.get(port_name, [])
+        points = _bucket_traffic_rows(port_rows, bucket_seconds)
+        last = port_rows[-1] if port_rows else None
+        cards.append({
+            'port_name': port_name,
+            'points': points,
+            'current_rx': round(last.rx_mbps, 3) if last else 0,
+            'current_tx': round(last.tx_mbps, 3) if last else 0,
+            'has_data': len(port_rows) > 0,
+        })
+
+    return jsonify({'success': True, 'olt_name': olt.name, 'port_type': port_type, 'period': period, 'cards': cards})
+
+
+@app.route('/api/traffic/history', methods=['GET'])
+@login_required
+def traffic_history():
+    """Bucketed traffic history for a single port (detail drawer sections).
+    Uses raw traffic_logs for periods <= 7d, traffic_log_hourly for > 7d."""
+    olt_id = request.args.get('olt_id', type=int)
+    port_type = request.args.get('port_type', 'pon')
+    port_name = request.args.get('port_name', '')
+    period = request.args.get('period', '1d')
+    if not olt_id or not port_name:
+        return jsonify({'success': False, 'message': 'olt_id and port_name are required'}), 400
+
+    lookback_hours, bucket_seconds = _TRAFFIC_PERIODS.get(period, _TRAFFIC_PERIODS['1d'])
+    since = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+
+    # Use hourly aggregated data for periods > 7 days
+    if lookback_hours > 168:
+        from models import TrafficLogHourly
+        rows = TrafficLogHourly.query.filter(
+            TrafficLogHourly.olt_id == olt_id, TrafficLogHourly.port_type == port_type,
+            TrafficLogHourly.port_name == port_name, TrafficLogHourly.hour_start >= since,
+        ).order_by(TrafficLogHourly.hour_start.asc()).all()
+        # Convert hourly rows to same format as _bucket_traffic_rows output
+        points = []
+        for r in rows:
+            ts = r.hour_start
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            points.append({
+                't': ts.isoformat(),
+                'rx': round(r.rx_mbps_avg, 3),
+                'tx': round(r.tx_mbps_avg, 3),
+            })
+        return jsonify({'success': True, 'period': period, 'points': points, 'has_data': len(points) > 0})
+
+    rows = TrafficLog.query.filter(
+        TrafficLog.olt_id == olt_id, TrafficLog.port_type == port_type,
+        TrafficLog.port_name == port_name, TrafficLog.recorded_at >= since,
+    ).order_by(TrafficLog.recorded_at.asc()).all()
+
+    points = _bucket_traffic_rows(rows, bucket_seconds)
+    return jsonify({'success': True, 'period': period, 'points': points, 'has_data': len(rows) > 0})
+
+
+@app.route('/api/traffic/live', methods=['GET'])
+@login_required
+def traffic_live():
+    """Real-time single-port traffic rate (polled every 5s by detail drawer).
+    Uses SNMP ifInOctets/ifOutOctets with double-read for instantaneous rate.
+    Cached for 5s server-side so concurrent users share the same OLT poll."""
+    import time as _time
+    olt_id = request.args.get('olt_id', type=int)
+    port_type = request.args.get('port_type', 'pon')
+    port_name = request.args.get('port_name', '')
+    olt = db.session.get(OLT, olt_id) if olt_id else None
+    if not olt or not port_name:
+        return jsonify({'success': False, 'message': 'OLT/port not configured'}), 400
+
+    # Check cache (5s TTL) — key: (olt_id, port_name)
+    cache_key = (olt_id, port_name)
+    now_ts = _time.time()
+    cached = _live_grid_cache.get(cache_key)
+    if cached and (now_ts - cached[0]) < 5:
+        r = cached[1]
+    else:
+        from snmp_core import SNMPCollector
+        sc = SNMPCollector(olt.ip_address, olt.snmp_community, olt.snmp_port or 161)
+        snmp_name = port_name.replace('gpon-olt_', 'gpon_')
+        rates = sc.get_port_traffic_rates_snmp([snmp_name], double_read=True)
+        r = rates.get(snmp_name, {'in_mbps': 0.0, 'out_mbps': 0.0})
+        sc.close()
+        # Fallback: if SNMP returns 0.0 (OLT unreachable), use last DB value
+        if r['in_mbps'] == 0.0 and r['out_mbps'] == 0.0:
+            last_log = TrafficLog.query.filter(
+                TrafficLog.olt_id == olt_id, TrafficLog.port_type == port_type,
+                TrafficLog.port_name == port_name,
+            ).order_by(TrafficLog.recorded_at.desc()).first()
+            if last_log:
+                if port_type == 'uplink':
+                    r = {'in_mbps': last_log.rx_mbps, 'out_mbps': last_log.tx_mbps}
+                else:
+                    r = {'out_mbps': last_log.rx_mbps, 'in_mbps': last_log.tx_mbps}
+        _live_grid_cache[cache_key] = (now_ts, r)
+    if port_type == 'uplink':
+        # Uplink: Download = Input (WAN -> OLT), Upload = Output (OLT -> WAN)
+        rx_mbps, tx_mbps = r['in_mbps'], r['out_mbps']
+    else:
+        # PON: Download = Output (OLT -> ONU), Upload = Input (ONU -> OLT)
+        rx_mbps, tx_mbps = r['out_mbps'], r['in_mbps']
+
+    # Persist this live sample too, so grid/history charts stay in sync with what's displayed live
+    try:
+        db.session.add(TrafficLog(olt_id=olt.id, port_type=port_type,
+                                   port_name=port_name, rx_mbps=round(rx_mbps, 3), tx_mbps=round(tx_mbps, 3)))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return jsonify({'success': True, 'rx_mbps': round(rx_mbps, 3), 'tx_mbps': round(tx_mbps, 3), 'ts': int(_time.time())})
+
+
+# ==================== METRICS HISTORY ====================
+
+@app.route('/api/metrics/history', methods=['GET'])
+@login_required
+def metrics_history():
+    """Get metric history for charts. Params: type, olt_id/onu_id, hours (default 24)."""
+    metric_type = request.args.get('type', 'rx_power')
+    olt_id = request.args.get('olt_id', type=int)
+    onu_id = request.args.get('onu_id', type=int)
+    hours = request.args.get('hours', 24, type=int)
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    q = MetricHistory.query.filter(MetricHistory.recorded_at >= since)
+    if metric_type:
+        q = q.filter_by(metric_type=metric_type)
+    if olt_id:
+        q = q.filter_by(olt_id=olt_id)
+    if onu_id:
+        q = q.filter_by(onu_id=onu_id)
+
+    records = q.order_by(MetricHistory.recorded_at.asc()).limit(500).all()
+    return jsonify({
+        'success': True,
+        'data': [{
+            'value': r.value,
+            'time': utc_iso(r.recorded_at),
+            'type': r.metric_type,
+        } for r in records]
+    })
+
+
 # ==================== SERVE REACT BUILD ====================
 
-@app.route('/spa/')
-@app.route('/spa/<path:path>')
-def serve_spa(path=''):
-    """Serve React SPA build for /spa routes"""
+@app.route('/')
+def serve_spa_root():
+    """Serve React SPA index.html at root."""
+    from flask import send_from_directory, make_response
     dist = os.path.join(os.path.dirname(__file__), 'frontend', 'dist')
     if not os.path.exists(dist):
         return 'Frontend not built. Run: cd frontend && npm run build', 503
-    if path and os.path.exists(os.path.join(dist, path)):
-        from flask import send_from_directory, make_response
-        resp = make_response(send_from_directory(dist, path))
-        # Cache static assets (JS/CSS) aggressively, but never cache index.html
-        if path == 'index.html' or path.endswith('.html'):
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        return resp
+    resp = make_response(send_from_directory(dist, 'index.html'))
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
+
+
+@app.route('/<path:path>')
+def serve_spa(path=''):
+    """Serve React SPA build — catch-all for non-API routes (clean URLs, no /spa/ prefix)."""
+    # Don't intercept API or auth routes
+    if path.startswith('api/') or path.startswith('auth/'):
+        from flask import abort
+        abort(404)
+    from werkzeug.security import safe_join
+    dist = os.path.join(os.path.dirname(__file__), 'frontend', 'dist')
+    if not os.path.exists(dist):
+        return 'Frontend not built. Run: cd frontend && npm run build', 503
+    if path:
+        safe_path = safe_join(dist, path)
+        if safe_path and os.path.exists(safe_path):
+            from flask import send_from_directory, make_response
+            resp = make_response(send_from_directory(dist, path))
+            if path == 'index.html' or path.endswith('.html'):
+                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                resp.headers['Pragma'] = 'no-cache'
+                resp.headers['Expires'] = '0'
+            return resp
     from flask import send_from_directory, make_response
     resp = make_response(send_from_directory(dist, 'index.html'))
     resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -7474,124 +7269,7 @@ with app.app_context():
     seed_initial_data()
 
 
-# _get_nms_branding and _send_subscription_wa_notification moved to services_wa.py
-
-
-def run_subscription_expiry_monitor(app):
-    """Background thread that checks for expired subscriptions every 5 minutes.
-    Marks expired subscriptions, suspends tenants whose subscription has lapsed,
-    and sends WhatsApp notifications to tenants before expiry (7d, 3d, 1d) and on expiry.
-    """
-    import time
-    while True:
-        time.sleep(300)  # Check every 5 minutes
-        with app.app_context():
-            try:
-                now = datetime.now(timezone.utc)
-                # Mark expired subscriptions
-                active_subs = Subscription.query.filter_by(status='active').all()
-                expired_subs = []
-                for sub in active_subs:
-                    end = sub.end_date
-                    if end.tzinfo is None:
-                        end = end.replace(tzinfo=timezone.utc)
-                    if end < now:
-                        sub.status = 'expired'
-                        expired_subs.append(sub)
-                        logger.info(f"Subscription {sub.id} for tenant {sub.tenant_id} marked as expired")
-                # Suspend tenants with no active subscription
-                tenants = Tenant.query.filter_by(status='active').all()
-                for t in tenants:
-                    active_sub = Subscription.query.filter_by(
-                        tenant_id=t.id, status='active'
-                    ).first()
-                    if not active_sub:
-                        t.status = 'expired'
-                        logger.info(f"Tenant {t.name} ({t.subdomain}) suspended — no active subscription")
-                if expired_subs or any(t.status == 'expired' for t in tenants):
-                    db.session.commit()
-
-                # ── Send WhatsApp expiry notifications ──
-                # Check active subscriptions for upcoming expiry (7d, 3d, 1d)
-                for sub in active_subs:
-                    end = sub.end_date
-                    if end.tzinfo is None:
-                        end = end.replace(tzinfo=timezone.utc)
-                    delta = end - now
-                    days_left = delta.days
-
-                    tenant = Tenant.query.get(sub.tenant_id)
-                    if not tenant:
-                        continue
-
-                    # Determine which notification tier to send
-                    notif_type = None
-                    if days_left <= 1 and days_left > 0:
-                        notif_type = 'expiry_1d'
-                    elif days_left <= 3 and days_left > 1:
-                        notif_type = 'expiry_3d'
-                    elif days_left <= 7 and days_left > 3:
-                        notif_type = 'expiry_7d'
-
-                    if notif_type:
-                        # Check if already sent
-                        already_sent = SubscriptionNotification.query.filter_by(
-                            subscription_id=sub.id, notification_type=notif_type
-                        ).first()
-                        if not already_sent:
-                            sent = _send_subscription_wa_notification(tenant, sub, notif_type, days_left)
-                            if sent:
-                                notif = SubscriptionNotification(
-                                    subscription_id=sub.id,
-                                    tenant_id=tenant.id,
-                                    notification_type=notif_type,
-                                )
-                                db.session.add(notif)
-                                db.session.commit()
-
-                            # Auto-generate invoice on first expiry notification (7d)
-                            if notif_type == 'expiry_7d':
-                                existing_inv = Invoice.query.filter_by(
-                                    subscription_id=sub.id, status='unpaid'
-                                ).first()
-                                if not existing_inv and sub.package:
-                                    _create_invoice(
-                                        tenant_id=tenant.id,
-                                        subscription_id=sub.id,
-                                        package_id=sub.package_id,
-                                        amount=sub.package.price,
-                                        invoice_type='auto',
-                                        description=f'Auto invoice - {sub.package.name} renewal ({sub.package.duration_days} days)',
-                                        due_date=end,
-                                    )
-
-                # Send "expired" notification for newly expired subscriptions
-                for sub in expired_subs:
-                    tenant = Tenant.query.get(sub.tenant_id)
-                    if not tenant:
-                        continue
-                    already_sent = SubscriptionNotification.query.filter_by(
-                        subscription_id=sub.id, notification_type='expired'
-                    ).first()
-                    if not already_sent:
-                        sent = _send_subscription_wa_notification(tenant, sub, 'expired', 0)
-                        if sent:
-                            notif = SubscriptionNotification(
-                                subscription_id=sub.id,
-                                tenant_id=tenant.id,
-                                notification_type='expired',
-                            )
-                            db.session.add(notif)
-                            db.session.commit()
-
-            except Exception as e:
-                db.session.rollback()
-                logger.error(f"Subscription expiry monitor error: {e}")
-
-
-# Start subscription expiry monitor (works for gunicorn too)
-sub_monitor_thread = threading.Thread(target=run_subscription_expiry_monitor, args=(app,), daemon=True)
-sub_monitor_thread.start()
+# _get_nms_branding moved to services_wa.py
 
 
 if __name__ == '__main__':
@@ -7607,8 +7285,5 @@ if __name__ == '__main__':
         from alerts import run_alert_monitor
         alert_thread = threading.Thread(target=run_alert_monitor, args=(app,), daemon=True)
         alert_thread.start()
-        # Start subscription expiry monitor
-        sub_thread = threading.Thread(target=run_subscription_expiry_monitor, args=(app,), daemon=True)
-        sub_thread.start()
 
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=app.config['DEBUG'], host='0.0.0.0', port=5000)

@@ -7,10 +7,12 @@ import { useHasPerm } from '../hooks/useHasPerm';
 import { cn, formatDate } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
+import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Server, Plus, RefreshCw, Settings, Trash2, Edit3,
   Thermometer, Clock, CheckCircle, XCircle, Loader2,
-  Activity, Network, Terminal, X, Save, Download, ArrowRightLeft, CheckSquare, Square, Package
+  Activity, Network, Terminal, X, Save, Download, ArrowRightLeft, CheckSquare, Square, Package,
+  History, ToggleLeft, ToggleRight, HardDriveDownload,
 } from 'lucide-react';
 
 export function OltSettings() {
@@ -19,7 +21,7 @@ export function OltSettings() {
   const { user } = useAuth();
   const isSuperAdmin = !!user?.is_super_admin;
   const hasPerm = useHasPerm();
-  const canManage = !isSuperAdmin && hasPerm('settings_ip_olts');
+  const canManage = hasPerm('settings_ip_olts');
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; olt?: OltInfo } | null>(null);
   const [syncingId, setSyncingId] = useState<number | null>(null);
   const [syncProgress, setSyncProgress] = useState(0);
@@ -27,6 +29,8 @@ export function OltSettings() {
   const [syncingAll, setSyncingAll] = useState(false);
   const [migrateOlt, setMigrateOlt] = useState<{ oltId: number; oltName: string } | null>(null);
   const [writingId, setWritingId] = useState<number | null>(null);
+  const [discoveringId, setDiscoveringId] = useState<number | null>(null);
+  const [backupOlt, setBackupOlt] = useState<{ id: number; name: string } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['olts'],
@@ -70,6 +74,19 @@ export function OltSettings() {
     onSuccess: (d: { success: boolean; message?: string }) => { toast.success(d.message || 'Config saved!'); },
     onError: (e: Error) => { if (e.message !== 'cancelled') toast.error('Save config failed'); },
     onSettled: () => setWritingId(null),
+  });
+
+  const discoverSlotsMutation = useMutation({
+    mutationFn: async (oltId: number) => {
+      setDiscoveringId(oltId);
+      return api.discoverSlots(oltId);
+    },
+    onSuccess: (d) => {
+      toast.success(d.message || 'Slots discovered!');
+      qc.invalidateQueries({ queryKey: ['olts'] });
+    },
+    onError: (e: Error) => { toast.error(e.message || 'Discovery failed'); },
+    onSettled: () => setDiscoveringId(null),
   });
 
   const exportConfig = async (oltId: number) => {
@@ -172,6 +189,26 @@ export function OltSettings() {
           <p className="text-tx2 text-xs md:text-sm mt-1">{isSuperAdmin ? 'View all tenant OLT devices' : 'Manage OLT devices and connections'}</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
+          <TutorialBanner
+            title="Panduan OLT Settings"
+            steps={[
+              { title: 'OLT List', content: <><p>Daftar OLT yang terdaftar di sistem. Setiap OLT menampilkan: nama, IP, vendor, model, status SNMP/Telnet, jumlah ONU, dan last sync.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Edit</strong> untuk ubah konfigurasi OLT (IP, SNMP community, CLI credentials). Klik <strong>Config</strong> untuk ke halaman OLT Configuration.</p></> },
+              { title: 'Add OLT', content: <><p>Tambah OLT baru: nama, IP address, model (ZTE C320/C300/C600/C650), SNMP community, CLI username & password.</p><p className="text-xs text-tx3 mt-1">SNMP community wajib untuk sync ONU status. CLI credentials wajib untuk provisioning dan config changes via Telnet.</p></> },
+              { title: 'Sync', content: <><p><strong>Sync per OLT</strong>: kirim SNMP get ke OLT untuk collect ONU status, rx power, dll. <strong>Sync All</strong>: sync semua OLT sekaligus.</p><p className="text-xs text-tx3 mt-1">Progress sync ditampilkan real-time. Light sync = SNMP only (cepat). Full sync = SNMP + Telnet (lengkap).</p></> },
+              { title: 'Connection Status', content: <><p>Badge koneksi menampilkan status <strong>SNMP</strong> dan <strong>Telnet/CLI</strong> per OLT — Connected atau Disconnected.</p><p className="text-xs text-tx3 mt-1">Jika SNMP disconnected, cek IP dan community string. Jika Telnet disconnected, cek CLI username & password.</p></> },
+            ]}
+            tips={
+              <>
+                <strong className="text-tx2">Tips:</strong>
+                <ul className="mt-1 ml-4 space-y-0.5">
+                  <li>SNMP community default ZTE: public. Ubah jika diperlukan untuk security</li>
+                  <li>CLI credentials wajib untuk provisioning & config changes</li>
+                  <li>Sync All butuh waktu jika OLT banyak — progress real-time tersedia</li>
+                  <li>Super admin dapat melihat semua OLT dari semua tenant</li>
+                </ul>
+              </>
+            }
+          />
           {canManage && (
             <button onClick={() => syncAllMutation.mutate()} disabled={syncingAll || syncingId !== null}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-sm font-medium transition-all disabled:opacity-50 flex-1 sm:flex-none justify-center">
@@ -317,13 +354,15 @@ export function OltSettings() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex flex-wrap items-center justify-end gap-1">
                       {canManage && <ActionBtn icon={<Edit3 size={14} />} title="Edit" onClick={() => setModal({ mode: 'edit', olt })} />}
                       {canManage && <ActionBtn icon={<RefreshCw size={14} />} title="Sync" onClick={() => syncMutation.mutate(olt.id)} />}
                       {canManage && <ActionBtn icon={<Save size={14} />} title="Save Config" onClick={() => writeConfigMutation.mutate(olt.id)} loading={writingId === olt.id} />}
-                      {canManage && <ActionBtn icon={<Download size={14} />} title="Export Config" onClick={() => exportConfig(olt.id)} />}
-                      {canManage && <ActionBtn icon={<ArrowRightLeft size={14} />} title="Migrate ONU" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
-                      {canManage && <ActionBtn icon={<Settings size={14} />} title="Configuration" onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
+                      {canManage && <ActionBtn icon={<Settings size={14} />} title="Config" onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
+                      {canManage && <ActionBtn icon={<Download size={14} />} title="Export" onClick={() => exportConfig(olt.id)} />}
+                      {canManage && <ActionBtn icon={<History size={14} />} title="Backup" onClick={() => setBackupOlt({ id: olt.id, name: olt.name })} />}
+                      {canManage && <ActionBtn icon={<Server size={14} />} title="Discover" onClick={() => discoverSlotsMutation.mutate(olt.id)} loading={discoveringId === olt.id} />}
+                      {canManage && <ActionBtn icon={<ArrowRightLeft size={14} />} title="Migrate" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
                       {canManage && <ActionBtn icon={<Trash2 size={14} />} title="Delete" danger onClick={() => deleteMutation.mutate(olt.id)} />}
                       {!canManage && <span className="text-xs text-tx3 px-2">View only</span>}
                     </div>
@@ -377,13 +416,15 @@ export function OltSettings() {
                   </div>
                 </div>
               )}
-              <div className="flex items-center gap-1 pt-1">
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
                 {canManage && <ActionBtn icon={<Edit3 size={16} />} title="Edit" onClick={() => setModal({ mode: 'edit', olt })} />}
                 {canManage && <ActionBtn icon={<RefreshCw size={16} />} title="Sync" onClick={() => syncMutation.mutate(olt.id)} />}
                 {canManage && <ActionBtn icon={<Save size={16} />} title="Save Config" onClick={() => writeConfigMutation.mutate(olt.id)} loading={writingId === olt.id} />}
-                {canManage && <ActionBtn icon={<Download size={16} />} title="Export Config" onClick={() => exportConfig(olt.id)} />}
-                {canManage && <ActionBtn icon={<ArrowRightLeft size={16} />} title="Migrate ONU" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
-                {canManage && <ActionBtn icon={<Settings size={16} />} title="Configuration" onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
+                {canManage && <ActionBtn icon={<Settings size={16} />} title="Config" onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
+                {canManage && <ActionBtn icon={<Download size={16} />} title="Export" onClick={() => exportConfig(olt.id)} />}
+                {canManage && <ActionBtn icon={<History size={16} />} title="Backup" onClick={() => setBackupOlt({ id: olt.id, name: olt.name })} />}
+                {canManage && <ActionBtn icon={<Server size={16} />} title="Discover" onClick={() => discoverSlotsMutation.mutate(olt.id)} loading={discoveringId === olt.id} />}
+                {canManage && <ActionBtn icon={<ArrowRightLeft size={16} />} title="Migrate" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
                 {canManage && <ActionBtn icon={<Trash2 size={16} />} title="Delete" danger onClick={() => deleteMutation.mutate(olt.id)} />}
                 {!canManage && <span className="text-xs text-tx3 px-2">View only</span>}
               </div>
@@ -398,6 +439,9 @@ export function OltSettings() {
           )}
         </div>
       </div>
+
+      {/* Backup History Modal */}
+      {backupOlt && <BackupHistoryModal oltId={backupOlt.id} oltName={backupOlt.name} onClose={() => setBackupOlt(null)} />}
 
       {/* Add/Edit Modal */}
       {modal && <OltModal mode={modal.mode} olt={modal.olt} onClose={() => setModal(null)}
@@ -508,8 +552,8 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="modal-overlay" onClick={onClose} />
       <div className="relative glass-card w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
         <div className="modal-header">
           <h2 className="text-sm font-semibold flex items-center gap-2"><ArrowRightLeft size={16} /> Migrate ONU — {oltName}</h2>
@@ -663,8 +707,9 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
   const [form, setForm] = useState({
     name: olt?.name || '',
     ip_address: olt?.ip_address || '',
-    type: olt ? `${(olt.model || 'C320').toUpperCase()}` : '',
+    type: olt ? `${(olt.model || 'C320').toUpperCase()}` : 'ZTE-C320',
     snmp_community: 'public',
+    snmp_community_write: '',
     snmp_port: '161',
     cli_username: '',
     cli_password: '',
@@ -683,12 +728,13 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
       setLoadingOlt(true);
       api.getOlt(olt.id).then(d => {
         if (d.success) {
-          const vendorModel = d.vendor && d.model ? `${d.vendor.toUpperCase()}-${d.model}` : d.model || 'C320';
+          const vendorModel = `ZTE-${d.model || 'C320'}`;
           setForm({
             name: d.name || '',
             ip_address: d.ip_address || '',
             type: vendorModel,
             snmp_community: d.snmp_community || 'public',
+            snmp_community_write: d.snmp_community_write || '',
             snmp_port: String(d.snmp_port || 161),
             cli_username: d.cli_username || '',
             cli_password: d.cli_password || '',
@@ -712,6 +758,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
         ip_address: form.ip_address, snmp_community: form.snmp_community,
         snmp_port: parseInt(form.snmp_port), cli_username: form.cli_username,
         cli_password: form.cli_password, telnet_port: parseInt(form.telnet_port),
+        ...(form.snmp_community_write ? { snmp_community_write: form.snmp_community_write } : {}),
       });
       if (d.results) {
         setTestResult(d.results);
@@ -732,24 +779,16 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
     if (!form.ip_address.trim()) { toast.error('Please enter IP Address'); return; }
     setSaving(true);
     try {
-      // Parse vendor and model from type string (e.g. "ZTE-C320", "HSGQ-EPON-4P", "C-Data-EPON-8P")
-      const knownVendors = ['ZTE', 'HSGQ', 'Raisecom', 'BDCOM', 'C-Data', 'VSOL', 'Dasan', 'Huawei', 'FiberHome', 'HW'];
-      let vendor = 'zte';
-      let model = form.type || 'C320';
-      for (const v of knownVendors) {
-        if (form.type.startsWith(v + '-')) {
-          vendor = v.toLowerCase();
-          model = form.type.slice(v.length + 1);
-          break;
-        }
-      }
+      const model = form.type.replace(/^ZTE-/, '') || 'C320';
+      const vendor = 'zte';
       const url = olt ? `/api/olt/${olt.id}` : '/api/olt';
       const method = olt ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method, headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({
           name: form.name, ip_address: form.ip_address, model, vendor,
-          snmp_community: form.snmp_community, snmp_port: parseInt(form.snmp_port),
+          snmp_community: form.snmp_community, snmp_community_write: form.snmp_community_write,
+          snmp_port: parseInt(form.snmp_port),
           telnet_enabled: true, telnet_port: parseInt(form.telnet_port),
           ssh_enabled: false, ssh_port: 22,
           cli_username: form.cli_username, cli_password: form.cli_password,
@@ -764,6 +803,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             ip_address: form.ip_address, snmp_community: form.snmp_community,
             snmp_port: parseInt(form.snmp_port), cli_username: form.cli_username,
             cli_password: form.cli_password, telnet_port: parseInt(form.telnet_port),
+            ...(form.snmp_community_write ? { snmp_community_write: form.snmp_community_write } : {}),
           });
           if (testD.results) {
             const sOk = testD.results.snmp?.ok;
@@ -783,14 +823,6 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
 
   const OLT_TYPES = [
     'ZTE-C320', 'ZTE-C300', 'ZTE-C300-M', 'ZTE-C600', 'ZTE-C650',
-    'HSGQ-EPON-4P', 'HSGQ-EPON-8P', 'HSGQ-EPON-16P',
-    'Raisecom-ISCOM6820', 'Raisecom-ISCOM5800',
-    'BDCOM-GP3600', 'BDCOM-P3310C', 'BDCOM-P3608',
-    'C-Data-FD1104B', 'C-Data-FD1108S', 'C-Data-FD1216S', 'C-Data-FD1608GS',
-    'VSOL-V1600G', 'VSOL-V1600D',
-    'Dasan-V5812G', 'Dasan-V5824G', 'Dasan-V6424',
-    'Huawei-MA5680T', 'Huawei-MA5683T', 'Huawei-MA5608T',
-    'FiberHome-AN5516-01', 'FiberHome-AN5516-04', 'FiberHome-AN5516-06',
   ];
 
   const statusBadge = (status: string) => {
@@ -808,14 +840,14 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
 
   if (loadingOlt) return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="modal-overlay" onClick={onClose} />
       <div className="relative glass-card p-8 text-center"><Loader2 size={32} className="text-accent animate-spin mx-auto" /><p className="text-tx3 mt-3">Loading OLT data...</p></div>
     </div>
   );
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="modal-overlay" onClick={onClose} />
       <div className="relative glass-card w-full md:max-w-xl animate-slide-up md:animate-fade-in max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-2xl">
         <div className="modal-header sticky top-0">
           <h2 className="text-sm font-semibold flex items-center gap-2">
@@ -857,12 +889,12 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="label-sm mb-1">Community (RW)</label>
-                <input type="text" value={form.snmp_community} onChange={e => update('snmp_community', e.target.value)} className="input-field" />
+                <label className="label-sm mb-1">Community (Read)</label>
+                <input type="text" value={form.snmp_community} onChange={e => update('snmp_community', e.target.value)} className="input-field" placeholder="public" />
               </div>
               <div>
-                <label className="label-sm mb-1">Version</label>
-                <select className="input-field" defaultValue="2"><option value="2">2</option><option value="1">1</option><option value="3">3</option></select>
+                <label className="label-sm mb-1">Community (Write)</label>
+                <input type="text" value={form.snmp_community_write} onChange={e => update('snmp_community_write', e.target.value)} className="input-field" placeholder="optional, e.g. SNMPREAD" />
               </div>
               <div>
                 <label className="label-sm mb-1">Port</label>
@@ -875,7 +907,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd space-y-3">
             <div className="flex items-center gap-2">
               <Terminal size={16} className="text-accent" />
-              <span className="text-sm font-semibold">Telnet</span>
+              <span className="text-sm font-semibold">Telnet / CLI</span>
               {testing && <Loader2 size={14} className="text-accent animate-spin ml-2" />}
               {!testing && testResult && <span className="ml-2">{testStatusBadge(testResult.telnet)}</span>}
               {!testing && !testResult && telnetStatus && <span className="ml-2">{statusBadge(telnetStatus)}</span>}
@@ -890,11 +922,12 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
                 <input type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder="Password" className="input-field" />
               </div>
               <div>
-                <label className="label-sm mb-1">Port</label>
+                <label className="label-sm mb-1">Telnet Port</label>
                 <input type="number" value={form.telnet_port} onChange={e => update('telnet_port', e.target.value)} className="input-field" />
               </div>
             </div>
           </div>
+
         </div>
 
         <div className="modal-footer justify-between sticky bottom-0">
@@ -935,6 +968,231 @@ function ActionBtn({ icon, title, onClick, danger, loading }: {
         danger ? 'hover:bg-danger/15 text-tx3 hover:text-danger' : 'hover:bg-glass text-tx3 hover:text-tx1')}>
       {loading ? <Loader2 size={14} className="animate-spin" /> : icon}
     </button>
+  );
+}
+
+/* ═══ Backup History Modal ═══ */
+
+interface BackupEntry {
+  id: number;
+  backup_type: string;
+  status: string;
+  config_size: number;
+  error_message: string;
+  created_at: string;
+}
+
+function BackupHistoryModal({ oltId, oltName, onClose }: {
+  oltId: number; oltName: string; onClose: () => void;
+}) {
+  const [autoEnabled, setAutoEnabled] = useState(false);
+  const [interval, setIntervalVal] = useState(24);
+  const [unit, setUnit] = useState<'hours' | 'days'>('hours');
+  const [backupTime, setBackupTime] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [backing, setBacking] = useState(false);
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['olt-backups', oltId],
+    queryFn: async () => {
+      const res = await fetch(`/api/olt/${oltId}/backups`, { credentials: 'include' });
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (data?.success) {
+      setAutoEnabled(data.auto_backup_enabled);
+      setIntervalVal(data.auto_backup_interval || 24);
+      setUnit(data.auto_backup_unit || 'hours');
+      setBackupTime(data.auto_backup_time || '');
+    }
+  }, [data]);
+
+  const backups: BackupEntry[] = data?.backups || [];
+
+  const toggleAuto = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/olt/${oltId}/auto-backup`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ enabled: !autoEnabled, interval, unit, time: backupTime }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setAutoEnabled(d.auto_backup_enabled);
+        toast.success(d.message);
+      } else { toast.error(d.message || 'Failed to toggle'); }
+    } catch { toast.error('Failed to toggle'); }
+    setSaving(false);
+  };
+
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/olt/${oltId}/auto-backup`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ interval, unit, time: backupTime }),
+      });
+      const d = await res.json();
+      if (d.success) { toast.success('Settings saved'); }
+      else { toast.error(d.message || 'Failed'); }
+    } catch { toast.error('Failed'); }
+    setSaving(false);
+  };
+
+  const doBackup = async () => {
+    setBacking(true);
+    try {
+      const res = await fetch(`/api/olt/${oltId}/backup-save`, { method: 'POST', credentials: 'include' });
+      const d = await res.json();
+      if (d.success) { toast.success(d.message); refetch(); }
+      else { toast.error(d.message || 'Backup failed'); }
+    } catch { toast.error('Backup failed'); }
+    setBacking(false);
+  };
+
+  const downloadBackup = (backupId: number) => {
+    window.location.href = `/api/olt/${oltId}/backup/${backupId}/download`;
+  };
+
+  const deleteBackup = async (backupId: number) => {
+    const ok = await confirm({
+      title: 'Delete Backup', message: 'Delete this config backup? This cannot be undone.',
+      confirmLabel: 'Delete', variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/olt/${oltId}/backup/${backupId}`, { method: 'DELETE', credentials: 'include' });
+      const d = await res.json();
+      if (d.success) { toast.success('Backup deleted'); refetch(); }
+      else { toast.error(d.message || 'Delete failed'); }
+    } catch { toast.error('Delete failed'); }
+  };
+
+  const fmtSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="modal-overlay" onClick={onClose} />
+      <div className="relative glass-card w-full max-w-2xl max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
+        <div className="modal-header">
+          <h2 className="text-sm font-semibold flex items-center gap-2"><History size={16} /> Config Backups — {oltName}</h2>
+          <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
+        </div>
+
+        <div className="p-3 md:p-5 overflow-y-auto space-y-4 flex-1">
+          {/* Auto-backup settings */}
+          <div className="glass-card p-3 md:p-4 border border-brd">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                {autoEnabled ? (
+                  <ToggleRight size={22} className="text-accent cursor-pointer" onClick={toggleAuto} />
+                ) : (
+                  <ToggleLeft size={22} className="text-tx3 cursor-pointer" onClick={toggleAuto} />
+                )}
+                <div>
+                  <div className="text-sm font-semibold">Auto-Backup</div>
+                  <div className="text-xs text-tx3">
+                    {autoEnabled ? `Enabled — every ${interval} ${unit === 'days' ? 'day(s)' : 'hour(s)'}${backupTime ? ` at ${backupTime}` : ''}` : 'Disabled'}
+                    {data?.last_backup_at && ` • Last: ${formatDate(data.last_backup_at)}`}
+                  </div>
+                </div>
+              </div>
+              <button onClick={doBackup} disabled={backing}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-sm font-medium transition-all disabled:opacity-50">
+                {backing ? <Loader2 size={14} className="animate-spin" /> : <HardDriveDownload size={14} />}
+                Backup Now
+              </button>
+            </div>
+            {autoEnabled && (
+              <div className="space-y-3 mt-3 pt-3 border-t border-brd/50">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs text-tx3 font-medium">Every:</label>
+                  <input type="number" min={1} max={unit === 'days' ? 30 : 168} value={interval}
+                    onChange={e => setIntervalVal(Number(e.target.value))}
+                    className="w-16 px-2 py-1 rounded-lg bg-glass border border-brd text-sm text-center focus:border-accent/50 outline-none" />
+                  <select value={unit} onChange={e => { setUnit(e.target.value as 'hours' | 'days'); setIntervalVal(e.target.value === 'days' ? 1 : 24); }}
+                    className="px-2 py-1 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none">
+                    <option value="hours">hour(s)</option>
+                    <option value="days">day(s)</option>
+                  </select>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs text-tx3 font-medium">At time:</label>
+                  <input type="time" value={backupTime}
+                    onChange={e => setBackupTime(e.target.value)}
+                    className="px-2 py-1 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none" />
+                  <span className="text-xs text-tx3">(empty = anytime)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={saveSettings} disabled={saving}
+                    className="px-3 py-1.5 rounded-lg bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-xs font-medium transition-all disabled:opacity-50">
+                    {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save Settings
+                  </button>
+                  <span className="text-xs text-tx3">Cron runs hourly, backs up when interval + time matched</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Backup list */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Backup History</h3>
+              <button onClick={() => refetch()} className="text-xs text-accent hover:text-accent-hover flex items-center gap-1">
+                <RefreshCw size={12} /> Refresh
+              </button>
+            </div>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8"><Loader2 size={20} className="animate-spin text-accent" /></div>
+            ) : backups.length === 0 ? (
+              <div className="text-center py-8 text-tx3 text-sm">
+                <History size={32} className="mx-auto mb-2 opacity-30" />
+                No backups yet. Click "Backup Now" to create one.
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-[40vh] overflow-y-auto">
+                {backups.map((b) => (
+                  <div key={b.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-glass border border-brd/50 hover:border-brd transition-colors">
+                    <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
+                      b.status === 'success' ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger')}>
+                      {b.status === 'success' ? <CheckCircle size={16} /> : <XCircle size={16} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{formatDate(b.created_at)}</span>
+                        <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium',
+                          b.backup_type === 'auto' ? 'bg-accent/15 text-accent' : 'bg-glass text-tx3')}>
+                          {b.backup_type === 'auto' ? 'Auto' : 'Manual'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-tx3 truncate">
+                        {b.status === 'success' ? fmtSize(b.config_size) : (b.error_message || 'Failed')}
+                      </div>
+                    </div>
+                    {b.status === 'success' && (
+                      <button onClick={() => downloadBackup(b.id)} title="Download"
+                        className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-accent transition-colors">
+                        <Download size={14} />
+                      </button>
+                    )}
+                    <button onClick={() => deleteBackup(b.id)} title="Delete"
+                      className="p-1.5 rounded-lg hover:bg-danger/15 text-tx3 hover:text-danger transition-colors">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

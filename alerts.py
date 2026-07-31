@@ -17,6 +17,7 @@ PON interface are grouped into a single alert message with impact summary.
 import logging
 import time
 import threading
+import asyncio
 import urllib.request
 import urllib.error
 import json
@@ -67,11 +68,11 @@ def _get_check_interval():
 
 # ─── OLT Health Check ───
 
-def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send, tenant_id=None):
+def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
     """Check OLT reachability and system health (CPU, memory, temperature) via SNMP.
     Uses vendor-specific OIDs. For ZTE C300/C320: standard enterprise OIDs.
     Returns True if OLT is reachable, False if offline."""
-    from models import db, AlertHistory
+    from models import db, AlertHistory, Notification
 
     is_reachable = False
     cpu_load = None
@@ -175,7 +176,6 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send, t
                 existing.message = message
             else:
                 notifications_to_create.append({
-                    'tenant_id': tenant_id,
                     'olt_id': olt.id,
                     'onu_id': None,
                     'severity': 'critical',
@@ -221,7 +221,6 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send, t
 
         # Create recovery notification
         notifications_to_create.append({
-            'tenant_id': tenant_id,
             'olt_id': olt.id,
             'onu_id': None,
             'severity': 'info',
@@ -261,7 +260,7 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send, t
 
             if not existing:
                 notifications_to_create.append({
-                    'tenant_id': tenant_id, 'olt_id': olt.id, 'onu_id': None,
+                    'olt_id': olt.id, 'onu_id': None,
                     'severity': 'warning', 'category': 'olt_cpu_high',
                     'title': title, 'message': message, 'target_roles': '',
                 })
@@ -299,7 +298,7 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send, t
 
             if not existing:
                 notifications_to_create.append({
-                    'tenant_id': tenant_id, 'olt_id': olt.id, 'onu_id': None,
+                    'olt_id': olt.id, 'onu_id': None,
                     'severity': 'warning', 'category': 'olt_mem_high',
                     'title': title, 'message': message, 'target_roles': '',
                 })
@@ -338,7 +337,7 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send, t
 
             if not existing:
                 notifications_to_create.append({
-                    'tenant_id': tenant_id, 'olt_id': olt.id, 'onu_id': None,
+                    'olt_id': olt.id, 'onu_id': None,
                     'severity': 'critical', 'category': 'olt_temp_high',
                     'title': title, 'message': message, 'target_roles': '',
                 })
@@ -388,46 +387,30 @@ def _check_onus(force_send=False):
     Args:
         force_send: If True, always send external alerts even if notification
                     already exists (used by manual recheck)."""
-    from models import db, OLT, ONU, Notification, AlertRule, AlertHistory, BotConfig, Tenant
-
-    # Process alerts per-tenant to ensure correct bot config is used
-    tenants = Tenant.query.all()
-    # Also handle OLTs without tenant (legacy/global)
-    tenant_ids = [t.id for t in tenants] + [None]
-
-    for tid in tenant_ids:
-        _check_onus_for_tenant(tid, force_send)
+    _check_onus_for_tenant(force_send=force_send)
 
 
-def _check_onus_for_tenant(tenant_id, force_send=False):
-    """Check ONUs for a specific tenant (or global if tenant_id is None)."""
+def _check_onus_for_tenant(force_send=False):
+    """Check ONUs for alert conditions."""
     from models import db, OLT, ONU, Notification, AlertRule, AlertHistory, BotConfig
 
-    if tenant_id is not None:
-        # Strictly use tenant-specific rule — no global fallback
-        rule = AlertRule.query.filter_by(tenant_id=tenant_id).first()
-    else:
-        rule = AlertRule.query.filter_by(tenant_id=None).first()
+    rule = AlertRule.query.first()
 
     if not rule:
-        # Auto-create default rule only if none exists for this tenant
-        existing_count = AlertRule.query.filter_by(tenant_id=tenant_id).count()
+        existing_count = AlertRule.query.count()
         if existing_count == 0:
-            rule = AlertRule(name='Default Alert Rule', tenant_id=tenant_id)
+            rule = AlertRule(name='Default Alert Rule')
             db.session.add(rule)
             db.session.commit()
-            logger.info(f"[ALERT] Auto-created default alert rule for tenant_id={tenant_id}")
+            logger.info("[ALERT] Auto-created default alert rule")
         else:
-            logger.warning(f"[ALERT] Found {existing_count} existing rules for tenant_id={tenant_id} but none matched — skipping")
+            logger.warning(f"[ALERT] Found {existing_count} existing rules but none matched — skipping")
             return
 
     if not rule.enabled:
         return
 
-    if tenant_id is not None:
-        olts = OLT.query.filter_by(monitoring_enabled=True, tenant_id=tenant_id).all()
-    else:
-        olts = OLT.query.filter_by(monitoring_enabled=True, tenant_id=None).all()
+    olts = OLT.query.filter_by(monitoring_enabled=True).all()
     if not olts:
         return
 
@@ -448,15 +431,13 @@ def _check_onus_for_tenant(tenant_id, force_send=False):
             MaintenanceWindow.end_time >= now,
         ).filter(
             (MaintenanceWindow.olt_id == olt.id) | (MaintenanceWindow.olt_id.is_(None))
-        ).filter(
-            (MaintenanceWindow.tenant_id == tenant_id) | (MaintenanceWindow.tenant_id.is_(None))
         ).first()
         if in_maintenance:
             logger.info(f"[ALERT] OLT {olt.name} is in maintenance window — skipping alerts")
             continue
 
         # ─── OLT Health Check (Fase 2A) ───
-        olt_reachable = _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send, tenant_id)
+        olt_reachable = _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send)
         if not olt_reachable:
             logger.info(f"[ALERT] OLT {olt.name} is offline — skipping ONU checks")
             continue  # Skip ONU checks for unreachable OLT (avoid false positives)
@@ -534,7 +515,7 @@ def _check_onus_for_tenant(tenant_id, force_send=False):
 
             # ─── Check unconfigured ───
             if not onu.name or onu.name in ('Unnamed', ''):
-                _handle_unconfigured_alert(onu, olt, rule, now, notifications_to_create, alerts_to_send, tenant_id)
+                _handle_unconfigured_alert(onu, olt, rule, now, notifications_to_create, alerts_to_send)
 
     # ─── Build batched alerts from PON groups ───
     for pon_key, group in pon_groups.items():
@@ -545,17 +526,17 @@ def _check_onus_for_tenant(tenant_id, force_send=False):
         offline_onus = group['offline']
         if offline_onus:
             _build_offline_batch(olt, interface, offline_onus, total, now,
-                                 notifications_to_create, alerts_to_send, tenant_id, force_send)
+                                 notifications_to_create, alerts_to_send, force_send)
 
         drop_onus = group['signal_drop']
         if drop_onus:
             _build_signal_drop_batch(olt, interface, drop_onus, total, now,
-                                     notifications_to_create, alerts_to_send, tenant_id, force_send)
+                                     notifications_to_create, alerts_to_send, force_send)
 
         recovery_onus = group['recovery']
         if recovery_onus:
             _build_recovery_batch(olt, interface, recovery_onus, total, now,
-                                  notifications_to_create, recovery_to_send, tenant_id)
+                                  notifications_to_create, recovery_to_send)
 
     # ─── Check unregistered ONUs via Telnet (show pon onu uncfg) ───
     for olt in olts:
@@ -567,7 +548,7 @@ def _check_onus_for_tenant(tenant_id, force_send=False):
             unregistered = tc.collect_unregistered_onus()
             if unregistered:
                 _build_unregistered_alert(olt, unregistered, now,
-                                          notifications_to_create, alerts_to_send, tenant_id, force_send)
+                                          notifications_to_create, alerts_to_send, force_send)
         except Exception as e:
             logger.error(f"[ALERT] Unregistered check failed for {olt.name}: {e}")
 
@@ -593,23 +574,22 @@ def _check_onus_for_tenant(tenant_id, force_send=False):
                     'title': notif_data.get('title', ''),
                     'olt_id': notif_data.get('olt_id'),
                     'onu_id': notif_data.get('onu_id'),
-                    'tenant_id': notif_data.get('tenant_id'),
                 })
         except Exception as e:
             logger.debug(f"[ALERT] WS broadcast failed (server may be down): {e}")
 
     # ─── Send external alerts ───
     if alerts_to_send:
-        _send_external_alerts(alerts_to_send, tenant_id)
+        _send_external_alerts(alerts_to_send)
 
     if recovery_to_send:
-        _send_external_alerts(recovery_to_send, tenant_id)
+        _send_external_alerts(recovery_to_send)
 
 
 # ─── Batch builders ───
 
 def _build_offline_batch(olt, interface, offline_onus, total_onus, now,
-                         notifications, alerts, tenant_id=None, force_send=False):
+                         notifications, alerts, force_send=False):
     """Build a batched offline alert for a PON port."""
     from models import Notification
 
@@ -635,14 +615,27 @@ def _build_offline_batch(olt, interface, offline_onus, total_onus, now,
 
     if affected == 1:
         onu = offline_onus[0]
+        customer = ''
+        if onu.odp_port and onu.odp_port.customer_name:
+            customer = onu.odp_port.customer_name
+        elif onu.odp_port and onu.odp_port.odp:
+            customer = onu.odp_port.odp.name
         title = f"ONU {onu.status.upper()}: {onu.name or onu.serial_number}"
         message = (
-            f"OLT: {olt.name} ({olt.ip_address})\n"
-            f"Interface: {interface}\n"
+            f"{'🔴' if onu.status == 'los' else '⚡' if onu.status == 'dyinggasp' else '⚫'} ONU {onu.status.upper()}\n\n"
             f"ONU: {onu.onu_id_str}\n"
             f"Name: {onu.name or 'N/A'}\n"
+            f"Serial: {onu.serial_number or 'N/A'}\n"
+        )
+        if customer:
+            message += f"Pelanggan: {customer}\n"
+        message += (
             f"Status: {onu.status.upper()}\n"
-            f"Last RX: {f'{onu.onu_rx_power:.2f} dBm' if onu.onu_rx_power is not None else 'N/A'}"
+            f"RX ONU: {f'{onu.onu_rx_power:.2f} dBm' if onu.onu_rx_power is not None else 'N/A'}\n"
+            f"Distance: {f'{onu.distance} m' if onu.distance else 'N/A'}\n"
+            f"OLT: {olt.name} ({olt.ip_address})\n"
+            f"Interface: {interface}\n\n"
+            f"🕒 {_fmt_time(now)}"
         )
         category = onu.status
     else:
@@ -657,7 +650,7 @@ def _build_offline_batch(olt, interface, offline_onus, total_onus, now,
         if affected > 15:
             message += f"\n  ... dan {affected - 15} lainnya"
         message += f"\n\n🕒 Waktu: {_fmt_time(now)}"
-        category = 'offline_batch'
+        category = f'{primary}_batch'
 
     existing = Notification.query.filter_by(
         olt_id=olt.id, category=category, is_read=False
@@ -668,7 +661,6 @@ def _build_offline_batch(olt, interface, offline_onus, total_onus, now,
         existing.message = message
     else:
         notifications.append({
-            'tenant_id': tenant_id,
             'olt_id': olt.id,
             'onu_id': offline_onus[0].id if affected == 1 else None,
             'severity': 'critical' if primary == 'dyinggasp' else 'warning',
@@ -694,7 +686,7 @@ def _build_offline_batch(olt, interface, offline_onus, total_onus, now,
 
 
 def _build_signal_drop_batch(olt, interface, drop_onus, total_onus, now,
-                              notifications, alerts, tenant_id=None, force_send=False):
+                              notifications, alerts, force_send=False):
     """Build a batched signal drop alert for a PON port."""
     from models import Notification
 
@@ -710,14 +702,25 @@ def _build_signal_drop_batch(olt, interface, drop_onus, total_onus, now,
     if affected == 1:
         d = drop_onus[0]
         onu = d['onu']
+        customer = ''
+        if onu.odp_port and onu.odp_port.customer_name:
+            customer = onu.odp_port.customer_name
         title = f"📉 Signal Drop: {onu.name or onu.serial_number}"
         message = (
-            f"OLT: {olt.name} ({olt.ip_address})\n"
-            f"Interface: {interface}\n"
+            f"📉 PENURUNAN SINYAL\n\n"
             f"ONU: {onu.onu_id_str}\n"
             f"Name: {onu.name or 'N/A'}\n"
-            f"RX Power (ONU): {d['current']:.2f} dBm (was {d['previous']:.2f} dBm)\n"
-            f"Drop: ⬇️ {d['drop']:.2f} dB"
+            f"Serial: {onu.serial_number or 'N/A'}\n"
+        )
+        if customer:
+            message += f"Pelanggan: {customer}\n"
+        message += (
+            f"RX ONU: {d['current']:.2f} dBm (sebelumnya {d['previous']:.2f} dBm)\n"
+            f"Drop: ⬇️ {d['drop']:.2f} dB\n"
+            f"Distance: {f'{onu.distance} m' if onu.distance else 'N/A'}\n"
+            f"OLT: {olt.name} ({olt.ip_address})\n"
+            f"Interface: {interface}\n\n"
+            f"🕒 {_fmt_time(now)}"
         )
         category = 'rx_power'
     else:
@@ -744,7 +747,6 @@ def _build_signal_drop_batch(olt, interface, drop_onus, total_onus, now,
         existing.message = message
     else:
         notifications.append({
-            'tenant_id': tenant_id,
             'olt_id': olt.id,
             'onu_id': drop_onus[0]['onu'].id if affected == 1 else None,
             'severity': 'warning',
@@ -772,7 +774,7 @@ def _build_signal_drop_batch(olt, interface, drop_onus, total_onus, now,
 
 
 def _build_recovery_batch(olt, interface, recovery_onus, total_onus, now,
-                          notifications, recovery_alerts, tenant_id=None):
+                          notifications, recovery_alerts):
     """Build a batched recovery alert for a PON port."""
     from models import Notification
 
@@ -786,16 +788,25 @@ def _build_recovery_batch(olt, interface, recovery_onus, total_onus, now,
 
     if recovered == 1:
         onu = recovery_onus[0]
+        customer = ''
+        if onu.odp_port and onu.odp_port.customer_name:
+            customer = onu.odp_port.customer_name
         title = f"✅ Recovery: {onu.name or onu.serial_number}"
         message = (
-            f"✅ RECOVERY ✅\n\n"
-            f"OLT: {olt.name} ({olt.ip_address})\n"
-            f"Interface: {interface}\n"
+            f"✅ ONU KEMBALI ONLINE\n\n"
             f"ONU: {onu.onu_id_str}\n"
             f"Name: {onu.name or 'N/A'}\n"
-            f"Status: Sudah kembali online\n"
-            f"RX Power (ONU): {f'{onu.onu_rx_power:.2f} dBm' if onu.onu_rx_power is not None else 'N/A'}\n\n"
-            f"🕒 Waktu: {_fmt_time(now)}"
+            f"Serial: {onu.serial_number or 'N/A'}\n"
+        )
+        if customer:
+            message += f"Pelanggan: {customer}\n"
+        message += (
+            f"Status: ONLINE\n"
+            f"RX ONU: {f'{onu.onu_rx_power:.2f} dBm' if onu.onu_rx_power is not None else 'N/A'}\n"
+            f"Distance: {f'{onu.distance} m' if onu.distance else 'N/A'}\n"
+            f"OLT: {olt.name} ({olt.ip_address})\n"
+            f"Interface: {interface}\n\n"
+            f"🕒 {_fmt_time(now)}"
         )
         category = 'recovery'
     else:
@@ -812,7 +823,6 @@ def _build_recovery_batch(olt, interface, recovery_onus, total_onus, now,
         category = 'recovery_batch'
 
     notifications.append({
-        'tenant_id': tenant_id,
         'olt_id': olt.id,
         'onu_id': recovery_onus[0].id if recovered == 1 else None,
         'severity': 'info',
@@ -910,7 +920,7 @@ def _check_rx_power_batched(onu, olt, rule, now, pon_key, pon_groups):
 
 # ─── Unconfigured alert (kept individual) ───
 
-def _handle_unconfigured_alert(onu, olt, rule, now, notifications, alerts, tenant_id=None):
+def _handle_unconfigured_alert(onu, olt, rule, now, notifications, alerts):
     """Handle unconfigured ONU alerts."""
     from models import db, AlertHistory, Notification
 
@@ -943,7 +953,6 @@ def _handle_unconfigured_alert(onu, olt, rule, now, notifications, alerts, tenan
         existing.message = message
     else:
         notifications.append({
-            'tenant_id': tenant_id,
             'olt_id': olt.id,
             'onu_id': onu.id,
             'severity': 'warning',
@@ -972,7 +981,7 @@ def _handle_unconfigured_alert(onu, olt, rule, now, notifications, alerts, tenan
 
 # ─── Unregistered ONU alert (from Telnet show pon onu uncfg) ───
 
-def _build_unregistered_alert(olt, unregistered, now, notifications, alerts, tenant_id=None, force_send=False):
+def _build_unregistered_alert(olt, unregistered, now, notifications, alerts, force_send=False):
     """Build alert for unregistered ONUs detected via Telnet."""
     from models import db, Notification, AlertHistory
 
@@ -1021,7 +1030,6 @@ def _build_unregistered_alert(olt, unregistered, now, notifications, alerts, ten
         existing.title = title
     else:
         notifications.append({
-            'tenant_id': tenant_id,
             'olt_id': olt.id,
             'onu_id': None,
             'severity': 'warning',
@@ -1058,64 +1066,48 @@ def _build_unregistered_alert(olt, unregistered, now, notifications, alerts, ten
 
 # ─── External alert senders ───
 
-def _send_external_alerts(alerts, tenant_id=None):
-    """Send batched alerts to Telegram, WhatsApp (third-party), and WhatsApp Native.
-    Uses tenant_id to find the correct bot config. No global fallback — each tenant
-    must have its own bot config."""
+def _send_external_alerts(alerts):
+    """Send batched alerts to Telegram, WhatsApp (third-party), and WhatsApp Native."""
     from models import BotConfig
 
     def find_config(bot_type):
-        if tenant_id is not None:
-            c = BotConfig.query.filter_by(bot_type=bot_type, enabled=True, tenant_id=tenant_id).first()
-            if c:
-                return c
-            logger.warning(f"[ALERT] No {bot_type} config found for tenant_id={tenant_id} — skipping")
-            return None
-        # Global (super admin / legacy)
-        c = BotConfig.query.filter_by(bot_type=bot_type, enabled=True, tenant_id=None).first()
+        c = BotConfig.query.filter_by(bot_type=bot_type, enabled=True).first()
         if not c:
-            logger.warning(f"[ALERT] No global {bot_type} config found — skipping")
+            logger.warning(f"[ALERT] No {bot_type} config found — skipping")
         return c
 
-    logger.info(f"[ALERT] Sending external alerts: tenant_id={tenant_id}, count={len(alerts)}")
+    logger.info(f"[ALERT] Sending external alerts: count={len(alerts)}")
 
     telegram_config = find_config('telegram')
     if telegram_config and telegram_config.bot_token and telegram_config.chat_id:
-        logger.info(f"[ALERT] Telegram: tenant_id={tenant_id}, chat_id={telegram_config.chat_id}")
+        logger.info(f"[ALERT] Telegram: chat_id={telegram_config.chat_id}")
         _send_telegram(telegram_config, alerts)
     else:
-        logger.info(f"[ALERT] Telegram: skipped for tenant_id={tenant_id} (no valid config)")
+        logger.info("[ALERT] Telegram: skipped (no valid config)")
 
     whatsapp_config = find_config('whatsapp')
     if whatsapp_config and whatsapp_config.api_url:
-        logger.info(f"[ALERT] WhatsApp: tenant_id={tenant_id}, target={whatsapp_config.phone_number}, url={whatsapp_config.api_url}")
-        _send_whatsapp(whatsapp_config, alerts, tenant_id)
+        logger.info(f"[ALERT] WhatsApp: target={whatsapp_config.phone_number}, url={whatsapp_config.api_url}")
+        _send_whatsapp(whatsapp_config, alerts)
     else:
-        logger.info(f"[ALERT] WhatsApp: skipped for tenant_id={tenant_id} (no valid config)")
+        logger.info("[ALERT] WhatsApp: skipped (no valid config)")
 
     native_config = find_config('whatsapp_native')
     if native_config and native_config.api_url:
-        logger.info(f"[ALERT] WA Native: tenant_id={tenant_id}, target={native_config.phone_number}, url={native_config.api_url}")
-        _send_whatsapp_native(native_config, alerts, tenant_id)
+        logger.info(f"[ALERT] WA Native: target={native_config.phone_number}, url={native_config.api_url}")
+        _send_whatsapp_native(native_config, alerts)
     else:
-        logger.info(f"[ALERT] WA Native: skipped for tenant_id={tenant_id} (no valid config)")
+        logger.info("[ALERT] WA Native: skipped (no valid config)")
 
     # Send to technicians with receive_alerts permission and phone number
-    _send_technician_alerts(alerts, tenant_id)
+    _send_technician_alerts(alerts)
 
 
-def _send_technician_alerts(alerts, tenant_id=None):
-    """Send alert notifications to technician users (role has 'receive_alerts' perm) with phone numbers.
-    Uses the tenant's WA native gateway to send individual messages to each technician."""
+def _send_technician_alerts(alerts):
+    """Send alert notifications to technician users (role has 'receive_alerts' perm) with phone numbers."""
     try:
         from models import User, Role
-        # Find users in this tenant with receive_alerts permission and a phone number
-        users_q = User.query.filter(User.phone != None, User.phone != '')
-        if tenant_id is not None:
-            users_q = users_q.filter_by(tenant_id=tenant_id, is_super_admin=False)
-        else:
-            users_q = users_q.filter_by(is_super_admin=False)
-        users = users_q.all()
+        users = User.query.filter(User.phone != None, User.phone != '', User.is_super_admin == False).all()
 
         technicians = []
         for u in users:
@@ -1123,14 +1115,13 @@ def _send_technician_alerts(alerts, tenant_id=None):
                 technicians.append(u)
 
         if not technicians:
-            logger.info(f"[ALERT] No technicians with phone found for tenant_id={tenant_id}")
+            logger.info("[ALERT] No technicians with phone found")
             return
 
-        logger.info(f"[ALERT] Sending to {len(technicians)} technician(s) for tenant_id={tenant_id}")
+        logger.info(f"[ALERT] Sending to {len(technicians)} technician(s)")
 
-        # Use tenant's WA native gateway
-        port = 3000 + (tenant_id if tenant_id else 0)
-        gateway_url = f'http://localhost:{port}'
+        # Use WA native gateway
+        gateway_url = 'http://localhost:3000'
         text = "\n\n━━━━━━━━━━━\n\n".join(a['message'] for a in alerts)
 
         for tech in technicians:
@@ -1184,7 +1175,7 @@ def _send_telegram_single(config, text):
     return resp.status == 200
 
 
-def _send_whatsapp(config, alerts, tenant_id=None):
+def _send_whatsapp(config, alerts):
     """Send alerts to WhatsApp third-party API."""
     try:
         import urllib.parse as _parse
@@ -1192,7 +1183,7 @@ def _send_whatsapp(config, alerts, tenant_id=None):
         url = config.api_url
         phone = config.phone_number
 
-        logger.info(f"[ALERT] WA send: tenant_id={tenant_id}, target={phone}, url={url}, msg_len={len(text)}")
+        logger.info(f"[ALERT] WA send: target={phone}, url={url}, msg_len={len(text)}")
 
         if 'fonnte.com' in url:
             payload = _parse.urlencode({'target': phone, 'message': text, 'countryCode': '62'}).encode('utf-8')
@@ -1224,25 +1215,21 @@ def _send_whatsapp(config, alerts, tenant_id=None):
             req = urllib.request.Request(url, headers=headers)
         resp = urllib.request.urlopen(req, timeout=15)
         if resp.status in (200, 201):
-            logger.info(f"[ALERT] WhatsApp: sent {len(alerts)} alerts, tenant_id={tenant_id}, target={phone}, status={resp.status}")
+            logger.info(f"[ALERT] WhatsApp: sent {len(alerts)} alerts, target={phone}, status={resp.status}")
         else:
-            logger.error(f"[ALERT] WhatsApp error: status={resp.status}, tenant_id={tenant_id}, target={phone}")
+            logger.error(f"[ALERT] WhatsApp error: status={resp.status}, target={phone}")
     except Exception as e:
-        logger.error(f"[ALERT] WhatsApp send failed: {e}, tenant_id={tenant_id}, target={phone}")
+        logger.error(f"[ALERT] WhatsApp send failed: {e}, target={phone}")
 
 
-def _send_whatsapp_native(config, alerts, tenant_id=None):
-    """Send alerts to native WhatsApp gateway (Baileys).
-    Uses tenant-assigned port (3000 + tenant_id) instead of config.api_url
-    to ensure each tenant hits its own gateway instance."""
+def _send_whatsapp_native(config, alerts):
+    """Send alerts to native WhatsApp gateway (Baileys)."""
     try:
         text = "\n\n━━━━━━━━━━━\n\n".join(a['message'] for a in alerts)
-        # Calculate gateway URL from tenant-assigned port
-        port = 3000 + (tenant_id if tenant_id else 0)
-        gateway_url = f'http://localhost:{port}'
+        gateway_url = 'http://localhost:3000'
         phone = config.phone_number
 
-        logger.info(f"[ALERT] WA Native send: tenant_id={tenant_id}, target={phone}, url={gateway_url}, msg_len={len(text)}")
+        logger.info(f"[ALERT] WA Native send: target={phone}, url={gateway_url}, msg_len={len(text)}")
 
         payload = json.dumps({'phone': phone, 'message': text}).encode('utf-8')
         headers = {'Content-Type': 'application/json'}
@@ -1254,8 +1241,8 @@ def _send_whatsapp_native(config, alerts, tenant_id=None):
         )
         resp = urllib.request.urlopen(req, timeout=15)
         if resp.status in (200, 201):
-            logger.info(f"[ALERT] WhatsApp Native: sent {len(alerts)} alerts, tenant_id={tenant_id}, target={phone}, status={resp.status}")
+            logger.info(f"[ALERT] WhatsApp Native: sent {len(alerts)} alerts, target={phone}, status={resp.status}")
         else:
-            logger.error(f"[ALERT] WhatsApp Native error: status={resp.status}, tenant_id={tenant_id}, target={phone}")
+            logger.error(f"[ALERT] WhatsApp Native error: status={resp.status}, target={phone}")
     except Exception as e:
-        logger.error(f"[ALERT] WhatsApp Native send failed: {e}, tenant_id={tenant_id}")
+        logger.error(f"[ALERT] WhatsApp Native send failed: {e}")

@@ -1,29 +1,38 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Map as MapIcon, TreePine, Plus, Edit2, Trash2, ChevronDown, ChevronRight,
-  Server, Box, Network, Split, X, MapPin, Link2, Unlink, Phone, Download, Upload, Cable
+  Server, Box, Network, Split, X, MapPin, Link2, Unlink, Phone, Download, Upload, Cable,
+  Activity, AlertTriangle, Wifi, WifiOff, Zap, CircleDashed, Gauge, RefreshCw,
+  UserX
 } from 'lucide-react';
-import { api, type FTTHItem, type FTTHOtb, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort } from '../lib/api';
+import { api, type FTTHItem, type FTTHOtb, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
+import { TutorialBanner } from '../components/TutorialBanner';
 import { LocationPicker } from '../components/LocationPicker';
+import { LeafletMap } from '../components/LeafletMap';
 import { useHasPerm } from '../hooks/useHasPerm';
+import { useWebSocket } from '../hooks/useWebSocket';
 
-type Tab = 'tree' | 'map' | 'otb' | 'odc' | 'odp' | 'pon';
+type Tab = 'overview' | 'tree' | 'map' | 'otb' | 'odc' | 'odp' | 'pon';
 type ModalType = 'otb' | 'odc' | 'odp' | 'port' | 'pon' | null;
+
+const FTTH_REFRESH_INTERVAL = 10;
 
 export function FtthInfrastructure() {
   const [searchParams] = useSearchParams();
   const hasPerm = useHasPerm();
   const canEdit = hasPerm('settings_ip_olts');
-  const initialTab = (searchParams.get('tab') as Tab) || 'tree';
+  const initialTab = (searchParams.get('tab') as Tab) || 'overview';
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [countdown, setCountdown] = useState(FTTH_REFRESH_INTERVAL);
+  const countdownRef = useRef(FTTH_REFRESH_INTERVAL);
 
   useEffect(() => {
-    const urlTab = (searchParams.get('tab') as Tab) || 'tree';
+    const urlTab = (searchParams.get('tab') as Tab) || 'overview';
     setTab(urlTab);
   }, [searchParams]);
   const [modal, setModal] = useState<ModalType>(null);
@@ -31,6 +40,9 @@ export function FtthInfrastructure() {
   const [parentCtx, setParentCtx] = useState<any>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedOdp, setSelectedOdp] = useState<FTTHOdp | null>(null);
+  const [drawMode, setDrawMode] = useState(false);
+  const [autoRouteMode, setAutoRouteMode] = useState(false);
+  const [autoRouteStart, setAutoRouteStart] = useState<any>(null);
   const qc = useQueryClient();
 
   const { data: treeData, isLoading } = useQuery({
@@ -38,11 +50,51 @@ export function FtthInfrastructure() {
     queryFn: api.ftthTree,
   });
 
+  const { data: statsData, isFetching: statsFetching } = useQuery({
+    queryKey: ['ftth-stats'],
+    queryFn: api.ftthStats,
+    refetchInterval: tab === 'overview' ? FTTH_REFRESH_INTERVAL * 1000 : false,
+  });
+
   const { data: mapData } = useQuery({
     queryKey: ['ftth-map'],
     queryFn: api.ftthMap,
     enabled: tab === 'map',
+    refetchInterval: tab === 'map' ? 15000 : false,
   });
+
+  // WebSocket: realtime refresh on ONU status changes
+  const { lastMessage: mapWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
+  useEffect(() => {
+    if (mapWsMsg && (mapWsMsg.event === 'onu_change' || mapWsMsg.event === 'alert' || mapWsMsg.event === 'sync_complete')) {
+      qc.invalidateQueries({ queryKey: ['ftth-map'] });
+      qc.invalidateQueries({ queryKey: ['ftth-stats'] });
+      qc.invalidateQueries({ queryKey: ['ftth-tree'] });
+      qc.invalidateQueries({ queryKey: ['ftth-pon'] });
+    }
+  }, [mapWsMsg, qc]);
+
+  // Countdown ticker (only when overview tab is active)
+  useEffect(() => {
+    if (tab !== 'overview') return;
+    const tick = setInterval(() => {
+      countdownRef.current -= 1;
+      setCountdown(countdownRef.current);
+      if (countdownRef.current <= 0) {
+        countdownRef.current = FTTH_REFRESH_INTERVAL;
+        setCountdown(FTTH_REFRESH_INTERVAL);
+      }
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [tab]);
+
+  // Reset countdown when data finishes fetching
+  useEffect(() => {
+    if (!statsFetching) {
+      countdownRef.current = FTTH_REFRESH_INTERVAL;
+      setCountdown(FTTH_REFRESH_INTERVAL);
+    }
+  }, [statsFetching]);
 
   const { data: otbList } = useQuery({ queryKey: ['ftth-otb'], queryFn: api.ftthOtbList });
   const { data: odcList } = useQuery({ queryKey: ['ftth-odc'], queryFn: () => api.ftthOdcList() });
@@ -54,15 +106,18 @@ export function FtthInfrastructure() {
   });
   const { data: availableOnus } = useQuery({ queryKey: ['ftth-onus'], queryFn: () => api.ftthAvailableOnus() });
   const { data: ponList } = useQuery({ queryKey: ['ftth-pon'], queryFn: api.ftthPonList });
+  const { data: fiberPaths } = useQuery({ queryKey: ['ftth-paths'], queryFn: api.ftthPathsList, enabled: tab === 'map' });
 
   const invalidate = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['ftth-tree'] });
+    qc.invalidateQueries({ queryKey: ['ftth-stats'] });
     qc.invalidateQueries({ queryKey: ['ftth-map'] });
     qc.invalidateQueries({ queryKey: ['ftth-otb'] });
     qc.invalidateQueries({ queryKey: ['ftth-odc'] });
     qc.invalidateQueries({ queryKey: ['ftth-odp'] });
     qc.invalidateQueries({ queryKey: ['ftth-odp-ports'] });
     qc.invalidateQueries({ queryKey: ['ftth-pon'] });
+    qc.invalidateQueries({ queryKey: ['ftth-paths'] });
   }, [qc]);
 
   const delMut = useMutation({
@@ -100,12 +155,37 @@ export function FtthInfrastructure() {
     <div className="space-y-3 md:space-y-4">
       {/* Header */}
       <div className="flex flex-col gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2"><Network size={20} /> FTTH Infrastructure</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">Manage OTB/ODF → ODC → ODP → ONU chain with map coordinates</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2"><Network size={20} /> FTTH Infrastructure</h1>
+            <p className="text-tx2 text-xs md:text-sm mt-1">Manage OTB/ODF → ODC → ODP → ONU chain with map coordinates</p>
+          </div>
+          <TutorialBanner
+            title="Panduan FTTH Infrastructure"
+            steps={[
+              { title: 'Overview', content: <><p>Statistik infrastruktur FTTH: total OTB/ODF, ODC, ODP, ONU, port utilization, dan distribusi per OLT. Auto-refresh setiap 10 detik.</p></> },
+              { title: 'Tree', content: <><p>Struktur tree infrastruktur: <strong>OTB/ODF → ODC → ODP → ONU</strong>. Expand/collapse setiap node untuk melihat child items.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Add OTB</strong> untuk tambah OTB/ODF baru. Setiap OTB bisa punya multiple ODC, setiap ODC punya multiple ODP.</p></> },
+              { title: 'PON Ports', content: <><p>Daftar PON port OLT (gpon-olt_1/1/1, dll). Menampilkan total ONU, online ONU, dan ODP yang terhubung ke PON port tersebut.</p><p className="text-xs text-tx3 mt-1">Link PON port ke ODP untuk tracking jalur fiber dari OLT ke customer.</p></> },
+              { title: 'OTB / ODC / ODP', content: <><p>Manajemen individual OTB/ODF, ODC, dan ODP. Tambah/edit/hapus item dengan koordinat GPS (latitude/longitude).</p><p className="text-xs text-tx3 mt-1">ODP punya port (1-16) yang bisa di-link ke ONU customer. Setiap port bisa di-assign ke ONU dari All ONUs page.</p></> },
+              { title: 'Map', content: <><p>Peta interaktif menampilkan semua OTB/ODF, ODC, dan ODP yang punya koordinat GPS. Garis menghubungkan parent-child (OTB→ODC→ODP).</p><p className="text-xs text-tx3 mt-1">Klik marker untuk info detail. Gunakan LocationPicker untuk set koordinat saat add/edit.</p></> },
+              { title: 'Import / Export', content: <><p><strong>Export CSV</strong>: download semua data FTTH ke CSV. <strong>Import CSV</strong>: upload data FTTH dari CSV (bulk create).</p></> },
+            ]}
+            tips={
+              <>
+                <strong className="text-tx2">Tips:</strong>
+                <ul className="mt-1 ml-4 space-y-0.5">
+                  <li>Urutan: buat OTB/ODF → ODC → ODP → assign ODP port ke ONU</li>
+                  <li>Set koordinat GPS untuk tampil di peta Map tab</li>
+                  <li>Link PON port OLT ke ODP untuk tracking jalur fiber</li>
+                  <li>Import CSV untuk bulk create dari spreadsheet</li>
+                </ul>
+              </>
+            }
+          />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex bg-glass rounded-lg p-0.5 overflow-x-auto scrollbar-thin max-w-full">
+            <button onClick={() => setTab('overview')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'overview' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Gauge size={14} /> Overview</button>
             <button onClick={() => setTab('tree')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'tree' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><TreePine size={14} /> Tree</button>
             <button onClick={() => setTab('pon')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'pon' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Cable size={14} /> PON</button>
             <button onClick={() => setTab('otb')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'otb' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Server size={14} /> OTB</button>
@@ -130,9 +210,15 @@ export function FtthInfrastructure() {
                 e.target.value = '';
               }} />
             </label>}
+            <button onClick={() => invalidate()} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass text-tx2 text-xs md:text-sm hover:text-tx1 transition-colors" title="Refresh data">
+              <RefreshCw size={13} /> Refresh
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Overview Tab */}
+      {tab === 'overview' && <OverviewTab stats={statsData} isFetching={statsFetching} countdown={countdown} onDrillDown={() => setTab('tree')} />}
 
       {/* Tree View */}
       {tab === 'tree' && (
@@ -163,24 +249,42 @@ export function FtthInfrastructure() {
           {(ponList?.items || []).length === 0 && (
             <div className="glass-card p-8 text-center"><Cable size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm mb-3">No PON ports added yet</p>{canEdit && <button onClick={() => openAdd('pon')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First PON</button>}</div>
           )}
-          {(ponList?.items || []).map(p => (
-            <div key={p.id} className="glass-card p-3 flex items-center gap-3 hover:bg-glass/50 transition-colors">
-              <Cable size={18} className="text-accent flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm truncate">{p.pon_name || `PON ${p.frame}/${p.slot}/${p.port}`}</div>
-                <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
-                  {p.olt_name && <span>• OLT: {p.olt_name}</span>}
-                  <span>• Frame {p.frame} / Slot {p.slot} / Port {p.port}</span>
-                  {p.otb_name && <span>• → OTB: {p.otb_name} (Core {p.otb_core_number})</span>}
-                  {p.description && <span>• {p.description}</span>}
+          {(ponList?.items || []).map(p => {
+            const onlinePct = p.total_onu > 0 ? Math.round((p.online_onu / p.total_onu) * 100) : 0;
+            return (
+            <div key={p.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
+              <div className="flex items-center gap-3">
+                <Cable size={18} className="text-accent flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm truncate">{p.pon_name || `PON ${p.frame}/${p.slot}/${p.port}`}</span>
+                    {p.total_onu > 0 && <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', onlinePct > 80 ? 'bg-success/15 text-success' : onlinePct > 50 ? 'bg-warning/15 text-warning' : 'bg-danger/15 text-danger')}>{p.online_onu}/{p.total_onu} ONUs</span>}
+                  </div>
+                  <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
+                    {p.olt_name && <span>• OLT: {p.olt_name}</span>}
+                    <span>• Frame {p.frame} / Slot {p.slot} / Port {p.port}</span>
+                    {p.otb_name && <span>• → OTB: {p.otb_name} (Core {p.otb_core_number})</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {canEdit && <button onClick={() => openEdit('pon', p)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
+                  {canEdit && <button onClick={() => handleDelete('pon', p.id, p.pon_name || 'PON')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                {canEdit && <button onClick={() => openEdit('pon', p)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-                {canEdit && <button onClick={() => handleDelete('pon', p.id, p.pon_name || 'PON')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
-              </div>
+              {p.total_onu > 0 && (
+                <div className="mt-2">
+                  <div className="flex justify-between text-[10px] text-tx3 mb-1">
+                    <span>Online: {p.online_onu} / Offline: {p.offline_onu}</span>
+                    <span className={cn('font-bold', onlinePct > 80 ? 'text-success' : onlinePct > 50 ? 'text-warning' : 'text-danger')}>{onlinePct}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-glass overflow-hidden">
+                    <div className={cn('h-full rounded-full transition-all', onlinePct > 80 ? 'bg-success' : onlinePct > 50 ? 'bg-warning' : 'bg-danger')} style={{ width: `${onlinePct}%` }} />
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -190,26 +294,36 @@ export function FtthInfrastructure() {
           {(otbList?.items || []).length === 0 && (
             <div className="glass-card p-8 text-center"><Server size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm mb-3">No OTB/ODF added yet</p>{canEdit && <button onClick={() => openAdd('otb')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First OTB/ODF</button>}</div>
           )}
-          {(otbList?.items || []).map(o => (
-            <div key={o.id} className="glass-card p-3 flex items-center gap-3 hover:bg-glass/50 transition-colors">
-              <Server size={18} className="text-accent flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm truncate">{o.name}</div>
-                <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
-                  <span className="uppercase">{o.type}</span>
-                  {o.olt_name && <span>• OLT: {o.olt_name}</span>}
-                  {o.pon_port && <span>• PON: {o.pon_port}</span>}
-                  <span>• {o.total_cores} cores</span>
-                  <span>• {o.odc_count} ODCs</span>
-                  {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
+          {(otbList?.items || []).map(o => {
+            const util = o.total_cores > 0 ? Math.round((o.used_cores / o.total_cores) * 100) : 0;
+            return (
+            <div key={o.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
+              <div className="flex items-center gap-3">
+                <Server size={18} className="text-accent flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm truncate">{o.name}</span>
+                    <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? 'ACTIVE' : 'IDLE'}</span>
+                  </div>
+                  <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
+                    <span className="uppercase">{o.type}</span>
+                    {o.olt_name && <span>• OLT: {o.olt_name}</span>}
+                    {o.pon_port && <span>• PON: {o.pon_port}</span>}
+                    {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {canEdit && <button onClick={() => openEdit('otb', o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
+                  {canEdit && <button onClick={() => handleDelete('otb', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                {canEdit && <button onClick={() => openEdit('otb', o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-                {canEdit && <button onClick={() => handleDelete('otb', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+              <div className="mt-2">
+                <div className="flex justify-between text-[10px] text-tx3 mb-1"><span>Cores: {o.used_cores}/{o.total_cores}</span><span className={cn('font-bold', util > 80 ? 'text-danger' : util > 60 ? 'text-warning' : 'text-success')}>{util}%</span></div>
+                <div className="h-1.5 rounded-full bg-glass overflow-hidden"><div className={cn('h-full rounded-full transition-all', util > 80 ? 'bg-danger' : util > 60 ? 'bg-warning' : 'bg-success')} style={{ width: `${util}%` }} /></div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -219,25 +333,35 @@ export function FtthInfrastructure() {
           {(odcList?.items || []).length === 0 && (
             <div className="glass-card p-8 text-center"><Box size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm mb-3">No ODC added yet</p>{canEdit && <button onClick={() => openAdd('odc')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First ODC</button>}</div>
           )}
-          {(odcList?.items || []).map(o => (
-            <div key={o.id} className="glass-card p-3 flex items-center gap-3 hover:bg-glass/50 transition-colors">
-              <Box size={18} className="text-warning flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm truncate">{o.name}</div>
-                <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
-                  {o.otb_name && <span>• From: {o.otb_name} (Core {o.otb_core_number})</span>}
-                  {o.splitter_model && <span>• Splitter: {o.splitter_model}</span>}
-                  <span>• {o.total_cores} cores</span>
-                  <span>• {o.odp_count} ODPs</span>
-                  {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
+          {(odcList?.items || []).map(o => {
+            const util = o.total_cores > 0 ? Math.round((o.used_cores / o.total_cores) * 100) : 0;
+            return (
+            <div key={o.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
+              <div className="flex items-center gap-3">
+                <Box size={18} className="text-warning flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm truncate">{o.name}</span>
+                    <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? 'ACTIVE' : 'IDLE'}</span>
+                  </div>
+                  <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
+                    {o.otb_name && <span>• From: {o.otb_name} (Core {o.otb_core_number})</span>}
+                    {o.splitter_model && <span>• Splitter: {o.splitter_model}</span>}
+                    {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {canEdit && <button onClick={() => openEdit('odc', o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
+                  {canEdit && <button onClick={() => handleDelete('odc', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                {canEdit && <button onClick={() => openEdit('odc', o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-                {canEdit && <button onClick={() => handleDelete('odc', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+              <div className="mt-2">
+                <div className="flex justify-between text-[10px] text-tx3 mb-1"><span>Cores: {o.used_cores}/{o.total_cores}</span><span className={cn('font-bold', util > 80 ? 'text-danger' : util > 60 ? 'text-warning' : 'text-success')}>{util}%</span></div>
+                <div className="h-1.5 rounded-full bg-glass overflow-hidden"><div className={cn('h-full rounded-full transition-all', util > 80 ? 'bg-danger' : util > 60 ? 'bg-warning' : 'bg-success')} style={{ width: `${util}%` }} /></div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -247,30 +371,87 @@ export function FtthInfrastructure() {
           {(odpList?.items || []).length === 0 && (
             <div className="glass-card p-8 text-center"><Split size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm mb-3">No ODP added yet</p>{canEdit && <button onClick={() => openAdd('odp')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First ODP</button>}</div>
           )}
-          {(odpList?.items || []).map(o => (
-            <div key={o.id} className="glass-card p-3 flex items-center gap-3 hover:bg-glass/50 transition-colors">
-              <Split size={18} className="text-success flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm truncate">{o.name}</div>
-                <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
-                  {o.odc_name && <span>• From: {o.odc_name} (Core {o.odc_core_number})</span>}
-                  {o.splitter_model && <span>• Splitter: {o.splitter_model}</span>}
-                  <span>• {o.used_ports}/{o.total_ports} ports used</span>
-                  {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
+          {(odpList?.items || []).map(o => {
+            const util = o.total_ports > 0 ? Math.round((o.used_ports / o.total_ports) * 100) : 0;
+            return (
+            <div key={o.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
+              <div className="flex items-center gap-3">
+                <Split size={18} className="text-success flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm truncate">{o.name}</span>
+                    <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? 'ACTIVE' : 'IDLE'}</span>
+                  </div>
+                  <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
+                    {o.odc_name && <span>• From: {o.odc_name} (Core {o.odc_core_number})</span>}
+                    {o.splitter_model && <span>• Splitter: {o.splitter_model}</span>}
+                    {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {canEdit && <button onClick={() => setSelectedOdp(o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Manage Ports"><Network size={15} /></button>}
+                  {canEdit && <button onClick={() => openEdit('odp', o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
+                  {canEdit && <button onClick={() => handleDelete('odp', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                {canEdit && <button onClick={() => setSelectedOdp(o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Manage Ports"><Network size={15} /></button>}
-                {canEdit && <button onClick={() => openEdit('odp', o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-                {canEdit && <button onClick={() => handleDelete('odp', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+              <div className="mt-2">
+                <div className="flex justify-between text-[10px] text-tx3 mb-1"><span>Ports: {o.used_ports}/{o.total_ports}</span><span className={cn('font-bold', util > 80 ? 'text-danger' : util > 60 ? 'text-warning' : 'text-success')}>{util}%</span></div>
+                <div className="h-1.5 rounded-full bg-glass overflow-hidden"><div className={cn('h-full rounded-full transition-all', util > 80 ? 'bg-danger' : util > 60 ? 'bg-warning' : 'bg-success')} style={{ width: `${util}%` }} /></div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* Map View */}
-      {tab === 'map' && <MapView markers={mapData?.markers || []} lines={mapData?.lines || []} />}
+      {tab === 'map' && (
+        <>
+          <div className="flex items-center gap-2 mb-2">
+            {canEdit && (
+              <button onClick={() => { setDrawMode(!drawMode); setAutoRouteMode(false); }} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors', drawMode ? 'bg-warning text-white' : 'bg-glass text-tx2 hover:text-tx1')}>
+                <Cable size={14} /> {drawMode ? 'Exit Draw Mode' : 'Draw Fiber Path'}
+              </button>
+            )}
+            {canEdit && (
+              <button onClick={() => { setAutoRouteMode(!autoRouteMode); setDrawMode(false); setAutoRouteStart(null); }} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors', autoRouteMode ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1')}>
+                <MapIcon size={14} /> {autoRouteMode ? 'Exit Auto Route' : 'Auto Route (OSRM)'}
+              </button>
+            )}
+            {drawMode && <span className="text-xs text-tx3">Click on map to add waypoints, then Save Path</span>}
+            {autoRouteMode && <span className="text-xs text-tx3">{autoRouteStart ? `Start selected: ${autoRouteStart.name}. Click end marker...` : 'Click a marker to set start point'}</span>}
+          </div>
+          <MapView markers={mapData?.markers || []} lines={mapData?.lines || []} fiberPaths={fiberPaths?.paths || []} drawMode={drawMode} onDrawComplete={async (coords) => {
+            try {
+              await api.ftthPathCreate({ from_type: 'otb', from_id: 0, to_type: 'odp', to_id: 0, coordinates: coords, path_type: 'manual' });
+              toast.success('Fiber path saved');
+              setDrawMode(false);
+              qc.invalidateQueries({ queryKey: ['ftth-paths'] });
+            } catch (e: any) { toast.error(e.message); }
+          }} onMarkerClick={autoRouteMode ? async (marker) => {
+            if (!autoRouteStart) {
+              setAutoRouteStart(marker);
+            } else {
+              if (autoRouteStart.id === marker.id && autoRouteStart.type === marker.type) {
+                toast.error('Start and end must be different');
+                return;
+              }
+              try {
+                await api.ftthAutoRoute({
+                  from_lat: autoRouteStart.lat, from_lng: autoRouteStart.lng,
+                  to_lat: marker.lat, to_lng: marker.lng,
+                  from_type: autoRouteStart.type, from_id: autoRouteStart.id,
+                  to_type: marker.type, to_id: marker.id,
+                });
+                toast.success('Auto route created');
+                setAutoRouteMode(false);
+                setAutoRouteStart(null);
+                qc.invalidateQueries({ queryKey: ['ftth-paths'] });
+              } catch (e: any) { toast.error(e.message); }
+            }
+          } : undefined} />
+        </>
+      )}
 
       {/* ODP Port Panel */}
       {selectedOdp && (
@@ -288,6 +469,194 @@ export function FtthInfrastructure() {
       {modal === 'odc' && <OdcModal item={editItem} parent={parentCtx} otbList={otbList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'odp' && <OdpModal item={editItem} parent={parentCtx} odcList={odcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'pon' && <PonModal item={editItem} otbList={otbList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
+    </div>
+  );
+}
+
+// ─── Overview Tab ───
+function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTTHStats | undefined; isFetching: boolean; countdown: number; onDrillDown: () => void }) {
+  if (!stats) return <div className="text-center py-8 text-tx3 text-sm">Loading stats...</div>;
+  const s = stats.onu_stats;
+  const infra = stats.infrastructure;
+  const orphans = stats.orphans;
+
+  const statCards = [
+    { label: 'Total ONU', value: s.total, icon: <Activity size={18} />, color: 'text-tx1', bg: 'bg-glass' },
+    { label: 'Online', value: s.online, icon: <Wifi size={18} />, color: 'text-success', bg: 'bg-success/10' },
+    { label: 'Offline', value: s.offline, icon: <WifiOff size={18} />, color: 'text-tx3', bg: 'bg-glass' },
+    { label: 'LOS', value: s.los, icon: <AlertTriangle size={18} />, color: 'text-danger', bg: 'bg-danger/10' },
+    { label: 'Dying Gasp', value: s.dyinggasp, icon: <Zap size={18} />, color: 'text-warning', bg: 'bg-warning/10' },
+    { label: 'Unregister', value: s.unregister, icon: <CircleDashed size={18} />, color: 'text-tx3', bg: 'bg-glass' },
+  ];
+
+  const portUtil = infra.total_odp_ports > 0 ? Math.round((infra.used_odp_ports / infra.total_odp_ports) * 100) : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Auto-refresh indicator */}
+      <div className="flex items-center justify-end gap-1.5 text-[10px] text-tx3">
+        {isFetching ? <><RefreshCw size={10} className="animate-spin" /> Updating...</> : <>refresh dalam <span className={countdown <= 3 ? 'text-warning font-semibold' : 'text-tx2'}>{countdown}s</span></>}
+      </div>
+      {/* ONU Status Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
+        {statCards.map((c, i) => (
+          <div key={i} className={cn('rounded-xl p-3 md:p-4 border border-brd', c.bg)}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] md:text-xs text-tx3 font-medium uppercase tracking-wider">{c.label}</span>
+              <span className={c.color}>{c.icon}</span>
+            </div>
+            <div className={cn('text-xl md:text-2xl font-extrabold', c.color)}>{c.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Orphan Alert */}
+      {orphans.total > 0 && (
+        <div className="rounded-xl p-3 md:p-4 border border-warning/30 bg-warning/10 flex items-center gap-3">
+          <AlertTriangle size={20} className="text-warning flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-warning">Orphaned Nodes Detected ({orphans.total})</div>
+            <div className="text-xs text-tx3 mt-0.5">
+              {orphans.onus_without_odp > 0 && <span>{orphans.onus_without_odp} ONUs without ODP · </span>}
+              {orphans.odps_without_odc > 0 && <span>{orphans.odps_without_odc} ODPs without ODC · </span>}
+              {orphans.odcs_without_otb > 0 && <span>{orphans.odcs_without_otb} ODCs without OTB · </span>}
+              {orphans.otbs_without_olt > 0 && <span>{orphans.otbs_without_olt} OTBs without OLT</span>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Data Completeness Alerts */}
+      {(orphans.onus_without_technician > 0 || orphans.onus_without_coordinates > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
+          {orphans.onus_without_technician > 0 && (
+            <div className="rounded-xl p-3 md:p-4 border border-warning/30 bg-warning/10 flex items-center gap-3">
+              <UserX size={20} className="text-warning flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-warning">Technician Not Assigned ({orphans.onus_without_technician})</div>
+                <div className="text-xs text-tx3 mt-0.5">
+                  {orphans.onus_without_technician} ONU{orphans.onus_without_technician > 1 ? 's' : ''} belum memiliki teknisi yang melakukan aktivasi. Set teknisi di halaman All ONU.
+                </div>
+              </div>
+            </div>
+          )}
+          {orphans.onus_without_coordinates > 0 && (
+            <div className="rounded-xl p-3 md:p-4 border border-warning/30 bg-warning/10 flex items-center gap-3">
+              <MapPin size={20} className="text-warning flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-warning">Location Coordinates Not Set ({orphans.onus_without_coordinates})</div>
+                <div className="text-xs text-tx3 mt-0.5">
+                  {orphans.onus_without_coordinates} ONU{orphans.onus_without_coordinates > 1 ? 's' : ''} belum memiliki koordinat lokasi (GPS). Set koordinat di halaman All ONU.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Infrastructure Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+        <div className="glass-card p-3 md:p-4 flex items-center gap-3">
+          <Server size={20} className="text-accent flex-shrink-0" />
+          <div><div className="text-lg font-bold">{infra.total_otb}</div><div className="text-[10px] text-tx3 uppercase">OTB/ODF</div></div>
+        </div>
+        <div className="glass-card p-3 md:p-4 flex items-center gap-3">
+          <Box size={20} className="text-warning flex-shrink-0" />
+          <div><div className="text-lg font-bold">{infra.total_odc}</div><div className="text-[10px] text-tx3 uppercase">ODC</div></div>
+        </div>
+        <div className="glass-card p-3 md:p-4 flex items-center gap-3">
+          <Split size={20} className="text-success flex-shrink-0" />
+          <div><div className="text-lg font-bold">{infra.total_odp}</div><div className="text-[10px] text-tx3 uppercase">ODP</div></div>
+        </div>
+        <div className="glass-card p-3 md:p-4 flex items-center gap-3">
+          <Network size={20} className="text-accent flex-shrink-0" />
+          <div><div className="text-lg font-bold">{infra.used_odp_ports}<span className="text-tx3 text-sm font-normal">/{infra.total_odp_ports}</span></div><div className="text-[10px] text-tx3 uppercase">ODP Ports Used</div></div>
+        </div>
+      </div>
+
+      {/* ODP Port Utilization Bar */}
+      {infra.total_odp_ports > 0 && (
+        <div className="glass-card p-3 md:p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-tx2">ODP Port Utilization</span>
+            <span className={cn('text-xs font-bold', portUtil > 80 ? 'text-danger' : portUtil > 60 ? 'text-warning' : 'text-success')}>{portUtil}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-glass overflow-hidden">
+            <div className={cn('h-full rounded-full transition-all', portUtil > 80 ? 'bg-danger' : portUtil > 60 ? 'bg-warning' : 'bg-success')} style={{ width: `${portUtil}%` }} />
+          </div>
+          <div className="flex justify-between mt-1 text-[10px] text-tx3">
+            <span>{infra.used_odp_ports} used</span>
+            <span>{infra.available_odp_ports} available</span>
+          </div>
+        </div>
+      )}
+
+      {/* Per-OLT Breakdown */}
+      {stats.per_olt.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2"><Server size={16} /> Per OLT Breakdown</h3>
+          <div className="space-y-2">
+            {stats.per_olt.map(olt => {
+              const oltUtil = olt.total > 0 ? Math.round((olt.online / olt.total) * 100) : 0;
+              return (
+                <div key={olt.olt_id} className="glass-card p-3 md:p-4 cursor-pointer hover:bg-glass/50 transition-colors" onClick={() => onDrillDown()}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={cn('w-2 h-2 rounded-full flex-shrink-0', olt.is_online ? 'bg-success' : 'bg-danger')} />
+                      <span className="text-sm font-medium truncate">{olt.olt_name}</span>
+                    </div>
+                    <span className={cn('text-xs font-bold flex-shrink-0', oltUtil > 80 ? 'text-success' : oltUtil > 50 ? 'text-warning' : 'text-danger')}>{oltUtil}%</span>
+                  </div>
+                  <div className="flex items-center gap-3 md:gap-4 text-xs">
+                    <span className="text-tx3">Total: <strong className="text-tx1">{olt.total}</strong></span>
+                    <span className="text-success">Online: <strong>{olt.online}</strong></span>
+                    <span className="text-tx3">Offline: <strong>{olt.offline}</strong></span>
+                    {olt.los > 0 && <span className="text-danger">LOS: <strong>{olt.los}</strong></span>}
+                    {olt.dyinggasp > 0 && <span className="text-warning">DG: <strong>{olt.dyinggasp}</strong></span>}
+                    {olt.unregister > 0 && <span className="text-tx3">Unreg: <strong>{olt.unregister}</strong></span>}
+                  </div>
+                  <div className="h-1.5 rounded-full bg-glass overflow-hidden mt-2">
+                    <div className={cn('h-full rounded-full', oltUtil > 80 ? 'bg-success' : oltUtil > 50 ? 'bg-warning' : 'bg-danger')} style={{ width: `${oltUtil}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Per-PON Port Breakdown */}
+      {stats.per_pon.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2"><Cable size={16} /> Per PON Port</h3>
+          <div className="glass-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-brd">
+                  <th className="px-3 py-2 text-left text-xs text-tx3 uppercase">PON Port</th>
+                  <th className="px-3 py-2 text-left text-xs text-tx3 uppercase hidden md:table-cell">OLT</th>
+                  <th className="px-3 py-2 text-center text-xs text-tx3 uppercase">Status</th>
+                  <th className="px-3 py-2 text-center text-xs text-tx3 uppercase">Total</th>
+                  <th className="px-3 py-2 text-center text-xs text-tx3 uppercase">Online</th>
+                  <th className="px-3 py-2 text-center text-xs text-tx3 uppercase hidden sm:table-cell">Offline</th>
+                </tr></thead>
+                <tbody>
+                  {stats.per_pon.map(pp => (
+                    <tr key={pp.port_id} className="border-b border-brd/50 hover:bg-glass/30">
+                      <td className="px-3 py-2 font-mono text-xs">{pp.port_name}</td>
+                      <td className="px-3 py-2 text-xs text-tx3 hidden md:table-cell">{pp.olt_name}</td>
+                      <td className="px-3 py-2 text-center"><span className={cn('px-1.5 py-0.5 rounded-full text-[10px] font-medium', pp.admin_status === 'up' ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger')}>{pp.admin_status === 'up' ? 'UP' : 'DOWN'}</span></td>
+                      <td className="px-3 py-2 text-center font-bold">{pp.total}</td>
+                      <td className="px-3 py-2 text-center text-success font-medium">{pp.online}</td>
+                      <td className="px-3 py-2 text-center text-tx3 hidden sm:table-cell">{pp.offline}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -385,56 +754,26 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
   );
 }
 
-// ─── Map View (simple visual, no external map lib) ───
-function MapView({ markers, lines }: { markers: any[]; lines: any[] }) {
+// ─── Map View (Leaflet interactive map) ───
+function MapView({ markers, lines, fiberPaths, drawMode, onDrawComplete, onMarkerClick }: {
+  markers: any[]; lines: any[]; fiberPaths: FTTHFiberPath[]; drawMode: boolean;
+  onDrawComplete: (coords: [number, number][]) => void;
+  onMarkerClick?: (marker: any) => void;
+}) {
   if (markers.length === 0) {
     return <div className="glass-card p-8 text-center"><MapIcon size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm">No coordinates set. Add latitude/longitude to OTB/ODF, ODC, or ODP to see them on map.</p></div>;
   }
-  const lats = markers.map(m => m.lat);
-  const lngs = markers.map(m => m.lng);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-  const padLat = (maxLat - minLat) * 0.15 || 0.01;
-  const padLng = (maxLng - minLng) * 0.15 || 0.01;
-  const rangeLat = (maxLat - minLat) + padLat * 2 || 0.02;
-  const rangeLng = (maxLng - minLng) + padLng * 2 || 0.02;
-  const W = 800, H = 500;
-  const project = (lat: number, lng: number) => ({
-    x: ((lng - minLng + padLng) / rangeLng) * W,
-    y: H - ((lat - minLat + padLat) / rangeLat) * H,
-  });
-  const colors: Record<string, string> = { otb: '#3b82f6', odc: '#f59e0b', odp: '#22c55e' };
-  const labels: Record<string, string> = { otb: 'OTB/ODF', odc: 'ODC', odp: 'ODP' };
   return (
-    <div className="glass-card p-4">
-      <div className="flex items-center gap-4 mb-3">
-        {Object.entries(labels).map(([k, v]) => (
-          <div key={k} className="flex items-center gap-1.5 text-xs"><div className="w-3 h-3 rounded-full" style={{ background: colors[k] }} /><span className="text-tx3">{v}</span></div>
-        ))}
-      </div>
-      <div className="relative w-full overflow-x-auto rounded-lg bg-[var(--bg-primary)] border border-brd">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 600 }}>
-          {lines.map((l, i) => {
-            const from = project(l.from_lat, l.from_lng);
-            const to = project(l.to_lat, l.to_lng);
-            const midX = (from.x + to.x) / 2, midY = (from.y + to.y) / 2;
-            return <g key={i}><line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#475569" strokeWidth="1.5" strokeDasharray="4 2" /><text x={midX} y={midY} fill="#64748b" fontSize="9" textAnchor="middle">{l.label}</text></g>;
-          })}
-          {markers.map((m, i) => {
-            const p = project(m.lat, m.lng);
-            return <g key={i}><circle cx={p.x} cy={p.y} r="8" fill={colors[m.type]} stroke="white" strokeWidth="1.5" /><title>{m.name}</title><text x={p.x} y={p.y - 12} fill="#e2e8f0" fontSize="10" textAnchor="middle">{m.name}</text></g>;
-          })}
-        </svg>
-      </div>
-      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
-        {markers.map((m, i) => (
-          <div key={i} className="p-2 rounded bg-glass text-xs flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: colors[m.type] }} />
-            <div className="min-w-0"><div className="font-medium truncate">{m.name}</div><div className="text-tx3">{m.lat.toFixed(4)}, {m.lng.toFixed(4)}</div></div>
-          </div>
-        ))}
-      </div>
-    </div>
+    <LeafletMap
+      markers={markers}
+      lines={lines}
+      fiberPaths={fiberPaths}
+      height="500px"
+      refreshKey={JSON.stringify({ m: markers.length, l: lines.length })}
+      drawMode={drawMode}
+      onDrawComplete={onDrawComplete}
+      onMarkerClick={onMarkerClick}
+    />
   );
 }
 
@@ -457,8 +796,9 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60 p-0 md:p-4">
-      <div className="glass-card w-full max-w-3xl max-h-[90vh] md:max-h-[85vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="modal-overlay" />
+      <div className="relative glass-card w-full max-w-3xl max-h-[90vh] md:max-h-[85vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
         <div className="px-4 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between sticky top-0 bg-surface z-10 rounded-t-2xl md:rounded-t-2xl">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold flex items-center gap-2 truncate"><Split size={16} /> {odp.name} — Port Management</h2>
@@ -535,8 +875,9 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
 
           {/* Edit port modal */}
           {editingPort && (
-            <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/60 p-0 md:p-4" onClick={() => setEditingPort(null)}>
-              <div className="glass-card w-full max-w-md p-4 md:p-5 space-y-3 rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+              <div className="modal-overlay" onClick={() => setEditingPort(null)} />
+              <div className="relative glass-card w-full max-w-md p-4 md:p-5 space-y-3 rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in" onClick={e => e.stopPropagation()}>
                 <h3 className="text-sm font-semibold">Edit Port {editingPort.port_number}</h3>
                 <FormField label="Customer Name"><input className="input-field" defaultValue={editingPort.customer_name} onChange={e => editingPort.customer_name = e.target.value} /></FormField>
                 <FormField label="Customer Phone"><input className="input-field" defaultValue={editingPort.customer_phone} onChange={e => editingPort.customer_phone = e.target.value} /></FormField>
@@ -551,8 +892,9 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
 
           {/* Link ONU modal */}
           {showLink !== null && (
-            <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/60 p-0 md:p-4" onClick={() => setShowLink(null)}>
-              <div className="glass-card w-full max-w-md p-4 md:p-5 space-y-3 rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+              <div className="modal-overlay" onClick={() => setShowLink(null)} />
+              <div className="relative glass-card w-full max-w-md p-4 md:p-5 space-y-3 rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in" onClick={e => e.stopPropagation()}>
                 <h3 className="text-sm font-semibold">Link ONU to Port</h3>
                 {availableOnus.length === 0 ? (
                   <p className="text-tx3 text-sm">No available ONUs. All ONUs are already linked to ODP ports.</p>
@@ -760,8 +1102,9 @@ function OdpModal({ item, parent, odcList, onClose, onSaved }: { item: FTTHOdp |
 // ─── Generic Modal wrapper ───
 function Modal({ title, onClose, onSubmit, loading, children }: { title: string; onClose: () => void; onSubmit: () => void; loading: boolean; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60 p-0 md:p-4">
-      <div className="glass-card w-full max-w-lg max-h-[90vh] md:max-h-[85vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="modal-overlay" />
+      <div className="relative glass-card w-full max-w-lg max-h-[90vh] md:max-h-[85vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
         <div className="px-4 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between sticky top-0 bg-surface z-10 rounded-t-2xl md:rounded-t-2xl">
           <h2 className="text-sm font-semibold">{title}</h2>
           <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>

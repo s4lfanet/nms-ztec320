@@ -4,9 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type TechnicianData } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
+import { TutorialBanner } from '../components/TutorialBanner';
 import {
   ArrowLeft, ArrowRight, Server, Radio, Search, Check, Loader2,
-  Settings, FileText, Zap, HelpCircle, ChevronDown, ChevronUp, Copy, Plus, Trash2, Wrench
+  Settings, FileText, Zap, Copy, Plus, Trash2, Wrench
 } from 'lucide-react';
 
 interface UnconfiguredOnu {
@@ -151,12 +152,23 @@ function generateRegisterScript(d: WizardData): string {
     if (enableTr069) lines.push('  wan 1 service tr069 internet host 1');
     else lines.push('  wan 1 service internet host 1');
     if (e.enable_pppoe === 'true' && e.pppoe_user) lines.push(`  pppoe 1 nat enable user ${e.pppoe_user} password ${e.pppoe_pass}`);
-    lines.push(`  vlan port eth_0/1 mode tag vlan ${pv}`);
-    lines.push(`  vlan port eth_0/2 mode tag vlan ${pv}`);
-    lines.push(`  vlan port eth_0/3 mode tag vlan ${pv}`);
-    lines.push(`  vlan port eth_0/4 mode tag vlan ${pv}`);
-    lines.push(`  vlan port wifi_0/1 mode tag vlan ${pv}`);
-    lines.push(`  vlan port wifi_0/5 mode tag vlan ${pv}`);
+    // LAN port VLAN tagging
+    const lanVlansF = Array.isArray(e.lan_vlans) ? e.lan_vlans : [];
+    for (let lp = 1; lp <= 4; lp++) {
+      const portVlan = lanVlansF[lp - 1] || pv;
+      lines.push(`  vlan port eth_0/${lp} mode tag vlan ${portVlan}`);
+    }
+    // WiFi VLAN tagging — per-SSID VLAN from ssids array
+    const ssidsF = Array.isArray(e.ssids) ? e.ssids : [];
+    const hasSsidVlan = ssidsF.some((s: Record<string, string>) => s.name && s.vlan);
+    if (hasSsidVlan) {
+      ssidsF.forEach((s: Record<string, string>) => {
+        if (s.name && s.vlan) lines.push(`  vlan port ${s.port || 'wifi_0/1'} mode tag vlan ${s.vlan}`);
+      });
+    } else {
+      lines.push(`  vlan port wifi_0/1 mode tag vlan ${pv}`);
+      lines.push(`  vlan port wifi_0/5 mode tag vlan ${pv}`);
+    }
     if (e.enable_firewall === 'true') lines.push(`  firewall enable level ${e.firewall_level || 'low'} anti-hack disable`);
     if (enableTr069) {
       lines.push('  tr069-mgmt 1 state unlock');
@@ -231,6 +243,29 @@ function generateRegisterScript(d: WizardData): string {
       lines.push('  vlan port veip_1 mode hybrid');
       lines.push('  vlan port veip_1 vlan 1');
     }
+    // LAN port VLAN tagging
+    const lanVlansM = Array.isArray(e.lan_vlans) ? e.lan_vlans : [];
+    if (lanVlansM.length > 0) {
+      for (let lp = 1; lp <= 4; lp++) {
+        const portVlan = lanVlansM[lp - 1];
+        if (portVlan) lines.push(`  vlan port eth_0/${lp} mode tag vlan ${portVlan}`);
+      }
+    } else {
+      // Auto-tag: ETH port N → service N VLAN
+      enabledSvcs.forEach((svc: Record<string, unknown>, idx: number) => {
+        const n = idx + 1;
+        if (n <= 4) {
+          const svcVlans = (svc.vlans as string[]) || [];
+          const pv = svcVlans[0] || String(d.vlan);
+          if (svc.service_type !== 'bridge') lines.push(`  vlan port eth_0/${n} mode tag vlan ${pv}`);
+        }
+      });
+    }
+    // WiFi VLAN tagging — per-SSID VLAN
+    const ssidsM = Array.isArray(e.ssids) ? e.ssids : [];
+    ssidsM.forEach((s: Record<string, string>) => {
+      if (s.name && s.vlan) lines.push(`  vlan port ${s.port || 'wifi_0/1'} mode tag vlan ${s.vlan}`);
+    });
     const hasNonBridge = enabledSvcs.some((s: Record<string, unknown>) => s.service_type !== 'bridge');
     if (hasNonBridge) {
       lines.push('  firewall enable level low');
@@ -299,32 +334,44 @@ function generateRegisterScript(d: WizardData): string {
     lines.push(`  tr069-mgmt 1 tag pri 0 vlan ${tr069Vlan}`);
   }
 
-  // SSID config (for zte_single and zte_full)
-  if ((d.template === 'zte_single' || d.template === 'zte_full') && (e.ssid_name || e.ssid1_name)) {
-    lines.push('!');
-    lines.push(`pon-onu-mng ${onuIf}`);
-    if (d.template === 'zte_single' && e.ssid_name) {
-      const auth = e.ssid_auth || 'wpa2';
-      if (auth === 'wpa2' || auth === 'mixed' || auth === 'wpa') {
-        lines.push(`  ssid auth ${auth === 'mixed' ? 'wpa' : 'wpa2'} wifi_0/1 encrypt aes key ${e.ssid_pass || ''}`);
+  // SSID config (dynamic from ssids array, all templates)
+  {
+    const ssidsPreview: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }[] = Array.isArray(e.ssids) ? e.ssids as any : [];
+    // Backward compat: build from old fields if no ssids array
+    if (ssidsPreview.length === 0) {
+      if (d.template === 'zte_single' && e.ssid_name) ssidsPreview.push({ port: 'wifi_0/1', name: e.ssid_name, pass: e.ssid_pass || '', auth: e.ssid_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
+      if (d.template === 'zte_full' || d.template === 'zte_multi') {
+        if (e.ssid1_name) ssidsPreview.push({ port: 'wifi_0/1', name: e.ssid1_name, pass: e.ssid1_pass || '', auth: e.ssid1_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
+        if (e.ssid2_name) ssidsPreview.push({ port: 'wifi_0/5', name: e.ssid2_name, pass: e.ssid2_pass || '', auth: e.ssid2_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
       }
-      lines.push(`  ssid ctrl wifi_0/1 name ${e.ssid_name.replace(/ /g, '_')}`);
     }
-    if (d.template === 'zte_full') {
-      if (e.ssid1_name) {
-        const auth = e.ssid1_auth || 'wpa2';
-        if (auth === 'wpa2' || auth === 'mixed' || auth === 'wpa') {
-          lines.push(`  ssid auth ${auth === 'mixed' ? 'wpa' : 'wpa2'} wifi_0/1 encrypt aes key ${e.ssid1_pass || ''}`);
+    const namedSsids = ssidsPreview.filter((s: Record<string, unknown>) => s.name);
+    if (namedSsids.length > 0) {
+      lines.push('!');
+      lines.push(`pon-onu-mng ${onuIf}`);
+      namedSsids.forEach((s: Record<string, unknown>) => {
+        const wp = String(s.port || 'wifi_0/1');
+        const auth = String(s.auth || 'wpa2');
+        const enabled = s.enabled !== false;
+        if (!enabled) {
+          lines.push(`  interface wifi ${wp} state lock`);
+          return;
         }
-        lines.push(`  ssid ctrl wifi_0/1 name ${e.ssid1_name.replace(/ /g, '_')}`);
-      }
-      if (e.ssid2_name) {
-        const auth = e.ssid2_auth || 'wpa2';
-        if (auth === 'wpa2' || auth === 'mixed' || auth === 'wpa') {
-          lines.push(`  ssid auth ${auth === 'mixed' ? 'wpa' : 'wpa2'} wifi_0/5 encrypt aes key ${e.ssid2_pass || ''}`);
+        lines.push(`  interface wifi ${wp} state unlock`);
+        const hideStr = s.hidden === true ? 'enable' : 'disable';
+        lines.push(`  ssid ctrl ${wp} name ${String(s.name).replace(/ /g, '_')} hide ${hideStr}`);
+        if (auth !== 'open') {
+          const authMode = auth === 'mixed' ? 'wpa-wpa2-psk' : auth === 'wpa' ? 'wpa-psk' : 'wpa2-psk';
+          lines.push(`  ssid auth wpa ${wp} ${authMode}`);
+          lines.push(`  ssid auth wpa ${wp} encrypt aes`);
+          if (s.pass) lines.push(`  ssid auth wpa ${wp} key ${s.pass}`);
+        } else {
+          lines.push(`  ssid auth wpa ${wp} no-auth`);
+          lines.push(`  ssid auth wpa ${wp} encrypt none`);
+          lines.push(`  ssid auth wpa ${wp} no-key`);
+          lines.push(`  ssid auth wep ${wp} open-system`);
         }
-        lines.push(`  ssid ctrl wifi_0/5 name ${e.ssid2_name.replace(/ /g, '_')}`);
-      }
+      });
     }
   }
 
@@ -500,7 +547,6 @@ export function RegisterWizard() {
     return true;
   };
 
-  const [showTutor, setShowTutor] = useState(false);
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 animate-fade-in">
@@ -516,88 +562,29 @@ export function RegisterWizard() {
             <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">Step-by-step ONU registration with auto-configuration</p>
           </div>
         </div>
-        <button onClick={() => setShowTutor(!showTutor)}
-          className="flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 rounded-lg bg-glass border border-brd text-xs text-tx2 hover:text-tx1 hover:border-accent/30 transition-all flex-shrink-0">
-          <HelpCircle size={14} /> <span className="hidden sm:inline">Tutor</span>
-          {showTutor ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
-      </div>
-
-      {/* Tutorial */}
-      {showTutor && (
-        <div className="glass-card p-3 md:p-5 space-y-3 md:space-y-4 border border-accent/20">
-          <h3 className="text-sm font-semibold flex items-center gap-2 text-accent">
-            <HelpCircle size={16} /> Panduan Register ONU Wizard
-          </h3>
-
-          {/* Prerequisites */}
-          <div className="p-3 rounded-lg bg-warning/5 border border-warning/20 text-xs text-tx2">
-            <strong className="text-warning">Sebelum Mulai — Pastikan hal berikut sudah dikonfigurasi di OLT:</strong>
-            <ul className="mt-1.5 ml-4 space-y-0.5 text-tx3">
-              <li>1. <strong className="text-tx2">ONU Type</strong> sudah terdaftar di OLT (OLT Configuration → ONU Types tab)</li>
-              <li>2. <strong className="text-tx2">TCONT Profile</strong> sudah dibuat (OLT Configuration → Speed Profiles tab, type=tcont)</li>
-              <li>3. <strong className="text-tx2">Traffic Profile</strong> sudah dibuat (opsional, untuk download limit — Speed Profiles tab, type=traffic)</li>
-              <li>4. <strong className="text-tx2">VLAN</strong> sudah dibuat di OLT (OLT Configuration → VLANs tab)</li>
-              <li>5. <strong className="text-tx2">CLI/Telnet access</strong> OLT sudah dikonfigurasi (OLT Settings → CLI Username & Password)</li>
-              <li>6. ONU sudah terhubung fisik ke PON port OLT dan menyala (LED PON menyala hijau)</li>
-            </ul>
-          </div>
-
-          <div className="space-y-3 text-xs md:text-sm text-tx2">
-            <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-xs font-bold">1</span>
-              <div>
-                <strong className="text-tx1">Select OLT</strong>
-                <p>Pilih OLT tempat ONU akan diregister. Pastikan OLT berstatus <span className="text-success">Online</span> dan CLI access sudah dikonfigurasi.</p>
-                <p className="text-xs text-tx3 mt-1">Jika OLT belum ada, tambahkan di halaman OLT Settings terlebih dahulu.</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-xs font-bold">2</span>
-              <div>
-                <strong className="text-tx1">Scan ONUs</strong>
-                <p>Klik <strong>Scan OLT</strong> untuk menemukan ONU yang belum terdaftar (unconfigured). ONU yang muncul adalah ONU yang sudah terhubung fisik ke PON port tapi belum diregister di OLT.</p>
-                <p className="text-xs text-tx3 mt-1">Pilih satu atau multiple ONU dengan klik pada list. Gunakan tombol <strong>All</strong> untuk select semua. Hanya ONU dengan serial number terdeteksi (show gpon onu uncfg) yang akan muncul.</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-xs font-bold">3</span>
-              <div>
-                <strong className="text-tx1">Configure</strong>
-                <p>Pilih <strong>Service Template</strong> sesuai jenis ONU dan kebutuhan:</p>
-                <ul className="text-xs text-tx3 mt-1 ml-4 space-y-0.5">
-                  <li><strong className="text-tx2">Bridge</strong> — Transparent L2, ONU hanya bridge VLAN. Cocok untuk ONU yang dikelola router eksternal</li>
-                  <li><strong className="text-tx2">PPPoE</strong> — ONU dial PPPoE langsung. Isi username & password PPPoE</li>
-                  <li><strong className="text-tx2">ZTE Single</strong> — 1 SSID WiFi 2.4GHz + 1 VLAN. Untuk ZTE ONU (F660, F609, dll). VEIP auto-detect dari SN</li>
-                  <li><strong className="text-tx2">ZTE Dual Band</strong> — 2 SSID (2.4GHz + 5GHz) + 2 VLAN + TR069. Untuk ZTE ONU dual band (F670L, F670LV9)</li>
-                  <li><strong className="text-tx2">ZTE Multi-Service</strong> — 1-4 dynamic services (Internet/IPTV/TR069/Bridge) + SSID + TR069. Untuk ZTE ONU dengan multi-service</li>
-                  <li><strong className="text-tx2">Huawei Full</strong> — Multi VLAN (Mgmt/Internet/VoIP) + WAN DHCP + TR069. Untuk Huawei ONU (HG8145V5, dll)</li>
-                  <li><strong className="text-tx2">Fiberhome VEIP</strong> — VEIP mode, TR069 + Internet + VoIP. Untuk Fiberhome ONU (HG6145D2, dll)</li>
-                </ul>
-                <p className="mt-2">Lengkapi parameter berikut:</p>
-                <ul className="text-xs text-tx3 mt-1 ml-4 space-y-0.5">
-                  <li><strong className="text-tx2">ONU Type</strong> — pilih dari daftar type yang terdaftar di OLT. Gunakan "All" untuk auto-detect</li>
-                  <li><strong className="text-tx2">TCONT Profile</strong> — batas bandwidth upload. Wajib diisi</li>
-                  <li><strong className="text-tx2">Traffic Profile</strong> — batas bandwidth download. Opsional (kosong = no limit)</li>
-                  <li><strong className="text-tx2">VLAN ID</strong> — pilih dari VLAN yang ada di OLT atau ketik manual</li>
-                  <li><strong className="text-tx2">Name Prefix</strong> — nama ONU otomatis (contoh: "ODP-RW03" → ONU 1 = "ODP-RW03-1")</li>
-                  <li><strong className="text-tx2">Description</strong> — deskripsi ONU (contoh: "ODP-RW03-03 | Budi")</li>
-                </ul>
-                <p className="mt-2 text-xs text-accent">TR069: Pilih dari saved TR069 Profile (halaman TR069 Profile). ACS URL, Username, Password, VLAN & mode (tag/untag) akan auto-fill. Buat TR069 Profile terlebih dahulu jika belum ada.</p>
-                <p className="mt-1 text-xs text-tx3">VEIP Mode: Untuk ZTE template, VEIP auto-detect dari SN — ZTE ONU (ZTEG*) → iphost mode, non-ZTE → VEIP mode. Untuk mixed vendors, toggle manual.</p>
-                <p className="mt-1 text-xs text-tx3">WiFi SSID: Untuk ZTE template, isi SSID name & password jika ingin set WiFi via wizard. Kosongkan jika ingin default ONU.</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/15 text-accent flex items-center justify-center text-xs font-bold">4</span>
-              <div>
-                <strong className="text-tx1">Review & Register</strong>
-                <p>Periksa semua parameter, configuration details, dan list ONU yang akan diregister. Ada <strong>Script Preview</strong> yang menampilkan CLI commands yang akan dikirim ke OLT — bisa di-copy dengan tombol <strong>Copy Script</strong>.</p>
-                <p className="text-xs text-tx3 mt-1">Klik <strong>Register</strong> untuk memulai proses. Setiap ONU diregister berurutan dengan delay 1 detik. Proses: register ONU → TCONT → GEM → service-port → pon-onu-mng (LAN/WAN/TR069 sesuai template).</p>
-                <p className="text-xs text-tx3 mt-1">Setelah selesai, hasil berhasil/gagal ditampilkan per ONU. Klik <strong>View All ONUs</strong> untuk melihat di All ONUs page.</p>
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-glass border border-brd text-xs text-tx3">
+        <TutorialBanner
+          title="Panduan Register ONU Wizard"
+          prerequisites={
+            <>
+              <strong className="text-warning">Sebelum Mulai — Pastikan hal berikut sudah dikonfigurasi di OLT:</strong>
+              <ul className="mt-1.5 ml-4 space-y-0.5 text-tx3">
+                <li>1. <strong className="text-tx2">ONU Type</strong> sudah terdaftar di OLT (OLT Configuration → ONU Types tab)</li>
+                <li>2. <strong className="text-tx2">TCONT Profile</strong> sudah dibuat (OLT Configuration → Speed Profiles tab, type=tcont)</li>
+                <li>3. <strong className="text-tx2">Traffic Profile</strong> sudah dibuat (opsional, untuk download limit — Speed Profiles tab, type=traffic)</li>
+                <li>4. <strong className="text-tx2">VLAN</strong> sudah dibuat di OLT (OLT Configuration → VLANs tab)</li>
+                <li>5. <strong className="text-tx2">CLI/Telnet access</strong> OLT sudah dikonfigurasi (OLT Settings → CLI Username & Password)</li>
+                <li>6. ONU sudah terhubung fisik ke PON port OLT dan menyala (LED PON menyala hijau)</li>
+              </ul>
+            </>
+          }
+          steps={[
+            { title: 'Select OLT', content: <><p>Pilih OLT tempat ONU akan diregister. Pastikan OLT berstatus <span className="text-success">Online</span> dan CLI access sudah dikonfigurasi.</p><p className="text-xs text-tx3 mt-1">Jika OLT belum ada, tambahkan di halaman OLT Settings terlebih dahulu.</p></> },
+            { title: 'Scan ONUs', content: <><p>Klik <strong>Scan OLT</strong> untuk menemukan ONU yang belum terdaftar (unconfigured). ONU yang muncul adalah ONU yang sudah terhubung fisik ke PON port tapi belum diregister di OLT.</p><p className="text-xs text-tx3 mt-1">Pilih satu atau multiple ONU dengan klik pada list. Gunakan tombol <strong>All</strong> untuk select semua. Hanya ONU dengan serial number terdeteksi (show gpon onu uncfg) yang akan muncul.</p></> },
+            { title: 'Configure', content: <><p>Pilih <strong>Service Template</strong> sesuai jenis ONU dan kebutuhan:</p><ul className="text-xs text-tx3 mt-1 ml-4 space-y-0.5"><li><strong className="text-tx2">Bridge</strong> — Transparent L2, ONU hanya bridge VLAN. Cocok untuk ONU yang dikelola router eksternal</li><li><strong className="text-tx2">PPPoE</strong> — ONU dial PPPoE langsung. Isi username & password PPPoE</li><li><strong className="text-tx2">ZTE Single</strong> — 1 SSID WiFi 2.4GHz + 1 VLAN. Untuk ZTE ONU (F660, F609, dll). VEIP auto-detect dari SN</li><li><strong className="text-tx2">ZTE Dual Band</strong> — 2 SSID (2.4GHz + 5GHz) + 2 VLAN + TR069. Untuk ZTE ONU dual band (F670L, F670LV9)</li><li><strong className="text-tx2">ZTE Multi-Service</strong> — 1-4 dynamic services (Internet/IPTV/TR069/Bridge) + SSID + TR069. Untuk ZTE ONU dengan multi-service</li><li><strong className="text-tx2">Huawei Full</strong> — Multi VLAN (Mgmt/Internet/VoIP) + WAN DHCP + TR069. Untuk Huawei ONU (HG8145V5, dll)</li><li><strong className="text-tx2">Fiberhome VEIP</strong> — VEIP mode, TR069 + Internet + VoIP. Untuk Fiberhome ONU (HG6145D2, dll)</li></ul><p className="mt-2">Lengkapi parameter: ONU Type, TCONT Profile, Traffic Profile, VLAN ID, Name Prefix, Description.</p><p className="mt-1 text-xs text-accent">TR069: Pilih dari saved TR069 Profile. ACS URL, Username, Password, VLAN & mode akan auto-fill.</p><p className="mt-1 text-xs text-tx3">WiFi SSID: Untuk ZTE template, isi SSID name & password jika ingin set WiFi via wizard. Kosongkan jika ingin default ONU.</p></> },
+            { title: 'Review & Register', content: <><p>Periksa semua parameter, configuration details, dan list ONU yang akan diregister. Ada <strong>Script Preview</strong> yang menampilkan CLI commands yang akan dikirim ke OLT — bisa di-copy dengan tombol <strong>Copy Script</strong>.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Register</strong> untuk memulai proses. Setiap ONU diregister berurutan dengan delay 1 detik. Proses: register ONU → TCONT → GEM → service-port → pon-onu-mng (LAN/WAN/TR069 sesuai template).</p><p className="text-xs text-tx3 mt-1">Setelah selesai, hasil berhasil/gagal ditampilkan per ONU. Klik <strong>View All ONUs</strong> untuk melihat di All ONUs page.</p></> },
+          ]}
+          tips={
+            <>
               <strong className="text-tx2">Tips:</strong>
               <ul className="mt-1 ml-4 space-y-0.5">
                 <li>Pastikan ONU Type dan TCONT Profile sudah terdaftar di OLT sebelum register (OLT Configuration page)</li>
@@ -606,10 +593,10 @@ export function RegisterWizard() {
                 <li>Untuk batch registrasi banyak ONU, gunakan Name Prefix agar nama ONU terurut otomatis</li>
                 <li>Gunakan <strong>Copy Script</strong> di Step 4 untuk dokumentasi atau manual troubleshooting via Telnet</li>
               </ul>
-            </div>
-          </div>
-        </div>
-      )}
+            </>
+          }
+        />
+      </div>
 
       {/* Step Indicator */}
       {step <= 4 && (
@@ -1061,50 +1048,99 @@ export function RegisterWizard() {
                 )}
               </div>
 
-              {/* SSID 2.4GHz (wifi_0/1) */}
-              <div className="space-y-2 pl-4 border-l-2 border-accent/20">
-                <div className="text-xs font-semibold text-tx2">SSID 2.4GHz (wifi_0/1) — opsional</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2"><label className="label-sm mb-1">SSID Name</label>
-                    <input type="text" value={String(data.extra.ssid1_name || '')} onChange={e => update('extra', { ...data.extra, ssid1_name: e.target.value })} className="input-field" placeholder="Nama WiFi 2.4GHz (tanpa spasi)" /></div>
-                  <div><label className="label-sm mb-1">Auth</label>
-                    <select value={data.extra.ssid1_auth || 'wpa2'} onChange={e => update('extra', { ...data.extra, ssid1_auth: e.target.value })} className="input-field">
-                      <option value="wpa2">WPA2-PSK</option>
-                      <option value="mixed">WPA/WPA2 Mixed</option>
-                      <option value="wpa">WPA-PSK</option>
-                      <option value="open">Open (No Password)</option>
-                    </select></div>
+              {/* Dynamic SSID List (up to 8) */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">WiFi SSID List (max 8)</span>
+                  <button type="button" onClick={() => {
+                    const cur: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }[] = Array.isArray(data.extra.ssids) ? data.extra.ssids as any : [];
+                    if (cur.length < 8) {
+                      const defaultPorts = ['wifi_0/1', 'wifi_0/5', 'wifi_0/2', 'wifi_0/6', 'wifi_0/3', 'wifi_0/7', 'wifi_0/4', 'wifi_0/8'];
+                      cur.push({ port: defaultPorts[cur.length] || `wifi_0/${cur.length + 1}`, name: '', pass: '', auth: 'wpa2', vlan: '', enabled: true, hidden: false });
+                      update('extra', { ...data.extra, ssids: cur });
+                    }
+                  }} className="px-2 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover">+ Add SSID</button>
                 </div>
-                {data.extra.ssid1_name && data.extra.ssid1_auth !== 'open' && (
-                  <div><label className="label-sm mb-1">Password 2.4GHz</label>
-                    <div className="relative">
-                      <input type={data.extra._show_ssid1_pass === 'true' ? 'text' : 'password'} value={String(data.extra.ssid1_pass || '')} onChange={e => update('extra', { ...data.extra, ssid1_pass: e.target.value })} className="input-field pr-10" placeholder="Min 8 karakter" />
-                      <button type="button" onClick={() => update('extra', { ...data.extra, _show_ssid1_pass: data.extra._show_ssid1_pass === 'true' ? '' : 'true' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1">{data.extra._show_ssid1_pass === 'true' ? '🙈' : '👁'}</button>
-                    </div></div>
-                )}
+                {(() => {
+                  const ssids = Array.isArray(data.extra.ssids) ? data.extra.ssids : [];
+                  if (ssids.length === 0) {
+                    // Backward compat: show from old fields
+                    const oldSsids: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }[] = [];
+                    if (data.extra.ssid1_name) oldSsids.push({ port: 'wifi_0/1', name: data.extra.ssid1_name, pass: data.extra.ssid1_pass || '', auth: data.extra.ssid1_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
+                    if (data.extra.ssid2_name) oldSsids.push({ port: 'wifi_0/5', name: data.extra.ssid2_name, pass: data.extra.ssid2_pass || '', auth: data.extra.ssid2_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
+                    if (oldSsids.length > 0) { update('extra', { ...data.extra, ssids: oldSsids }); return null; }
+                    return <p className="text-xs text-tx3">No SSIDs added. Click "Add SSID" to configure WiFi.</p>;
+                  }
+                  return ssids.map((s: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }, i: number) => (
+                    <div key={i} className={cn("p-3 rounded-lg border border-brd bg-glass space-y-2", s.enabled === false && "opacity-60")}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-tx2">SSID {i + 1}</span>
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" checked={s.enabled !== false} onChange={e => { const next = [...ssids]; next[i] = { ...s, enabled: e.target.checked }; update('extra', { ...data.extra, ssids: next }); }} className="w-3 h-3 rounded accent-accent" />
+                            <span className="text-[10px] text-tx3">{s.enabled !== false ? 'ON' : 'OFF'}</span>
+                          </label>
+                          {s.enabled !== false && (
+                            <label className="flex items-center gap-1 cursor-pointer ml-2">
+                              <input type="checkbox" checked={s.hidden === true} onChange={e => { const next = [...ssids]; next[i] = { ...s, hidden: e.target.checked }; update('extra', { ...data.extra, ssids: next }); }} className="w-3 h-3 rounded accent-accent" />
+                              <span className="text-[10px] text-tx3">Hidden</span>
+                            </label>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => update('extra', { ...data.extra, ssids: ssids.filter((_: unknown, idx: number) => idx !== i) })} className="text-red-400 hover:text-red-300 text-xs">Remove</button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                        <div><label className="label-sm mb-1">WiFi Port</label>
+                          <select value={s.port || 'wifi_0/1'} onChange={e => { const next = [...ssids]; next[i] = { ...s, port: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field">
+                            {['wifi_0/1', 'wifi_0/2', 'wifi_0/3', 'wifi_0/4', 'wifi_0/5', 'wifi_0/6', 'wifi_0/7', 'wifi_0/8'].map(p => <option key={p} value={p}>{p}</option>)}
+                          </select></div>
+                        <div className="sm:col-span-1"><label className="label-sm mb-1">SSID Name</label>
+                          <input type="text" value={s.name || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, name: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder="Nama WiFi" disabled={s.enabled === false} /></div>
+                        <div><label className="label-sm mb-1">Auth</label>
+                          <select value={s.auth || 'wpa2'} onChange={e => { const next = [...ssids]; next[i] = { ...s, auth: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" disabled={s.enabled === false}>
+                            <option value="wpa2">WPA2-PSK</option>
+                            <option value="mixed">WPA/WPA2 Mixed</option>
+                            <option value="wpa">WPA-PSK</option>
+                            <option value="open">Open</option>
+                          </select></div>
+                        <div><label className="label-sm mb-1">VLAN Tag</label>
+                          {vlanList.length > 0 ? (
+                            <select value={s.vlan || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, vlan: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" disabled={s.enabled === false}>
+                              <option value="">No VLAN tag</option>
+                              {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
+                            </select>
+                          ) : (
+                            <input type="number" value={s.vlan || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, vlan: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder="VLAN ID" min={1} max={4094} disabled={s.enabled === false} />
+                          )}</div>
+                      </div>
+                      {s.enabled !== false && s.name && s.auth !== 'open' && (
+                        <div><label className="label-sm mb-1">Password</label>
+                          <input type="text" value={s.pass || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, pass: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder="Min 8 karakter" /></div>
+                      )}
+                    </div>
+                  ));
+                })()}
               </div>
 
-              {/* SSID 5GHz (wifi_0/5) */}
-              <div className="space-y-2 pl-4 border-l-2 border-accent/20">
-                <div className="text-xs font-semibold text-tx2">SSID 5GHz (wifi_0/5) — opsional</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2"><label className="label-sm mb-1">SSID Name</label>
-                    <input type="text" value={String(data.extra.ssid2_name || '')} onChange={e => update('extra', { ...data.extra, ssid2_name: e.target.value })} className="input-field" placeholder="Nama WiFi 5GHz (tanpa spasi)" /></div>
-                  <div><label className="label-sm mb-1">Auth</label>
-                    <select value={data.extra.ssid2_auth || 'wpa2'} onChange={e => update('extra', { ...data.extra, ssid2_auth: e.target.value })} className="input-field">
-                      <option value="wpa2">WPA2-PSK</option>
-                      <option value="mixed">WPA/WPA2 Mixed</option>
-                      <option value="wpa">WPA-PSK</option>
-                      <option value="open">Open (No Password)</option>
-                    </select></div>
+              {/* LAN Port VLAN Config */}
+              <div className="space-y-2">
+                <span className="text-sm font-medium">LAN Port VLAN Tags (opsional — kosong = pakai primary VLAN)</span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(() => {
+                  const lanVlans = Array.isArray(data.extra.lan_vlans) ? data.extra.lan_vlans : ['', '', '', ''];
+                  return [1, 2, 3, 4].map(ethPort => (
+                    <div key={ethPort}><label className="label-sm mb-1">ETH 0/{ethPort}</label>
+                      {vlanList.length > 0 ? (
+                        <select value={lanVlans[ethPort - 1] || ''} onChange={e => { const next = [...lanVlans]; next[ethPort - 1] = e.target.value; update('extra', { ...data.extra, lan_vlans: next }); }} className="input-field">
+                          <option value="">Primary VLAN</option>
+                          {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
+                        </select>
+                      ) : (
+                        <input type="number" value={lanVlans[ethPort - 1] || ''} onChange={e => { const next = [...lanVlans]; next[ethPort - 1] = e.target.value; update('extra', { ...data.extra, lan_vlans: next }); }} className="input-field" placeholder="VLAN ID" min={1} max={4094} />
+                      )}</div>
+                  ));
+                })()}
                 </div>
-                {data.extra.ssid2_name && data.extra.ssid2_auth !== 'open' && (
-                  <div><label className="label-sm mb-1">Password 5GHz</label>
-                    <div className="relative">
-                      <input type={data.extra._show_ssid2_pass === 'true' ? 'text' : 'password'} value={String(data.extra.ssid2_pass || '')} onChange={e => update('extra', { ...data.extra, ssid2_pass: e.target.value })} className="input-field pr-10" placeholder="Min 8 karakter" />
-                      <button type="button" onClick={() => update('extra', { ...data.extra, _show_ssid2_pass: data.extra._show_ssid2_pass === 'true' ? '' : 'true' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1">{data.extra._show_ssid2_pass === 'true' ? '🙈' : '👁'}</button>
-                    </div></div>
-                )}
               </div>
 
               {/* Firewall */}
@@ -1327,44 +1363,99 @@ export function RegisterWizard() {
                 })()}
               </div>
 
-              {/* SSID 2.4GHz */}
-              <div className="space-y-2 pl-4 border-l-2 border-accent/20">
-                <div className="text-xs font-semibold text-tx2">SSID 2.4GHz (wifi_0/1) — opsional</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2"><label className="label-sm mb-1">SSID Name</label>
-                    <input type="text" value={String(data.extra.ssid1_name || '')} onChange={e => update('extra', { ...data.extra, ssid1_name: e.target.value })} className="input-field" placeholder="Nama WiFi 2.4GHz" /></div>
-                  <div><label className="label-sm mb-1">Auth</label>
-                    <select value={data.extra.ssid1_auth || 'wpa2'} onChange={e => update('extra', { ...data.extra, ssid1_auth: e.target.value })} className="input-field">
-                      <option value="wpa2">WPA2-PSK</option>
-                      <option value="mixed">WPA/WPA2 Mixed</option>
-                      <option value="wpa">WPA-PSK</option>
-                      <option value="open">Open</option>
-                    </select></div>
+              {/* Dynamic SSID List (up to 8) */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">WiFi SSID List (max 8)</span>
+                  <button type="button" onClick={() => {
+                    const cur: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }[] = Array.isArray(data.extra.ssids) ? data.extra.ssids as any : [];
+                    if (cur.length < 8) {
+                      const defaultPorts = ['wifi_0/1', 'wifi_0/5', 'wifi_0/2', 'wifi_0/6', 'wifi_0/3', 'wifi_0/7', 'wifi_0/4', 'wifi_0/8'];
+                      cur.push({ port: defaultPorts[cur.length] || `wifi_0/${cur.length + 1}`, name: '', pass: '', auth: 'wpa2', vlan: '', enabled: true, hidden: false });
+                      update('extra', { ...data.extra, ssids: cur });
+                    }
+                  }} className="px-2 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover">+ Add SSID</button>
                 </div>
-                {data.extra.ssid1_name && data.extra.ssid1_auth !== 'open' && (
-                  <div><label className="label-sm mb-1">Password 2.4GHz</label>
-                    <input type="text" value={String(data.extra.ssid1_pass || '')} onChange={e => update('extra', { ...data.extra, ssid1_pass: e.target.value })} className="input-field" placeholder="Min 8 karakter" /></div>
-                )}
+                {(() => {
+                  const ssids = Array.isArray(data.extra.ssids) ? data.extra.ssids : [];
+                  if (ssids.length === 0) {
+                    // Backward compat: show from old fields
+                    const oldSsids: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }[] = [];
+                    if (data.extra.ssid1_name) oldSsids.push({ port: 'wifi_0/1', name: data.extra.ssid1_name, pass: data.extra.ssid1_pass || '', auth: data.extra.ssid1_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
+                    if (data.extra.ssid2_name) oldSsids.push({ port: 'wifi_0/5', name: data.extra.ssid2_name, pass: data.extra.ssid2_pass || '', auth: data.extra.ssid2_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
+                    if (oldSsids.length > 0) { update('extra', { ...data.extra, ssids: oldSsids }); return null; }
+                    return <p className="text-xs text-tx3">No SSIDs added. Click "Add SSID" to configure WiFi.</p>;
+                  }
+                  return ssids.map((s: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }, i: number) => (
+                    <div key={i} className={cn("p-3 rounded-lg border border-brd bg-glass space-y-2", s.enabled === false && "opacity-60")}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-tx2">SSID {i + 1}</span>
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input type="checkbox" checked={s.enabled !== false} onChange={e => { const next = [...ssids]; next[i] = { ...s, enabled: e.target.checked }; update('extra', { ...data.extra, ssids: next }); }} className="w-3 h-3 rounded accent-accent" />
+                            <span className="text-[10px] text-tx3">{s.enabled !== false ? 'ON' : 'OFF'}</span>
+                          </label>
+                          {s.enabled !== false && (
+                            <label className="flex items-center gap-1 cursor-pointer ml-2">
+                              <input type="checkbox" checked={s.hidden === true} onChange={e => { const next = [...ssids]; next[i] = { ...s, hidden: e.target.checked }; update('extra', { ...data.extra, ssids: next }); }} className="w-3 h-3 rounded accent-accent" />
+                              <span className="text-[10px] text-tx3">Hidden</span>
+                            </label>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => update('extra', { ...data.extra, ssids: ssids.filter((_: unknown, idx: number) => idx !== i) })} className="text-red-400 hover:text-red-300 text-xs">Remove</button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                        <div><label className="label-sm mb-1">WiFi Port</label>
+                          <select value={s.port || 'wifi_0/1'} onChange={e => { const next = [...ssids]; next[i] = { ...s, port: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field">
+                            {['wifi_0/1', 'wifi_0/2', 'wifi_0/3', 'wifi_0/4', 'wifi_0/5', 'wifi_0/6', 'wifi_0/7', 'wifi_0/8'].map(p => <option key={p} value={p}>{p}</option>)}
+                          </select></div>
+                        <div className="sm:col-span-1"><label className="label-sm mb-1">SSID Name</label>
+                          <input type="text" value={s.name || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, name: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder="Nama WiFi" disabled={s.enabled === false} /></div>
+                        <div><label className="label-sm mb-1">Auth</label>
+                          <select value={s.auth || 'wpa2'} onChange={e => { const next = [...ssids]; next[i] = { ...s, auth: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" disabled={s.enabled === false}>
+                            <option value="wpa2">WPA2-PSK</option>
+                            <option value="mixed">WPA/WPA2 Mixed</option>
+                            <option value="wpa">WPA-PSK</option>
+                            <option value="open">Open</option>
+                          </select></div>
+                        <div><label className="label-sm mb-1">VLAN Tag</label>
+                          {vlanList.length > 0 ? (
+                            <select value={s.vlan || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, vlan: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" disabled={s.enabled === false}>
+                              <option value="">No VLAN tag</option>
+                              {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
+                            </select>
+                          ) : (
+                            <input type="number" value={s.vlan || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, vlan: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder="VLAN ID" min={1} max={4094} disabled={s.enabled === false} />
+                          )}</div>
+                      </div>
+                      {s.enabled !== false && s.name && s.auth !== 'open' && (
+                        <div><label className="label-sm mb-1">Password</label>
+                          <input type="text" value={s.pass || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, pass: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder="Min 8 karakter" /></div>
+                      )}
+                    </div>
+                  ));
+                })()}
               </div>
 
-              {/* SSID 5GHz */}
-              <div className="space-y-2 pl-4 border-l-2 border-accent/20">
-                <div className="text-xs font-semibold text-tx2">SSID 5GHz (wifi_0/5) — opsional</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2"><label className="label-sm mb-1">SSID Name</label>
-                    <input type="text" value={String(data.extra.ssid2_name || '')} onChange={e => update('extra', { ...data.extra, ssid2_name: e.target.value })} className="input-field" placeholder="Nama WiFi 5GHz" /></div>
-                  <div><label className="label-sm mb-1">Auth</label>
-                    <select value={data.extra.ssid2_auth || 'wpa2'} onChange={e => update('extra', { ...data.extra, ssid2_auth: e.target.value })} className="input-field">
-                      <option value="wpa2">WPA2-PSK</option>
-                      <option value="mixed">WPA/WPA2 Mixed</option>
-                      <option value="wpa">WPA-PSK</option>
-                      <option value="open">Open</option>
-                    </select></div>
+              {/* LAN Port VLAN Config */}
+              <div className="space-y-2">
+                <span className="text-sm font-medium">LAN Port VLAN Tags (opsional — kosong = auto dari service VLAN)</span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(() => {
+                  const lanVlans = Array.isArray(data.extra.lan_vlans) ? data.extra.lan_vlans : ['', '', '', ''];
+                  return [1, 2, 3, 4].map(ethPort => (
+                    <div key={ethPort}><label className="label-sm mb-1">ETH 0/{ethPort}</label>
+                      {vlanList.length > 0 ? (
+                        <select value={lanVlans[ethPort - 1] || ''} onChange={e => { const next = [...lanVlans]; next[ethPort - 1] = e.target.value; update('extra', { ...data.extra, lan_vlans: next }); }} className="input-field">
+                          <option value="">Auto from Service</option>
+                          {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
+                        </select>
+                      ) : (
+                        <input type="number" value={lanVlans[ethPort - 1] || ''} onChange={e => { const next = [...lanVlans]; next[ethPort - 1] = e.target.value; update('extra', { ...data.extra, lan_vlans: next }); }} className="input-field" placeholder="VLAN ID" min={1} max={4094} />
+                      )}</div>
+                  ));
+                })()}
                 </div>
-                {data.extra.ssid2_name && data.extra.ssid2_auth !== 'open' && (
-                  <div><label className="label-sm mb-1">Password 5GHz</label>
-                    <input type="text" value={String(data.extra.ssid2_pass || '')} onChange={e => update('extra', { ...data.extra, ssid2_pass: e.target.value })} className="input-field" placeholder="Min 8 karakter" /></div>
-                )}
               </div>
 
               {/* TR069 */}
@@ -1567,18 +1658,28 @@ export function RegisterWizard() {
                 <p className="text-[10px] text-tx3 mt-1">Default: #1=TR069, #2=Internet, #3=VoIP. Bisa tambah/hapus sesuai kebutuhan.</p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div><label className="label-sm mb-1">ACS URL</label>
-                  <input type="text" value={String(data.extra.acs_url ?? '')} onChange={e => update('extra', { ...data.extra, acs_url: e.target.value })} className="input-field" placeholder="http://192.168.54.254:7547" /></div>
-                <div><label className="label-sm mb-1">ACS Username</label>
-                  <input type="text" value={String(data.extra.acs_user ?? '')} onChange={e => update('extra', { ...data.extra, acs_user: e.target.value })} className="input-field" placeholder="acs" /></div>
-                <div><label className="label-sm mb-1">ACS Password</label>
-                  <div className="relative">
-                    <input type={data.extra._show_acs_pass === 'true' ? 'text' : 'password'} value={String(data.extra.acs_pass ?? '')} onChange={e => update('extra', { ...data.extra, acs_pass: e.target.value })} className="input-field pr-10" placeholder="acs" />
-                    <button type="button" onClick={() => update('extra', { ...data.extra, _show_acs_pass: data.extra._show_acs_pass === 'true' ? '' : 'true' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1">
-                      {data.extra._show_acs_pass === 'true' ? '🙈' : '👁'}
-                    </button>
-                  </div></div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={data.extra.enable_tr069 === 'true'} onChange={e => update('extra', { ...data.extra, enable_tr069: e.target.checked ? 'true' : '' })} />
+                  <span className="text-sm font-medium">Enable TR069/ACS Remote Management</span>
+                </label>
+                {data.extra.enable_tr069 === 'true' && (
+                  <div className="pl-6 space-y-3">
+                    <div><label className="label-sm mb-1">TR069 Profile</label>
+                      <select value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)} className="input-field">
+                        <option value="">Select Profile...</option>
+                        {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
+                      </select></div>
+                    {data.extra.tr069_profile_id && (
+                      <div className="grid grid-cols-2 gap-3 text-xs text-tx3">
+                        <div>ACS URL: <span className="text-tx1 font-mono">{data.extra.acs_url}</span></div>
+                        <div>Username: <span className="text-tx1">{data.extra.acs_user}</span></div>
+                        <div>Password: <span className="text-tx1 font-mono">{data.extra._show_acs_pass === 'true' ? data.extra.acs_pass : '••••••••'}</span> <button type="button" onClick={() => update('extra', { ...data.extra, _show_acs_pass: data.extra._show_acs_pass === 'true' ? '' : 'true' })} className="text-tx3 hover:text-accent ml-1">{data.extra._show_acs_pass === 'true' ? '🙈' : '👁'}</button></div>
+                        <div>VLAN: <span className="text-tx1 font-mono">{data.extra.tr069_vlan}</span> <span className="text-tx3">({data.extra.tr069_vlan_mode || 'tag'})</span></div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1699,12 +1800,23 @@ export function RegisterWizard() {
                       <ConfigRow label="PPPoE Password" value={String(data.extra.pppoe_pass || '-')} />
                     </>
                   )}
-                  {data.extra.ssid1_name && <ConfigRow label="SSID 2.4GHz" value={String(data.extra.ssid1_name)} />}
-                  {data.extra.ssid1_name && <ConfigRow label="Auth 2.4GHz" value={{wpa2:'WPA2-PSK',mixed:'WPA/WPA2 Mixed',wpa:'WPA-PSK',open:'Open (No Password)'}[data.extra.ssid1_auth as string] || 'WPA2-PSK'} />}
-                  {data.extra.ssid1_name && data.extra.ssid1_auth !== 'open' && data.extra.ssid1_pass && <ConfigRow label="Password 2.4GHz" value={String(data.extra.ssid1_pass)} />}
-                  {data.extra.ssid2_name && <ConfigRow label="SSID 5GHz" value={String(data.extra.ssid2_name)} />}
-                  {data.extra.ssid2_name && <ConfigRow label="Auth 5GHz" value={{wpa2:'WPA2-PSK',mixed:'WPA/WPA2 Mixed',wpa:'WPA-PSK',open:'Open (No Password)'}[data.extra.ssid2_auth as string] || 'WPA2-PSK'} />}
-                  {data.extra.ssid2_name && data.extra.ssid2_auth !== 'open' && data.extra.ssid2_pass && <ConfigRow label="Password 5GHz" value={String(data.extra.ssid2_pass)} />}
+                  {(() => {
+                    const ssids = Array.isArray(data.extra.ssids) ? data.extra.ssids : [];
+                    const namedSsids = ssids.filter((s: Record<string, unknown>) => s.name);
+                    return namedSsids.map((s: Record<string, unknown>, i: number) => (
+                      <div key={i}>
+                        <ConfigRow label={`SSID ${i + 1} (${s.port || 'wifi_0/1'})`} value={`${String(s.name)}${s.enabled === false ? ' [OFF]' : ''}${s.hidden === true ? ' [Hidden]' : ''}`} />
+                        {s.vlan ? <ConfigRow label={`SSID ${i + 1} VLAN`} value={String(s.vlan)} /> : null}
+                      </div>
+                    ));
+                  })()}
+                  {(() => {
+                    const lanVlans = Array.isArray(data.extra.lan_vlans) ? data.extra.lan_vlans : [];
+                    return [1, 2, 3, 4].map(lp => {
+                      const v = lanVlans[lp - 1];
+                      return v ? <ConfigRow key={lp} label={`ETH 0/${lp} VLAN`} value={String(v)} /> : null;
+                    });
+                  })()}
                   <ConfigRow label="Firewall" value={data.extra.enable_firewall === 'true' ? `Enabled (${data.extra.firewall_level || 'low'})` : 'Disabled'} />
                   <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? 'Enabled' : 'Disabled'} />
                   {data.extra.enable_tr069 === 'true' && (
@@ -1734,8 +1846,23 @@ export function RegisterWizard() {
                       </div>
                     ));
                   })()}
-                  {data.extra.ssid1_name && <ConfigRow label="SSID 2.4GHz" value={String(data.extra.ssid1_name)} />}
-                  {data.extra.ssid2_name && <ConfigRow label="SSID 5GHz" value={String(data.extra.ssid2_name)} />}
+                  {(() => {
+                    const ssids = Array.isArray(data.extra.ssids) ? data.extra.ssids : [];
+                    const namedSsids = ssids.filter((s: Record<string, unknown>) => s.name);
+                    return namedSsids.map((s: Record<string, unknown>, i: number) => (
+                      <div key={i}>
+                        <ConfigRow label={`SSID ${i + 1} (${s.port || 'wifi_0/1'})`} value={`${String(s.name)}${s.enabled === false ? ' [OFF]' : ''}${s.hidden === true ? ' [Hidden]' : ''}`} />
+                        {s.vlan ? <ConfigRow label={`SSID ${i + 1} VLAN`} value={String(s.vlan)} /> : null}
+                      </div>
+                    ));
+                  })()}
+                  {(() => {
+                    const lanVlans = Array.isArray(data.extra.lan_vlans) ? data.extra.lan_vlans : [];
+                    return [1, 2, 3, 4].map(lp => {
+                      const v = lanVlans[lp - 1];
+                      return v ? <ConfigRow key={lp} label={`ETH 0/${lp} VLAN`} value={String(v)} /> : null;
+                    });
+                  })()}
                   <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? 'Enabled' : 'Disabled'} />
                   {data.extra.enable_tr069 === 'true' && (
                     <>
@@ -1784,9 +1911,15 @@ export function RegisterWizard() {
                       <ConfigRow key={i} label={`VLAN #${i + 1}${v.label ? ` (${v.label})` : ''}`} value={String(v.vlan || '-')} />
                     ));
                   })()}
-                  <ConfigRow label="ACS URL" value={String(data.extra.acs_url || '-')} />
-                  <ConfigRow label="ACS User" value={String(data.extra.acs_user || '-')} />
-                  <ConfigRow label="ACS Password" value={data.extra.acs_pass ? '••••••••' : '-'} />
+                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? 'Enabled' : 'Disabled'} />
+                  {data.extra.enable_tr069 === 'true' && (
+                    <>
+                      <ConfigRow label="ACS URL" value={String(data.extra.acs_url || '-')} />
+                      <ConfigRow label="ACS User" value={String(data.extra.acs_user || '-')} />
+                      <ConfigRow label="TR069 VLAN Mode" value={data.extra.tr069_vlan_mode || 'untag'} />
+                      {data.extra.tr069_vlan_mode === 'tag' && <ConfigRow label="TR069 VLAN" value={String(data.extra.tr069_vlan || '-')} />}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1807,7 +1940,7 @@ export function RegisterWizard() {
                 <Copy size={14} /> Copy Script
               </button>
             </div>
-            <pre className="rounded-lg border border-brd bg-[#0d1117] text-[#c9d1d9] text-[10px] md:text-xs font-mono p-3 md:p-4 overflow-x-auto max-h-72 overflow-y-auto whitespace-pre">
+            <pre className="code-block text-[10px] md:text-xs overflow-x-auto max-h-72 overflow-y-auto whitespace-pre">
 {generateRegisterScript(data)}
             </pre>
             <p className="text-xs text-tx3 mt-1">Script preview untuk ONU pertama ({data.selectedOnus[0]?.sn || '-'}). ONU lainnya akan menggunakan format yang sama dengan SN & port berbeda.</p>

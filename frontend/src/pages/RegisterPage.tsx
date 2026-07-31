@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api, type PublicPackage, type RegisterData } from '../lib/api';
 import {
-  Zap, ArrowLeft, ArrowRight, Loader2, Building2, User, Lock,
+  Zap, ArrowRight, Loader2, Building2, User, Lock,
   Phone, Mail, Globe, CheckCircle, Clock, ExternalLink, Cloud, Sparkles,
-  Rocket, ShieldCheck, Wifi,
+  ShieldCheck, RefreshCw,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
+import { AuthLayout } from '../components/AuthLayout';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -41,6 +42,15 @@ export default function RegisterPage() {
     cf_status?: string;
     cf_message?: string;
   } | null>(null);
+
+  // Simple math captcha
+  const genCaptcha = useCallback(() => {
+    const a = Math.floor(Math.random() * 9) + 1;
+    const b = Math.floor(Math.random() * 9) + 1;
+    return { a, b, answer: a + b };
+  }, []);
+  const [captcha, setCaptcha] = useState(genCaptcha);
+  const [captchaInput, setCaptchaInput] = useState('');
 
   const { data: packages } = useQuery<PublicPackage[]>({
     queryKey: ['public-packages'],
@@ -76,19 +86,18 @@ export default function RegisterPage() {
       toast.warning('Password minimal 6 karakter');
       return;
     }
+    if (parseInt(captchaInput) !== captcha.answer) {
+      toast.warning('Jawaban verifikasi salah');
+      setCaptcha(genCaptcha());
+      setCaptchaInput('');
+      return;
+    }
     registerMut.mutate();
   };
 
-  const benefits = [
-    { icon: Rocket, text: `Langsung aktif — trial ${trialDays} hari gratis, tanpa kartu kredit` },
-    { icon: Cloud, text: 'Subdomain otomatis — langsung terhubung ke Cloudflare Tunnel' },
-    { icon: ShieldCheck, text: 'Isolasi data aman — setiap tenant punya subdomain sendiri' },
-    { icon: Wifi, text: 'Monitoring real-time OLT & ONU dari ZTE C320' },
-  ];
-
   // ===== STEP 2: SUCCESS =====
   if (step === 2 && regResult) {
-    const dashboardUrl = `https://${regResult.subdomain}.${baseDomain}/spa/login`;
+    const dashboardUrl = `https://${regResult.subdomain}.${baseDomain}/login`;
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] text-tx1 flex flex-col">
         <nav className="border-b border-brd/50">
@@ -182,80 +191,28 @@ export default function RegisterPage() {
 
   // ===== STEP 1: FORM =====
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] text-tx1">
-      {/* Nav */}
-      <nav className="border-b border-brd/50 sticky top-0 z-50 backdrop-blur-xl bg-[var(--bg-primary)]/80">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <button onClick={() => navigate('/')} className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-accent/15 flex items-center justify-center">
-              <Zap size={20} className="text-accent" />
-            </div>
-            <span className="text-lg font-bold">{brandName}</span>
-          </button>
-          <button onClick={() => navigate('/')} className="flex items-center gap-1.5 text-sm text-tx2 hover:text-tx1 transition-colors">
-            <ArrowLeft size={16} /> Kembali
-          </button>
+    <AuthLayout brandName={brandName}>
+      <div className="glass-card rounded-2xl p-5 sm:p-6">
+        {/* Trial badge */}
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-xs text-accent font-medium mb-5">
+          <Sparkles size={12} /> Trial {trialDays} Hari Gratis
         </div>
-      </nav>
 
-      <div className="max-w-6xl mx-auto px-4 py-6 md:py-10">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-10">
-          {/* Left: Benefits panel */}
-          <div className="lg:col-span-2 lg:sticky lg:top-24 self-start">
-            <div className="glass-card rounded-3xl p-6 md:p-8 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-48 h-48 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="relative">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20 text-xs text-accent font-medium mb-5">
-                  <Sparkles size={12} /> Trial {trialDays} Hari Gratis
-                </div>
-                <h2 className="text-2xl font-bold mb-3 leading-tight">
-                  Mulai Kelola Jaringan FTTH Anda Hari Ini
-                </h2>
-                <p className="text-sm text-tx3 mb-6">
-                  Daftar sekarang, langsung aktif tanpa perlu pembayaran. Subdomain otomatis terkonfigurasi.
-                </p>
-
-                <div className="space-y-3">
-                  {benefits.map((b, i) => (
-                    <div key={i} className="flex items-start gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0">
-                        <b.icon size={18} className="text-accent" />
-                      </div>
-                      <p className="text-sm text-tx2 pt-1.5">{b.text}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-6 pt-6 border-t border-brd/50">
-                  <p className="text-xs text-tx3">
-                    Sudah punya akun?{' '}
-                    <button onClick={() => navigate('/login')} className="text-accent hover:underline font-medium">
-                      Login di sini
-                    </button>
-                  </p>
-                </div>
-              </div>
-            </div>
+        {/* Progress */}
+        <div className="flex items-center gap-2 mb-6">
+          <div className="flex items-center gap-2 text-sm text-accent">
+            <div className="w-7 h-7 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">1</div>
+            Data Diri
           </div>
+          <div className="flex-1 h-px bg-brd" />
+          <div className="flex items-center gap-2 text-sm text-tx3">
+            <div className="w-7 h-7 rounded-full bg-glass flex items-center justify-center text-xs font-bold">2</div>
+            Selesai
+          </div>
+        </div>
 
-          {/* Right: Form */}
-          <div className="lg:col-span-3">
-            <div className="glass-card rounded-3xl p-6 md:p-8">
-              {/* Progress */}
-              <div className="flex items-center gap-2 mb-6">
-                <div className="flex items-center gap-2 text-sm text-accent">
-                  <div className="w-7 h-7 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">1</div>
-                  Data Diri
-                </div>
-                <div className="flex-1 h-px bg-brd" />
-                <div className="flex items-center gap-2 text-sm text-tx3">
-                  <div className="w-7 h-7 rounded-full bg-glass flex items-center justify-center text-xs font-bold">2</div>
-                  Selesai
-                </div>
-              </div>
-
-              <h1 className="text-xl font-bold mb-1">Daftar Tenant Baru</h1>
-              <p className="text-xs text-tx3 mb-6">Lengkapi data berikut untuk membuat akun tenant</p>
+        <h1 className="text-xl font-bold mb-1 font-display">Daftar Tenant Baru</h1>
+        <p className="text-xs text-tx3 mb-6">Lengkapi data berikut untuk membuat akun tenant</p>
 
               {/* Package Selection */}
               <div className="mb-5">
@@ -406,6 +363,33 @@ export default function RegisterPage() {
                 </div>
               </div>
 
+              {/* Captcha */}
+              <div className="mt-5">
+                <label className="text-xs font-medium mb-1.5 flex items-center gap-1.5 text-tx2">
+                  <ShieldCheck size={13} /> Verifikasi Keamanan
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-glass border border-brd select-none">
+                    <span className="text-sm font-mono font-semibold text-tx1">{captcha.a} + {captcha.b} =</span>
+                  </div>
+                  <input
+                    type="number"
+                    value={captchaInput}
+                    onChange={e => setCaptchaInput(e.target.value)}
+                    placeholder="?"
+                    className="w-20 px-3.5 py-2.5 rounded-xl bg-glass border border-brd text-sm text-center focus:border-accent/50 focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setCaptcha(genCaptcha()); setCaptchaInput(''); }}
+                    className="p-2.5 rounded-xl bg-glass border border-brd text-tx3 hover:text-tx2 hover:border-accent/30 transition-all"
+                    title="Soal baru"
+                  >
+                    <RefreshCw size={16} />
+                  </button>
+                </div>
+              </div>
+
               <button
                 onClick={handleSubmit}
                 disabled={registerMut.isPending || !form.package_id}
@@ -415,10 +399,14 @@ export default function RegisterPage() {
                   ? <><Loader2 size={18} className="animate-spin" /> Mendaftarkan...</>
                   : <>Daftar & Mulai Trial Gratis <ArrowRight size={18} /></>}
               </button>
-            </div>
-          </div>
-        </div>
       </div>
-    </div>
+
+      <p className="text-center text-xs text-tx3 mt-6">
+        Sudah punya akun?{' '}
+        <button onClick={() => navigate('/login')} className="text-accent hover:underline font-medium">
+          Login di sini
+        </button>
+      </p>
+    </AuthLayout>
   );
 }

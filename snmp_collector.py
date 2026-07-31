@@ -41,20 +41,74 @@ def create_cli_collector(olt):
 
 # ==================== COMBINED POLL ====================
 
-def poll_olt(olt, progress_cb=None):
-    """Poll OLT data. Telnet/SSH as primary, SNMP for signal power only.
-    Auto-detects C300 vs C320 to select correct transport (SSH/Telnet) and SNMP OIDs."""
+def poll_olt(olt, progress_cb=None, light=False):
+    """Poll OLT data. Telnet/SSH as primary, SNMP for signal power.
+    Auto-detects C300 vs C320 to select correct transport ( SNMP OIDs).
+    
+    When light=True: SNMP-only mode — collect ONU status/signal/name/serial via SNMP walks.
+    No Telnet connection, no config data (VLANs, profiles, uplinks). 
+    Much lighter on OLT CPU/RAM. Used for frequent auto-sync.
+    
+    When light=False: Full sync — Telnet for ONU data + config, SNMP for signal enrichment.
+    """
     def report(pct, msg):
         if progress_cb: progress_cb(pct, msg)
         logger.info(f"  [{pct}%] {msg}")
 
     result = {'system': {}, 'onus': [], 'chassis': {}, 'success': False, 'errors': []}
 
-    # Detect model — C300 uses different SNMP OIDs (but same Telnet CLI)
+    # Detect model
     model = (olt.model or 'C320').upper()
     is_c300 = 'C300' in model
 
-    # Step 1: SNMP - system info + signal power
+    # ─── LIGHT SYNC: SNMP only, no Telnet ───
+    if light:
+        if not olt.snmp_enabled:
+            result['errors'].append('Light sync requires SNMP enabled')
+            return result
+        try:
+            report(5, 'Light sync: connecting SNMP...')
+            collector = SNMPCollector(olt.ip_address, olt.snmp_community, olt.snmp_port)
+            result['system'] = collector.collect_system_info()
+            report(20, 'Light sync: collecting ONUs via SNMP...')
+            if is_c300:
+                # C300 light sync — use C300 SNMP collection
+                snmp_signal = collector.collect_onus_c300()
+                # Build ONU list from C300 signal data
+                onus = []
+                for sn, sig in snmp_signal.get('by_sn', {}).items():
+                    _status = decode_oper_state(sig.get('oper_state', 0))
+                    _rx = sig.get('rx_power')
+                    _onu_rx = sig.get('onu_rx_power')
+                    # SNMP oper_state may not distinguish online from DyingGasp
+                    if _status == 'online' and _rx is None and _onu_rx is None:
+                        _status = 'dyinggasp'
+                    onus.append({
+                        'serial_number': sn,
+                        'status': _status,
+                        'oper_state': sig.get('oper_state', 0),
+                        'rx_power': _rx,
+                        'onu_rx_power': _onu_rx,
+                        'tx_power': sig.get('tx_power'),
+                        'distance': sig.get('distance'),
+                        'actual_type': sig.get('actual_type', ''),
+                        'name': '', 'description': '',
+                        'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 0, 'onu_index': 0,
+                        'reg_status': 0, 'last_dereg_reason': '', 'pppoe': '',
+                    })
+            else:
+                onus = collector.collect_onus_light()
+            result['onus'] = onus
+            result['success'] = True
+            report(90, f'Light sync: {len(onus)} ONUs collected')
+            collector.close()
+        except Exception as e:
+            result['errors'].append(f'SNMP light: {str(e)}')
+            logger.error(f"Light sync {olt.name} failed: {e}")
+        report(98, 'Light sync complete')
+        return result
+
+    # ─── FULL SYNC: Telnet primary + SNMP signal + config data ───
     snmp_signal = {}  # keyed by serial number
     if olt.snmp_enabled:
         collector = None
