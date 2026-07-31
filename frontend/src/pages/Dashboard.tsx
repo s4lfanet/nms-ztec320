@@ -12,8 +12,6 @@ import {
   ArrowUpDown, ExternalLink, Package, CreditCard
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
-import { useAuth } from '../stores/auth';
-import { SuperAdminDashboard } from './SuperAdminDashboard';
 import { useWebSocket } from '../hooks/useWebSocket';
 
 const REFRESH_INTERVAL = 30;
@@ -37,7 +35,6 @@ function tempColor(t: number | null | undefined): string {
 }
 
 export function Dashboard() {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const hasPerm = useHasPerm();
   const navigate = useNavigate();
@@ -50,11 +47,6 @@ export function Dashboard() {
   const [sortKey, setSortKey] = useState<SortKey>('status');
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
   const countdownRef = useRef(REFRESH_INTERVAL);
-
-  // Super admin sees a different dashboard
-  if (user?.is_super_admin) {
-    return <SuperAdminDashboard />;
-  }
 
   const manualRefreshRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
