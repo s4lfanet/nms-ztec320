@@ -83,7 +83,6 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 | Charts | Recharts |
 | Icons | Lucide React |
 | Database | SQLite (default) / PostgreSQL (production) |
-| Cache | Redis (optional) |
 | Testing | pytest (backend), vitest (frontend) |
 
 ## Struktur Proyek
@@ -102,7 +101,6 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ├── auto_backup.py         # Automatic OLT config backup
 ├── task_queue.py          # Background task queue (traffic aggregation)
 ├── traffic_poller.py      # Traffic polling via Telnet CLI
-├── traffic_poller_cron.py # Cron entry point for traffic polling
 ├── ws_bridge.py           # WebSocket bridge for real-time events
 ├── api_async.py           # FastAPI app (WebSocket + Swagger docs)
 ├── api_docs.py            # FastAPI endpoint documentation
@@ -110,10 +108,8 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ├── extensions.py          # Shared Flask extensions (db, login_manager, migrate)
 ├── helpers.py             # Shared helpers (permissions, rate limiting, logging)
 ├── logging_config.py      # Structured logging (JSON for prod, human-readable for dev)
-├── cache.py               # Redis cache helpers
 ├── run_server.py          # Hybrid server launcher (Flask + FastAPI)
 ├── migrate.py             # Flask-Migrate CLI wrapper
-├── rq_worker.py           # Redis Queue worker (optional)
 ├── olt_adapters/          # ZTE adapter package
 │   ├── __init__.py        # Auto-registers ZTE adapter
 │   ├── base.py            # BaseOLTAdapter abstract class
@@ -229,7 +225,6 @@ Frontend dev server runs on http://127.0.0.1:5173 with API proxy to Flask on por
 | `PORT` | 5000 | Flask port |
 | `WS_PORT` | 8765 | FastAPI/WebSocket port |
 | `SESSION_COOKIE_SECURE` | 1 | HTTPS-only cookies (set 0 for HTTP) |
-| `REDIS_URL` | (empty) | Redis connection URL (optional) |
 | `WA_GATEWAY_URL` | (empty) | WhatsApp gateway URL (optional) |
 
 ### Adding Your OLT
@@ -253,7 +248,7 @@ docker compose up -d
 docker compose --profile production up -d
 ```
 
-Services: backend (Flask+FastAPI), PostgreSQL, Redis, Nginx
+Services: backend (Flask+FastAPI), PostgreSQL, Nginx
 
 ### VPS Deployment (Ubuntu)
 
@@ -330,9 +325,6 @@ npm run test
 ## Documentation
 
 - [ZTE C320/C300 CLI & OID Reference](ZTE_C320_C300_CLI_OID_Reference.md) — comprehensive CLI commands and SNMP OIDs
-- [OID & CLI Reference](oid-cli-reference.md) — detailed SNMP OID mappings
-- [FiberNMS Documentation](FiberNMS_Documentation.md) — system architecture and features
-- [FTTH Roadmap](FTTH_ROADMAP.md) — FTTH feature planning
 
 ## Supported OLT Models
 

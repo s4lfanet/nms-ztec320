@@ -10,7 +10,6 @@
 # Services:
 #   - backend:  Flask + FastAPI (hybrid server)
 #   - postgres: PostgreSQL database
-#   - redis:    Redis cache (optional)
 #   - nginx:    Reverse proxy (production)
 # ============================================================
 
@@ -34,21 +33,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # --- Redis Cache (optional) ---
-  redis:
-    image: redis:7-alpine
-    container_name: nms-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # --- Backend (Flask + FastAPI hybrid) ---
   backend:
     build:
@@ -59,12 +43,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
       FLASK_ENV: production
       DATABASE_URL: postgresql://nms_user:${POSTGRES_PASSWORD:-nms_secret_2026}@postgres:5432/salfanet_nms
-      REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       HOST: "0.0.0.0"
       PORT: "5000"
@@ -95,5 +76,4 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   nms_instance:

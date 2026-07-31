@@ -10,15 +10,9 @@ Jinja2>=3.1
 # === Network ===
 pysnmp>=7.1
 
-# === Async / WebSocket (Phase 2 upgrade) ===
+# === Async / WebSocket ===
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
-websockets>=14.0
-httpx>=0.28.0
-
-# === Caching (Phase 4 upgrade) ===
-redis>=5.0
 
 # === Testing ===
 pytest>=8.0
-pytest-asyncio>=0.24.0
