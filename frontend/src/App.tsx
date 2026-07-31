@@ -141,7 +141,7 @@ export default function App() {
 
   // Detect if we're on the main domain (landing page) or a tenant subdomain
   const hostname = window.location.hostname;
-  const isMainDomain = hostname === 'nms.salfa.my.id' || hostname === 'localhost' || hostname === '127.0.0.1';
+  const isMainDomain = hostname === 'nms.salfa.my.id' || hostname === 'localhost' || hostname === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
 
   useEffect(() => {
     const path = window.location.pathname || '/';
