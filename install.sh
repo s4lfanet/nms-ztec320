@@ -65,6 +65,7 @@ npm run build
 cd ..
 
 echo "[5/5] Creating .env configuration..."
+mkdir -p instance
 if [ ! -f ".env" ]; then
     cp .env.example .env
     echo "  Created .env from .env.example"
