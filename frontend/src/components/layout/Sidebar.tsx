@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Radio,
-  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, Shield, CreditCard, ScrollText, Activity
+  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../stores/auth';
@@ -70,34 +70,11 @@ function buildVisibleItems(user: { is_super_admin?: boolean; permissions?: strin
 
   let items: NavItem[] = navItems.map(item => ({ ...item, children: item.children?.map(c => ({ ...c })) }));
 
-  if (user.is_super_admin) {
-    items = items
-      .filter(item => item.label !== 'Templates')
-      .map(item => {
-        if (item.label === 'ONU') {
-          return { ...item, children: item.children?.filter(c => c.label === 'All ONUs') };
-        }
-        if (item.label === 'Infrastructure') {
-          return { ...item, label: 'OLT Management', children: item.children?.filter(c => c.label === 'OLT Settings') };
-        }
-        if (item.label === 'System') {
-          return { ...item, children: item.children?.filter(c => c.label === 'Alert Settings') };
-        }
-        return item;
-      });
-  }
-
   items = items.filter(item => {
     if (!hasPerm(item.permission)) return false;
     if (item.children) return item.children.some(c => hasPerm(c.permission));
     return true;
   });
-
-  if (user.is_super_admin) {
-    items.push({ label: 'Admin Panel', icon: <Shield size={20} />, path: '/dashboard/admin' });
-  } else if (hasPerm('all_olt')) {
-    items.push({ label: 'Subscription', icon: <CreditCard size={20} />, path: '/dashboard/subscription' });
-  }
 
   return items;
 }

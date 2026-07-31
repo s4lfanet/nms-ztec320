@@ -5,20 +5,12 @@ import { Topbar } from './Topbar';
 import { cn } from '../../lib/utils';
 import { LayoutDashboard, Radio, Server, Sliders } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '../../stores/auth';
 
 const bottomNavItems = [
   { label: 'Home', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'ONUs', icon: Radio, path: '/dashboard/onus' },
   { label: 'OLT', icon: Server, path: '/dashboard/settings/olts' },
   { label: 'System', icon: Sliders, path: '/dashboard/customization' },
-];
-
-const superAdminBottomNav = [
-  { label: 'Home', icon: LayoutDashboard, path: '/dashboard' },
-  { label: 'ONUs', icon: Radio, path: '/dashboard/onus' },
-  { label: 'OLT', icon: Server, path: '/dashboard/settings/olts' },
-  { label: 'System', icon: Sliders, path: '/dashboard/logs' },
 ];
 
 export function AppShell() {
@@ -38,9 +30,7 @@ export function AppShell() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const { user } = useAuth();
-  const isSuperAdmin = !!user?.is_super_admin;
-  const navItems = isSuperAdmin ? superAdminBottomNav : bottomNavItems;
+  const navItems = bottomNavItems;
 
   const { data: unregData } = useQuery({
     queryKey: ['unregistered-count'],

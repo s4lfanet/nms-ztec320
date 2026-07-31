@@ -27,8 +27,6 @@ const FtthInfrastructure = lazy(() => import('./pages/FtthInfrastructure').then(
 const Templates = lazy(() => import('./pages/Templates').then(m => ({ default: m.default })));
 const Tr069Profile = lazy(() => import('./pages/Tr069Profile').then(m => ({ default: m.default })));
 const ActionLogs = lazy(() => import('./pages/ActionLogs').then(m => ({ default: m.ActionLogs })));
-const AdminPanel = lazy(() => import('./pages/AdminPanel').then(m => ({ default: m.default })));
-const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage').then(m => ({ default: m.default })));
 const AlertHistoryPage = lazy(() => import('./pages/AlertHistory').then(m => ({ default: m.AlertHistory })));
 const Traffic = lazy(() => import('./pages/Traffic').then(m => ({ default: m.Traffic })));
 
@@ -66,31 +64,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   if (!user) return <Navigate to="/" replace />;
 
-  // Block access for tenant users with inactive subscription (not super admin)
-  if (!user.is_super_admin && user.subscription && !user.subscription.is_active) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] p-4">
-        <div className="glass-card max-w-md w-full p-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-danger/15 flex items-center justify-center mx-auto mb-4">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-danger">
-              <rect x="3" y="11" width="18" height="11" rx="2" />
-              <path d="M7 11V7a5 5 0 0110 0v4" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-tx1 mb-2">Access Blocked</h2>
-          <p className="text-sm text-tx3 mb-1">Your subscription has expired.</p>
-          <p className="text-sm text-tx3 mb-6">Please contact your administrator to renew.</p>
-          <button
-            onClick={() => { useAuth.getState().logout(); }}
-            className="px-6 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
-          >
-            Back to Login
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // Check route-specific permission
   const path = window.location.pathname;
   let requiredPerm = routePermissions[path];
@@ -104,11 +77,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     if (!user.is_super_admin && !userPerms.has('all_olt') && !userPerms.has(requiredPerm)) {
       return <Navigate to="/dashboard" replace />;
     }
-  }
-
-  // Block non-superadmin from accessing /dashboard/admin
-  if (path.startsWith('/dashboard/admin') && !user.is_super_admin) {
-    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
@@ -219,8 +187,6 @@ export default function App() {
         <Route path="templates/tr069-profile" element={<Tr069Profile />} />
         <Route path="traffic" element={<Traffic />} />
         <Route path="logs" element={<ActionLogs />} />
-        <Route path="admin" element={<AdminPanel />} />
-        <Route path="subscription" element={<SubscriptionPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
