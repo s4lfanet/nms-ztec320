@@ -151,17 +151,39 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 - **Node.js 22+** (for frontend)
 - **ZTE OLT** (C320/C300) accessible via SNMP (port 161) and Telnet (port 23)
 
-### Option 1: Installer Script (Windows)
+### Option 1: VPS Full Installer (Ubuntu 22.04/24.04)
 
-```bat
-install.bat
-```
-
-### Option 2: Installer Script (Linux/macOS)
+One-click installer for fresh VPS. Installs all dependencies, clones repo, builds frontend, sets up systemd + nginx, and starts the server.
 
 ```bash
-chmod +x install.sh
-./install.sh
+# Download and run (as root)
+curl -fsSL https://raw.githubusercontent.com/s4lfanet/nms-ztec320/main/install-vps.sh -o install-vps.sh
+bash install-vps.sh
+
+# Or with a domain
+bash install-vps.sh yourdomain.com
+```
+
+What it does:
+1. Installs system packages (Python 3, Node.js 22, nginx, git)
+2. Clones repo to `/opt/salfanet-nms/`
+3. Creates Python venv + installs dependencies
+4. Builds frontend (React SPA)
+5. Creates `.env` with auto-generated `SECRET_KEY`
+6. Sets up systemd service (`salfanet-nms`)
+7. Configures Nginx reverse proxy (port 80 → Flask 5000 + WebSocket 8765)
+8. Starts everything and verifies
+
+After install, access `http://<your-vps-ip>` and login with `admin` / `admin123`.
+
+### Option 2: Local Installer (repo already cloned)
+
+```bash
+# Install only
+bash install.sh
+
+# Install + auto-start server
+bash install.sh --start
 ```
 
 ### Option 3: Manual Setup
@@ -212,6 +234,52 @@ npm run dev
 ```
 
 Frontend dev server runs on http://127.0.0.1:5173 with API proxy to Flask on port 5000.
+
+## VPS Management
+
+### Update (pull latest code + rebuild + restart)
+
+```bash
+cd /opt/salfanet-nms
+git pull origin main
+cd frontend && npm run build && cd ..
+systemctl restart salfanet-nms
+```
+
+### Uninstall (remove everything)
+
+```bash
+# Download and run (as root)
+curl -fsSL https://raw.githubusercontent.com/s4lfanet/nms-ztec320/main/uninstall-vps.sh -o uninstall-vps.sh
+bash uninstall-vps.sh
+```
+
+What it removes:
+- systemd service (`salfanet-nms`)
+- Nginx config
+- iptables port redirect
+- App files (`/opt/salfanet-nms/` including database)
+- App user (`salfanet`)
+
+System packages (Python, Node.js, nginx) are kept.
+
+### Service Management
+
+```bash
+systemctl status salfanet-nms      # Check status
+systemctl restart salfanet-nms     # Restart
+systemctl stop salfanet-nms        # Stop
+journalctl -u salfanet-nms -f      # View logs (live)
+```
+
+### Installer Scripts Reference
+
+| Script | Purpose | Command |
+|--------|---------|---------|
+| `install-vps.sh` | Full VPS installer (fresh server) | `bash install-vps.sh [domain]` |
+| `install.sh` | Local installer (repo already cloned) | `bash install.sh [--start]` |
+| `uninstall-vps.sh` | Full VPS uninstaller | `sudo bash uninstall-vps.sh` |
+| `deploy/vps-setup.sh` | Deploy from source directory | `sudo bash deploy/vps-setup.sh [domain]` |
 
 ## Configuration
 
