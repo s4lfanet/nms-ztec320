@@ -1,0 +1,46 @@
+#!/bin/bash
+set -e
+
+echo "=== Step 1: Download and run uninstaller ==="
+curl -fsSL https://raw.githubusercontent.com/s4lfanet/nms-ztec320/main/uninstall-vps.sh -o /tmp/uninstall-vps.sh
+echo "yes" | bash /tmp/uninstall-vps.sh
+
+echo ""
+echo "=== Verify uninstall ==="
+if [ -d /opt/salfanet-nms ]; then
+    echo "FAIL: /opt/salfanet-nms still exists"
+else
+    echo "OK: /opt/salfanet-nms removed"
+fi
+if systemctl is-active salfanet-nms 2>/dev/null; then
+    echo "FAIL: salfanet-nms service still active"
+else
+    echo "OK: salfanet-nms service stopped/removed"
+fi
+if id salfanet 2>/dev/null; then
+    echo "FAIL: salfanet user still exists"
+else
+    echo "OK: salfanet user removed"
+fi
+
+echo ""
+echo "=== Step 2: Run full installer again ==="
+curl -fsSL https://raw.githubusercontent.com/s4lfanet/nms-ztec320/main/install-vps.sh -o /tmp/install-vps.sh
+bash /tmp/install-vps.sh
+
+echo ""
+echo "=== Step 3: Final verification ==="
+sleep 2
+echo "--- systemctl status ---"
+systemctl is-active salfanet-nms && echo "Service: ACTIVE" || echo "Service: INACTIVE"
+echo "--- curl port 80 ---"
+curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:80/ 2>&1
+echo "--- curl port 5000 ---"
+curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:5000/ 2>&1
+echo "--- curl port 8765 ---"
+curl -s -w "\nHTTP %{http_code}\n" http://127.0.0.1:8765/health 2>&1
+echo "--- curl branding ---"
+curl -s http://127.0.0.1:80/api/public/branding 2>&1
+
+echo ""
+echo "=== DONE ==="

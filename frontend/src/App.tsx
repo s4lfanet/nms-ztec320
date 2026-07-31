@@ -1,14 +1,8 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './stores/auth';
 import { AppShell } from './components/layout/AppShell';
 import { Login } from './pages/Login';
-
-// Lazy-loaded public pages
-const LandingPage = lazy(() => import('./pages/LandingPage').then(m => ({ default: m.default })));
-const RegisterPage = lazy(() => import('./pages/RegisterPage').then(m => ({ default: m.default })));
-const PaymentResultPage = lazy(() => import('./pages/PaymentResultPage').then(m => ({ default: m.default })));
-const RenewalPage = lazy(() => import('./pages/RenewalPage').then(m => ({ default: m.default })));
 
 // Lazy-loaded dashboard pages
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -82,57 +76,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function TenantNotFound({ reason }: { reason: string }) {
-  const isSuspended = reason === 'suspended';
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] p-4">
-      <div className="glass-card max-w-md w-full p-8 md:p-12 text-center rounded-2xl">
-        <div className="w-16 h-16 rounded-full bg-danger/15 flex items-center justify-center mx-auto mb-5">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-danger">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-        </div>
-        <h1 className="text-xl font-bold text-tx1 mb-2">{isSuspended ? 'Tenant Suspended' : 'Tenant Not Found'}</h1>
-        <p className="text-sm text-tx3 mb-1">{window.location.hostname}</p>
-        <p className="text-sm text-tx3 mb-6">{isSuspended ? 'This tenant account has been suspended. Please contact support.' : 'This subdomain does not exist or has been removed.'}</p>
-        <a href="https://nms.salfa.my.id/" className="inline-block px-6 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors">Back to Home</a>
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
   const { fetchUser } = useAuth();
-  const [tenantValid, setTenantValid] = useState<null | { valid: boolean; reason?: string }>(null);
-
-  // Detect if we're on the main domain (landing page) or a tenant subdomain
-  const hostname = window.location.hostname;
-  const isMainDomain = hostname === 'nms.salfa.my.id' || hostname === 'localhost' || hostname === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
 
   useEffect(() => {
     const path = window.location.pathname || '/';
-    const isPublicRoute = path === '/' || path === '/login' || path === '/secure-portal-x7k2' || path === '/register' || path === '/payment-result' || path.startsWith('/renewal/');
+    const isPublicRoute = path === '/' || path === '/login';
     if (!isPublicRoute) {
       fetchUser();
     } else {
       useAuth.setState({ loading: false });
     }
   }, [fetchUser]);
-
-  useEffect(() => {
-    if (isMainDomain) { setTenantValid({ valid: true }); return; }
-    fetch('/api/public/tenant-check')
-      .then(r => r.json())
-      .then(d => setTenantValid(d))
-      .catch(() => setTenantValid({ valid: true })); // fail open
-  }, [isMainDomain]);
-
-  // Show tenant not found / suspended page
-  if (!isMainDomain && tenantValid && !tenantValid.valid) {
-    return <TenantNotFound reason={tenantValid.reason || 'not_found'} />;
-  }
 
   return (
     <Suspense fallback={
@@ -147,17 +102,8 @@ export default function App() {
       </div>
     }>
     <Routes>
-      {/* Public routes — only on main domain */}
-      {isMainDomain && <Route path="/" element={<LandingPage />} />}
-      {isMainDomain && <Route path="/register" element={<RegisterPage />} />}
-      {/* Tenant subdomain: / redirects to /login */}
-      {!isMainDomain && <Route path="/" element={<Navigate to="/login" replace />} />}
-
+      <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="/login" element={<Login />} />
-      {isMainDomain && <Route path="/secure-portal-x7k2" element={<Login />} />}
-      {!isMainDomain && <Route path="/secure-portal-x7k2" element={<Navigate to="/login" replace />} />}
-      <Route path="/payment-result" element={<PaymentResultPage />} />
-      <Route path="/renewal/:ref" element={<RenewalPage />} />
       {/* Protected routes */}
       <Route
         path="/dashboard"
