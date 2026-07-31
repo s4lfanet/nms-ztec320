@@ -83,7 +83,26 @@ echo "  To start the server:"
 echo "    source .venv/bin/activate"
 echo "    python run_server.py"
 echo ""
-echo "  App:       http://127.0.0.1:5000"
-echo "  API Docs:  http://127.0.0.1:8765/docs"
+echo "  App:       http://<your-ip>:5000"
+echo "  API Docs:  http://<your-ip>:8765/docs"
 echo "  Login:     admin / admin123"
 echo ""
+
+# Auto-start option
+if [ "$1" = "--start" ]; then
+    echo "Starting server..."
+    pkill -f "python run_server.py" 2>/dev/null || true
+    pkill -f "uvicorn" 2>/dev/null || true
+    sleep 1
+    nohup python run_server.py > /tmp/nms.log 2>&1 &
+    echo "  Server PID: $!"
+    sleep 4
+    if pgrep -f "run_server.py" > /dev/null; then
+        echo "  ✅ Server running!"
+        echo "  Logs: tail -f /tmp/nms.log"
+    else
+        echo "  ❌ Server failed to start. Check /tmp/nms.log"
+        tail -10 /tmp/nms.log
+    fi
+    echo ""
+fi
