@@ -637,7 +637,7 @@ def refresh_onu_signal(olt_id):
         try:
             from cache import cache_clear
             cache_clear("dashboard:*")
-            cache_clear("all-onus:*")
+            cache_clear(f"olt:{olt_id}:*")
         except Exception:
             pass
         return jsonify({'success': True, 'updated': updated, 'total': len(onus)})
@@ -756,10 +756,12 @@ def update_onu(onu_id):
         except Exception as e:
             logger.warning(f"[update_onu] CLI failed: {e}")
 
-    # Invalidate dashboard cache so frontend sees fresh data
+    # Invalidate caches so frontend sees fresh data
     try:
         from cache import cache_clear
         cache_clear("dashboard:*")
+        if onu.olt_id:
+            cache_clear(f"olt:{onu.olt_id}:*")
     except Exception:
         pass
 
@@ -809,6 +811,13 @@ def discover_olt_slots(olt_id):
         db.session.commit()
         log_action('olt_discover_slots', 'olt', target=olt.name,
                    detail=f'Discovered {len(cards)} cards via CLI')
+        try:
+            from cache import cache_clear
+            cache_clear("dashboard:*")
+            cache_clear(f"olt:{olt_id}:chassis")
+            cache_clear(f"olt:{olt_id}:pon-structure")
+        except Exception:
+            pass
         return jsonify({
             'success': True,
             'message': f'Discovered {len(cards)} card(s) from OLT',
@@ -1913,12 +1922,16 @@ def onu_wan_service_edit(onu_id, svc_idx):
 @app.route('/api/olt/<int:olt_id>/onu-types', methods=['GET'])
 @login_required
 def get_olt_onu_types(olt_id):
-    """Get ONU types — try Telnet first, fallback to DB."""
+    """Get ONU types — try Telnet first, fallback to DB. Cached 5 min (static config)."""
+    from cache import cache_get, cache_set
+    cache_key = f"olt:{olt_id}:onu-types"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'types': []})
 
-    # Try Telnet first
     types = []
     try:
         from snmp_collector import TelnetCollector, create_cli_collector
@@ -1930,29 +1943,34 @@ def get_olt_onu_types(olt_id):
     if types:
         type_names = [t.get('type_name', '') for t in types if t.get('type_name')]
         type_names.sort()
-        return jsonify({'success': True, 'types': type_names, 'source': 'telnet'})
-
-    # Fallback: read from DB
-    db_types = ONUType.query.filter_by(olt_id=olt_id).order_by(ONUType.type_name).all()
-    type_names = [t.type_name for t in db_types if t.type_name]
-    return jsonify({'success': True, 'types': type_names, 'source': 'database'})
+        result = {'success': True, 'types': type_names, 'source': 'telnet'}
+    else:
+        db_types = ONUType.query.filter_by(olt_id=olt_id).order_by(ONUType.type_name).all()
+        type_names = [t.type_name for t in db_types if t.type_name]
+        result = {'success': True, 'types': type_names, 'source': 'database'}
+    cache_set(cache_key, result, ttl=300)
+    return jsonify(result)
 
 
 @app.route('/api/olt/<int:olt_id>/onu-types-full', methods=['GET'])
 @login_required
 def get_olt_onu_types_full(olt_id):
-    """Get full ONU types from DB with all fields for SPA config page."""
+    """Get full ONU types from DB with all fields. Cached 60s."""
+    from cache import cache_get, cache_set
+    cache_key = f"olt:{olt_id}:onu-types-full"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     db_types = ONUType.query.filter_by(olt_id=olt_id).order_by(ONUType.type_name).all()
-    return jsonify({
-        'success': True,
-        'onu_types': [{
-            'id': t.id, 'type_name': t.type_name, 'pon_type': t.pon_type or 'gpon',
-            'description': t.description or '', 'max_tcont': t.max_tcont or 0,
-            'max_gem': t.max_gem or 0, 'max_switch': t.max_switch or 0,
-            'max_flow': t.max_flow or 0, 'max_ip_host': t.max_ip_host or 0,
-            'max_veip': t.max_veip or 0, 'interfaces': t.interfaces or '',
-        } for t in db_types]
-    })
+    result = {'success': True, 'onu_types': [{
+        'id': t.id, 'type_name': t.type_name, 'pon_type': t.pon_type or 'gpon',
+        'description': t.description or '', 'max_tcont': t.max_tcont or 0,
+        'max_gem': t.max_gem or 0, 'max_switch': t.max_switch or 0,
+        'max_flow': t.max_flow or 0, 'max_ip_host': t.max_ip_host or 0,
+        'max_veip': t.max_veip or 0, 'interfaces': t.interfaces or '',
+    } for t in db_types]}
+    cache_set(cache_key, result, ttl=60)
+    return jsonify(result)
 
 
 @app.route('/api/onu/<int:onu_id>/update-field', methods=['POST'])
@@ -2042,10 +2060,12 @@ def update_onu_field(onu_id):
         return jsonify({'success': False, 'message': f'Unknown field: {field}'})
     db.session.commit()
 
-    # Invalidate dashboard cache so frontend sees fresh data
+    # Invalidate caches so frontend sees fresh data
     try:
         from cache import cache_clear
         cache_clear("dashboard:*")
+        if onu.olt_id:
+            cache_clear(f"olt:{onu.olt_id}:*")
     except Exception:
         pass
 
@@ -3393,20 +3413,31 @@ def refresh_uplinks(olt_id):
 @app.route('/api/olt/<int:olt_id>/pon-stats/<int:slot>', methods=['GET'])
 @login_required
 def get_pon_port_stats(olt_id, slot):
-    """Get per-port ONU stats for a PON card slot"""
+    """Get per-port ONU stats for a PON card slot. Cached 30s."""
+    from cache import cache_get, cache_set
+    cache_key = f"olt:{olt_id}:pon-stats:{slot}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
     ports = tc.collect_pon_port_stats(slot)
-    return jsonify({'success': True, 'ports': ports})
+    result = {'success': True, 'ports': ports}
+    cache_set(cache_key, result, ttl=30)
+    return jsonify(result)
 
 
 @app.route('/api/olt/<int:olt_id>/chassis', methods=['GET'])
 @login_required
 def get_olt_chassis(olt_id):
-    """Return chassis slot/card/port data for rack diagram visualization."""
+    """Return chassis slot/card/port data for rack diagram visualization. Cached 30s."""
+    from cache import cache_get
+    cached = cache_get(f"olt:{olt_id}:chassis")
+    if cached is not None:
+        return jsonify(cached)
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
@@ -3619,12 +3650,15 @@ def get_olt_chassis(olt_id):
     fan_list = [{'number': f.fan_number, 'status': f.status, 'rpm': f.rpm} for f in fans]
     online_fans = sum(1 for f in fans if (f.status or '').lower() in ('online', 'normal', 'running'))
 
-    return jsonify({
+    result = {
         'success': True,
         'chassis': chassis,
         'fans': fan_list,
         'fanSummary': f"{online_fans}/{len(fans)}",
-    })
+    }
+    from cache import cache_set
+    cache_set(f"olt:{olt_id}:chassis", result, ttl=30)
+    return jsonify(result)
 
 
 @app.route('/api/olt/<int:olt_id>/rack', methods=['GET'])
@@ -3901,48 +3935,63 @@ def set_uplink_ip(olt_id, uplink_id):
 @app.route('/api/olt/<int:olt_id>/vlans', methods=['GET'])
 @login_required
 def get_olt_vlans(olt_id):
-    """Get VLAN list from OLT for dropdown selection."""
+    """Get VLAN list from OLT for dropdown selection. Cached 5 min (static config)."""
+    from cache import cache_get, cache_set
+    cache_key = f"olt:{olt_id}:vlans"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'vlans': []})
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
     vlans = tc.collect_vlans()
-    return jsonify({'success': True, 'vlans': vlans})
+    result = {'success': True, 'vlans': vlans}
+    cache_set(cache_key, result, ttl=300)
+    return jsonify(result)
 
 
 @app.route('/api/olt/<int:olt_id>/speed-profiles', methods=['GET'])
 @login_required
 def get_olt_speed_profiles(olt_id):
-    """Get TCONT, Traffic, and WAN IP profile names from DB for WAN edit dropdowns."""
+    """Get TCONT, Traffic, and WAN IP profile names from DB. Cached 60s."""
+    from cache import cache_get, cache_set
+    cache_key = f"olt:{olt_id}:speed-profiles"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     tcont = [p.name for p in SpeedProfile.query.filter_by(olt_id=olt_id, profile_type='tcont').order_by(SpeedProfile.name).all()]
     traffic = [p.name for p in SpeedProfile.query.filter_by(olt_id=olt_id, profile_type='traffic').order_by(SpeedProfile.name).all()]
-    # Also include WAN IP profiles for the Vlan Profile dropdown
-    # These are the `profile wan-ip` entries from OLT, used in `wan-ip N mode dhcp vlan-profile <name>`
-    # dns1 may contain cvlan:XX (from onu profile vlan fallback), extract for display
     wan_ip = []
     for p in WanIpProfile.query.filter_by(olt_id=olt_id).order_by(WanIpProfile.name).all():
         cvlan = ''
         if p.dns1 and p.dns1.startswith('cvlan:'):
             cvlan = p.dns1.replace('cvlan:', '')
         wan_ip.append({'name': p.name, 'ip_address': p.ip_address or '', 'cvlan': cvlan})
-    return jsonify({'success': True, 'tcont': tcont, 'traffic': traffic, 'wan_ip_profiles': wan_ip})
+    result = {'success': True, 'tcont': tcont, 'traffic': traffic, 'wan_ip_profiles': wan_ip}
+    cache_set(cache_key, result, ttl=60)
+    return jsonify(result)
 
 
 @app.route('/api/olt/<int:olt_id>/speed-profiles-full', methods=['GET'])
 @login_required
 def get_olt_speed_profiles_full(olt_id):
-    """Get full speed profiles from DB with all fields for SPA config page."""
+    """Get full speed profiles from DB with all fields. Cached 60s."""
+    from cache import cache_get, cache_set
+    cache_key = f"olt:{olt_id}:speed-profiles-full"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     profiles = SpeedProfile.query.filter_by(olt_id=olt_id).order_by(SpeedProfile.profile_type, SpeedProfile.name).all()
-    return jsonify({
-        'success': True,
-        'speed_profiles': [{
-            'id': p.id, 'profile_type': p.profile_type, 'name': p.name,
-            'type_val': p.type_val or '', 'fixed_bandwidth': p.fixed_bandwidth or '0',
-            'assured_bandwidth': p.assured_bandwidth or '0', 'max_bandwidth': p.max_bandwidth or '0',
-            'sir': p.sir or '', 'pir': p.pir or '',
-        } for p in profiles]
-    })
+    result = {'success': True, 'speed_profiles': [{
+        'id': p.id, 'profile_type': p.profile_type, 'name': p.name,
+        'type_val': p.type_val or '', 'fixed_bandwidth': p.fixed_bandwidth or '0',
+        'assured_bandwidth': p.assured_bandwidth or '0', 'max_bandwidth': p.max_bandwidth or '0',
+        'sir': p.sir or '', 'pir': p.pir or '',
+    } for p in profiles]}
+    cache_set(cache_key, result, ttl=60)
+    return jsonify(result)
 
 @app.route('/api/olt/<int:olt_id>/uplink/<int:uplink_id>/vlan', methods=['POST'])
 @permission_required('settings_ip_olts')
@@ -4014,6 +4063,12 @@ def create_vlan(olt_id):
             db.session.commit()
     if success:
         log_action('vlan_create', 'olt', target=olt.name, detail=f'VLAN {vlan_id} ({vlan_name})')
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:vlans")
+            cache_clear(f"olt:{olt_id}:vlans-db")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4037,6 +4092,12 @@ def rename_vlan(olt_id, vlan_id):
             vlan.vlan_name = new_name
             db.session.commit()
         log_action('vlan_rename', 'olt', target=olt.name, detail=f'VLAN {vlan_id} -> {new_name}')
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:vlans")
+            cache_clear(f"olt:{olt_id}:vlans-db")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4056,6 +4117,12 @@ def delete_vlan(olt_id, vlan_id):
             db.session.delete(vlan)
             db.session.commit()
         log_action('vlan_delete', 'olt', target=olt.name, detail=f'VLAN {vlan_id}')
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:vlans")
+            cache_clear(f"olt:{olt_id}:vlans-db")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4102,6 +4169,12 @@ def add_onu_type(olt_id):
         db.session.add(otype)
         db.session.commit()
         log_action('onu_type_create', 'olt', target=olt.name, detail=f'Type {type_name}')
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:onu-types")
+            cache_clear(f"olt:{olt_id}:onu-types-full")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4120,6 +4193,12 @@ def delete_onu_type(olt_id, type_id):
         db.session.delete(otype)
         db.session.commit()
         log_action('onu_type_delete', 'olt', target=olt.name, detail=f'Type {otype.type_name}')
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:onu-types")
+            cache_clear(f"olt:{olt_id}:onu-types-full")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4153,6 +4232,12 @@ def add_tcont_profile(olt_id):
         )
         db.session.add(profile)
         db.session.commit()
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:speed-profiles")
+            cache_clear(f"olt:{olt_id}:speed-profiles-full")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4171,6 +4256,12 @@ def delete_tcont_profile(olt_id, profile_id):
         db.session.delete(profile)
         db.session.commit()
         log_action('tcont_delete', 'olt', target=olt.name, detail=f'Profile {profile.name}')
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:speed-profiles")
+            cache_clear(f"olt:{olt_id}:speed-profiles-full")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4200,6 +4291,12 @@ def add_traffic_profile(olt_id):
         )
         db.session.add(profile)
         db.session.commit()
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:speed-profiles")
+            cache_clear(f"olt:{olt_id}:speed-profiles-full")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4218,6 +4315,12 @@ def delete_traffic_profile(olt_id, profile_id):
         db.session.delete(profile)
         db.session.commit()
         log_action('traffic_profile_delete', 'olt', target=olt.name, detail=f'Profile {profile.name}')
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:speed-profiles")
+            cache_clear(f"olt:{olt_id}:speed-profiles-full")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4253,6 +4356,12 @@ def add_wan_ip_profile(olt_id):
         )
         db.session.add(profile)
         db.session.commit()
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:speed-profiles")
+            cache_clear(f"olt:{olt_id}:wan-ip-profiles")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4271,6 +4380,12 @@ def delete_wan_ip_profile(olt_id, profile_id):
         db.session.delete(profile)
         db.session.commit()
         log_action('wan_ip_delete', 'olt', target=olt.name, detail=f'Profile {profile.name}')
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:speed-profiles")
+            cache_clear(f"olt:{olt_id}:wan-ip-profiles")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -4398,7 +4513,12 @@ def get_uplinks_live_traffic(olt_id):
 @app.route('/api/olt/<int:olt_id>/wan-ip-profiles', methods=['GET'])
 @login_required
 def get_wan_ip_profiles_db(olt_id):
-    """Get full WAN IP profiles from DB (for SPA config page)"""
+    """Get full WAN IP profiles from DB. Cached 60s."""
+    from cache import cache_get, cache_set
+    cache_key = f"olt:{olt_id}:wan-ip-profiles"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     profiles = WanIpProfile.query.filter_by(olt_id=olt_id).order_by(WanIpProfile.name).all()
     result = []
     for p in profiles:
@@ -4421,21 +4541,27 @@ def get_wan_ip_profiles_db(olt_id):
             'dns1': p.dns1 or '', 'dns2': p.dns2 or '',
             'vlan': vlan, 'priority': priority, 'ip_mode': ip_mode,
         })
-    return jsonify({'success': True, 'wan_ip_profiles': result})
+    result_json = {'success': True, 'wan_ip_profiles': result}
+    cache_set(cache_key, result_json, ttl=60)
+    return jsonify(result_json)
 
 
 @app.route('/api/olt/<int:olt_id>/vlans/db', methods=['GET'])
 @login_required
 def get_olt_vlans_db(olt_id):
-    """Get VLANs from DB (fallback when Telnet unavailable)"""
+    """Get VLANs from DB. Cached 60s."""
+    from cache import cache_get, cache_set
+    cache_key = f"olt:{olt_id}:vlans-db"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     vlans = ONUVlan.query.filter_by(olt_id=olt_id).order_by(ONUVlan.vlan_id).all()
-    return jsonify({
-        'success': True,
-        'vlans': [{
-            'vlan_id': v.vlan_id, 'vlan_name': v.vlan_name or '',
-            'vlan_type': v.vlan_type or 'L2', 'onu_profiles': v.onu_profiles or '',
-        } for v in vlans]
-    })
+    result = {'success': True, 'vlans': [{
+        'vlan_id': v.vlan_id, 'vlan_name': v.vlan_name or '',
+        'vlan_type': v.vlan_type or 'L2', 'onu_profiles': v.onu_profiles or '',
+    } for v in vlans]}
+    cache_set(cache_key, result, ttl=60)
+    return jsonify(result)
 
 
 @app.route('/api/olt/<int:olt_id>/pon-port/<int:port_id>/onus', methods=['GET'])

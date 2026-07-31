@@ -56,6 +56,13 @@ def run_single_sync(app, olt_id, sync_id, light=False):
                 sync.message = f'Synced {onu_count} ONUs'
                 sync.completed_at = datetime.now(timezone.utc)
                 db.session.commit()
+                # Invalidate caches so frontend sees fresh data
+                try:
+                    from cache import cache_clear
+                    cache_clear("dashboard:*")
+                    cache_clear(f"olt:{olt_id}:*")
+                except Exception:
+                    pass
                 # Push completion to WebSocket
                 try:
                     from ws_bridge import ws_broadcast_sync, ws_broadcast_dashboard
@@ -128,6 +135,13 @@ def _sync_one_olt(app, olt_id):
                 sync.message = f'Synced {onu_count} ONUs'
                 sync.completed_at = datetime.now(timezone.utc)
                 db.session.commit()
+                # Invalidate caches so frontend sees fresh data
+                try:
+                    from cache import cache_clear
+                    cache_clear("dashboard:*")
+                    cache_clear(f"olt:{olt_id}:*")
+                except Exception:
+                    pass
                 # Broadcast WebSocket events so frontend refreshes immediately
                 try:
                     from ws_bridge import ws_broadcast_sync, ws_broadcast_dashboard

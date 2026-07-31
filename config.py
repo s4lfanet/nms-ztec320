@@ -98,6 +98,9 @@ class Config:
     PORT = int(os.environ.get("PORT", "5000"))
     WS_PORT = int(os.environ.get("WS_PORT", "8765"))
 
+    # --- Redis (optional, for caching) ---
+    REDIS_URL = os.environ.get("REDIS_URL", "")
+
     # --- WhatsApp Gateway (optional) ---
     WA_GATEWAY_URL = os.environ.get("WA_GATEWAY_URL", "")
 

@@ -83,6 +83,7 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 | Charts | Recharts |
 | Icons | Lucide React |
 | Database | SQLite (default) / PostgreSQL (production) |
+| Caching | Redis (optional, reduces OLT polling load) |
 | Testing | pytest (backend), vitest (frontend) |
 
 ## Struktur Proyek
@@ -97,6 +98,7 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ├── alerts.py              # Alert engine + notification (Telegram, WA, in-app)
 ├── services_sync.py       # Sync service (background thread management)
 ├── sync_helper.py         # Sync result persistence to DB
+├── cache.py               # Redis caching layer (in-memory fallback for dev)
 ├── auto_sync.py           # Cron-based auto-sync
 ├── auto_backup.py         # Automatic OLT config backup
 ├── task_queue.py          # Background task queue (traffic aggregation)
@@ -225,6 +227,7 @@ Frontend dev server runs on http://127.0.0.1:5173 with API proxy to Flask on por
 | `PORT` | 5000 | Flask port |
 | `WS_PORT` | 8765 | FastAPI/WebSocket port |
 | `SESSION_COOKIE_SECURE` | 1 | HTTPS-only cookies (set 0 for HTTP) |
+| `REDIS_URL` | (empty) | Redis URL for caching (optional, reduces OLT load) |
 | `WA_GATEWAY_URL` | (empty) | WhatsApp gateway URL (optional) |
 
 ### Adding Your OLT
@@ -248,7 +251,7 @@ docker compose up -d
 docker compose --profile production up -d
 ```
 
-Services: backend (Flask+FastAPI), PostgreSQL, Nginx
+Services: backend (Flask+FastAPI), PostgreSQL, Redis, Nginx
 
 ### VPS Deployment (Ubuntu)
 
