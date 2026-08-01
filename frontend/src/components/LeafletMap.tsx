@@ -1,14 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/utils';
-import { useTheme } from '../stores/theme';
 
-// Standard OSM tiles are bright/white and clash with the dark theme; CartoDB's
-// dark basemap keeps the map readable without a jarring white panel embedded
-// in an otherwise dark UI.
-const TILE_URLS: Record<'dark' | 'light', string> = {
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-};
+// CartoDB dark basemap — matches the app's dark-only theme.
+const TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 
 /**
  * LeafletMap — reusable interactive Leaflet map component.
@@ -165,7 +159,6 @@ export function LeafletMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
-  const theme = useTheme((s) => s.theme);
   const layerRef = useRef<any>(null);
   const clusterRef = useRef<any>(null);
   const highlightRef = useRef<any>(null);
@@ -182,11 +175,6 @@ export function LeafletMap({
     loadLeaflet().then(() => setLoaded(true)).catch(e => setError(e.message));
   }, []);
 
-  // Swap the basemap when the user toggles theme (map already initialized)
-  useEffect(() => {
-    if (tileLayerRef.current) tileLayerRef.current.setUrl(TILE_URLS[theme]);
-  }, [theme]);
-
   // Initialize map
   useEffect(() => {
     if (!loaded || !containerRef.current || mapRef.current) return;
@@ -198,7 +186,7 @@ export function LeafletMap({
       scrollWheelZoom: true,
     });
 
-    tileLayerRef.current = L.tileLayer(TILE_URLS[theme], {
+    tileLayerRef.current = L.tileLayer(TILE_URL, {
       attribution: '© OpenStreetMap contributors © CARTO',
       maxZoom: 19,
     }).addTo(mapRef.current);

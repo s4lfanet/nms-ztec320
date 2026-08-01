@@ -1,6 +1,5 @@
-import { Bell, LogOut, User, Sun, Moon, Menu, Zap, Check, Trash2, AlertTriangle, ShieldAlert, Plug, ArrowRight, X, CheckCircle2, WifiOff, XCircle } from 'lucide-react';
+import { Bell, LogOut, User, Menu, Zap, Check, Trash2, AlertTriangle, ShieldAlert, Plug, ArrowRight, X, CheckCircle2, WifiOff, XCircle } from 'lucide-react';
 import { useAuth } from '../../stores/auth';
-import { useTheme } from '../../stores/theme';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -329,7 +328,6 @@ function NotifDropdown({
 
 export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const { user, logout } = useAuth();
-  const { theme, toggle } = useTheme();
   const [showMenu, setShowMenu] = useState(false);
   const [openNotif, setOpenNotif] = useState<NotifType | null>(null);
   const qc = useQueryClient();
@@ -433,13 +431,6 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       </div>
 
       <div className="flex items-center gap-1">
-        <button onClick={toggle} title={theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
-          className="p-2 rounded-lg hover:bg-glass transition-all duration-300 text-tx2 hover:text-tx1 active:scale-95">
-          <span className="block transition-transform duration-300 ease-in-out" style={{ transform: theme === 'dark' ? 'rotate(0deg)' : 'rotate(180deg)' }}>
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </span>
-        </button>
-
         {/* Notification Icons — 3 separate categories */}
         <div className="relative flex items-center gap-0.5" ref={notifRef}>
           {renderNotifIcon('alarm', alarmUnread)}

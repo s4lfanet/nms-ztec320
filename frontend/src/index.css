@@ -26,37 +26,6 @@
   --focus-ring: 0 0 0 2px #0B1426, 0 0 0 4px #00D9C0;
 }
 
-html.light {
-  --bg-primary: #E8EDF2;
-  --bg-surface: #F2F5F9;
-  --bg-glass: #EDF1F6;
-  --bg-glass-hover: #E2E8F0;
-  --bg-card: rgba(242, 245, 249, 0.92);
-  --bg-card-hover: rgba(237, 241, 246, 0.98);
-  --border-color: rgba(0, 120, 110, 0.12);
-  --border-hover: rgba(0, 120, 110, 0.22);
-  --text-1: #1A2332;
-  --text-2: #3A4A65;
-  --text-3: #5A6A85;
-  --scrollbar-thumb: rgba(0, 120, 110, 0.15);
-  --scrollbar-hover: rgba(0, 120, 110, 0.3);
-  --focus-ring: 0 0 0 2px #E8EDF2, 0 0 0 4px #00A88F;
-  --lt-accent: #00A88F;
-  --lt-accent-hover: #008F7A;
-  --lt-success: #16A085;
-  --lt-warning: #D68910;
-  --lt-danger: #E04848;
-  --lt-online: #16A085;
-  --lt-los: #E04848;
-  --lt-dyinggasp: #D68910;
-  --lt-info: #0284C7;
-  --lt-offline: #64748B;
-  --lt-rx-blue: #0284C7;
-  --lt-rx-purple: #9333EA;
-  --lt-rx-orange: #C2410C;
-  --lt-rx-gray: #64748B;
-}
-
 /* Tailwind v4 theme directive */
 @theme extend {
   --color-accent: #00D9C0;
@@ -84,60 +53,6 @@ html.light {
 
 html {
   color-scheme: dark;
-}
-html.light {
-  color-scheme: light;
-}
-
-/* ─── Light theme color overrides ─── */
-/* Darken accent/status colors for readability on light background */
-html.light {
-  --color-accent: var(--lt-accent);
-  --color-accent-hover: var(--lt-accent-hover);
-  --color-success: var(--lt-success);
-  --color-warning: var(--lt-warning);
-  --color-danger: var(--lt-danger);
-  --color-online: var(--lt-online);
-  --color-los: var(--lt-los);
-  --color-dyinggasp: var(--lt-dyinggasp);
-  --color-info: var(--lt-info);
-  --color-offline: var(--lt-offline);
-  --color-rx-blue: var(--lt-rx-blue);
-  --color-rx-purple: var(--lt-rx-purple);
-  --color-rx-orange: var(--lt-rx-orange);
-  --color-rx-gray: var(--lt-rx-gray);
-}
-
-/* Theme transition */
-/* Intentionally universal (`*`) rather than scoped to specific class
-   patterns. An earlier attempt scoped this to `[class*="bg-"]` etc. to
-   reduce paint cost on large lists, but that created two different
-   transition speeds on the same screen: elements whose className
-   literally contained "bg-"/"text-"/"border-" faded over 300ms, while
-   sibling elements that inherit their color (wrapper <tr>/<td>, icons
-   without their own color class, etc.) snapped instantly — most visible
-   on pages with deeply nested markup like the All ONUs table, where it
-   reads as some parts of the UI "lagging" behind others during toggle.
-   Uniform coverage trades a small amount of paint cost for all elements
-   changing in lockstep, which matters more for perceived correctness. */
-html.theme-transitioning,
-html.theme-transitioning *,
-html.theme-transitioning *::before,
-html.theme-transitioning *::after {
-  transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, fill 0.3s ease, stroke 0.3s ease, box-shadow 0.3s ease !important;
-}
-
-/* backdrop-filter is expensive to recompute on every animation frame. Pages
-   with several .glass-card elements on screen at once — e.g. All ONUs,
-   which can show the table wrapper plus up to 9 stat cards simultaneously —
-   were visibly stuttering/lagging behind the rest of the UI while their
-   blurred background faded over 18+ frames. Higher specificity than the
-   universal rule above (both !important, so specificity decides): let
-   glass-card surfaces swap to the new theme's colors in a single frame
-   instead, which reads as "in sync" rather than "catching up".
- */
-html.theme-transitioning .glass-card {
-  transition: none !important;
 }
 
 /* ─── Typography ─── */
