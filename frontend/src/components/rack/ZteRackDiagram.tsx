@@ -144,43 +144,43 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
     let portBg = 'bg-tx3';
     let portIcon: React.ReactNode = null;
     if (isCardStatus && isControlPort) {
-      portBg = slot.cardStatus === 'inservice' ? 'bg-blue-500' : 'bg-tx3';
-      portIcon = slot.cardStatus === 'inservice' ? <Cpu className="w-3 h-3 text-white" /> : <LockKeyhole className="w-3 h-3 text-tx1" />;
+      portBg = slot.cardStatus === 'inservice' ? 'bg-info' : 'bg-tx3';
+      portIcon = slot.cardStatus === 'inservice' ? <Cpu className="w-3 h-3 text-tx1" /> : <LockKeyhole className="w-3 h-3 text-tx1" />;
     } else if (isCardStatus && isUplinkPort) {
-      portBg = slot.cardStatus === 'inservice' ? 'bg-blue-500' : 'bg-tx3';
-      portIcon = slot.cardStatus === 'inservice' ? <Shield className="w-3 h-3 text-white" /> : <LockKeyhole className="w-3 h-3 text-tx1" />;
+      portBg = slot.cardStatus === 'inservice' ? 'bg-info' : 'bg-tx3';
+      portIcon = slot.cardStatus === 'inservice' ? <Shield className="w-3 h-3 text-tx1" /> : <LockKeyhole className="w-3 h-3 text-tx1" />;
     } else if (isCardStatus) {
-      portBg = slot.cardStatus === 'inservice' ? 'bg-blue-500' : 'bg-tx3';
-      portIcon = slot.cardStatus === 'inservice' ? <Cpu className="w-3 h-3 text-white" /> : <LockKeyhole className="w-3 h-3 text-tx1" />;
+      portBg = slot.cardStatus === 'inservice' ? 'bg-info' : 'bg-tx3';
+      portIcon = slot.cardStatus === 'inservice' ? <Cpu className="w-3 h-3 text-tx1" /> : <LockKeyhole className="w-3 h-3 text-tx1" />;
     } else if (port.adminUp !== false) {
-      portBg = port.operUp === true ? 'bg-green-500' : 'bg-yellow-500';
+      portBg = port.operUp === true ? 'bg-success' : 'bg-warning';
     }
 
     const sourceLabel = port.source === 'ifmib' ? 'IF-MIB (SNMP)' : port.source === 'onu-data' ? 'Data ONU (DB)' : port.source === 'card-status' ? 'Status Kartu' : 'Unknown';
 
     const tooltipContent = (
       <div className="text-[10px]">
-        {port.description && <div className="font-semibold text-blue-300 mb-1">{port.description}</div>}
-        <div className="font-bold text-teal-400 mb-1">Port {slot.slotIndex}/{port.portIndex}</div>
+        {port.description && <div className="font-semibold text-info mb-1">{port.description}</div>}
+        <div className="font-bold text-accent mb-1">Port {slot.slotIndex}/{port.portIndex}</div>
         {isCardStatus ? (
           <>
-            <div>Kartu: <span className={slot.cardStatus === 'inservice' ? 'text-green-400' : 'text-red-400'}>{slot.cardStatus?.toUpperCase()}</span></div>
-            {slot.cardRole && <div>Role: <span className="text-yellow-400">{slot.cardRole === 'main' ? 'Main (Aktif)' : 'Standby'}</span></div>}
+            <div>Kartu: <span className={slot.cardStatus === 'inservice' ? 'text-success' : 'text-danger'}>{slot.cardStatus?.toUpperCase()}</span></div>
+            {slot.cardRole && <div>Role: <span className="text-warning">{slot.cardRole === 'main' ? 'Main (Aktif)' : 'Standby'}</span></div>}
             <div className="text-[9px] text-tx3 mt-1">Port detail tidak tersedia via SNMP</div>
           </>
         ) : (
           <>
-            <div>Admin: <span className={port.adminUp !== false ? 'text-green-400' : 'text-red-400'}>{port.adminUp !== false ? 'UP' : 'DOWN'}</span></div>
-            <div>Oper: <span className={port.operUp === true ? 'text-green-400' : 'text-red-400'}>{port.operUp === true ? 'UP' : 'DOWN'}</span></div>
+            <div>Admin: <span className={port.adminUp !== false ? 'text-success' : 'text-danger'}>{port.adminUp !== false ? 'UP' : 'DOWN'}</span></div>
+            <div>Oper: <span className={port.operUp === true ? 'text-success' : 'text-danger'}>{port.operUp === true ? 'UP' : 'DOWN'}</span></div>
           </>
         )}
         <div className="text-[9px] text-tx3 mt-0.5">Sumber: {sourceLabel}</div>
         {isPonPort && (
           <div className="border-t border-brd mt-1 pt-1 space-y-0.5">
             <div>Total ONU: <span className="font-medium">{port.total}</span></div>
-            {port.online > 0 && <div className="text-green-400">Online: {port.online}</div>}
+            {port.online > 0 && <div className="text-success">Online: {port.online}</div>}
             {port.offline > 0 && <div className="text-tx2">Offline: {port.offline}</div>}
-            {port.los > 0 && <div className="text-red-400">LOS: {port.los}</div>}
+            {port.los > 0 && <div className="text-danger">LOS: {port.los}</div>}
             {port.dyinggasp > 0 && <div className="text-purple-400">Dying Gasp: {port.dyinggasp}</div>}
             {port.unconfigCount > 0 && <div className="text-orange-400">Unconfig: {port.unconfigCount}</div>}
           </div>
@@ -204,25 +204,25 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
     return (
       <div
         key={`p-${slot.slotIndex}-${port.portIndex}`}
-        className={`relative w-4 h-4 border border-brd ${portBg} cursor-pointer transition-all flex items-center justify-center flex-shrink-0 ${isHovered ? 'ring-1 ring-blue-400 z-20' : ''}`}
+        className={`relative w-4 h-4 border border-brd ${portBg} cursor-pointer transition-all flex items-center justify-center flex-shrink-0 ${isHovered ? 'ring-1 ring-accent z-20' : ''}`}
         onMouseEnter={(e) => { e.stopPropagation(); setHoveredSlot(null); setHoveredPort({ slot: slot.slotIndex, port: port.portIndex }); showTip(e, tooltipContent); }}
         onMouseLeave={() => { setHoveredPort(null); hideTip(); }}
         onClick={(e) => { e.stopPropagation(); if (onPortClick) { onPortClick(slot.slotIndex, port.portIndex); } else { setSelectedPort({ slot, port }); } }}
       >
         {isDisabled && !isCardStatus && <LockKeyhole className="w-2.5 h-2.5 text-tx1" />}
-        {isOnline && !isCardStatus && <ArrowDownUp className="w-2.5 h-2.5 text-white" />}
-        {isOperDown && !isCardStatus && <ChevronsLeftRightEllipsis className="w-2.5 h-2.5 text-yellow-900" />}
+        {isOnline && !isCardStatus && <ArrowDownUp className="w-2.5 h-2.5 text-tx1" />}
+        {isOperDown && !isCardStatus && <ChevronsLeftRightEllipsis className="w-2.5 h-2.5 text-warning" />}
         {isCardStatus && portIcon}
 
         {isPonPort && (
           <>
             {port.los > 0 && (
-              <div className="absolute -top-1 -left-1 bg-red-600 text-white text-[6px] font-bold rounded-full w-3 h-3 flex items-center justify-center border border-white z-10">
+              <div className="absolute -top-1 -left-1 bg-danger text-tx1 text-[6px] font-bold rounded-full w-3 h-3 flex items-center justify-center border border-brd z-10">
                 {port.los}
               </div>
             )}
             {port.dyinggasp > 0 && (
-              <div className="absolute -top-1 -right-1 bg-purple-600 text-white text-[6px] font-bold rounded-full w-3 h-3 flex items-center justify-center border border-white z-10">
+              <div className="absolute -top-1 -right-1 bg-purple-600 text-tx1 text-[6px] font-bold rounded-full w-3 h-3 flex items-center justify-center border border-brd z-10">
                 {port.dyinggasp}
               </div>
             )}
@@ -281,7 +281,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
 
     return (
       <div
-        className={`relative w-full h-full ${statusBg} border flex flex-col items-center cursor-pointer overflow-visible ${isHovered ? 'ring-2 ring-blue-500 z-10' : ''}`}
+        className={`relative w-full h-full ${statusBg} border flex flex-col items-center cursor-pointer overflow-visible ${isHovered ? 'ring-2 ring-accent z-10' : ''}`}
         onMouseEnter={(e) => { if (!hoveredPort) { setHoveredSlot(slot.slotIndex); showTip(e, slotTooltipContent); } }}
         onMouseLeave={() => { setHoveredSlot(null); hideTip(); }}
         onClick={() => { if (!hoveredPort) { if (onPortClick) { onPortClick(slot.slotIndex, 0); } else if (slot.ports.length > 0) { setSelectedPort({ slot, port: slot.ports[0] }); } } }}
@@ -309,8 +309,8 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
   const renderFanBlock = (fan: { index: number; status: string; rpm: number | null; speedLevel: number | null }) => {
     const fanTooltipContent = (
       <div className="text-[10px]">
-        <div className="font-bold text-teal-400">FAN {fan.index}</div>
-        <div>Status: <span className={fan.status === 'active' ? 'text-green-400' : 'text-red-400'}>{fan.status.toUpperCase()}</span></div>
+        <div className="font-bold text-accent">FAN {fan.index}</div>
+        <div>Status: <span className={fan.status === 'active' ? 'text-success' : 'text-danger'}>{fan.status.toUpperCase()}</span></div>
         {fan.rpm != null && <div>RPM: {fan.rpm}</div>}
         {fan.speedLevel != null && <div>Speed: {FAN_SPEED_LABELS[fan.speedLevel] ?? `Level ${fan.speedLevel}`}</div>}
       </div>
@@ -318,14 +318,14 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
     return (
       <div
         key={`fan-${fan.index}`}
-        className="relative bg-glass border-brd px-1 py-0.5 text-center cursor-pointer hover:ring-1 hover:ring-blue-400 transition-all flex-1"
+        className="relative bg-glass border-brd px-1 py-0.5 text-center cursor-pointer hover:ring-1 hover:ring-accent transition-all flex-1"
         onMouseEnter={(e) => { setHoveredFan(fan.index); showTip(e, fanTooltipContent); }}
         onMouseLeave={() => { setHoveredFan(null); hideTip(); }}
       >
         <span className="text-[8px] font-medium text-tx2">F{fan.index}</span>
         <div className={`absolute top-0.5 right-0.5 w-2 h-2 rounded-full border ${
-          fan.status === 'active' ? 'bg-green-500 border-green-600' :
-          fan.status === 'inactive' ? 'bg-red-500 border-red-600' :
+          fan.status === 'active' ? 'bg-success border-success' :
+          fan.status === 'inactive' ? 'bg-danger border-danger' :
           'bg-tx3 border-brd'
         }`} />
       </div>
@@ -418,21 +418,21 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
               <div className="text-sm font-bold text-tx1 font-mono">
                 {isPon ? `PON ${slot.slotIndex}/${port.portIndex}` : `Uplink ${slot.slotIndex}/${port.portIndex}`}
               </div>
-              <div className="text-[10px] text-blue-400">{slot.cardType} — Slot {slot.slotIndex}</div>
+              <div className="text-[10px] text-info">{slot.cardType} — Slot {slot.slotIndex}</div>
             </div>
             <button onClick={() => setSelectedPort(null)} className="text-tx3 hover:text-tx1"><X size={16} /></button>
           </div>
           <div className="p-4 space-y-3">
             {/* Status */}
             <div className="flex items-center gap-3 p-3 rounded-lg" style={{
-              background: isDisabled ? 'var(--bg-glass)' : isOnline ? '#052e16' : '#451a03',
-              border: `1px solid ${isDisabled ? 'var(--border-color)' : isOnline ? '#16a34a' : '#f59e0b'}`
+              background: isDisabled ? 'var(--bg-glass)' : isOnline ? 'rgba(34, 211, 160, 0.12)' : 'rgba(251, 176, 64, 0.12)',
+              border: `1px solid ${isDisabled ? 'var(--border-color)' : isOnline ? 'var(--color-success)' : 'var(--color-warning)'}`
             }}>
               <div className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0',
-                isDisabled ? 'bg-gray-500' : isOnline ? 'bg-green-400 animate-pulse' : 'bg-amber-400')} />
+                isDisabled ? 'bg-tx3' : isOnline ? 'bg-success animate-pulse' : 'bg-warning')} />
               <div>
                 <div className={cn('text-sm font-bold',
-                  isDisabled ? 'text-tx2' : isOnline ? 'text-green-400' : 'text-amber-400')}>
+                  isDisabled ? 'text-tx2' : isOnline ? 'text-success' : 'text-warning')}>
                   {isDisabled ? 'Disabled' : isOnline ? 'Online' : 'Admin UP / Oper DOWN'}
                 </div>
                 {isCardStatus && <div className="text-[10px] text-tx3">Card status: {slot.cardStatus?.toUpperCase()}</div>}
@@ -504,11 +504,11 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
               <div className="p-3 rounded-lg space-y-1.5 text-[10px]" style={{ background: 'var(--bg-glass)' }}>
                 <div className="text-tx2 font-semibold mb-1">Card Info</div>
                 <div className="flex justify-between"><span className="text-tx3">Card Type</span><span className="text-tx1 font-mono">{slot.cardType}</span></div>
-                <div className="flex justify-between"><span className="text-tx3">Status</span><span className={slot.cardStatus === 'inservice' ? 'text-green-400' : 'text-red-400'}>{slot.cardStatus?.toUpperCase()}</span></div>
-                {slot.cardRole && <div className="flex justify-between"><span className="text-tx3">Role</span><span className="text-amber-400">{slot.cardRole.toUpperCase()}</span></div>}
+                <div className="flex justify-between"><span className="text-tx3">Status</span><span className={slot.cardStatus === 'inservice' ? 'text-success' : 'text-danger'}>{slot.cardStatus?.toUpperCase()}</span></div>
+                {slot.cardRole && <div className="flex justify-between"><span className="text-tx3">Role</span><span className="text-warning">{slot.cardRole.toUpperCase()}</span></div>}
                 {slot.cpuUsage != null && <div className="flex justify-between"><span className="text-tx3">CPU</span><span className="text-tx1">{slot.cpuUsage}%</span></div>}
                 {slot.memoryUsage != null && <div className="flex justify-between"><span className="text-tx3">Memory</span><span className="text-tx1">{slot.memoryUsage}%</span></div>}
-                {slot.temperature != null && <div className="flex justify-between"><span className="text-tx3">Temp</span><span className="text-amber-400">{slot.temperature}°C</span></div>}
+                {slot.temperature != null && <div className="flex justify-between"><span className="text-tx3">Temp</span><span className="text-warning">{slot.temperature}°C</span></div>}
                 <div className="text-[9px] text-tx3 mt-1">Port detail not available via SNMP — showing card-level info</div>
               </div>
             )}
@@ -517,8 +517,8 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
             {!isPon && (port.inOctets != null || port.outOctets != null) && (
               <div className="p-3 rounded-lg space-y-1.5" style={{ background: 'var(--bg-glass)' }}>
                 <div className="text-[10px] text-tx2 flex items-center gap-1"><Activity size={10} /> Traffic</div>
-                {port.inOctets != null && <div className="flex justify-between text-[11px]"><span className="text-tx3">↓ In</span><span className="text-green-400 font-mono">{(port.inOctets / 1e6).toFixed(2)} MB</span></div>}
-                {port.outOctets != null && <div className="flex justify-between text-[11px]"><span className="text-tx3">↑ Out</span><span className="text-blue-400 font-mono">{(port.outOctets / 1e6).toFixed(2)} MB</span></div>}
+                {port.inOctets != null && <div className="flex justify-between text-[11px]"><span className="text-tx3">↓ In</span><span className="text-success font-mono">{(port.inOctets / 1e6).toFixed(2)} MB</span></div>}
+                {port.outOctets != null && <div className="flex justify-between text-[11px]"><span className="text-tx3">↑ Out</span><span className="text-info font-mono">{(port.outOctets / 1e6).toFixed(2)} MB</span></div>}
               </div>
             )}
 
@@ -569,7 +569,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
         <button
           onClick={refresh}
           disabled={refreshing}
-          className="px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50 transition-colors flex-shrink-0"
+          className="px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs bg-accent text-tx1 rounded hover:bg-accent-hover disabled:opacity-50 transition-colors flex-shrink-0"
         >
           {refreshing ? '...' : 'Refresh'}
         </button>
@@ -597,8 +597,8 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
       {metrics && (
         <div className="mt-2 flex flex-wrap gap-x-3 sm:gap-x-4 gap-y-1 text-[10px] text-tx3">
           <span>Cards: <span className="text-tx1">{metrics.activeCards}</span></span>
-          <span>Fans: <span className={metrics.fansActive === metrics.fansTotal ? 'text-green-400' : 'text-red-400'}>{metrics.fansActive}/{metrics.fansTotal}</span></span>
-          {metrics.losTotal > 0 && <span className="text-red-400 font-semibold">LOS: {metrics.losTotal}</span>}
+          <span>Fans: <span className={metrics.fansActive === metrics.fansTotal ? 'text-success' : 'text-danger'}>{metrics.fansActive}/{metrics.fansTotal}</span></span>
+          {metrics.losTotal > 0 && <span className="text-danger font-semibold">LOS: {metrics.losTotal}</span>}
           {metrics.supplyCurrentMa != null && <span>PWR: {(metrics.supplyCurrentMa / 1000).toFixed(1)}A</span>}
         </div>
       )}
@@ -606,26 +606,26 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
       {/* Legend */}
       <div className="mt-3 flex flex-wrap gap-2 sm:gap-4 text-[10px] text-tx3">
         {[
-          { color: 'bg-green-500', Icon: ArrowDownUp, label: 'Online' },
+          { color: 'bg-success', Icon: ArrowDownUp, label: 'Online' },
           { color: 'bg-tx3', Icon: LockKeyhole, label: 'Disabled' },
-          { color: 'bg-yellow-500', Icon: ChevronsLeftRightEllipsis, label: 'Admin UP / Port DOWN' },
+          { color: 'bg-warning', Icon: ChevronsLeftRightEllipsis, label: 'Admin UP / Port DOWN' },
         ].map(l => (
           <div key={l.label} className="flex items-center gap-1">
             <div className={`w-4 h-4 ${l.color} border-brd rounded-sm flex items-center justify-center`}>
-              <l.Icon className="w-2.5 h-2.5 text-white" />
+              <l.Icon className="w-2.5 h-2.5 text-tx1" />
             </div>
             <span>{l.label}</span>
           </div>
         ))}
         <div className="flex items-center gap-1">
-          <div className="w-3.5 h-3.5 bg-red-600 rounded-full flex items-center justify-center border border-white">
-            <span className="text-[6px] text-white font-bold">!</span>
+          <div className="w-3.5 h-3.5 bg-danger rounded-full flex items-center justify-center border border-brd">
+            <span className="text-[6px] text-tx1 font-bold">!</span>
           </div>
           <span>LOS</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-3.5 h-3.5 bg-purple-600 rounded-full flex items-center justify-center border border-white">
-            <span className="text-[6px] text-white font-bold">⚡</span>
+          <div className="w-3.5 h-3.5 bg-purple-600 rounded-full flex items-center justify-center border border-brd">
+            <span className="text-[6px] text-tx1 font-bold">⚡</span>
           </div>
           <span>Dying Gasp</span>
         </div>

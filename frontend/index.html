@@ -16,6 +16,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
     <title>Salfanet NMS</title>
+    <script>
+      // Apply theme before render to prevent FOUC (flash of light → dark)
+      (function() {
+        var theme = localStorage.getItem('theme') || 'dark';
+        if (theme === 'light') document.documentElement.classList.add('light');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

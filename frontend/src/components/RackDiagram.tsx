@@ -77,9 +77,9 @@ function uplinkPortColor(port: ChassisPort) {
   if (port.isEnabled === false)
     return { bg: 'var(--bg-glass)', border: 'var(--border-hover)', dot: 'var(--text-3)', text: 'var(--text-2)', state: 'DIS' };
   if (port.isEnabled && port.isLinked)
-    return { bg: '#052e16', border: '#16a34a', dot: '#4ade80', text: '#dcfce7', state: 'UP' };
+    return { bg: 'rgba(34, 211, 160, 0.12)', border: 'var(--color-success)', dot: 'var(--color-success)', text: 'var(--color-success)', state: 'UP' };
   if (port.isEnabled)
-    return { bg: '#451a03', border: '#f59e0b', dot: '#fbbf24', text: '#fde68a', state: 'DOWN' };
+    return { bg: 'rgba(251, 176, 64, 0.12)', border: 'var(--color-warning)', dot: 'var(--color-warning)', text: 'var(--color-warning)', state: 'DOWN' };
   return { bg: 'var(--bg-surface)', border: 'var(--border-color)', dot: 'var(--text-3)', text: 'var(--text-3)', state: 'UNK' };
 }
 
@@ -176,10 +176,10 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
         </div>
         <div className="p-4 space-y-3">
           {/* Status */}
-          <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: isUp ? '#052e16' : '#1a0000', border: `1px solid ${isUp ? '#16a34a' : '#dc2626'}` }}>
-            <div className={cn('w-2.5 h-2.5 rounded-full', isUp ? 'bg-green-400 animate-pulse' : 'bg-red-500')} />
+          <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: isUp ? 'rgba(34, 211, 160, 0.12)' : 'rgba(255, 87, 87, 0.12)', border: `1px solid ${isUp ? 'var(--color-success)' : 'var(--color-danger)'}` }}>
+            <div className={cn('w-2.5 h-2.5 rounded-full', isUp ? 'bg-success animate-pulse' : 'bg-danger')} />
             <div>
-              <div className={cn('text-sm font-bold', isUp ? 'text-green-400' : 'text-red-400')}>
+              <div className={cn('text-sm font-bold', isUp ? 'text-success' : 'text-danger')}>
                 Admin {isUp ? 'UP' : 'DOWN'}
               </div>
               {port.description && <div className="text-[10px] text-tx3">{port.description}</div>}
@@ -288,8 +288,8 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
   const statusColor = !isEnabled
     ? { bg: 'var(--bg-surface)', border: 'var(--border-hover)', dot: 'bg-tx3', label: 'Disabled', text: 'text-tx2' }
     : isLinked
-      ? { bg: '#052e16', border: '#16a34a', dot: 'bg-green-400 animate-pulse', label: 'Online', text: 'text-green-400' }
-      : { bg: '#451a03', border: '#f59e0b', dot: 'bg-amber-400', label: 'Admin UP / Link DOWN', text: 'text-amber-400' };
+      ? { bg: 'rgba(34, 211, 160, 0.12)', border: 'var(--color-success)', dot: 'bg-success animate-pulse', label: 'Online', text: 'text-success' }
+      : { bg: 'rgba(251, 176, 64, 0.12)', border: 'var(--color-warning)', dot: 'bg-warning', label: 'Admin UP / Link DOWN', text: 'text-warning' };
 
   const doToggle = async () => {
     if (!port.id) return;
@@ -431,21 +431,21 @@ function FanColumn({ fans, summary, isOnline }: { fans: FanInfo[]; summary: stri
           return (
             <div key={f.number} className="flex flex-col items-center gap-0.5" title={f.rpm ? `Fan ${f.number}: ${f.rpm} RPM` : `Fan ${f.number}`}>
               <div className="relative w-7 h-7 sm:w-9 sm:h-9 flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full" style={{ border: `2px solid ${active ? '#16a34a' : 'var(--border-hover)'}` }} />
+                <div className="absolute inset-0 rounded-full" style={{ border: `2px solid ${active ? 'var(--color-success)' : 'var(--border-hover)'}` }} />
                 <div className={active ? 'animate-spin' : ''} style={{ animationDuration: '2.5s' }}>
                   <svg width="16" height="16" viewBox="0 0 20 20" className="sm:w-5 sm:h-5">
-                    <path d="M10 4 Q14 8 10 10 Q14 12 10 16 Q6 12 10 10 Q6 8 10 4Z" fill={active ? '#22c55e' : 'var(--text-3)'} opacity="0.8" />
-                    <path d="M4 10 Q8 6 10 10 Q8 14 4 10Z M16 10 Q12 14 10 10 Q12 6 16 10Z" fill={active ? '#16a34a' : 'var(--bg-glass-hover)'} opacity="0.5" />
+                    <path d="M10 4 Q14 8 10 10 Q14 12 10 16 Q6 12 10 10 Q6 8 10 4Z" fill={active ? 'var(--color-success)' : 'var(--text-3)'} opacity="0.8" />
+                    <path d="M4 10 Q8 6 10 10 Q8 14 4 10Z M16 10 Q12 14 10 10 Q12 6 16 10Z" fill={active ? 'var(--color-success)' : 'var(--bg-glass-hover)'} opacity="0.5" />
                   </svg>
                 </div>
               </div>
-              <span className="text-[7px] sm:text-[8px] font-mono" style={{ color: active ? '#4ade80' : 'var(--text-3)' }}>{f.number}</span>
+              <span className="text-[7px] sm:text-[8px] font-mono" style={{ color: active ? 'var(--color-success)' : 'var(--text-3)' }}>{f.number}</span>
             </div>
           );
         })}
       </div>
       <div className="text-center">
-        <div className="text-[9px] sm:text-[10px] font-bold font-mono" style={{ color: isOnline ? '#4ade80' : 'var(--text-3)' }}>{summary || '—'}</div>
+        <div className="text-[9px] sm:text-[10px] font-bold font-mono" style={{ color: isOnline ? 'var(--color-success)' : 'var(--text-3)' }}>{summary || '—'}</div>
         <div className="text-[7px] sm:text-[8px] text-tx3">Active</div>
       </div>
     </div>
@@ -458,17 +458,17 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
   const ct = (slot.cardType || '').toUpperCase();
   const isSmxa = isUplink && (ct.startsWith('SMXA') || ct.startsWith('SCX') || ct.startsWith('HUVQ'));
   const isControl = isUplink && (ct.startsWith('SMXA') || ct.startsWith('SCX'));
-  const rowBg = !isActive ? 'var(--bg-surface)' : isUplink ? 'var(--bg-glass)' : 'var(--bg-glass)';
-  const rowBorder = !isActive ? 'var(--border-color)' : isUplink ? '#1d4ed8' : '#15803d';
-  const labelColor = isUplink ? '#60a5fa' : '#4ade80';
+  const rowBg = !isActive ? 'var(--bg-surface)' : 'var(--bg-glass)';
+  const rowBorder = !isActive ? 'var(--border-color)' : isUplink ? 'var(--color-info)' : 'var(--color-success)';
+  const labelColor = isUplink ? 'var(--color-info)' : 'var(--color-success)';
 
   // Temperature-based accent color
   const temp = slot.temperature;
   const accentColor = !isActive ? 'var(--border-color)'
     : temp == null ? rowBorder
-    : temp >= 65 ? '#dc2626'
+    : temp >= 65 ? 'var(--color-danger)'
     : temp >= 55 ? '#ea580c'
-    : temp >= 50 ? '#d97706'
+    : temp >= 50 ? 'var(--color-warning)'
     : rowBorder;
 
   return (
