@@ -32,7 +32,7 @@ export function OltSettings() {
   const [discoveringId, setDiscoveringId] = useState<number | null>(null);
   const [backupOlt, setBackupOlt] = useState<{ id: number; name: string } | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['olts'],
     queryFn: api.dashboard,
     refetchInterval: syncingId || syncingAll ? 3000 : 30000,
@@ -445,7 +445,7 @@ export function OltSettings() {
 
       {/* Add/Edit Modal */}
       {modal && <OltModal mode={modal.mode} olt={modal.olt} onClose={() => setModal(null)}
-        onSuccess={() => { setModal(null); qc.invalidateQueries({ queryKey: ['olts'] }); toast.success(modal.mode === 'add' ? 'OLT added!' : 'OLT updated!'); }} />}
+        onSuccess={() => { setModal(null); qc.invalidateQueries({ queryKey: ['olts'] }); refetch(); toast.success(modal.mode === 'add' ? 'OLT added!' : 'OLT updated!'); }} />}
 
       {/* Migrate ONU Modal */}
       {migrateOlt && <MigrateOnuModal oltId={migrateOlt.oltId} oltName={migrateOlt.oltName} onClose={() => setMigrateOlt(null)}
