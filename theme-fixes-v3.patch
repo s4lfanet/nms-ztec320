@@ -1,0 +1,23 @@
+diff --git a/frontend/src/index.css b/frontend/src/index.css
+index e26c075..b713ec7 100644
+--- a/frontend/src/index.css
++++ b/frontend/src/index.css
+@@ -51,6 +51,7 @@ html.light {
+   --lt-dyinggasp: #D68910;
+   --lt-info: #0284C7;
+   --lt-offline: #64748B;
++  --lt-rx-blue: #0284C7;
+   --lt-rx-purple: #9333EA;
+   --lt-rx-orange: #C2410C;
+   --lt-rx-gray: #64748B;
+@@ -101,6 +102,10 @@ html.light {
+   --color-dyinggasp: var(--lt-dyinggasp);
+   --color-info: var(--lt-info);
+   --color-offline: var(--lt-offline);
++  --color-rx-blue: var(--lt-rx-blue);
++  --color-rx-purple: var(--lt-rx-purple);
++  --color-rx-orange: var(--lt-rx-orange);
++  --color-rx-gray: var(--lt-rx-gray);
+ }
+ 
+ /* Theme transition */
