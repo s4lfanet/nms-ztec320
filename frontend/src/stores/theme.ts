@@ -8,14 +8,32 @@ interface ThemeState {
   set: (t: Theme) => void;
 }
 
-function applyTheme(next: Theme) {
+const THEME_COLOR: Record<Theme, string> = {
+  dark: '#0B1426',
+  light: '#E8EDF2',
+};
+
+// Single outstanding timer so rapid/overlapping toggles never cut a transition short.
+let transitionTimer: ReturnType<typeof setTimeout> | null = null;
+
+function applyTheme(next: Theme, persist = true) {
   const html = document.documentElement;
   // Add transition class BEFORE toggling the theme class
   html.classList.add('theme-transitioning');
   html.classList.toggle('light', next === 'light');
-  localStorage.setItem('theme', next);
-  // Remove transition class after animation completes
-  setTimeout(() => html.classList.remove('theme-transitioning'), 350);
+  if (persist) localStorage.setItem('theme', next);
+
+  // Keep mobile browser chrome / PWA status bar color in sync with the active theme
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', THEME_COLOR[next]);
+
+  // Remove transition class after animation completes, cancelling any pending removal
+  // from a previous toggle so it can't fire mid-transition and cause a visual snap.
+  if (transitionTimer) clearTimeout(transitionTimer);
+  transitionTimer = setTimeout(() => {
+    html.classList.remove('theme-transitioning');
+    transitionTimer = null;
+  }, 350);
 }
 
 // Cross-tab sync: when theme changes in another tab, apply it here too
@@ -23,10 +41,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
     if (e.key === 'theme' && e.newValue) {
       const next = e.newValue as Theme;
-      const html = document.documentElement;
-      html.classList.add('theme-transitioning');
-      html.classList.toggle('light', next === 'light');
-      setTimeout(() => html.classList.remove('theme-transitioning'), 350);
+      applyTheme(next, /* persist */ false); // already persisted by the originating tab
       useTheme.setState({ theme: next });
     }
   });

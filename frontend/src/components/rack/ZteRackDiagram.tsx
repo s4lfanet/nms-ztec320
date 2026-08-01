@@ -107,7 +107,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-600 dark:text-red-400">
+      <div className="rounded-lg border border-danger bg-danger/10 p-4 text-sm text-danger">
         Gagal memuat: {error}
         <button onClick={() => reload()} className="ml-3 underline">Coba lagi</button>
       </div>
@@ -116,7 +116,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
 
   if (!data || !data.supported) {
     return (
-      <div className="rounded-lg border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-4 text-sm text-yellow-700 dark:text-yellow-400">
+      <div className="rounded-lg border border-warning bg-warning/10 p-4 text-sm text-warning">
         Rack diagram belum tersedia untuk OLT ini ({data?.brand}).
       </div>
     );
@@ -247,9 +247,9 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
 
     const isHovered = hoveredSlot === slot.slotIndex && !hoveredPort;
     const statusBg = slot.operStatus === 'up'
-      ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
+      ? 'bg-success/10 border-success'
       : slot.operStatus === 'down'
-      ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
+      ? 'bg-danger/10 border-danger'
       : 'bg-glass border-brd';
     const tempHeaderBg = slot.temperature == null ? 'bg-glass'
       : slot.temperature >= 65 ? 'bg-red-700'

@@ -1,0 +1,95 @@
+AUDIT & PATCH — TRANSISI TEMA GELAP/TERANG
+Repo: s4lfanet/nms-ztec320 (frontend: React 19 + Vite + TailwindCSS v4)
+File patch terkait: theme-fixes.patch (unified diff, siap di-apply via `git apply`)
+
+CARA APPLY
+----------
+1. Simpan theme-fixes.patch di root repo (sejajar folder frontend/)
+2. Jalankan:
+     git apply theme-fixes.patch
+   (atau `git apply --check theme-fixes.patch` dulu untuk dry-run)
+3. cd frontend && npm run build   -> lalu redeploy seperti biasa
+
+
+1) ZteRackDiagram.tsx — class Tailwind `dark:` tidak sinkron dengan toggle app
+--------------------------------------------------------------------------------
+Lokasi   : frontend/src/components/rack/ZteRackDiagram.tsx (baris 110, 119, 250, 252)
+Masalah  : 4 elemen (pesan error, warning rack belum tersedia, badge status
+           slot up/down) memakai variant bawaan Tailwind `dark:` yang mengikuti
+           prefers-color-scheme OS, bukan class `html.light` yang dipakai
+           sistem tema custom di app ini. Akibatnya elemen ini TIDAK berubah
+           saat user menekan toggle Sun/Moon di Topbar.
+Perbaikan: Ganti ke token tema yang sudah ada di seluruh app
+           (bg-danger/10, border-danger, text-danger, dst — otomatis
+           bereaksi ke html.light lewat CSS variable di index.css).
+Cara tes : Buka rack diagram OLT yang sedang error/offline, klik toggle tema,
+           pastikan warna banner & badge ikut berubah seperti elemen lain.
+
+
+2) theme.ts — race condition saat toggle cepat / dari tab lain
+--------------------------------------------------------------------------------
+Lokasi   : frontend/src/stores/theme.ts
+Masalah  : setTimeout penghapus class `theme-transitioning` tidak pernah
+           di-clear. Kalau user klik toggle 2x cepat, atau tab lain ikut
+           berubah tema via event `storage`, timer lama bisa menghapus class
+           transisi saat animasi baru belum selesai -> transisi terlihat
+           "patah"/snap di tengah jalan. Logic-nya juga terduplikasi persis
+           di dua tempat (applyTheme() dan listener storage).
+Perbaikan: Simpan satu timer id di module scope, clearTimeout sebelum bikin
+           timer baru. Listener storage sekarang memanggil applyTheme()
+           yang sama (dengan flag persist=false) alih-alih duplikasi logic.
+Cara tes : Klik toggle tema berkali-kali dengan cepat, transisi harus tetap
+           mulus tanpa "kedutan" warna.
+
+
+3) theme.ts + index.html — meta theme-color statis
+--------------------------------------------------------------------------------
+Lokasi   : frontend/index.html (baris 8) + frontend/src/stores/theme.ts
+Masalah  : <meta name="theme-color" content="#0B1426"> di-hardcode gelap dan
+           tidak pernah di-update. Status bar browser mobile / splash PWA
+           tetap gelap walau user sudah pindah ke tema terang.
+Perbaikan: applyTheme() sekarang meng-update atribut content meta tag ini
+           sesuai warna latar tema aktif (#0B1426 dark / #E8EDF2 light).
+Cara tes : Buka di HP (atau DevTools device mode), toggle tema, perhatikan
+           warna status bar berubah mengikuti.
+
+
+4) LeafletMap.tsx — peta tidak ikut tema
+--------------------------------------------------------------------------------
+Lokasi   : frontend/src/components/LeafletMap.tsx (baris ~185)
+Masalah  : Tile layer selalu memakai OSM standar yang terang, tidak ada
+           pengecekan tema sama sekali di file ini. Di tema gelap, panel
+           peta infrastruktur FTTH tampil sebagai kotak putih terang yang
+           mencolok di tengah UI gelap.
+Perbaikan: Tambah useTheme() dan map tile URL: CartoDB dark_all untuk tema
+           gelap, OSM standar untuk tema terang. Tile di-swap otomatis
+           (tileLayerRef.setUrl) saat user toggle tema tanpa perlu re-init
+           map.
+Cara tes : Buka halaman dengan peta FTTH di tema gelap, harus tampil basemap
+           gelap. Toggle ke terang, basemap ikut berubah ke OSM standar.
+
+
+5) index.css — transisi global `!important` menyasar SEMUA elemen (*)
+--------------------------------------------------------------------------------
+Lokasi   : frontend/src/index.css (baris 95-101)
+Masalah  : Selector `html.theme-transitioning *` memaksa transition ke
+           SETIAP elemen di DOM (termasuk *::before/*::after) selama toggle.
+           Di halaman berat seperti tabel All ONUs (ratusan baris) atau rack
+           diagram dengan puluhan port, ini bisa terasa jank/lag saat toggle
+           karena browser harus menghitung transisi untuk ribuan node
+           sekaligus.
+Perbaikan: Persempit selector — hanya elemen yang memang punya warna
+           berbasis CSS variable tema (body, .glass-card, elemen dengan
+           class bg-*/text-*/border-*, svg & isinya) yang dapat transisi.
+Cara tes : Buka halaman "All ONUs" dengan data banyak, toggle tema, rasakan
+           apakah transisi lebih ringan/tidak nge-lag dibanding sebelumnya.
+
+
+CATATAN (tidak termasuk dalam patch, opsional)
+--------------------------------------------------------------------------------
+- Logic FOUC-prevention di-duplikasi di index.html (inline script) dan
+  main.tsx — tidak salah, cuma redundant, boleh disederhanakan salah satu.
+- Tidak ada listener matchMedia('(prefers-color-scheme: dark)').addEventListener
+  untuk ikut perubahan tema OS secara realtime selagi app terbuka — karena
+  localStorage['theme'] selalu terisi setelah kunjungan pertama. Ini cuma
+  relevan kalau memang ingin fitur auto-follow-OS-theme.

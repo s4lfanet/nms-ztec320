@@ -93,10 +93,17 @@ html.light {
 }
 
 /* Theme transition */
-html.theme-transitioning,
-html.theme-transitioning *,
-html.theme-transitioning *::before,
-html.theme-transitioning *::after {
+/* Scoped to elements that actually carry theme-driven colors (surfaces, text,
+   borders, icons) instead of a blanket `*` selector — on pages with large
+   lists (All ONUs table, rack diagrams with many ports) transitioning every
+   single DOM node caused visible jank during toggle. */
+html.theme-transitioning body,
+html.theme-transitioning .glass-card,
+html.theme-transitioning [class*="bg-"],
+html.theme-transitioning [class*="text-"],
+html.theme-transitioning [class*="border-"],
+html.theme-transitioning svg,
+html.theme-transitioning svg * {
   transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, fill 0.3s ease, stroke 0.3s ease, box-shadow 0.3s ease !important;
 }
 
