@@ -49,6 +49,11 @@ html.light {
   --lt-online: #16A085;
   --lt-los: #E04848;
   --lt-dyinggasp: #D68910;
+  --lt-info: #0284C7;
+  --lt-offline: #64748B;
+  --lt-rx-purple: #9333EA;
+  --lt-rx-orange: #C2410C;
+  --lt-rx-gray: #64748B;
 }
 
 /* Tailwind v4 theme directive */
@@ -63,6 +68,10 @@ html.light {
   --color-offline: #6B7A99;
   --color-los: #FF5757;
   --color-dyinggasp: #FBB040;
+  --color-rx-blue: #38BDF8;
+  --color-rx-purple: #C084FC;
+  --color-rx-orange: #FB923C;
+  --color-rx-gray: #94A3B8;
   --color-tx1: var(--text-1);
   --color-tx2: var(--text-2);
   --color-tx3: var(--text-3);
@@ -90,6 +99,8 @@ html.light {
   --color-online: var(--lt-online);
   --color-los: var(--lt-los);
   --color-dyinggasp: var(--lt-dyinggasp);
+  --color-info: var(--lt-info);
+  --color-offline: var(--lt-offline);
 }
 
 /* Theme transition */

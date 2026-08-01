@@ -63,14 +63,14 @@ function PortToggleButton({ oltId, port, onClose, onRefresh }: {
     <>
       <button onClick={doToggle} disabled={toggling}
         className={cn('w-full py-2 text-xs font-medium rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50',
-          isUp ? 'bg-red-950/60 border border-red-800 hover:bg-red-900/60 text-red-400'
-               : 'bg-green-950/60 border border-green-800 hover:bg-green-900/60 text-green-400')}>
+          isUp ? 'bg-danger/10 border border-danger/40 hover:bg-danger/20 text-danger'
+               : 'bg-success/10 border border-success/40 hover:bg-success/20 text-success')}>
         {isUplink ? (isUp ? <WifiOff size={13} /> : <Wifi size={13} />)
                   : (isUp ? <Pause size={13} /> : <Play size={13} />)}
         {toggling ? 'Processing...' : isUp ? 'Disable Port' : 'Enable Port'}
       </button>
       {msg && (
-        <div className={cn('text-xs p-2 rounded', msg.startsWith('✓') ? 'bg-green-950/40 text-green-400 border border-green-900' : 'bg-red-950/40 text-red-400 border border-red-900')}>
+        <div className={cn('text-xs p-2 rounded', msg.startsWith('✓') ? 'bg-success/10 text-success border border-success/30' : 'bg-danger/10 text-danger border border-danger/30')}>
           {msg}
         </div>
       )}
@@ -222,7 +222,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
               </div>
             )}
             {port.dyinggasp > 0 && (
-              <div className="absolute -top-1 -right-1 bg-purple-600 text-tx1 text-[6px] font-bold rounded-full w-3 h-3 flex items-center justify-center border border-brd z-10">
+              <div className="absolute -top-1 -right-1 bg-warning text-tx1 text-[6px] font-bold rounded-full w-3 h-3 flex items-center justify-center border border-brd z-10">
                 {port.dyinggasp}
               </div>
             )}
@@ -256,16 +256,20 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
       : slot.temperature >= 55 ? 'bg-orange-600'
       : slot.temperature >= 50 ? 'bg-amber-600'
       : 'bg-glass';
+    // These heat-severity backgrounds are intentionally fixed (not theme-driven),
+    // so pin the label text to white rather than the theme's --text-1 — in light
+    // mode --text-1 turns near-black and becomes unreadable on a red/orange/amber chip.
+    const tempHeaderTextClass = slot.temperature != null && slot.temperature >= 50 ? 'text-white' : 'text-tx1';
     const cardTypeUpper = (slot.cardType ?? '').toUpperCase();
     const isControl = cardTypeUpper.startsWith('SCXN') || cardTypeUpper.startsWith('SCUN') || cardTypeUpper.startsWith('SMXA');
     const roleLabel = slot.cardRole === 'main' ? 'MAIN' : slot.cardRole === 'standby' ? 'STB' : isControl ? 'CTRL' : null;
 
     const slotTooltipContent = (
       <div className="text-xs">
-        <div className="font-bold text-teal-400 mb-1">{formatCardType(slot.cardType)} — Slot {slot.slotIndex}</div>
+        <div className="font-bold text-accent mb-1">{formatCardType(slot.cardType)} — Slot {slot.slotIndex}</div>
         <div className="text-[10px] space-y-0.5">
-          <div>Status: <span className={slot.operStatus === 'up' ? 'text-green-400' : 'text-red-400'}>{slot.operStatus.toUpperCase()}</span></div>
-          {slot.cardRole && <div>Role: <span className="text-amber-400">{slot.cardRole.toUpperCase()}</span></div>}
+          <div>Status: <span className={slot.operStatus === 'up' ? 'text-success' : 'text-danger'}>{slot.operStatus.toUpperCase()}</span></div>
+          {slot.cardRole && <div>Role: <span className="text-warning">{slot.cardRole.toUpperCase()}</span></div>}
           {slot.cpuUsage != null && <div>CPU: {slot.cpuUsage}%</div>}
           {slot.memoryUsage != null && <div>Memory: {slot.memoryUsage}%</div>}
           {slot.temperature != null && <div>Temp: {slot.temperature}°C</div>}
@@ -286,7 +290,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
         onMouseLeave={() => { setHoveredSlot(null); hideTip(); }}
         onClick={() => { if (!hoveredPort) { if (onPortClick) { onPortClick(slot.slotIndex, 0); } else if (slot.ports.length > 0) { setSelectedPort({ slot, port: slot.ports[0] }); } } }}
       >
-        <div className={`${tempHeaderBg} text-tx1 text-[8px] font-bold px-0.5 py-0.5 text-center border-b border-brd w-full flex-shrink-0`}>
+        <div className={`${tempHeaderBg} ${tempHeaderTextClass} text-[8px] font-bold px-0.5 py-0.5 text-center border-b border-brd w-full flex-shrink-0`}>
           {formatCardType(slot.cardType)}
           {slot.temperature != null && slot.temperature >= 50 && (
             <div className="text-[6px] font-normal leading-tight">{slot.temperature}°C</div>
@@ -447,9 +451,9 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
               <div className="grid grid-cols-4 gap-2 text-center">
                 {[
                   ['Total', port.total, 'text-tx1'],
-                  ['Online', port.online, 'text-green-400'],
-                  ['Offline', port.offline, port.offline > 0 ? 'text-red-400' : 'text-tx3'],
-                  ['LOS', port.los, port.los > 0 ? 'text-red-400' : 'text-tx3'],
+                  ['Online', port.online, 'text-success'],
+                  ['Offline', port.offline, port.offline > 0 ? 'text-danger' : 'text-tx3'],
+                  ['LOS', port.los, port.los > 0 ? 'text-danger' : 'text-tx3'],
                 ].map(([label, val, cls]) => (
                   <div key={String(label)} className="p-2 rounded" style={{ background: 'var(--bg-glass)' }}>
                     <div className={cn('text-lg font-bold', String(cls))}>{String(val)}</div>
@@ -624,7 +628,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
           <span>LOS</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="w-3.5 h-3.5 bg-purple-600 rounded-full flex items-center justify-center border border-brd">
+          <div className="w-3.5 h-3.5 bg-warning rounded-full flex items-center justify-center border border-brd">
             <span className="text-[6px] text-tx1 font-bold">⚡</span>
           </div>
           <span>Dying Gasp</span>

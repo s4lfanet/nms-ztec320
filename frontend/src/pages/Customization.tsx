@@ -523,10 +523,10 @@ function RxColorsTab() {
     { value: 'green', label: 'Green', class: 'bg-success/10 text-success' },
     { value: 'yellow', label: 'Yellow', class: 'bg-warning/10 text-warning' },
     { value: 'red', label: 'Red', class: 'bg-danger/10 text-danger' },
-    { value: 'blue', label: 'Blue', class: 'bg-blue-500/10 text-blue-400' },
-    { value: 'purple', label: 'Purple', class: 'bg-purple-500/10 text-purple-400' },
-    { value: 'orange', label: 'Orange', class: 'bg-orange-500/10 text-orange-400' },
-    { value: 'gray', label: 'Gray', class: 'bg-gray-500/10 text-gray-400' },
+    { value: 'blue', label: 'Blue', class: 'bg-rx-blue/10 text-rx-blue' },
+    { value: 'purple', label: 'Purple', class: 'bg-rx-purple/10 text-rx-purple' },
+    { value: 'orange', label: 'Orange', class: 'bg-rx-orange/10 text-rx-orange' },
+    { value: 'gray', label: 'Gray', class: 'bg-rx-gray/10 text-rx-gray' },
   ];
 
   const updateRange = (i: number, field: keyof RxColorRange, value: string | number) => {
@@ -614,7 +614,7 @@ function RxColorsTab() {
         <h4 className="text-xs font-semibold text-tx3 uppercase mb-3">Preview</h4>
         <div className="flex flex-wrap gap-2">
           {[-15, -18, -20, -22, -24, -25, -26, -27, -28, -29, -30, -32].map(val => {
-            let colorClass = 'bg-gray-500/10 text-gray-400';
+            let colorClass = 'bg-rx-gray/10 text-rx-gray';
             for (const r of ranges) {
               if (val >= r.min && val < r.max) {
                 const opt = colorOptions.find(c => c.value === r.color);

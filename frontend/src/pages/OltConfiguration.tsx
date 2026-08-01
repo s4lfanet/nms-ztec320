@@ -780,7 +780,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
     <div className={cn('rounded-xl border-l-4 p-3 md:p-4 transition-all', isUp ? 'border-l-success bg-glass' : 'border-l-danger bg-glass')}>
       <div className="flex items-center justify-between cursor-pointer gap-2" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
-          <div className={cn('w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center border-2 flex-shrink-0', isUp ? 'bg-white border-success/30 text-success' : 'bg-white border-gray-200 text-tx3')}>
+          <div className={cn('w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center border-2 flex-shrink-0', isUp ? 'bg-glass-hover border-success/30 text-success' : 'bg-glass-hover border-brd text-tx3')}>
             <HardDrive size={16} />
           </div>
           <div className="min-w-0">

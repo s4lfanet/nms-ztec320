@@ -925,7 +925,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                       )}
                     </div>
                     <button type="button" onClick={() => update('wifi', { ...data.wifi, ssids: (data.wifi.ssids || []).filter((_, idx) => idx !== i) })}
-                      className="text-red-400 hover:text-red-300 text-xs flex items-center gap-1">
+                      className="text-danger hover:text-danger/70 text-xs flex items-center gap-1">
                       <Trash2 size={12} /> Remove
                     </button>
                   </div>

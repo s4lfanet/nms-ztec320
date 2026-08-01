@@ -756,20 +756,20 @@ const RX_COLOR_MAP: Record<string, string> = {
   green: 'bg-success/10 text-success',
   yellow: 'bg-warning/10 text-warning',
   red: 'bg-danger/10 text-danger',
-  blue: 'bg-blue-500/10 text-blue-400',
-  purple: 'bg-purple-500/10 text-purple-400',
-  orange: 'bg-orange-500/10 text-orange-400',
-  gray: 'bg-gray-500/10 text-gray-400',
+  blue: 'bg-rx-blue/10 text-rx-blue',
+  purple: 'bg-rx-purple/10 text-rx-purple',
+  orange: 'bg-rx-orange/10 text-rx-orange',
+  gray: 'bg-rx-gray/10 text-rx-gray',
 };
 
 const RX_TEXT_COLOR_MAP: Record<string, string> = {
   green: 'text-success',
   yellow: 'text-warning',
   red: 'text-danger',
-  blue: 'text-blue-400',
-  purple: 'text-purple-400',
-  orange: 'text-orange-400',
-  gray: 'text-gray-400',
+  blue: 'text-rx-blue',
+  purple: 'text-rx-purple',
+  orange: 'text-rx-orange',
+  gray: 'text-rx-gray',
 };
 
 function getRxColorClass(value: number, ranges: RxColorRange[]): string {

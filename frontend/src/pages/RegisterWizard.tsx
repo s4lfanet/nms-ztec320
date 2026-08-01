@@ -1020,7 +1020,7 @@ export function RegisterWizard() {
                       <button type="button" onClick={() => {
                         const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans.filter((_, idx) => idx !== i) : [];
                         update('extra', { ...data.extra, vlans: cur });
-                      }} className="p-1.5 rounded text-red-400 hover:bg-red-500/10 flex-shrink-0">
+                      }} className="p-1.5 rounded text-danger hover:bg-danger/10 flex-shrink-0">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -1087,7 +1087,7 @@ export function RegisterWizard() {
                             </label>
                           )}
                         </div>
-                        <button type="button" onClick={() => update('extra', { ...data.extra, ssids: ssids.filter((_: unknown, idx: number) => idx !== i) })} className="text-red-400 hover:text-red-300 text-xs">Remove</button>
+                        <button type="button" onClick={() => update('extra', { ...data.extra, ssids: ssids.filter((_: unknown, idx: number) => idx !== i) })} className="text-danger hover:text-danger/70 text-xs">Remove</button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
                         <div><label className="label-sm mb-1">WiFi Port</label>
@@ -1239,7 +1239,7 @@ export function RegisterWizard() {
                           <button type="button" onClick={() => {
                             const next = svcs.filter((_: unknown, i: number) => i !== idx);
                             update('extra', { ...data.extra, services: JSON.stringify(next) });
-                          }} className="text-red-400 hover:text-red-300 text-xs">Remove</button>
+                          }} className="text-danger hover:text-danger/70 text-xs">Remove</button>
                         </div>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -1402,7 +1402,7 @@ export function RegisterWizard() {
                             </label>
                           )}
                         </div>
-                        <button type="button" onClick={() => update('extra', { ...data.extra, ssids: ssids.filter((_: unknown, idx: number) => idx !== i) })} className="text-red-400 hover:text-red-300 text-xs">Remove</button>
+                        <button type="button" onClick={() => update('extra', { ...data.extra, ssids: ssids.filter((_: unknown, idx: number) => idx !== i) })} className="text-danger hover:text-danger/70 text-xs">Remove</button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
                         <div><label className="label-sm mb-1">WiFi Port</label>
@@ -1549,7 +1549,7 @@ export function RegisterWizard() {
                       <button type="button" onClick={() => {
                         const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans.filter((_, idx) => idx !== i) : [];
                         update('extra', { ...data.extra, vlans: cur });
-                      }} className="p-1.5 rounded text-red-400 hover:bg-red-500/10 flex-shrink-0">
+                      }} className="p-1.5 rounded text-danger hover:bg-danger/10 flex-shrink-0">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -1649,7 +1649,7 @@ export function RegisterWizard() {
                       <button type="button" onClick={() => {
                         const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans.filter((_, idx) => idx !== i) : [];
                         update('extra', { ...data.extra, vlans: cur });
-                      }} className="p-1.5 rounded text-red-400 hover:bg-red-500/10 flex-shrink-0">
+                      }} className="p-1.5 rounded text-danger hover:bg-danger/10 flex-shrink-0">
                         <Trash2 size={14} />
                       </button>
                     </div>

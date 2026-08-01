@@ -223,11 +223,11 @@ export default function Templates() {
               </div>
               <div className="flex flex-wrap gap-3 md:gap-4 mt-3">
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${selectedTemplate.ssidSupport ? 'bg-green-400' : 'bg-tx3/30'}`} />
+                  <div className={`w-2 h-2 rounded-full ${selectedTemplate.ssidSupport ? 'bg-success' : 'bg-tx3/30'}`} />
                   <span className="text-xs">SSID Support</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${selectedTemplate.tr069Support ? 'bg-green-400' : 'bg-tx3/30'}`} />
+                  <div className={`w-2 h-2 rounded-full ${selectedTemplate.tr069Support ? 'bg-success' : 'bg-tx3/30'}`} />
                   <span className="text-xs">TR069 Support</span>
                 </div>
               </div>

@@ -170,7 +170,7 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
         <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border-color)' }}>
           <div>
             <div className="text-sm font-bold text-tx1">{port.portName || `PON ${slot.index}/${port.port}`}</div>
-            {port.name && <div className="text-[11px] text-green-400">{port.name}</div>}
+            {port.name && <div className="text-[11px] text-success">{port.name}</div>}
           </div>
           <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={16} /></button>
         </div>
@@ -188,9 +188,9 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
 
           {/* ONU Stats */}
           <div className="grid grid-cols-4 gap-2 text-center">
-            {[['Total', port.onuCount, 'text-tx1'], ['Online', port.onlineCount, 'text-green-400'],
-              ['Offline', offline, offline > 0 ? 'text-red-400' : 'text-tx3'],
-              ['LOS', port.losCount ?? 0, (port.losCount ?? 0) > 0 ? 'text-red-400' : 'text-tx3']
+            {[['Total', port.onuCount, 'text-tx1'], ['Online', port.onlineCount, 'text-success'],
+              ['Offline', offline, offline > 0 ? 'text-danger' : 'text-tx3'],
+              ['LOS', port.losCount ?? 0, (port.losCount ?? 0) > 0 ? 'text-danger' : 'text-tx3']
             ].map(([label, val, cls]) => (
               <div key={String(label)} className="p-2 rounded" style={{ background: 'var(--bg-glass)' }}>
                 <div className={cn('text-lg font-bold', String(cls))}>{String(val)}</div>
@@ -207,7 +207,7 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
                 <span>{port.onlineCount}/{port.onuCount} ({Math.round(port.onlineCount / port.onuCount * 100)}%)</span>
               </div>
               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border-color)' }}>
-                <div className="h-full rounded-full bg-green-500"
+                <div className="h-full rounded-full bg-success"
                   style={{ width: `${Math.round(port.onlineCount / port.onuCount * 100)}%` }} />
               </div>
             </div>
@@ -217,7 +217,7 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
           {port.avgRxPower != null && (
             <div className="flex justify-between text-xs" style={{ color: 'var(--text-2)' }}>
               <span>Avg RX Power</span>
-              <span className="font-mono text-green-400">{port.avgRxPower} dBm</span>
+              <span className="font-mono text-success">{port.avgRxPower} dBm</span>
             </div>
           )}
 
@@ -257,14 +257,14 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
           {port.portId && (
             <button onClick={doToggle} disabled={toggling}
               className={cn('w-full py-2 text-xs font-medium rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50',
-                isUp ? 'bg-red-950/60 border border-red-800 hover:bg-red-900/60 text-red-400'
-                      : 'bg-green-950/60 border border-green-800 hover:bg-green-900/60 text-green-400')}>
+                isUp ? 'bg-danger/10 border border-danger/40 hover:bg-danger/20 text-danger'
+                      : 'bg-success/10 border border-success/40 hover:bg-success/20 text-success')}>
               {isUp ? <Pause size={13} /> : <Play size={13} />}
               {toggling ? 'Processing...' : isUp ? 'Disable Port' : 'Enable Port'}
             </button>
           )}
           {msg && (
-            <div className={cn('text-xs p-2 rounded', msg.startsWith('✓') ? 'bg-green-950/40 text-green-400 border border-green-900' : 'bg-red-950/40 text-red-400 border border-red-900')}>
+            <div className={cn('text-xs p-2 rounded', msg.startsWith('✓') ? 'bg-success/10 text-success border border-success/30' : 'bg-danger/10 text-danger border border-danger/30')}>
               {msg}
             </div>
           )}
@@ -319,7 +319,7 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
         <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--border-color)' }}>
           <div>
             <div className="text-sm font-bold text-tx1 font-mono">{port.iface || `Uplink ${port.port}`}</div>
-            <div className="text-[10px] text-blue-400">{slot.cardType}</div>
+            <div className="text-[10px] text-info">{slot.cardType}</div>
           </div>
           <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={16} /></button>
         </div>
@@ -356,11 +356,11 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
               <div className="text-[10px] text-tx2 flex items-center gap-1"><Activity size={10} /> Traffic</div>
               <div className="flex justify-between text-[11px]">
                 <span className="text-tx3">↓ In</span>
-                <span className="text-green-400 font-mono">{port.inputRate} <span className="text-tx3">({port.inputUtil})</span></span>
+                <span className="text-success font-mono">{port.inputRate} <span className="text-tx3">({port.inputUtil})</span></span>
               </div>
               <div className="flex justify-between text-[11px]">
                 <span className="text-tx3">↑ Out</span>
-                <span className="text-blue-400 font-mono">{port.outputRate} <span className="text-tx3">({port.outputUtil})</span></span>
+                <span className="text-info font-mono">{port.outputRate} <span className="text-tx3">({port.outputUtil})</span></span>
               </div>
             </div>
           )}
@@ -371,7 +371,7 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
               <div className="text-[10px] text-tx3 mb-1.5">VLANs ({vlans.length})</div>
               <div className="flex flex-wrap gap-1">
                 {vlans.slice(0, 30).map(v => (
-                  <span key={v} className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-blue-950/50 border border-blue-800/50 text-blue-400">{v}</span>
+                  <span key={v} className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-info/10 border border-info/30 text-info">{v}</span>
                 ))}
                 {vlans.length > 30 && <span className="text-[9px] text-tx3">+{vlans.length - 30} more</span>}
               </div>
@@ -386,9 +386,9 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
                 {port.sfpVendor && <><span className="text-tx3">Vendor</span><span className="text-tx1">{port.sfpVendor}</span></>}
                 {port.sfpType && <><span className="text-tx3">Type</span><span className="text-tx1">{port.sfpType}</span></>}
                 {port.sfpWavelength && <><span className="text-tx3">λ</span><span className="text-tx1">{port.sfpWavelength}</span></>}
-                {port.sfpTemp && <><span className="text-tx3">Temp</span><span className="text-amber-400">{port.sfpTemp}</span></>}
-                {port.sfpRxPower && <><span className="text-tx3">RX</span><span className="text-green-400">{port.sfpRxPower}</span></>}
-                {port.sfpTxPower && <><span className="text-tx3">TX</span><span className="text-blue-400">{port.sfpTxPower}</span></>}
+                {port.sfpTemp && <><span className="text-tx3">Temp</span><span className="text-warning">{port.sfpTemp}</span></>}
+                {port.sfpRxPower && <><span className="text-tx3">RX</span><span className="text-success">{port.sfpRxPower}</span></>}
+                {port.sfpTxPower && <><span className="text-tx3">TX</span><span className="text-info">{port.sfpTxPower}</span></>}
               </div>
             </div>
           )}
@@ -397,14 +397,14 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
           {port.id && (
             <button onClick={doToggle} disabled={toggling}
               className={cn('w-full py-2 text-xs font-medium rounded-lg flex items-center justify-center gap-2 disabled:opacity-50',
-                isEnabled ? 'bg-red-950/60 border border-red-800 hover:bg-red-900/60 text-red-400'
-                           : 'bg-green-950/60 border border-green-800 hover:bg-green-900/60 text-green-400')}>
+                isEnabled ? 'bg-danger/10 border border-danger/40 hover:bg-danger/20 text-danger'
+                           : 'bg-success/10 border border-success/40 hover:bg-success/20 text-success')}>
               {isEnabled ? <WifiOff size={13} /> : <Wifi size={13} />}
               {toggling ? 'Processing...' : isEnabled ? 'Disable Port' : 'Enable Port'}
             </button>
           )}
           {msg && (
-            <div className={cn('text-xs p-2 rounded', msg.startsWith('✓') ? 'bg-green-950/40 text-green-400 border border-green-900' : 'bg-red-950/40 text-red-400 border border-red-900')}>
+            <div className={cn('text-xs p-2 rounded', msg.startsWith('✓') ? 'bg-success/10 text-success border border-success/30' : 'bg-danger/10 text-danger border border-danger/30')}>
               {msg}
             </div>
           )}
@@ -766,7 +766,7 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
           style={{ borderColor: 'var(--border-color)' }}>
           <div>
             <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-sm bg-green-500" />
+              <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-sm bg-success" />
               <span className="font-semibold text-xs sm:text-sm text-tx1">ZTE — Port Map</span>
               {oltName && <span className="text-[10px] sm:text-xs text-tx2 ml-1 truncate">— {oltName}</span>}
             </div>
@@ -791,7 +791,7 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
             <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Memuat chassis...
           </div>
         ) : error ? (
-          <div className="flex items-center justify-center py-16 text-red-400 text-sm">{error}</div>
+          <div className="flex items-center justify-center py-16 text-danger text-sm">{error}</div>
         ) : diagramSlots.length === 0 ? (
           <div className="flex items-center justify-center py-16 text-tx3 text-sm">
             Belum ada data kartu — lakukan Sync OLT terlebih dahulu

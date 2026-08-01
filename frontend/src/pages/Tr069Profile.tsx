@@ -144,7 +144,7 @@ export default function Tr069Profile() {
                       </button>}
                       {canManage && <button
                         onClick={() => { if (confirm(`Delete profile "${p.name}"?`)) deleteMut.mutate(p.id); }}
-                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-tx3 hover:text-red-400"
+                        className="p-1.5 rounded-lg hover:bg-danger/10 text-tx3 hover:text-danger"
                         title="Delete"
                       >
                         <Trash2 size={16} />
