@@ -18,8 +18,23 @@ function applyTheme(next: Theme) {
   setTimeout(() => html.classList.remove('theme-transitioning'), 350);
 }
 
+// Cross-tab sync: when theme changes in another tab, apply it here too
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'theme' && e.newValue) {
+      const next = e.newValue as Theme;
+      const html = document.documentElement;
+      html.classList.add('theme-transitioning');
+      html.classList.toggle('light', next === 'light');
+      setTimeout(() => html.classList.remove('theme-transitioning'), 350);
+      useTheme.setState({ theme: next });
+    }
+  });
+}
+
 export const useTheme = create<ThemeState>((set) => ({
-  theme: (localStorage.getItem('theme') as Theme) || 'dark',
+  theme: (localStorage.getItem('theme') as Theme) ||
+    (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'),
   toggle: () => set((s) => {
     const next = s.theme === 'dark' ? 'light' : 'dark';
     applyTheme(next);

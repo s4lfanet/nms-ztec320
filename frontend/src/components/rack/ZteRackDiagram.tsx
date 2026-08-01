@@ -181,8 +181,8 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
             {port.online > 0 && <div className="text-success">Online: {port.online}</div>}
             {port.offline > 0 && <div className="text-tx2">Offline: {port.offline}</div>}
             {port.los > 0 && <div className="text-danger">LOS: {port.los}</div>}
-            {port.dyinggasp > 0 && <div className="text-purple-400">Dying Gasp: {port.dyinggasp}</div>}
-            {port.unconfigCount > 0 && <div className="text-orange-400">Unconfig: {port.unconfigCount}</div>}
+            {port.dyinggasp > 0 && <div className="text-warning">Dying Gasp: {port.dyinggasp}</div>}
+            {port.unconfigCount > 0 && <div className="text-tx2">Unconfig: {port.unconfigCount}</div>}
           </div>
         )}
         {port.sfpTxPower != null && (
@@ -193,7 +193,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
             {port.sfpTemperature != null && <div>Temp: <span className="text-warning">{port.sfpTemperature.toFixed(1)} °C</span></div>}
             {port.sfpBiasCurrent != null && <div>Bias: <span className="text-warning">{port.sfpBiasCurrent.toFixed(1)} mA</span></div>}
             {port.sfpVoltage != null && <div>VCC: <span className="text-success">{port.sfpVoltage.toFixed(3)} V</span></div>}
-            {port.sfpWavelength != null && <div>λ: <span className="text-purple-300">{port.sfpWavelength} nm</span></div>}
+            {port.sfpWavelength != null && <div>λ: <span className="text-info">{port.sfpWavelength} nm</span></div>}
             {port.sfpVendor && <div>OEM: <span className="text-tx2">{port.sfpVendor}</span></div>}
             {port.sfpModel && <div>Model: <span className="text-tx2">{port.sfpModel}</span></div>}
           </div>
@@ -475,7 +475,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
             {/* Additional ONU stats */}
             {isPon && (port.dyinggasp > 0 || port.unconfigCount > 0) && (
               <div className="flex gap-2 text-[10px]">
-                {port.dyinggasp > 0 && <span className="text-purple-400">Dying Gasp: {port.dyinggasp}</span>}
+                {port.dyinggasp > 0 && <span className="text-warning">Dying Gasp: {port.dyinggasp}</span>}
                 {port.unconfigCount > 0 && <span className="text-warning">Unconfig: {port.unconfigCount}</span>}
               </div>
             )}

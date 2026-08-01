@@ -239,9 +239,9 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
                 {optical.wavelength && (<><span className="text-tx3">Wavelength</span><span className="text-tx1 font-mono text-right">{optical.wavelength} nm</span></>)}
                 {optical.connector && (<><span className="text-tx3">Connector</span><span className="text-tx1 font-mono text-right">{optical.connector}</span></>)}
                 {optical.distance && (<><span className="text-tx3">Trans. Distance</span><span className="text-tx1 font-mono text-right">{optical.distance} km</span></>)}
-                {optical.tx_power && (<><span className="text-tx3">TX Power</span><span className="text-green-400 font-mono text-right">{optical.tx_power} dBm</span></>)}
-                {optical.rx_power && (<><span className="text-tx3">RX Power</span><span className="text-green-400 font-mono text-right">{optical.rx_power} dBm</span></>)}
-                {optical.temperature && (<><span className="text-tx3">Temperature</span><span className="text-amber-400 font-mono text-right">{optical.temperature} °C</span></>)}
+                {optical.tx_power && (<><span className="text-tx3">TX Power</span><span className="text-success font-mono text-right">{optical.tx_power} dBm</span></>)}
+                {optical.rx_power && (<><span className="text-tx3">RX Power</span><span className="text-success font-mono text-right">{optical.rx_power} dBm</span></>)}
+                {optical.temperature && (<><span className="text-tx3">Temperature</span><span className="text-warning font-mono text-right">{optical.temperature} °C</span></>)}
                 {optical.voltage && (<><span className="text-tx3">Supply Voltage</span><span className="text-tx1 font-mono text-right">{optical.voltage} V</span></>)}
                 {optical.bias_current && (<><span className="text-tx3">Bias Current</span><span className="text-tx1 font-mono text-right">{optical.bias_current} mA</span></>)}
               </div>

@@ -615,12 +615,12 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
                 <ResponsiveContainer width="100%" height={80}>
                   <AreaChart data={trafficHistory} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="gIn" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient>
-                      <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.4}/><stop offset="95%" stopColor="#22c55e" stopOpacity={0}/></linearGradient>
+                      <linearGradient id="gIn" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-info)" stopOpacity={0.4}/><stop offset="95%" stopColor="var(--color-info)" stopOpacity={0}/></linearGradient>
+                      <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="var(--color-success)" stopOpacity={0.4}/><stop offset="95%" stopColor="var(--color-success)" stopOpacity={0}/></linearGradient>
                     </defs>
                     <Tooltip formatter={(v: unknown, name: unknown) => [formatRate(String(v ?? 0) + ' bps'), name === 'inn' ? '▼ DL' : '▲ UL']} contentStyle={{ fontSize: '11px', padding: '4px 8px' }} />
-                    <Area type="monotone" dataKey="inn" stroke="#3b82f6" fill="url(#gIn)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                    <Area type="monotone" dataKey="out" stroke="#22c55e" fill="url(#gOut)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                    <Area type="monotone" dataKey="inn" stroke="var(--color-info)" fill="url(#gIn)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                    <Area type="monotone" dataKey="out" stroke="var(--color-success)" fill="url(#gOut)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
