@@ -29,8 +29,14 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Notifikasi ke Telegram, WhatsApp (third-party API), WhatsApp Native (Baileys gateway)
 - Technician alert sending (per-user phone number)
 - In-app bell notifications dengan dedup via AlertHistory
+- **Debounce 120 detik** — alert hanya fires setelah 2x konfirmasi deteksi (mencegah false alert dari transient flap)
+- **Auto-resolve** — notifikasi lama (offline/dyinggasp/los) otomatis ditandai RESOLVED saat ONU/OLT kembali online
+- **Notification lifecycle** — Active → Resolved → Auto-cleanup (>7 hari read notifs dihapus otomatis)
+- **Dedup recovery** — notifikasi recovery tidak duplikat (update existing jika ada)
+- **OLT health auto-resolve** — alert CPU/mem/temp auto-resolve saat nilai kembali normal
 - Maintenance window untuk suppress alerts
 - OLT health check via SNMP (CPU, memory, temperature)
+- Real-time push via WebSocket (bell icon update tanpa refresh)
 
 ### FTTH Infrastructure
 - Manajemen hierarki OTB → ODC → ODP
