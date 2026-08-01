@@ -219,21 +219,34 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
         was_offline.last_value = 'online'
         was_offline.last_alert_at = now
 
-        # Create recovery notification
-        notifications_to_create.append({
-            'olt_id': olt.id,
-            'onu_id': None,
-            'severity': 'info',
-            'category': 'olt_recovery',
-            'title': f"✅ OLT ONLINE: {olt.name}",
-            'message': (
-                f"✅ OLT KEMBALI ONLINE ✅\n\n"
-                f"OLT: {olt.name} ({olt.ip_address})\n"
-                f"Status: Sudah kembali dapat dijangkau\n\n"
-                f"🕒 Waktu: {_fmt_time(now)}"
-            ),
-            'target_roles': '',
-        })
+        # Auto-resolve old OLT offline notification
+        old_offline_notif = Notification.query.filter_by(
+            olt_id=olt.id, category='olt_offline', resolved=False
+        ).first()
+        if old_offline_notif:
+            old_offline_notif.resolved = True
+            old_offline_notif.resolved_at = now
+            old_offline_notif.is_read = True
+
+        # Dedup: check existing unread OLT recovery notification
+        existing_recovery = Notification.query.filter_by(
+            olt_id=olt.id, category='olt_recovery', is_read=False, resolved=False
+        ).first()
+        if not existing_recovery:
+            notifications_to_create.append({
+                'olt_id': olt.id,
+                'onu_id': None,
+                'severity': 'info',
+                'category': 'olt_recovery',
+                'title': f"✅ OLT ONLINE: {olt.name}",
+                'message': (
+                    f"✅ OLT KEMBALI ONLINE ✅\n\n"
+                    f"OLT: {olt.name} ({olt.ip_address})\n"
+                    f"Status: Sudah kembali dapat dijangkau\n\n"
+                    f"🕒 Waktu: {_fmt_time(now)}"
+                ),
+                'target_roles': '',
+            })
 
     if not olt.is_online:
         olt.is_online = True
@@ -353,6 +366,24 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
             else:
                 db.session.add(AlertHistory(olt_id=olt.id, alert_type='olt_temp_high', last_value=str(temperature), last_alert_at=now))
 
+    # ── Auto-resolve OLT health alerts when condition clears ──
+    health_checks = [
+        ('olt_cpu_high', 'olt_cpu_high', cpu_load, rule.olt_cpu_threshold if rule.check_olt_cpu else 999),
+        ('olt_mem_high', 'olt_mem_high', mem_usage, rule.olt_memory_threshold if rule.check_olt_memory else 999),
+        ('olt_temp_high', 'olt_temp_high', temperature, rule.olt_temp_threshold if rule.check_olt_temperature else 999),
+    ]
+    for atype, cat, current_val, threshold in health_checks:
+        active_notif = Notification.query.filter_by(
+            olt_id=olt.id, category=cat, resolved=False
+        ).first()
+        if active_notif and current_val is not None and current_val < threshold:
+            hist = AlertHistory.query.filter_by(olt_id=olt.id, alert_type=atype).first()
+            if hist:
+                hist.last_alert_at = now - timedelta(hours=24)
+            active_notif.resolved = True
+            active_notif.resolved_at = now
+            active_notif.is_read = True
+
     return True
 
 
@@ -454,30 +485,45 @@ def _check_onus_for_tenant(force_send=False):
                 }
             pon_groups[pon_key]['total'] += 1
 
-            # ─── Check offline/dyinggasp/los ───
+            # ─── Check offline/dyinggasp/los (with debounce) ───
             if onu.status in ('offline', 'dyinggasp', 'los') and rule.check_offline:
-                recent = AlertHistory.query.filter_by(
+                hist = AlertHistory.query.filter_by(
                     onu_id=onu.id, alert_type=onu.status
-                ).filter(
-                    AlertHistory.last_alert_at > now - timedelta(hours=2)
                 ).first()
 
-                if not recent:
-                    pon_groups[pon_key]['offline'].append(onu)
-                    hist = AlertHistory.query.filter_by(onu_id=onu.id, alert_type=onu.status).first()
-                    if hist:
-                        hist.last_value = onu.status
-                        hist.last_alert_at = now
-                    else:
-                        db.session.add(AlertHistory(onu_id=onu.id, alert_type=onu.status, last_value=onu.status, last_alert_at=now))
+                already_alerted_recently = (
+                    hist and hist.last_alert_at
+                    and hist.last_alert_at > now - timedelta(hours=2)
+                )
 
-                    # ─── Uptime Log: record status change ───
-                    from models import UptimeLog
-                    db.session.add(UptimeLog(
-                        onu_id=onu.id, olt_id=olt.id,
-                        old_status='online', new_status=onu.status,
-                        changed_at=now
-                    ))
+                if not already_alerted_recently:
+                    if hist and hist.first_seen_at:
+                        # Second+ detection — check if debounce period passed
+                        debounce_seconds = 120  # 2 minutes
+                        elapsed = (now - hist.first_seen_at).total_seconds()
+                        if elapsed >= debounce_seconds:
+                            # Debounce passed — fire alert
+                            pon_groups[pon_key]['offline'].append(onu)
+                            hist.last_value = onu.status
+                            hist.last_alert_at = now
+
+                            from models import UptimeLog
+                            db.session.add(UptimeLog(
+                                onu_id=onu.id, olt_id=olt.id,
+                                old_status='online', new_status=onu.status,
+                                changed_at=now
+                            ))
+                        # else: within debounce window — wait for next check
+                    else:
+                        # First detection — record but don't fire yet
+                        if hist:
+                            hist.first_seen_at = now
+                            hist.last_value = onu.status
+                        else:
+                            db.session.add(AlertHistory(
+                                onu_id=onu.id, alert_type=onu.status,
+                                last_value=onu.status, first_seen_at=now,
+                            ))
 
             # ─── Check recovery (was offline, now online) ───
             elif onu.status == 'online':
@@ -492,8 +538,8 @@ def _check_onus_for_tenant(force_send=False):
                 if recent_offline:
                     pon_groups[pon_key]['recovery'].append(onu)
                     recent_offline.last_alert_at = now - timedelta(hours=24)
+                    recent_offline.first_seen_at = None  # reset for next cycle
 
-                    # ─── Uptime Log: record recovery ───
                     from models import UptimeLog
                     db.session.add(UptimeLog(
                         onu_id=onu.id, olt_id=olt.id,
@@ -501,13 +547,30 @@ def _check_onus_for_tenant(force_send=False):
                         changed_at=now
                     ))
 
-                    existing_notif = Notification.query.filter_by(
-                        onu_id=onu.id, is_read=False
+                    # Auto-resolve old offline notifications for this ONU
+                    old_notifs = Notification.query.filter_by(
+                        onu_id=onu.id, resolved=False
                     ).filter(
-                        Notification.category.in_(['offline', 'dyinggasp', 'los'])
-                    ).first()
-                    if existing_notif:
-                        existing_notif.is_read = True
+                        Notification.category.in_(['offline', 'dyinggasp', 'los', 'offline_batch', 'dyinggasp_batch', 'los_batch'])
+                    ).all()
+                    for n in old_notifs:
+                        n.resolved = True
+                        n.resolved_at = now
+                        n.is_read = True
+
+                else:
+                    # ONU online, no recent offline — clean up any stale AlertHistory
+                    stale = AlertHistory.query.filter_by(
+                        onu_id=onu.id
+                    ).filter(
+                        AlertHistory.alert_type.in_(['offline', 'dyinggasp', 'los'])
+                    ).filter(
+                        AlertHistory.first_seen_at.isnot(None)
+                    ).filter(
+                        AlertHistory.last_alert_at <= now - timedelta(hours=2)
+                    ).all()
+                    for s in stale:
+                        s.first_seen_at = None  # reset debounce (ONU recovered before alert fired)
 
             # ─── Check RX power degradation (use ONU RX, not OLT RX) ───
             if onu.onu_rx_power is not None and rule.check_rx_power and onu.status == 'online':
@@ -558,6 +621,21 @@ def _check_onus_for_tenant(force_send=False):
             notif = Notification(**notif_data)
             db.session.add(notif)
         logger.info(f"[ALERT] Created {len(notifications_to_create)} notifications")
+
+    # ─── Auto-cleanup: delete old read/resolved notifications (>7 days) ───
+    try:
+        cutoff = now - timedelta(days=7)
+        old_notifs = Notification.query.filter(
+            Notification.is_read == True
+        ).filter(
+            Notification.created_at < cutoff
+        ).all()
+        for n in old_notifs:
+            db.session.delete(n)
+        if old_notifs:
+            logger.info(f"[ALERT] Auto-cleanup: removed {len(old_notifs)} old notifications (>7d)")
+    except Exception as e:
+        logger.debug(f"[ALERT] Auto-cleanup error: {e}")
 
     # Always commit — AlertHistory updates need to persist even if no new notifications
     db.session.commit()
@@ -822,15 +900,25 @@ def _build_recovery_batch(olt, interface, recovery_onus, total_onus, now,
         )
         category = 'recovery_batch'
 
-    notifications.append({
-        'olt_id': olt.id,
-        'onu_id': recovery_onus[0].id if recovered == 1 else None,
-        'severity': 'info',
-        'category': category,
-        'title': title,
-        'message': message,
-        'target_roles': '',
-    })
+    # Dedup: check existing unread recovery notification for this OLT
+    existing = Notification.query.filter_by(
+        olt_id=olt.id, category=category, is_read=False, resolved=False
+    ).first()
+
+    if existing:
+        existing.created_at = now
+        existing.message = message
+        existing.title = title
+    else:
+        notifications.append({
+            'olt_id': olt.id,
+            'onu_id': recovery_onus[0].id if recovered == 1 else None,
+            'severity': 'info',
+            'category': category,
+            'title': title,
+            'message': message,
+            'target_roles': '',
+        })
 
     recovery_alerts.append({
         'type': 'recovery_batch' if recovered > 1 else 'recovery',

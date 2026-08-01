@@ -5173,8 +5173,8 @@ def get_notifications():
 
     notifications = query.order_by(Notification.created_at.desc()).limit(limit).all()
 
-    # Per-type unread counts
-    base_unread = Notification.query.filter_by(is_read=False)
+    # Per-type unread counts (only active/non-resolved)
+    base_unread = Notification.query.filter_by(is_read=False, resolved=False)
     alarm_unread = base_unread.filter(Notification.category.in_(ALARM_CATEGORIES)).count()
     unreg_unread = base_unread.filter(Notification.category.in_(UNREGISTER_CATEGORIES)).count()
     general_unread = base_unread.filter(~Notification.category.in_(ALARM_CATEGORIES | UNREGISTER_CATEGORIES)).count()
@@ -5187,6 +5187,7 @@ def get_notifications():
             'title': n.title, 'message': n.message, 'is_read': n.is_read,
             'acknowledged': n.acknowledged, 'acknowledged_by': n.acknowledged_by,
             'acknowledged_at': utc_iso(n.acknowledged_at),
+            'resolved': n.resolved, 'resolved_at': utc_iso(n.resolved_at),
             'olt_id': n.olt_id, 'onu_id': n.onu_id,
             'created_at': utc_iso(n.created_at),
         } for n in notifications],
@@ -6136,6 +6137,13 @@ def migrate_schema():
                 logger.info(f"  Migration: set admin user as super_admin")
     except Exception as e:
         logger.debug(f"  Migration skip admin super_admin: {e}")
+
+    # Notification table - add resolved lifecycle columns
+    add_col('notifications', 'resolved', 'BOOLEAN', '0')
+    add_col('notifications', 'resolved_at', 'DATETIME', None)
+
+    # AlertHistory table - add first_seen_at for debounce
+    add_col('alert_history', 'first_seen_at', 'DATETIME', None)
 
 
 # ==================== FTTH INFRASTRUCTURE APIs ====================

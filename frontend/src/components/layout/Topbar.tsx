@@ -1,4 +1,4 @@
-import { Bell, LogOut, User, Sun, Moon, Menu, Zap, Check, Trash2, AlertTriangle, ShieldAlert, Plug, ArrowRight, X, Package, CheckCircle2, WifiOff, XCircle } from 'lucide-react';
+import { Bell, LogOut, User, Sun, Moon, Menu, Zap, Check, Trash2, AlertTriangle, ShieldAlert, Plug, ArrowRight, X, CheckCircle2, WifiOff, XCircle } from 'lucide-react';
 import { useAuth } from '../../stores/auth';
 import { useTheme } from '../../stores/theme';
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -20,6 +20,8 @@ interface NotifItem {
   acknowledged: boolean;
   acknowledged_by?: string;
   acknowledged_at?: string;
+  resolved: boolean;
+  resolved_at?: string;
   olt_id?: number;
   onu_id?: number;
   created_at: string;
@@ -91,7 +93,9 @@ function NotifDropdown({
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
-  const unreadCount = notifs.filter(n => !n.is_read).length;
+  const unreadCount = notifs.filter(n => !n.is_read && !n.resolved).length;
+  const activeNotifs = notifs.filter(n => !n.resolved);
+  const resolvedNotifs = notifs.filter(n => n.resolved);
 
   // Map notification category to AllOnus status filter
   const categoryToStatus: Record<string, string> = {
@@ -230,59 +234,93 @@ function NotifDropdown({
 
       {/* Notification list */}
       <div className="overflow-y-auto flex-1 max-h-[55vh] md:max-h-[50vh] overscroll-contain">
-        {notifs.length === 0 ? (
+        {activeNotifs.length === 0 && resolvedNotifs.length === 0 ? (
           <div className="py-10 text-center">
             <TypeIcon size={28} className="text-tx3/40 mx-auto mb-2" />
             <p className="text-tx3 text-sm">No {TYPE_CONFIG[type].label.toLowerCase()}</p>
           </div>
         ) : (
-          notifs.map((n) => {
-            const sev = n.severity || 'info';
-            const sc = SEVERITY_CONFIG[sev] || SEVERITY_CONFIG.info;
-            const isAcked = n.acknowledged;
-            return (
-              <div
-                key={n.id}
-                onClick={() => handleNotifClick(n)}
-                className={cn(
-                  'px-4 py-3 border-b border-brd/50 cursor-pointer hover:bg-glass/50 transition-colors group',
-                  !n.is_read && 'bg-accent/5',
-                  isAcked && 'opacity-60'
-                )}
-              >
-                <div className="flex items-start gap-2.5">
-                  <div className="mt-0.5 flex-shrink-0">{sc.icon}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">{n.title}</span>
-                      {isAcked && (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-success/15 text-success flex-shrink-0">
-                          <CheckCircle2 size={9} /> ACK
-                        </span>
+          <>
+            {activeNotifs.map((n) => {
+              const sev = n.severity || 'info';
+              const sc = SEVERITY_CONFIG[sev] || SEVERITY_CONFIG.info;
+              const isAcked = n.acknowledged;
+              return (
+                <div
+                  key={n.id}
+                  onClick={() => handleNotifClick(n)}
+                  className={cn(
+                    'px-4 py-3 border-b border-brd/50 cursor-pointer hover:bg-glass/50 transition-colors group',
+                    !n.is_read && 'bg-accent/5',
+                    isAcked && 'opacity-60'
+                  )}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className="mt-0.5 flex-shrink-0">{sc.icon}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium truncate">{n.title}</span>
+                        {isAcked && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-success/15 text-success flex-shrink-0">
+                            <CheckCircle2 size={9} /> ACK
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-tx3 mt-0.5 line-clamp-2">{n.message.split('\n')[0]}</div>
+                      <div className="text-[10px] text-tx3/70 mt-1 flex items-center gap-2">
+                        <span>{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</span>
+                        {isAcked && n.acknowledged_by && <span className="text-success/70">by {n.acknowledged_by}</span>}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                      {!n.is_read && <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />}
+                      {!isAcked && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); ackMut.mutate(n.id); }}
+                          className="p-1 rounded hover:bg-success/15 text-tx3 hover:text-success transition-colors opacity-0 group-hover:opacity-100"
+                          title="Acknowledge"
+                        >
+                          <CheckCircle2 size={14} />
+                        </button>
                       )}
                     </div>
-                    <div className="text-xs text-tx3 mt-0.5 line-clamp-2">{n.message.split('\n')[0]}</div>
-                    <div className="text-[10px] text-tx3/70 mt-1 flex items-center gap-2">
-                      <span>{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</span>
-                      {isAcked && n.acknowledged_by && <span className="text-success/70">by {n.acknowledged_by}</span>}
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                    {!n.is_read && <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />}
-                    {!isAcked && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); ackMut.mutate(n.id); }}
-                        className="p-1 rounded hover:bg-success/15 text-tx3 hover:text-success transition-colors opacity-0 group-hover:opacity-100"
-                        title="Acknowledge"
-                      >
-                        <CheckCircle2 size={14} />
-                      </button>
-                    )}
                   </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+            {resolvedNotifs.length > 0 && (
+              <>
+                <div className="px-4 py-1.5 bg-glass/30 border-b border-brd/50 text-[10px] font-medium text-tx3 uppercase tracking-wide">
+                  Resolved ({resolvedNotifs.length})
+                </div>
+                {resolvedNotifs.map((n) => (
+                  <div
+                    key={n.id}
+                    onClick={() => handleNotifClick(n)}
+                    className="px-4 py-2.5 border-b border-brd/50 cursor-pointer hover:bg-glass/30 transition-colors opacity-50"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className="mt-0.5 flex-shrink-0">
+                        <CheckCircle2 size={14} className="text-success" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium truncate line-through">{n.title}</span>
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-success/15 text-success flex-shrink-0">
+                            <CheckCircle2 size={9} /> RESOLVED
+                          </span>
+                        </div>
+                        <div className="text-xs text-tx3 mt-0.5 line-clamp-1">{n.message.split('\n')[0]}</div>
+                        <div className="text-[10px] text-tx3/70 mt-1">
+                          {n.resolved_at ? `Resolved: ${new Date(n.resolved_at).toLocaleString()}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -395,21 +433,6 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       </div>
 
       <div className="flex items-center gap-1">
-        {user?.subscription && !user.subscription.is_active && (
-          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-danger/10 text-danger text-xs font-medium">
-            <AlertTriangle size={14} /> Subscription Expired
-          </span>
-        )}
-        {user?.subscription && user.subscription.is_active && user.subscription.days_remaining <= 7 && (
-          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-warning/10 text-warning text-xs font-medium">
-            <AlertTriangle size={14} /> {user.subscription.days_remaining}d left
-          </span>
-        )}
-        {user?.subscription && user.subscription.is_active && user.subscription.days_remaining > 7 && (
-          <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-success/10 text-success text-xs font-medium">
-            <Package size={13} /> {user.subscription.package_name} · {user.subscription.days_remaining}d
-          </span>
-        )}
         <button onClick={toggle} title={theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
           className="p-2 rounded-lg hover:bg-glass transition-all duration-300 text-tx2 hover:text-tx1 active:scale-95">
           <span className="block transition-transform duration-300 ease-in-out" style={{ transform: theme === 'dark' ? 'rotate(0deg)' : 'rotate(180deg)' }}>
@@ -456,13 +479,6 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                 <div className="text-xs text-tx3">{user?.username || ''}</div>
                 {user?.is_super_admin && (
                   <div className="text-[10px] text-accent font-medium mt-0.5">Super Admin</div>
-                )}
-                {user?.subscription && (
-                  <div className="text-[10px] mt-0.5">
-                    <span className={user.subscription.is_active ? 'text-success' : 'text-danger'}>
-                      {user.subscription.package_name} — {user.subscription.is_active ? `${user.subscription.days_remaining}d left` : 'Expired'}
-                    </span>
-                  </div>
                 )}
               </div>
               <button onClick={() => { setShowMenu(false); navigate('/dashboard/profile'); }} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-glass transition-colors">

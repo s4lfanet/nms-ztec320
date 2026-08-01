@@ -466,6 +466,8 @@ class Notification(db.Model):
     acknowledged = db.Column(db.Boolean, default=False)
     acknowledged_by = db.Column(db.String(100), default='')  # username who acknowledged
     acknowledged_at = db.Column(db.DateTime, nullable=True)
+    resolved = db.Column(db.Boolean, default=False)  # auto-resolved when condition clears
+    resolved_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('notifications', lazy=True))
 
@@ -509,6 +511,7 @@ class AlertHistory(db.Model):
     alert_type = db.Column(db.String(50), nullable=False)  # offline, dyinggasp, los, rx_power, unregistered
     last_value = db.Column(db.String(50), default='')
     last_alert_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    first_seen_at = db.Column(db.DateTime, nullable=True)  # first detection time (for debounce)
 
 
 class BotConfig(db.Model):
