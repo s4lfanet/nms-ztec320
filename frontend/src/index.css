@@ -109,17 +109,21 @@ html.light {
 }
 
 /* Theme transition */
-/* Scoped to elements that actually carry theme-driven colors (surfaces, text,
-   borders, icons) instead of a blanket `*` selector — on pages with large
-   lists (All ONUs table, rack diagrams with many ports) transitioning every
-   single DOM node caused visible jank during toggle. */
-html.theme-transitioning body,
-html.theme-transitioning .glass-card,
-html.theme-transitioning [class*="bg-"],
-html.theme-transitioning [class*="text-"],
-html.theme-transitioning [class*="border-"],
-html.theme-transitioning svg,
-html.theme-transitioning svg * {
+/* Intentionally universal (`*`) rather than scoped to specific class
+   patterns. An earlier attempt scoped this to `[class*="bg-"]` etc. to
+   reduce paint cost on large lists, but that created two different
+   transition speeds on the same screen: elements whose className
+   literally contained "bg-"/"text-"/"border-" faded over 300ms, while
+   sibling elements that inherit their color (wrapper <tr>/<td>, icons
+   without their own color class, etc.) snapped instantly — most visible
+   on pages with deeply nested markup like the All ONUs table, where it
+   reads as some parts of the UI "lagging" behind others during toggle.
+   Uniform coverage trades a small amount of paint cost for all elements
+   changing in lockstep, which matters more for perceived correctness. */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
   transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, fill 0.3s ease, stroke 0.3s ease, box-shadow 0.3s ease !important;
 }
 
