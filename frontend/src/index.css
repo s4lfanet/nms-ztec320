@@ -449,6 +449,26 @@ select option {
 select {
   background: var(--bg-glass);
   color: var(--text-1);
+  /* Native <select> boxes are partly drawn by the browser's own widget
+     chrome; several browsers don't reliably transition their
+     background-color/border-color the way a plain <div> does. AllOnus has
+     many selects visible at once (OLT/PON filters, page size, per-row
+     technician/ODP assignment), so that inconsistency was most visible
+     there — some selects would snap to the new theme instantly while
+     everything else around them faded, reading as "out of sync". Turning
+     off native appearance makes the box a regular CSS box that
+     transitions like anything else, with a custom arrow drawn in
+     currentColor so it still matches the theme.
+   */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  padding-right: 30px;
+  transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
 }
 
 /* ─── Buttons ─── */
