@@ -229,7 +229,7 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
           )}
           {optical && !opticalLoading && Object.keys(optical).length > 0 && (
             <div className="rounded-lg p-3 space-y-2" style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-hover)' }}>
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-cyan-400">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-info">
                 <Activity size={12} /> Optical Module Info
               </div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
@@ -422,7 +422,7 @@ function FanColumn({ fans, summary, isOnline }: { fans: FanInfo[]; summary: stri
     <div className="flex flex-col items-center justify-between py-2 px-1 sm:px-2 sm:py-3 rounded select-none flex-shrink-0"
       style={{ minWidth: 32, background: 'var(--bg-glass)', border: '1px solid var(--border-color)' }}>
       <div className="flex items-center gap-0.5 sm:gap-1">
-        <Zap className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-cyan-400" />
+        <Zap className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-info" />
         <span className="text-[8px] sm:text-[9px] text-tx2 font-mono font-bold">FAN</span>
       </div>
       <div className="flex flex-col items-center gap-2 sm:gap-3 my-1 sm:my-2">
@@ -467,7 +467,7 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
   const accentColor = !isActive ? 'var(--border-color)'
     : temp == null ? rowBorder
     : temp >= 65 ? 'var(--color-danger)'
-    : temp >= 55 ? '#ea580c'
+    : temp >= 55 ? 'var(--color-danger)'
     : temp >= 50 ? 'var(--color-warning)'
     : rowBorder;
 
@@ -498,18 +498,18 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
             <div className="flex flex-col">
               <span className="text-[10px] sm:text-xs font-bold font-mono tracking-wider" style={{ color: labelColor }}>{slot.cardType}</span>
               {temp != null && temp >= 50 && (
-                <span className="text-[7px] sm:text-[8px] font-mono leading-none" style={{ color: temp >= 65 ? '#f87171' : temp >= 55 ? '#fb923c' : '#fbbf24' }}>{temp}°C</span>
+                <span className="text-[7px] sm:text-[8px] font-mono leading-none" style={{ color: temp >= 65 ? 'var(--color-danger)' : temp >= 55 ? 'var(--color-warning)' : 'var(--color-warning)' }}>{temp}°C</span>
               )}
               {isControl && (
-                <span className="text-[7px] sm:text-[8px] font-mono leading-none text-cyan-400">CTRL</span>
+                <span className="text-[7px] sm:text-[8px] font-mono leading-none text-info">CTRL</span>
               )}
             </div>
             {/* PSU indicator for SMXA — right next to label */}
             {isSmxa && (
               <div className="flex items-center justify-center flex-shrink-0 ml-0.5"
                 title="DC -48V PSU"
-                style={{ width: 16, height: 16, borderRadius: 3, background: 'var(--bg-surface)', border: '1px solid #0891b2' }}>
-                <Zap size={9} className="text-cyan-400" />
+                style={{ width: 16, height: 16, borderRadius: 3, background: 'var(--bg-surface)', border: '1px solid var(--color-info)' }}>
+                <Zap size={9} className="text-info" />
               </div>
             )}
           </>
@@ -553,15 +553,15 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
               const isDown = (port.adminStatus || 'up').toLowerCase() !== 'up';
               const boxBg = isDown
                 ? 'var(--bg-glass)'
-                : hasOnu ? '#071a10' : 'var(--bg-surface)';
+                : hasOnu ? 'rgba(34, 211, 160, 0.12)' : 'var(--bg-surface)';
               const boxBorder = isDown
                 ? 'var(--border-color)'
-                : hasOnu ? '#16a34a' : 'var(--border-color)';
+                : hasOnu ? 'var(--color-success)' : 'var(--border-color)';
               const dotColor = isDown
                 ? 'var(--text-3)'
-                : hasOnu ? '#4ade80' : 'var(--text-3)';
+                : hasOnu ? 'var(--color-success)' : 'var(--text-3)';
               const glow = hasOnu && !isDown
-                ? `0 0 6px 2px rgba(74,222,128,0.5)`
+                ? `0 0 6px 2px rgba(34,211,160,0.4)`
                 : 'none';
               const losCount = port.losCount ?? 0;
               const dgCount = port.dyingGaspCount ?? 0;
@@ -595,8 +595,8 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
                         position: 'absolute', top: -5, left: -5,
                         minWidth: 14, height: 14, padding: '0 3px',
                         borderRadius: 7,
-                        background: '#dc2626', border: '1px solid #fff',
-                        color: '#fff', fontSize: 8, fontWeight: 700,
+                        background: 'var(--color-danger)', border: '1px solid var(--bg-surface)',
+                        color: 'var(--text-1)', fontSize: 8, fontWeight: 700,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         zIndex: 2,
                       }}>{losCount}</span>
@@ -607,8 +607,8 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
                         position: 'absolute', top: -5, right: -5,
                         minWidth: 14, height: 14, padding: '0 3px',
                         borderRadius: 7,
-                        background: '#7c3aed', border: '1px solid #fff',
-                        color: '#fff', fontSize: 8, fontWeight: 700,
+                        background: '#7c3aed', border: '1px solid var(--bg-surface)',
+                        color: 'var(--text-1)', fontSize: 8, fontWeight: 700,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         zIndex: 2,
                       }}>{dgCount}</span>
@@ -618,7 +618,7 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
                       <span style={{
                         position: 'absolute', bottom: -4, right: -4,
                         width: 8, height: 8, borderRadius: '50%',
-                        background: '#facc15', border: '1px solid #ca8a04',
+                        background: 'var(--color-warning)', border: '1px solid var(--color-warning)',
                         zIndex: 2,
                       }} />
                     )}
@@ -737,12 +737,12 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
   const handleClose = () => setSelected(null);
 
   const LEGEND = [
-    { bg: '#14532d', border: '#16a34a', dot: '#4ade80', label: 'Online' },
+    { bg: 'rgba(34, 211, 160, 0.12)', border: 'var(--color-success)', dot: 'var(--color-success)', label: 'Online' },
     { bg: 'var(--bg-glass)', border: 'var(--border-hover)', dot: 'var(--text-3)', label: 'Disabled' },
-    { bg: '#451a03', border: '#f59e0b', dot: '#fbbf24', label: 'Admin UP / Port DOWN' },
-    { bg: '#dc2626', border: '#fff', dot: '#fff', label: 'LOS', isBadge: true },
-    { bg: '#7c3aed', border: '#fff', dot: '#fff', label: 'DyingGasp', isBadge: true },
-    { bg: '#713f12', border: '#ca8a04', dot: '#facc15', label: 'Unconfigured' },
+    { bg: 'rgba(251, 176, 64, 0.12)', border: 'var(--color-warning)', dot: 'var(--color-warning)', label: 'Admin UP / Port DOWN' },
+    { bg: 'var(--color-danger)', border: 'var(--bg-surface)', dot: 'var(--text-1)', label: 'LOS', isBadge: true },
+    { bg: '#7c3aed', border: 'var(--bg-surface)', dot: 'var(--text-1)', label: 'DyingGasp', isBadge: true },
+    { bg: 'rgba(251, 176, 64, 0.15)', border: 'var(--color-warning)', dot: 'var(--color-warning)', label: 'Unconfigured' },
   ];
 
   return (
@@ -831,8 +831,8 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
           {LEGEND.map(item => (
             <div key={item.label} className="flex items-center gap-1 sm:gap-1.5">
               {item.isBadge ? (
-                <span className="flex items-center justify-center text-white font-bold"
-                  style={{ minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7, background: item.bg, border: '1px solid #fff', fontSize: 8 }}>
+                <span className="flex items-center justify-center text-tx1 font-bold"
+                  style={{ minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7, background: item.bg, border: '1px solid var(--bg-surface)', fontSize: 8 }}>
                   N
                 </span>
               ) : (

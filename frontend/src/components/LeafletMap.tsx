@@ -296,12 +296,12 @@ export function LeafletMap({
       // Build detailed popup HTML
       let popupHtml = `<div style="font-size:12px;min-width:140px"><strong>${MARKER_LABELS[m.type] || m.type}</strong><br/>${m.name}`;
       if (m.status) popupHtml += `<br/><span style="color:${ONU_STATUS_COLORS[m.status.toLowerCase()] || '#64748b'}">● ${m.status}</span>`;
-      if (m.serial) popupHtml += `<br/><span style="font-size:10px;color:#94a3b8">SN: ${m.serial}</span>`;
-      if (m.olt_name) popupHtml += `<br/><span style="font-size:10px;color:#94a3b8">OLT: ${m.olt_name}</span>`;
-      if (m.onu_id_str) popupHtml += `<br/><span style="font-size:10px;color:#94a3b8">Port: ${m.onu_id_str}</span>`;
-      if (m.rx_power != null) popupHtml += `<br/><span style="font-size:10px;color:#94a3b8">RX: ${m.rx_power} dBm</span>`;
-      if (m.tx_power != null) popupHtml += `<br/><span style="font-size:10px;color:#94a3b8">TX: ${m.tx_power} dBm</span>`;
-      if (m.onu_rx_power != null) popupHtml += `<br/><span style="font-size:10px;color:#94a3b8">ONU RX: ${m.onu_rx_power} dBm</span>`;
+      if (m.serial) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">SN: ${m.serial}</span>`;
+      if (m.olt_name) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">OLT: ${m.olt_name}</span>`;
+      if (m.onu_id_str) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">Port: ${m.onu_id_str}</span>`;
+      if (m.rx_power != null) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">RX: ${m.rx_power} dBm</span>`;
+      if (m.tx_power != null) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">TX: ${m.tx_power} dBm</span>`;
+      if (m.onu_rx_power != null) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">ONU RX: ${m.onu_rx_power} dBm</span>`;
       popupHtml += '</div>';
       marker.bindPopup(popupHtml);
 
@@ -440,7 +440,7 @@ export function LeafletMap({
           <span className="text-tx3">Dying Gasp</span>
         </div>
         <div className="flex items-center gap-1.5 text-xs">
-          <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#e2e8f0', border: '1px solid #94a3b8' }} />
+          <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--color-offline)', border: '1px solid var(--text-3)' }} />
           <span className="text-tx3">Unregister</span>
         </div>
         {selectedMarker && (
@@ -464,7 +464,7 @@ export function LeafletMap({
         <div className="mt-2 flex items-center gap-2 flex-wrap">
           <span className="text-xs text-warning font-medium">Draw Mode: Click on map to add waypoints</span>
           <span className="text-xs text-tx3">{drawPoints.length} points</span>
-          <button onClick={saveDrawnPath} disabled={drawPoints.length < 2} className="px-2 py-1 rounded bg-success text-white text-xs font-medium disabled:opacity-50">Save Path</button>
+          <button onClick={saveDrawnPath} disabled={drawPoints.length < 2} className="px-2 py-1 rounded bg-success text-tx1 text-xs font-medium disabled:opacity-50">Save Path</button>
           <button onClick={clearDrawnPath} disabled={drawPoints.length === 0} className="px-2 py-1 rounded bg-glass text-tx2 text-xs font-medium disabled:opacity-50">Clear</button>
         </div>
       )}

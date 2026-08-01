@@ -187,12 +187,12 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
         )}
         {port.sfpTxPower != null && (
           <div className="border-t border-brd mt-1 pt-1 space-y-0.5">
-            <div className="font-semibold text-cyan-400 mb-0.5">SFP / OPTICAL</div>
-            <div>TX: <span className="text-cyan-300">{port.sfpTxPower.toFixed(3)} dBm</span></div>
-            {port.sfpRxPower != null && <div>RX: <span className="text-cyan-300">{port.sfpRxPower.toFixed(3)} dBm</span></div>}
-            {port.sfpTemperature != null && <div>Temp: <span className="text-orange-300">{port.sfpTemperature.toFixed(1)} °C</span></div>}
-            {port.sfpBiasCurrent != null && <div>Bias: <span className="text-yellow-300">{port.sfpBiasCurrent.toFixed(1)} mA</span></div>}
-            {port.sfpVoltage != null && <div>VCC: <span className="text-green-300">{port.sfpVoltage.toFixed(3)} V</span></div>}
+            <div className="font-semibold text-info mb-0.5">SFP / OPTICAL</div>
+            <div>TX: <span className="text-info">{port.sfpTxPower.toFixed(3)} dBm</span></div>
+            {port.sfpRxPower != null && <div>RX: <span className="text-info">{port.sfpRxPower.toFixed(3)} dBm</span></div>}
+            {port.sfpTemperature != null && <div>Temp: <span className="text-warning">{port.sfpTemperature.toFixed(1)} °C</span></div>}
+            {port.sfpBiasCurrent != null && <div>Bias: <span className="text-warning">{port.sfpBiasCurrent.toFixed(1)} mA</span></div>}
+            {port.sfpVoltage != null && <div>VCC: <span className="text-success">{port.sfpVoltage.toFixed(3)} V</span></div>}
             {port.sfpWavelength != null && <div>λ: <span className="text-purple-300">{port.sfpWavelength} nm</span></div>}
             {port.sfpVendor && <div>OEM: <span className="text-tx2">{port.sfpVendor}</span></div>}
             {port.sfpModel && <div>Model: <span className="text-tx2">{port.sfpModel}</span></div>}
@@ -467,7 +467,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
                   <span>{port.online}/{port.total} ({Math.round(port.online / port.total * 100)}%)</span>
                 </div>
                 <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border-color)' }}>
-                  <div className="h-full rounded-full bg-green-500" style={{ width: `${Math.round(port.online / port.total * 100)}%` }} />
+                  <div className="h-full rounded-full bg-success" style={{ width: `${Math.round(port.online / port.total * 100)}%` }} />
                 </div>
               </div>
             )}
@@ -476,23 +476,23 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
             {isPon && (port.dyinggasp > 0 || port.unconfigCount > 0) && (
               <div className="flex gap-2 text-[10px]">
                 {port.dyinggasp > 0 && <span className="text-purple-400">Dying Gasp: {port.dyinggasp}</span>}
-                {port.unconfigCount > 0 && <span className="text-orange-400">Unconfig: {port.unconfigCount}</span>}
+                {port.unconfigCount > 0 && <span className="text-warning">Unconfig: {port.unconfigCount}</span>}
               </div>
             )}
 
             {/* SFP / Optical */}
             {port.sfpTxPower != null && (
               <div className="rounded-lg p-3 space-y-2" style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-hover)' }}>
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-cyan-400">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-info">
                   <Activity size={12} /> Optical Module
                 </div>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px]">
                   {port.sfpVendor && (<><span className="text-tx3">Vendor</span><span className="text-tx1 font-mono text-right">{port.sfpVendor}</span></>)}
                   {port.sfpModel && (<><span className="text-tx3">Model</span><span className="text-tx1 font-mono text-right">{port.sfpModel}</span></>)}
                   {port.sfpWavelength != null && (<><span className="text-tx3">Wavelength</span><span className="text-tx1 font-mono text-right">{port.sfpWavelength} nm</span></>)}
-                  {port.sfpTxPower != null && (<><span className="text-tx3">TX Power</span><span className="text-green-400 font-mono text-right">{port.sfpTxPower.toFixed(3)} dBm</span></>)}
-                  {port.sfpRxPower != null && (<><span className="text-tx3">RX Power</span><span className="text-green-400 font-mono text-right">{port.sfpRxPower.toFixed(3)} dBm</span></>)}
-                  {port.sfpTemperature != null && (<><span className="text-tx3">Temperature</span><span className="text-amber-400 font-mono text-right">{port.sfpTemperature.toFixed(1)} °C</span></>)}
+                  {port.sfpTxPower != null && (<><span className="text-tx3">TX Power</span><span className="text-success font-mono text-right">{port.sfpTxPower.toFixed(3)} dBm</span></>)}
+                  {port.sfpRxPower != null && (<><span className="text-tx3">RX Power</span><span className="text-success font-mono text-right">{port.sfpRxPower.toFixed(3)} dBm</span></>)}
+                  {port.sfpTemperature != null && (<><span className="text-tx3">Temperature</span><span className="text-warning font-mono text-right">{port.sfpTemperature.toFixed(1)} °C</span></>)}
                   {port.sfpBiasCurrent != null && (<><span className="text-tx3">Bias Current</span><span className="text-tx1 font-mono text-right">{port.sfpBiasCurrent.toFixed(1)} mA</span></>)}
                   {port.sfpVoltage != null && (<><span className="text-tx3">Voltage</span><span className="text-tx1 font-mono text-right">{port.sfpVoltage.toFixed(3)} V</span></>)}
                 </div>
