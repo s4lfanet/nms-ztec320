@@ -178,12 +178,6 @@ export function Dashboard() {
     return () => clearInterval(interval);
   }, [syncingAll, olts, queryClient]);
 
-  if (isLoading) return <DashboardSkeleton />;
-
-  const { stats } = data as DashboardData;
-  const onlineCount = olts.filter(o => o.is_online).length;
-  const totalProblem = (stats.offline || 0) + (stats.dyinggasp || 0) + (stats.los || 0);
-
   const filteredOlts = useMemo(() => olts.filter(olt => {
     const matchSearch = !searchTerm ||
       olt.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -207,6 +201,12 @@ export function Dashboard() {
     }
     return a.name.localeCompare(b.name);
   }), [filteredOlts, sortKey]);
+
+  if (isLoading) return <DashboardSkeleton />;
+
+  const { stats } = data as DashboardData;
+  const onlineCount = olts.filter(o => o.is_online).length;
+  const totalProblem = (stats.offline || 0) + (stats.dyinggasp || 0) + (stats.los || 0);
 
   return (
     <div className="space-y-4 md:space-y-5">
