@@ -127,6 +127,19 @@ html.theme-transitioning *::after {
   transition: color 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, fill 0.3s ease, stroke 0.3s ease, box-shadow 0.3s ease !important;
 }
 
+/* backdrop-filter is expensive to recompute on every animation frame. Pages
+   with several .glass-card elements on screen at once — e.g. All ONUs,
+   which can show the table wrapper plus up to 9 stat cards simultaneously —
+   were visibly stuttering/lagging behind the rest of the UI while their
+   blurred background faded over 18+ frames. Higher specificity than the
+   universal rule above (both !important, so specificity decides): let
+   glass-card surfaces swap to the new theme's colors in a single frame
+   instead, which reads as "in sync" rather than "catching up".
+ */
+html.theme-transitioning .glass-card {
+  transition: none !important;
+}
+
 /* ─── Typography ─── */
 body {
   font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
