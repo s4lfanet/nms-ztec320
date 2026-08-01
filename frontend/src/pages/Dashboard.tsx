@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, type DashboardData, type OltInfo } from '../lib/api';
@@ -9,7 +9,7 @@ import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Server, Wifi, WifiOff, AlertTriangle, Thermometer,
   RefreshCw, Radio, Clock, Fan, Zap, Activity, Search,
-  ArrowUpDown, ExternalLink, Package, CreditCard
+  ArrowUpDown, ExternalLink
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -57,7 +57,6 @@ export function Dashboard() {
   });
   const showRefreshSpinner = isFetching || refreshing;
   const olts = (data as DashboardData)?.olts ?? [];
-  const subInfo = (data as DashboardData)?.subscription;
 
   // WebSocket listener — real-time alert push: auto-refresh dashboard when alerts arrive
   const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
@@ -66,16 +65,6 @@ export function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     }
   }, [alertWsMsg, queryClient]);
-
-  // Payment success notification from redirect
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('payment') === 'success') {
-      toast.success('Pembayaran berhasil! Subscription telah diperpanjang.');
-      window.history.replaceState({}, '', window.location.pathname);
-      refetch();
-    }
-  }, []);
 
   // Countdown ticker
   useEffect(() => {
@@ -195,7 +184,7 @@ export function Dashboard() {
   const onlineCount = olts.filter(o => o.is_online).length;
   const totalProblem = (stats.offline || 0) + (stats.dyinggasp || 0) + (stats.los || 0);
 
-  const filteredOlts = olts.filter(olt => {
+  const filteredOlts = useMemo(() => olts.filter(olt => {
     const matchSearch = !searchTerm ||
       olt.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       olt.ip_address.toLowerCase().includes(searchTerm.toLowerCase());
@@ -203,9 +192,9 @@ export function Dashboard() {
       (statusFilter === 'online' && olt.is_online) ||
       (statusFilter === 'offline' && !olt.is_online);
     return matchSearch && matchStatus;
-  });
+  }), [olts, searchTerm, statusFilter]);
 
-  const sortedOlts = [...filteredOlts].sort((a, b) => {
+  const sortedOlts = useMemo(() => [...filteredOlts].sort((a, b) => {
     if (sortKey === 'problems') {
       const aP = (a.offline_onu || 0) + (a.dyinggasp_onu || 0) + (a.los_onu || 0);
       const bP = (b.offline_onu || 0) + (b.dyinggasp_onu || 0) + (b.los_onu || 0);
@@ -217,7 +206,7 @@ export function Dashboard() {
       return a.name.localeCompare(b.name);
     }
     return a.name.localeCompare(b.name);
-  });
+  }), [filteredOlts, sortKey]);
 
   return (
     <div className="space-y-4 md:space-y-5">
@@ -240,7 +229,6 @@ export function Dashboard() {
               { title: 'Statistik ONU', content: <><p>Kartu statistik menampilkan total ONU per status: <strong>Online</strong>, <strong>Offline</strong>, <strong>DyingGasp</strong>, <strong>LOS</strong> (Loss of Signal), dan <strong>Total</strong>.</p><p className="text-xs text-tx3 mt-1">Klik kartu untuk filter ONU berdasarkan status di halaman All ONUs.</p></> },
               { title: 'OLT Cards', content: <><p>Setiap OLT ditampilkan sebagai kartu dengan info: status online/offline, uptime, suhu, CPU, fan, jumlah ONU online/offline, dan progress bar.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Sync</strong> pada kartu OLT untuk sync OLT tersebut. Klik <strong>Config</strong> untuk ke halaman OLT Configuration.</p><p className="text-xs text-tx3 mt-1">Klik kartu OLT untuk navigasi ke All ONUs yang difilter per OLT tersebut.</p></> },
               { title: 'Sync All', content: <><p>Tombol <strong>Sync All</strong> di header untuk sync semua OLT sekaligus. Progress sync ditampilkan real-time per OLT.</p><p className="text-xs text-tx3 mt-1">Sync mengumpulkan data ONU via SNMP (light) atau SNMP+Telnet (full). Auto-refresh setiap 30 detik.</p></> },
-              { title: 'Subscription Info', content: <><p>Menampilkan info subscription: paket, status (active/expired), jumlah OLT terpakai vs limit, dan tanggal renewal.</p><p className="text-xs text-tx3 mt-1">Klik untuk ke halaman Subscription jika perlu renew/upgrade paket.</p></> },
             ]}
             tips={
               <>
@@ -286,64 +274,6 @@ export function Dashboard() {
           sub={totalProblem > 0 ? `${stats.offline} off · ${stats.dyinggasp} dyg · ${stats.los} LOS` : 'Semua normal'}
           color={totalProblem > 0 ? 'danger' : 'muted'} />
       </div>
-
-      {/* Subscription Info */}
-      {subInfo && (
-        <div className={cn('glass-card p-4 border', subInfo.is_active ? (subInfo.days_remaining <= 7 ? 'border-warning/30' : 'border-success/20') : 'border-danger/30')}>
-          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0',
-                subInfo.is_active ? (subInfo.days_remaining <= 7 ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success') : 'bg-danger/15 text-danger')}>
-                <Package size={20} />
-              </div>
-              <div>
-                <div className="text-sm font-semibold">{subInfo.package_name}</div>
-                <div className="text-xs text-tx3 mt-0.5">
-                  {subInfo.is_active ? (
-                    <span className={cn('font-medium', subInfo.days_remaining <= 7 ? 'text-warning' : 'text-success')}>
-                      {subInfo.days_remaining} days remaining
-                    </span>
-                  ) : (
-                    <span className="text-danger font-medium">Subscription Expired</span>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-4 md:gap-6 self-start sm:self-auto">
-              <div className="text-center">
-                <div className="text-xs text-tx3">OLT Usage</div>
-                <div className="text-sm font-bold mt-0.5">
-                  <span className={cn(subInfo.remaining_olts === 0 ? 'text-danger' : 'text-tx1')}>{subInfo.used_olts}</span>
-                  <span className="text-tx3 text-xs"> / {subInfo.max_olts}</span>
-                </div>
-                <div className="text-[10px] text-tx3 mt-0.5">{subInfo.remaining_olts} slot remaining</div>
-              </div>
-              <div className="text-center">
-                <div className="text-xs text-tx3">Start Date</div>
-                <div className="text-sm font-medium mt-0.5">{subInfo.start_date ? formatDate(subInfo.start_date) : '-'}</div>
-              </div>
-              <div className="text-center">
-                <div className="text-xs text-tx3">Expiry Date</div>
-                <div className="text-sm font-medium mt-0.5">{subInfo.end_date ? formatDate(subInfo.end_date) : '-'}</div>
-              </div>
-            </div>
-          </div>
-          {subInfo.renewal_ref && (
-            <button
-              onClick={() => navigate('/dashboard/subscription')}
-              className={cn(
-                'mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all',
-                subInfo.is_active
-                  ? 'bg-accent/15 text-accent hover:bg-accent/25'
-                  : 'bg-accent hover:bg-accent-hover text-white'
-              )}
-            >
-              <CreditCard size={16} />
-              {subInfo.is_active ? 'Perpanjang Paket' : 'Bayar & Aktifkan Sekarang'}
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Signal Distribution Bar */}
       <div className="glass-card p-4">
