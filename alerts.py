@@ -645,7 +645,7 @@ def _check_onus_for_tenant(force_send=False):
     db.session.commit()
 
     # ─── Push real-time alert to WebSocket clients ───
-    if notifications_to_create:
+    if notifications_to_create or recovery_to_send:
         try:
             from ws_bridge import ws_broadcast_dashboard
             for notif_data in notifications_to_create:
@@ -656,6 +656,15 @@ def _check_onus_for_tenant(force_send=False):
                     'title': notif_data.get('title', ''),
                     'olt_id': notif_data.get('olt_id'),
                     'onu_id': notif_data.get('onu_id'),
+                })
+            for rec in recovery_to_send:
+                ws_broadcast_dashboard('alert', {
+                    'type': 'recovery',
+                    'severity': rec.get('severity', 'info'),
+                    'category': rec.get('type', 'recovery'),
+                    'title': rec.get('title', ''),
+                    'olt_name': rec.get('olt_name'),
+                    'is_recovery': True,
                 })
         except Exception as e:
             logger.debug(f"[ALERT] WS broadcast failed (server may be down): {e}")

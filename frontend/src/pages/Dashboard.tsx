@@ -58,10 +58,10 @@ export function Dashboard() {
   const showRefreshSpinner = isFetching || refreshing;
   const olts = (data as DashboardData)?.olts ?? [];
 
-  // WebSocket listener — real-time alert push: auto-refresh dashboard when alerts arrive
+  // WebSocket listener — real-time updates: refresh dashboard on alert, ONU status change, or sync complete
   const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
   useEffect(() => {
-    if (alertWsMsg && alertWsMsg.event === 'alert') {
+    if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change' || alertWsMsg.event === 'sync_complete')) {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     }
   }, [alertWsMsg, queryClient]);

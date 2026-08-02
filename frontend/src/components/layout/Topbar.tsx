@@ -348,7 +348,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   // WebSocket listener — real-time alert push from backend
   const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
   useEffect(() => {
-    if (alertWsMsg && alertWsMsg.event === 'alert') {
+    if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change' || alertWsMsg.event === 'sync_complete')) {
       qc.invalidateQueries({ queryKey: ['notifications'] });
       qc.invalidateQueries({ queryKey: ['unregistered-count'] });
     }

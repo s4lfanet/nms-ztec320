@@ -95,10 +95,10 @@ export function AllOnus() {
     }
   }
 
-  // WebSocket listener — real-time alert: auto-refresh ONU list when status changes
+  // WebSocket listener — real-time updates: auto-refresh ONU list on alert, status change, or sync complete
   const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
   useEffect(() => {
-    if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change')) {
+    if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change' || alertWsMsg.event === 'sync_complete')) {
       queryClient.invalidateQueries({ queryKey: ['all-onus'] });
     }
   }, [alertWsMsg, queryClient]);

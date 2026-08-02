@@ -320,6 +320,18 @@ def save_sync_result(olt, result, sync, light=False):
         onu.oper_state = onu_data.get('oper_state', 0)
         onu.reg_status = onu_data.get('reg_status', 0)
 
+        # Push real-time WebSocket event when ONU status changes
+        if _prev_status and _prev_status != onu.status and onu.id:
+            try:
+                from ws_bridge import ws_broadcast_onu, ws_broadcast_dashboard
+                ws_broadcast_onu(olt.id, onu.id, 'status', _prev_status, onu.status)
+                ws_broadcast_dashboard('onu_change', {
+                    'olt_id': olt.id, 'onu_id': onu.id,
+                    'field': 'status', 'old': _prev_status, 'new': onu.status,
+                })
+            except Exception:
+                pass
+
         # For non-online ONUs (dyinggasp, offline, los), clear optical values
         # SNMP returns cached/last-known values for offline ONUs which is misleading
         if onu.status != 'online':
