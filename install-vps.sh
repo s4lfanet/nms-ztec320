@@ -12,7 +12,7 @@
 #   5. Create .env + instance/ dir
 #   6. Setup systemd service (Flask + FastAPI WebSocket)
 #   7. Setup Nginx reverse proxy (port 80 → Flask + WS)
-#   8. Setup cron jobs (auto-backup + auto-sync)
+#   8. Setup cron jobs (auto-backup + auto-sync + traffic poller)
 #   9. Start everything and verify
 # ═══════════════════════════════════════════════════════
 set -e
@@ -204,11 +204,13 @@ systemctl enable nginx
 echo "[8/9] Setting up cron jobs..."
 BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
 SYNC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
-( crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|salfanet-nms' ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ) | crontab -
-touch /var/log/salfanet-backup.log /var/log/salfanet-sync.log
-chown ${APP_USER}:${APP_USER} /var/log/salfanet-backup.log /var/log/salfanet-sync.log 2>/dev/null || true
+TRAFFIC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
+( crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|traffic_poller\|salfanet-nms' ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ; echo "$TRAFFIC_CRON" ) | crontab -
+touch /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log
+chown ${APP_USER}:${APP_USER} /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log 2>/dev/null || true
 echo "  ✅ Auto-backup cron: hourly"
 echo "  ✅ Auto-sync cron: every 5 minutes"
+echo "  ✅ Traffic poller cron: every 5 minutes"
 
 # ── 9. Start & verify ──
 echo "[9/9] Starting services..."
