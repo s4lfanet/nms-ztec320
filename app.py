@@ -2329,17 +2329,30 @@ def cf_install():
     """Install cloudflared on the VPS."""
     import subprocess as sp
     try:
-        # Download and install cloudflared
-        sp.run(['bash', '-c',
+        # Check if already installed
+        check = sp.run(['which', 'cloudflared'], capture_output=True, text=True, timeout=5)
+        if check.returncode == 0:
+            ver = sp.run(['cloudflared', 'version'], capture_output=True, text=True, timeout=5)
+            return jsonify({'success': True, 'message': 'cloudflared already installed',
+                            'version': ver.stdout.strip().split('\n')[0] if ver.returncode == 0 else ''})
+        # Download and install
+        result = sp.run(['bash', '-c',
                 'curl -L --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && '
                 'dpkg -i /tmp/cloudflared.deb && rm -f /tmp/cloudflared.deb'],
                capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            logger.error(f'cloudflared install failed: rc={result.returncode} stderr={result.stderr[:300]}')
+            return jsonify({'success': False, 'message': f'Install failed: {result.stderr[:200] or result.stdout[:200]}'}), 500
         ver = sp.run(['cloudflared', 'version'], capture_output=True, text=True, timeout=5)
         if ver.returncode == 0:
             return jsonify({'success': True, 'message': 'cloudflared installed successfully',
                             'version': ver.stdout.strip().split('\n')[0]})
         return jsonify({'success': False, 'message': 'Installation completed but version check failed'})
+    except sp.TimeoutExpired:
+        logger.error('cloudflared install timed out (120s)')
+        return jsonify({'success': False, 'message': 'Install timed out — download took too long. Try again.'}), 500
     except Exception as e:
+        logger.error(f'cloudflared install error: {e}')
         return jsonify({'success': False, 'message': f'Install failed: {str(e)[:200]}'}), 500
 
 
