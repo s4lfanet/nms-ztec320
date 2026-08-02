@@ -6264,6 +6264,7 @@ def migrate_schema():
     add_col('olts', 'snmp_status', 'VARCHAR(20)', "'disconnected'")
     add_col('olts', 'telnet_status', 'VARCHAR(20)', "'disconnected'")
     add_col('olts', 'firmware_version', 'VARCHAR(100)', "''")
+    add_col('olts', 'last_full_sync', 'DATETIME', None)
 
     # ONU table - add new columns if missing
     add_col('onus', 'actual_type', 'VARCHAR(100)', "''")
