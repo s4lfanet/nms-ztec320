@@ -2303,7 +2303,9 @@ def cf_status():
               'tunnel_id': '', 'tunnel_name': '', 'domain': '', 'configured': False}
     # Check if cloudflared is installed
     try:
-        ver = sp.run(['cloudflared', 'version'], capture_output=True, text=True, timeout=5)
+        ver = sp.run(['/usr/local/bin/cloudflared', 'version'], capture_output=True, text=True, timeout=5)
+        if ver.returncode != 0:
+            ver = sp.run(['/usr/bin/cloudflared', 'version'], capture_output=True, text=True, timeout=5)
         if ver.returncode == 0:
             result['installed'] = True
             result['version'] = ver.stdout.strip().split('\n')[0]
@@ -2311,7 +2313,7 @@ def cf_status():
         pass
     # Check if tunnel service is running
     try:
-        svc = sp.run(['systemctl', 'is-active', 'cloudflared'], capture_output=True, text=True, timeout=5)
+        svc = sp.run(['/bin/systemctl', 'is-active', 'cloudflared'], capture_output=True, text=True, timeout=5)
         result['tunnel_running'] = svc.stdout.strip() == 'active'
     except (FileNotFoundError, sp.TimeoutExpired):
         pass
@@ -2328,22 +2330,27 @@ def cf_status():
 def cf_install():
     """Install cloudflared on the VPS."""
     import subprocess as sp
-    import shutil
+    import os
     try:
         # Check if already installed
-        if shutil.which('cloudflared'):
-            ver = sp.run(['cloudflared', 'version'], capture_output=True, text=True, timeout=5)
+        cf_path = None
+        for p in ['/usr/local/bin/cloudflared', '/usr/bin/cloudflared']:
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                cf_path = p
+                break
+        if cf_path:
+            ver = sp.run([cf_path, 'version'], capture_output=True, text=True, timeout=5)
             return jsonify({'success': True, 'message': 'cloudflared already installed',
                             'version': ver.stdout.strip().split('\n')[0] if ver.returncode == 0 else ''})
         # Download and install
-        result = sp.run(['bash', '-c',
+        result = sp.run(['/bin/bash', '-c',
                 'curl -L --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && '
                 'dpkg -i /tmp/cloudflared.deb && rm -f /tmp/cloudflared.deb'],
                capture_output=True, text=True, timeout=120)
         if result.returncode != 0:
             logger.error(f'cloudflared install failed: rc={result.returncode} stderr={result.stderr[:300]}')
             return jsonify({'success': False, 'message': f'Install failed: {result.stderr[:200] or result.stdout[:200]}'}), 500
-        ver = sp.run(['cloudflared', 'version'], capture_output=True, text=True, timeout=5)
+        ver = sp.run(['/usr/bin/cloudflared', 'version'], capture_output=True, text=True, timeout=5)
         if ver.returncode == 0:
             return jsonify({'success': True, 'message': 'cloudflared installed successfully',
                             'version': ver.stdout.strip().split('\n')[0]})
@@ -2390,9 +2397,9 @@ WantedBy=multi-user.target
     try:
         with open('/etc/systemd/system/cloudflared.service', 'w') as f:
             f.write(service_content)
-        sp.run(['systemctl', 'daemon-reload'], capture_output=True, timeout=10)
-        sp.run(['systemctl', 'enable', 'cloudflared'], capture_output=True, timeout=10)
-        sp.run(['systemctl', 'start', 'cloudflared'], capture_output=True, timeout=15)
+        sp.run(['/bin/systemctl', 'daemon-reload'], capture_output=True, timeout=10)
+        sp.run(['/bin/systemctl', 'enable', 'cloudflared'], capture_output=True, timeout=10)
+        sp.run(['/bin/systemctl', 'start', 'cloudflared'], capture_output=True, timeout=15)
         log_action('cf_tunnel_configure', 'system', detail=f'Tunnel configured for domain {domain}')
         return jsonify({'success': True, 'message': f'Tunnel configured and started for {domain}',
                         'domain': domain, 'tunnel_name': tunnel_name})
@@ -2406,7 +2413,7 @@ def cf_start():
     """Start cloudflared tunnel service."""
     import subprocess as sp
     try:
-        sp.run(['systemctl', 'start', 'cloudflared'], capture_output=True, text=True, timeout=15)
+        sp.run(['/bin/systemctl', 'start', 'cloudflared'], capture_output=True, text=True, timeout=15)
         log_action('cf_tunnel_start', 'system')
         return jsonify({'success': True, 'message': 'Tunnel started'})
     except Exception as e:
@@ -2419,7 +2426,7 @@ def cf_stop():
     """Stop cloudflared tunnel service."""
     import subprocess as sp
     try:
-        sp.run(['systemctl', 'stop', 'cloudflared'], capture_output=True, text=True, timeout=15)
+        sp.run(['/bin/systemctl', 'stop', 'cloudflared'], capture_output=True, text=True, timeout=15)
         log_action('cf_tunnel_stop', 'system')
         return jsonify({'success': True, 'message': 'Tunnel stopped'})
     except Exception as e:
@@ -2432,7 +2439,7 @@ def cf_logs():
     """Get recent cloudflared logs."""
     import subprocess as sp
     try:
-        logs = sp.run(['journalctl', '-u', 'cloudflared', '--no-pager', '-n', '50'],
+        logs = sp.run(['/bin/journalctl', '-u', 'cloudflared', '--no-pager', '-n', '50'],
                       capture_output=True, text=True, timeout=10)
         return jsonify({'success': True, 'logs': logs.stdout})
     except Exception as e:
