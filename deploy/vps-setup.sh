@@ -177,6 +177,14 @@ echo "[8/8] Starting services..."
 systemctl restart "${APP_NAME}"
 sleep 5
 
+# ── 9. Setup auto-backup cron ──
+echo "[9/9] Setting up auto-backup cron..."
+CRON_LINE="0 * * * * cd ${APP_DIR} && /usr/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
+( crontab -l 2>/dev/null | grep -v 'auto_backup.py' ; echo "$CRON_LINE" ) | crontab -
+touch /var/log/salfanet-backup.log
+chown ${APP_USER}:${APP_USER} /var/log/salfanet-backup.log 2>/dev/null || true
+echo "  ✅ Auto-backup cron: hourly"
+
 # Verify
 SERVER_IP=$(hostname -I | awk '{print $1}')
 FAIL=0

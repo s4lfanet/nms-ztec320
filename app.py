@@ -2174,6 +2174,8 @@ def backup_olt_config_to_db(olt_id):
         tn = tc._connect()
         if not tn:
             return jsonify({'success': False, 'message': 'Telnet connection failed'})
+        # Save running config to startup (NVRAM) before backup
+        tc._send_command(tn, 'write memory', timeout=30)
         config = tc._send_command(tn, 'show running-config', timeout=60)
         tn.close()
         if not config or len(config) < 50:

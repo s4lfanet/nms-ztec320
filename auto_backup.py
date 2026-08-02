@@ -8,10 +8,9 @@ Prunes backups older than 30 days (configurable via SystemConfig `backup_retenti
 
 Cron: every 1 hour — checks if enough time has passed since last backup.
 """
-import sys
-sys.path.insert(0, '/opt/fibernms')
-import os
-os.chdir('/opt/fibernms')
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 import fcntl
 from datetime import datetime, timezone, timedelta
@@ -42,13 +41,19 @@ def get_retention_days():
 
 
 def backup_olt(olt):
-    """Backup a single OLT's running-config via Telnet. Returns (success, config_text, error)."""
+    """Backup a single OLT's running-config via Telnet. Returns (success, config_text, error).
+
+    Sends 'write memory' first to persist running config to startup (NVRAM),
+    then reads 'show running-config' to capture the full configuration.
+    """
     from snmp_collector import create_cli_collector
     tc = create_cli_collector(olt)
     try:
         tn = tc._connect()
         if not tn:
             return False, '', 'Telnet connection failed'
+        # Save running config to startup (NVRAM) before backup
+        tc._send_command(tn, 'write memory', timeout=30)
         config = tc._send_command(tn, 'show running-config', timeout=60)
         tn.close()
         if config and len(config) > 50:
