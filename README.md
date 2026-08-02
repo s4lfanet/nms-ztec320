@@ -245,6 +245,17 @@ Frontend dev server runs on http://127.0.0.1:5173 with API proxy to Flask on por
 
 ### Update (pull latest code + rebuild + restart)
 
+Recommended — run the update script (as root, from the deployed app directory):
+
+```bash
+cd /opt/salfanet-nms
+sudo bash deploy/update_vps.sh
+```
+
+This pulls the latest code, rebuilds the frontend, restarts the `salfanet-nms` service, refreshes the Nginx config (Cloudflare real IP support), and (re)registers the `auto_backup` (hourly) and `auto_sync` (every 5 min) cron jobs.
+
+Manual equivalent, if you only need to pull code without touching nginx/cron:
+
 ```bash
 cd /opt/salfanet-nms
 git pull origin main
@@ -286,6 +297,7 @@ journalctl -u salfanet-nms -f      # View logs (live)
 | `install.sh` | Local installer (repo already cloned) | `bash install.sh [--start]` |
 | `uninstall-vps.sh` | Full VPS uninstaller | `sudo bash uninstall-vps.sh` |
 | `deploy/vps-setup.sh` | Deploy from source directory | `sudo bash deploy/vps-setup.sh [domain]` |
+| `deploy/update_vps.sh` | Update an already-deployed VPS (pull, rebuild, restart, nginx, cron) | `sudo bash deploy/update_vps.sh` |
 
 ## Configuration
 
