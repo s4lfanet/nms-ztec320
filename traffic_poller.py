@@ -6,10 +6,9 @@ Also prunes samples older than 7 days (raw) and aggregates into traffic_log_hour
 Hourly data retained for 90 days.
 Read-only (show commands only).
 Uses file lock to prevent overlapping cron runs."""
-import sys
-sys.path.insert(0, '/opt/fibernms')
-import os
-os.chdir('/opt/fibernms')
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 import fcntl
 from datetime import datetime, timezone, timedelta
@@ -35,9 +34,9 @@ def _aggregate_hourly():
     Deletes raw rows after aggregation."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=RAW_RETENTION_DAYS)
     # Find distinct hours that need aggregation (raw data older than retention)
-    # Use date_trunc (PostgreSQL) instead of strftime (SQLite)
+    # Use strftime for SQLite compatibility
     hours_to_agg = db.session.query(
-        func.date_trunc('hour', TrafficLog.recorded_at).label('hour_start')
+        func.strftime('%Y-%m-%d %H:00:00', TrafficLog.recorded_at).label('hour_start')
     ).filter(
         TrafficLog.recorded_at < cutoff
     ).distinct().all()
@@ -49,6 +48,9 @@ def _aggregate_hourly():
     for (hour_start,) in hours_to_agg:
         if hour_start is None:
             continue
+        # Parse string from strftime into datetime
+        if isinstance(hour_start, str):
+            hour_start = datetime.strptime(hour_start, '%Y-%m-%d %H:%M:%S')
         # Ensure timezone-aware
         if hour_start.tzinfo is None:
             hour_start = hour_start.replace(tzinfo=timezone.utc)
