@@ -151,6 +151,7 @@ class OLT(db.Model):
     offline_onu = db.Column(db.Integer, default=0)
     other_onu = db.Column(db.Integer, default=0)
     last_sync = db.Column(db.DateTime, nullable=True)
+    last_full_sync = db.Column(db.DateTime, nullable=True)
     connection_status = db.Column(db.String(20), default='disconnected')
     snmp_status = db.Column(db.String(20), default='disconnected')
     telnet_status = db.Column(db.String(20), default='disconnected')
