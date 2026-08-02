@@ -134,13 +134,16 @@ with app.app_context():
         if not olt.snmp_enabled:
             continue
         use_light = True
-        last_sync = olt.last_sync
-        if last_sync is None:
-            use_light = False  # First sync = full
+        # Use last_full_sync (not last_sync) — last_sync is refreshed by every
+        # light sync, so basing the interval on it means a full sync would never
+        # fire again once the 5-minute cron is running.
+        last_full = olt.last_full_sync
+        if last_full is None:
+            use_light = False  # Never had a full sync = full
         else:
-            if last_sync.tzinfo is None:
-                last_sync = last_sync.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) - last_sync > FULL_SYNC_INTERVAL:
+            if last_full.tzinfo is None:
+                last_full = last_full.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - last_full > FULL_SYNC_INTERVAL:
                 use_light = False  # Periodic full sync
         sync_tasks.append((olt.id, use_light))
     db.session.remove()
