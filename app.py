@@ -2395,12 +2395,18 @@ User=root
 WantedBy=multi-user.target
 """
     try:
-        # Write service file via sudo (Flask runs as non-root user)
-        write_cmd = f"echo '{service_content}' | sudo tee /etc/systemd/system/cloudflared.service > /dev/null"
-        sp.run(['/bin/bash', '-c', write_cmd], capture_output=True, text=True, timeout=10)
+        # Write service file to temp (Flask runs as non-root), then sudo mv
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.service', delete=False, dir='/tmp') as tf:
+            tf.write(service_content)
+            tmp_path = tf.name
+        sp.run(['/bin/bash', '-c', f'sudo mv {tmp_path} /etc/systemd/system/cloudflared.service && sudo chmod 644 /etc/systemd/system/cloudflared.service'], capture_output=True, text=True, timeout=10)
         sp.run(['/bin/bash', '-c', 'sudo systemctl daemon-reload'], capture_output=True, text=True, timeout=10)
-        sp.run(['/bin/bash', '-c', 'sudo systemctl enable cloudflared'], capture_output=True, text=True, timeout=10)
-        sp.run(['/bin/bash', '-c', 'sudo systemctl start cloudflared'], capture_output=True, text=True, timeout=15)
+        enable_r = sp.run(['/bin/bash', '-c', 'sudo systemctl enable cloudflared'], capture_output=True, text=True, timeout=10)
+        start_r = sp.run(['/bin/bash', '-c', 'sudo systemctl start cloudflared'], capture_output=True, text=True, timeout=15)
+        if start_r.returncode != 0:
+            logger.error(f'cloudflared start failed: {start_r.stderr[:300]}')
+            return jsonify({'success': False, 'message': f'Tunnel service failed to start: {start_r.stderr[:200]}'}), 500
         log_action('cf_tunnel_configure', 'system', detail=f'Tunnel configured for domain {domain}')
         return jsonify({'success': True, 'message': f'Tunnel configured and started for {domain}',
                         'domain': domain, 'tunnel_name': tunnel_name})
