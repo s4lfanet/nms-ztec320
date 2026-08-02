@@ -79,14 +79,16 @@ NGINXEOF
 nginx -t && systemctl reload nginx
 echo "Nginx updated with Cloudflare real_ip"
 
-echo "=== Setup cron jobs (auto-backup + auto-sync) ==="
+echo "=== Setup cron jobs (auto-backup + auto-sync + traffic poller) ==="
 BACKUP_CRON="0 * * * * cd /opt/salfanet-nms && /opt/salfanet-nms/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
 SYNC_CRON="*/5 * * * * cd /opt/salfanet-nms && /opt/salfanet-nms/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
-( crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|salfanet-nms' || true ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ) | crontab -
-touch /var/log/salfanet-backup.log /var/log/salfanet-sync.log
-chown salfanet:salfanet /var/log/salfanet-backup.log /var/log/salfanet-sync.log 2>/dev/null || true
+TRAFFIC_CRON="*/5 * * * * cd /opt/salfanet-nms && /opt/salfanet-nms/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
+( crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|traffic_poller\|salfanet-nms' || true ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ; echo "$TRAFFIC_CRON" ) | crontab -
+touch /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log
+chown salfanet:salfanet /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log 2>/dev/null || true
 echo "Cron: auto_backup set to run hourly"
 echo "Cron: auto_sync set to run every 5 minutes"
+echo "Cron: traffic_poller set to run every 5 minutes"
 
 echo "=== Verify ==="
 systemctl is-active salfanet-nms && echo "Service: ACTIVE" || echo "Service: FAILED"
