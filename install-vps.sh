@@ -12,7 +12,8 @@
 #   5. Create .env + instance/ dir
 #   6. Setup systemd service (Flask + FastAPI WebSocket)
 #   7. Setup Nginx reverse proxy (port 80 → Flask + WS)
-#   8. Start everything and verify
+#   8. Setup cron jobs (auto-backup + auto-sync)
+#   9. Start everything and verify
 # ═══════════════════════════════════════════════════════
 set -e
 
@@ -38,7 +39,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # ── 1. System packages ──
-echo "[1/8] Installing system packages..."
+echo "[1/9] Installing system packages..."
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
     python3 python3-venv python3-pip \
@@ -56,7 +57,7 @@ echo "  Node.js: $(node --version)"
 echo "  npm:     $(npm --version)"
 
 # ── 2. Create app user & clone repo ──
-echo "[2/8] Setting up application..."
+echo "[2/9] Setting up application..."
 if ! id "${APP_USER}" &>/dev/null; then
     useradd --system --shell /bin/bash --home-dir "${APP_DIR}" "${APP_USER}"
 fi
@@ -72,7 +73,7 @@ else
 fi
 
 # ── 3. Python virtual environment ──
-echo "[3/8] Setting up Python environment..."
+echo "[3/9] Setting up Python environment..."
 cd "${APP_DIR}"
 if [ ! -d ".venv" ]; then
     python3 -m venv .venv
@@ -81,14 +82,14 @@ fi
 .venv/bin/pip install -r requirements.txt --quiet
 
 # ── 4. Build frontend ──
-echo "[4/8] Building frontend..."
+echo "[4/9] Building frontend..."
 cd frontend
 npm install --no-audit --no-fund 2>/dev/null
 npm run build 2>/dev/null
 cd ..
 
 # ── 5. Configuration ──
-echo "[5/8] Creating configuration..."
+echo "[5/9] Creating configuration..."
 mkdir -p instance
 if [ ! -f ".env" ]; then
     cp .env.example .env
@@ -108,7 +109,7 @@ fi
 chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
 
 # ── 6. Systemd service ──
-echo "[6/8] Installing systemd service..."
+echo "[6/9] Installing systemd service..."
 cat > /etc/systemd/system/${APP_NAME}.service << EOF
 [Unit]
 Description=Salfanet NMS - OLT Management System
@@ -135,7 +136,7 @@ systemctl daemon-reload
 systemctl enable "${APP_NAME}"
 
 # ── 7. Nginx reverse proxy ──
-echo "[7/8] Configuring Nginx..."
+echo "[7/9] Configuring Nginx..."
 SERVER_NAME="${DOMAIN:-_}"
 
 cat > /etc/nginx/sites-available/${APP_NAME} << 'NGINX_EOF'
@@ -199,8 +200,18 @@ nginx -t 2>/dev/null
 systemctl reload nginx
 systemctl enable nginx
 
-# ── 8. Start & verify ──
-echo "[8/8] Starting services..."
+# ── 8. Setup cron jobs (auto-backup + auto-sync) ──
+echo "[8/9] Setting up cron jobs..."
+BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
+SYNC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
+( crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|salfanet-nms' ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ) | crontab -
+touch /var/log/salfanet-backup.log /var/log/salfanet-sync.log
+chown ${APP_USER}:${APP_USER} /var/log/salfanet-backup.log /var/log/salfanet-sync.log 2>/dev/null || true
+echo "  ✅ Auto-backup cron: hourly"
+echo "  ✅ Auto-sync cron: every 5 minutes"
+
+# ── 9. Start & verify ──
+echo "[9/9] Starting services..."
 systemctl restart "${APP_NAME}"
 sleep 5
 

@@ -177,13 +177,15 @@ echo "[8/8] Starting services..."
 systemctl restart "${APP_NAME}"
 sleep 5
 
-# ── 9. Setup auto-backup cron ──
-echo "[9/9] Setting up auto-backup cron..."
-CRON_LINE="0 * * * * cd ${APP_DIR} && /usr/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
-( crontab -l 2>/dev/null | grep -v 'auto_backup\|salfanet-nms' ; echo "$CRON_LINE" ) | crontab -
-touch /var/log/salfanet-backup.log
-chown ${APP_USER}:${APP_USER} /var/log/salfanet-backup.log 2>/dev/null || true
+# ── 9. Setup cron jobs (auto-backup + auto-sync) ──
+echo "[9/9] Setting up cron jobs..."
+BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
+SYNC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
+( crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|salfanet-nms' ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ) | crontab -
+touch /var/log/salfanet-backup.log /var/log/salfanet-sync.log
+chown ${APP_USER}:${APP_USER} /var/log/salfanet-backup.log /var/log/salfanet-sync.log 2>/dev/null || true
 echo "  ✅ Auto-backup cron: hourly"
+echo "  ✅ Auto-sync cron: every 5 minutes"
 
 # Verify
 SERVER_IP=$(hostname -I | awk '{print $1}')

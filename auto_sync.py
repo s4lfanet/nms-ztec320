@@ -9,10 +9,9 @@ Uses file lock to prevent overlapping cron runs.
 
 OPTIMIZED: Syncs multiple OLTs in parallel using ThreadPoolExecutor (max 5 workers).
 """
-import sys
-sys.path.insert(0, '/opt/fibernms')
-import os
-os.chdir('/opt/fibernms')
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 import fcntl
 from datetime import datetime, timezone, timedelta
