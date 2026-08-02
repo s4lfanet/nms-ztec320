@@ -1,4 +1,4 @@
-﻿from flask import Flask, redirect, request, jsonify, g, session
+from flask import Flask, redirect, request, jsonify, g, session
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, User, Role, OLT, ONU, Template, TR069Profile, ONUCustomColumn, Fan, OLTSyncStatus, OLTCard, OLTUplink, ONUVlan, ONUType, SpeedProfile, WanIpProfile, OLTPort, AVAILABLE_PERMISSIONS, Notification, AlertRule, AlertHistory, BotConfig, FTTHOTB, FTTHODC, FTTHODP, FTTHODPPort, FTTHPonPort, FTTHFiberPath, SystemConfig, ActionLog, MetricHistory, TrafficLog, TrafficLogHourly, OLTConfigBackup
@@ -5497,13 +5497,18 @@ def get_alert_history():
         onu_info = ''
         onu = db.session.get(ONU, h.onu_id) if h.onu_id else None
         if onu:
-            
+            onu_info = onu.name or onu.serial_number or onu.onu_id_str or ''
+        resolved_olt_id = h.olt_id or (onu.olt_id if onu else None)
+        if resolved_olt_id:
+            olt = db.session.get(OLT, resolved_olt_id)
+            olt_name = olt.name if olt else ''
+
         results.append({
             'id': h.id,
             'alert_type': h.alert_type,
             'last_value': h.last_value,
             'last_alert_at': utc_iso(h.last_alert_at),
-            'olt_id': h.olt_id,
+            'olt_id': resolved_olt_id,
             'olt_name': olt_name,
             'onu_id': h.onu_id,
             'onu_info': onu_info,
