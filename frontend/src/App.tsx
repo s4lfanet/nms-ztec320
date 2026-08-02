@@ -26,7 +26,6 @@ const Traffic = lazy(() => import('./pages/Traffic').then(m => ({ default: m.Tra
 const CloudflareTunnel = lazy(() => import('./pages/CloudflareTunnel').then(m => ({ default: m.CloudflareTunnel })));
 
 const routePermissions: Record<string, string> = {
-  '/dashboard/onus': 'view_onus',
   '/dashboard/onus/add': 'add_onu',
   '/dashboard/onus/register': 'add_onu',
   '/dashboard/onus/provision': 'add_onu',
