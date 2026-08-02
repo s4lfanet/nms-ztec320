@@ -13,7 +13,7 @@ export function UserManagement() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const hasPerm = useHasPerm();
-  const canManage = !currentUser?.is_super_admin && hasPerm('manage_users');
+  const canManage = currentUser?.is_super_admin || hasPerm('manage_users');
   const [tab, setTab] = useState<'users' | 'roles'>('users');
   const [userModal, setUserModal] = useState<{ mode: 'add' | 'edit'; id?: number } | null>(null);
   const [roleModal, setRoleModal] = useState<{ mode: 'add' | 'edit'; id?: number } | null>(null);
