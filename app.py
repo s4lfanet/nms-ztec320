@@ -2313,7 +2313,7 @@ def cf_status():
         pass
     # Check if tunnel service is running
     try:
-        svc = sp.run(['/bin/bash', '-c', 'sudo systemctl is-active cloudflared'], capture_output=True, text=True, timeout=5)
+        svc = sp.run(['/bin/bash', '-c', '/usr/bin/sudo systemctl is-active cloudflared'], capture_output=True, text=True, timeout=5)
         result['tunnel_running'] = svc.stdout.strip() == 'active'
     except (FileNotFoundError, sp.TimeoutExpired):
         pass
@@ -2345,7 +2345,7 @@ def cf_install():
         # Download and install
         result = sp.run(['/bin/bash', '-c',
                 'curl -L --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && '
-                'dpkg -i /tmp/cloudflared.deb && rm -f /tmp/cloudflared.deb'],
+                '/usr/bin/sudo dpkg -i /tmp/cloudflared.deb && rm -f /tmp/cloudflared.deb'],
                capture_output=True, text=True, timeout=120)
         if result.returncode != 0:
             logger.error(f'cloudflared install failed: rc={result.returncode} stderr={result.stderr[:300]}')
@@ -2400,10 +2400,10 @@ WantedBy=multi-user.target
         with tempfile.NamedTemporaryFile(mode='w', suffix='.service', delete=False, dir='/tmp') as tf:
             tf.write(service_content)
             tmp_path = tf.name
-        sp.run(['/bin/bash', '-c', f'sudo mv {tmp_path} /etc/systemd/system/cloudflared.service && sudo chmod 644 /etc/systemd/system/cloudflared.service'], capture_output=True, text=True, timeout=10)
-        sp.run(['/bin/bash', '-c', 'sudo systemctl daemon-reload'], capture_output=True, text=True, timeout=10)
-        enable_r = sp.run(['/bin/bash', '-c', 'sudo systemctl enable cloudflared'], capture_output=True, text=True, timeout=10)
-        start_r = sp.run(['/bin/bash', '-c', 'sudo systemctl start cloudflared'], capture_output=True, text=True, timeout=15)
+        sp.run(['/bin/bash', '-c', f'/usr/bin/sudo mv {tmp_path} /etc/systemd/system/cloudflared.service && /usr/bin/sudo chmod 644 /etc/systemd/system/cloudflared.service'], capture_output=True, text=True, timeout=10)
+        sp.run(['/bin/bash', '-c', '/usr/bin/sudo systemctl daemon-reload'], capture_output=True, text=True, timeout=10)
+        enable_r = sp.run(['/bin/bash', '-c', '/usr/bin/sudo systemctl enable cloudflared'], capture_output=True, text=True, timeout=10)
+        start_r = sp.run(['/bin/bash', '-c', '/usr/bin/sudo systemctl start cloudflared'], capture_output=True, text=True, timeout=15)
         if start_r.returncode != 0:
             logger.error(f'cloudflared start failed: {start_r.stderr[:300]}')
             return jsonify({'success': False, 'message': f'Tunnel service failed to start: {start_r.stderr[:200]}'}), 500
@@ -2421,7 +2421,7 @@ def cf_start():
     """Start cloudflared tunnel service."""
     import subprocess as sp
     try:
-        sp.run(['/bin/bash', '-c', 'sudo systemctl start cloudflared'], capture_output=True, text=True, timeout=15)
+        sp.run(['/bin/bash', '-c', '/usr/bin/sudo systemctl start cloudflared'], capture_output=True, text=True, timeout=15)
         log_action('cf_tunnel_start', 'system')
         return jsonify({'success': True, 'message': 'Tunnel started'})
     except Exception as e:
@@ -2434,7 +2434,7 @@ def cf_stop():
     """Stop cloudflared tunnel service."""
     import subprocess as sp
     try:
-        sp.run(['/bin/bash', '-c', 'sudo systemctl stop cloudflared'], capture_output=True, text=True, timeout=15)
+        sp.run(['/bin/bash', '-c', '/usr/bin/sudo systemctl stop cloudflared'], capture_output=True, text=True, timeout=15)
         log_action('cf_tunnel_stop', 'system')
         return jsonify({'success': True, 'message': 'Tunnel stopped'})
     except Exception as e:
@@ -2447,7 +2447,7 @@ def cf_logs():
     """Get recent cloudflared logs."""
     import subprocess as sp
     try:
-        logs = sp.run(['/bin/bash', '-c', 'sudo journalctl -u cloudflared --no-pager -n 50'],
+        logs = sp.run(['/bin/bash', '-c', '/usr/bin/sudo journalctl -u cloudflared --no-pager -n 50'],
                       capture_output=True, text=True, timeout=10)
         return jsonify({'success': True, 'logs': logs.stdout})
     except Exception as e:
