@@ -14,8 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 import fcntl
+import time
 from datetime import datetime, timezone, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import (ThreadPoolExecutor, as_completed,
+                                TimeoutError as FuturesTimeoutError)
 from app import app, db
 from models import (OLT, ONU, OLTSyncStatus, OLTCard, OLTPort, OLTUplink,
                     ONUVlan, ONUType, SpeedProfile, WanIpProfile, Fan,
@@ -25,13 +27,56 @@ from sync_helper import save_sync_result, check_unregistered_onus
 FULL_SYNC_INTERVAL = timedelta(hours=6)
 MAX_SYNC_WORKERS = 5
 
+# Hard ceiling for one cron run. Without it a hung poll_olt keeps the lock held
+# forever and every later run exits silently, so auto-sync stops for good.
+MAX_RUNTIME_SEC = int(os.environ.get('AUTO_SYNC_TIMEOUT', 1800))
+# A lock held far longer than a normal run almost certainly belongs to a stuck
+# process — say so loudly instead of skipping without explanation.
+STALE_LOCK_SEC = MAX_RUNTIME_SEC * 2
+LOCK_PATH = os.environ.get('AUTO_SYNC_LOCK', '/tmp/auto_sync.lock')
+
+
+def _ts():
+    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
+def _open_lock(path):
+    """Open (or create) the lock file, world-writable.
+
+    Falls back to a per-uid path when the shared file is owned by another user:
+    plain open(path, 'w') raised an uncaught PermissionError there, which killed
+    the run before it produced any diagnostic output.
+    """
+    try:
+        return os.fdopen(os.open(path, os.O_RDWR | os.O_CREAT, 0o666), 'r+'), path
+    except OSError as e:
+        alt = f'/tmp/auto_sync.{os.getuid()}.lock'
+        print(f'[{_ts()}] Cannot use lock file {path} ({e}); falling back to {alt}')
+        return os.fdopen(os.open(alt, os.O_RDWR | os.O_CREAT, 0o666), 'r+'), alt
+
+
 # File lock to prevent overlapping cron runs
-_lock_fp = open('/tmp/auto_sync.lock', 'w')
+_lock_fp, LOCK_PATH = _open_lock(LOCK_PATH)
 try:
     fcntl.flock(_lock_fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
 except (IOError, OSError):
-    print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Another auto_sync instance is running, skipping.')
+    try:
+        holder = _lock_fp.read().strip() or 'unknown'
+        held_for = int(time.time() - os.path.getmtime(LOCK_PATH))
+    except OSError:
+        holder, held_for = 'unknown', 0
+    print(f'[{_ts()}] Another auto_sync instance is running '
+          f'(pid {holder}, {held_for}s), skipping.')
+    if held_for > STALE_LOCK_SEC:
+        print(f'[{_ts()}] WARNING: lock held for {held_for}s — the holder looks '
+              f'stuck. Inspect with: fuser -v {LOCK_PATH}')
     sys.exit(0)
+
+# Record our pid so the next contender can name the holder.
+_lock_fp.seek(0)
+_lock_fp.truncate()
+_lock_fp.write(str(os.getpid()))
+_lock_fp.flush()
 
 
 def _sync_one_olt(olt_id, use_light):
@@ -152,17 +197,27 @@ with app.app_context():
 if sync_tasks:
     print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Starting parallel sync for {len(sync_tasks)} OLT(s) with max {MAX_SYNC_WORKERS} workers')
     max_workers = min(MAX_SYNC_WORKERS, len(sync_tasks))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(_sync_one_olt, olt_id, use_light): olt_id
-            for olt_id, use_light in sync_tasks
-        }
-        for future in as_completed(futures):
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    futures = {
+        executor.submit(_sync_one_olt, olt_id, use_light): olt_id
+        for olt_id, use_light in sync_tasks
+    }
+    try:
+        for future in as_completed(futures, timeout=MAX_RUNTIME_SEC):
             olt_id = futures[future]
             try:
                 future.result()
             except Exception as e:
                 print(f'  OLT {olt_id} unexpected exception: {e}')
+    except FuturesTimeoutError:
+        stuck = [futures[f] for f in futures if not f.done()]
+        print(f'[{_ts()}] TIMEOUT after {MAX_RUNTIME_SEC}s — OLT id(s) still running: {stuck}')
+        print(f'[{_ts()}] Aborting so the lock is released and the next run can start.')
+        sys.stdout.flush()
+        # Worker threads are non-daemon; a normal exit would join them and hang
+        # forever on the stuck one, defeating the whole purpose of the timeout.
+        os._exit(1)
+    executor.shutdown(wait=True)
 
     # ─── Alert check: run once after all syncs complete ───
     with app.app_context():
