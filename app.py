@@ -2404,6 +2404,7 @@ WantedBy=multi-user.target
         return jsonify({'success': True, 'message': f'Tunnel configured and started for {domain}',
                         'domain': domain, 'tunnel_name': tunnel_name})
     except Exception as e:
+        logger.error(f'cf_configure error: {e}')
         return jsonify({'success': False, 'message': f'Configuration failed: {str(e)[:200]}'}), 500
 
 
