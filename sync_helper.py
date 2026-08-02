@@ -392,6 +392,11 @@ def save_sync_result(olt, result, sync, light=False):
     olt.offline_onu = offline
     olt.other_onu = other
     olt.last_sync = datetime.now(timezone.utc)
+    # Only stamp last_full_sync on a real full sync, otherwise the 5-minute light
+    # syncs would keep pushing the timestamp forward and the 6-hour full-sync
+    # trigger in auto_sync.py would never fire.
+    if not light:
+        olt.last_full_sync = datetime.now(timezone.utc)
 
     # Only recount PON port stats in full mode (PON ports not updated in light mode)
     if not light:
