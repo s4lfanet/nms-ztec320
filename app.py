@@ -2276,6 +2276,156 @@ def toggle_auto_backup(olt_id):
     })
 
 
+# ─── Cloudflare Tunnel Management ───
+
+def _cf_config(key=None, value=None):
+    """Get or set Cloudflare config in SystemConfig."""
+    if key is None:
+        configs = SystemConfig.query.filter(SystemConfig.key.like('cf_%')).all()
+        return {c.key: c.value for c in configs}
+    cfg = SystemConfig.query.filter_by(key=f'cf_{key}').first()
+    if value is not None:
+        if cfg:
+            cfg.value = value
+        else:
+            cfg = SystemConfig(key=f'cf_{key}', value=value)
+            db.session.add(cfg)
+        db.session.commit()
+    return cfg.value if cfg else ''
+
+
+@app.route('/api/cloudflare/status', methods=['GET'])
+@super_admin_required
+def cf_status():
+    """Check cloudflared installation and tunnel status."""
+    import subprocess as sp
+    result = {'installed': False, 'version': '', 'tunnel_running': False,
+              'tunnel_id': '', 'tunnel_name': '', 'domain': '', 'configured': False}
+    # Check if cloudflared is installed
+    try:
+        ver = sp.run(['cloudflared', 'version'], capture_output=True, text=True, timeout=5)
+        if ver.returncode == 0:
+            result['installed'] = True
+            result['version'] = ver.stdout.strip().split('\n')[0]
+    except (FileNotFoundError, sp.TimeoutExpired):
+        pass
+    # Check if tunnel service is running
+    try:
+        svc = sp.run(['systemctl', 'is-active', 'cloudflared'], capture_output=True, text=True, timeout=5)
+        result['tunnel_running'] = svc.stdout.strip() == 'active'
+    except (FileNotFoundError, sp.TimeoutExpired):
+        pass
+    # Get config from DB
+    result['tunnel_id'] = _cf_config('tunnel_id')
+    result['tunnel_name'] = _cf_config('tunnel_name')
+    result['domain'] = _cf_config('domain')
+    result['configured'] = bool(result['tunnel_id'] and result['domain'])
+    return jsonify({'success': True, **result})
+
+
+@app.route('/api/cloudflare/install', methods=['POST'])
+@super_admin_required
+def cf_install():
+    """Install cloudflared on the VPS."""
+    import subprocess as sp
+    try:
+        # Download and install cloudflared
+        sp.run(['bash', '-c',
+                'curl -L --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && '
+                'dpkg -i /tmp/cloudflared.deb && rm -f /tmp/cloudflared.deb'],
+               capture_output=True, text=True, timeout=120)
+        ver = sp.run(['cloudflared', 'version'], capture_output=True, text=True, timeout=5)
+        if ver.returncode == 0:
+            return jsonify({'success': True, 'message': 'cloudflared installed successfully',
+                            'version': ver.stdout.strip().split('\n')[0]})
+        return jsonify({'success': False, 'message': 'Installation completed but version check failed'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Install failed: {str(e)[:200]}'}), 500
+
+
+@app.route('/api/cloudflare/configure', methods=['POST'])
+@super_admin_required
+def cf_configure():
+    """Configure Cloudflare Tunnel with token from Zero Trust dashboard."""
+    data = request.get_json()
+    tunnel_token = (data or {}).get('tunnel_token', '').strip()
+    domain = (data or {}).get('domain', '').strip()
+    tunnel_name = (data or {}).get('tunnel_name', 'salfanet-nms').strip() or 'salfanet-nms'
+    if not tunnel_token:
+        return jsonify({'success': False, 'message': 'Tunnel token is required'}), 400
+    if not domain:
+        return jsonify({'success': False, 'message': 'Domain is required'}), 400
+    import subprocess as sp
+    # Save config to DB
+    _cf_config('tunnel_token', tunnel_token)
+    _cf_config('domain', domain)
+    _cf_config('tunnel_name', tunnel_name)
+    # Create systemd service for cloudflared tunnel
+    service_content = f"""[Unit]
+Description=Cloudflare Tunnel for Salfanet NMS
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate run --token {tunnel_token}
+Restart=on-failure
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
+"""
+    try:
+        with open('/etc/systemd/system/cloudflared.service', 'w') as f:
+            f.write(service_content)
+        sp.run(['systemctl', 'daemon-reload'], capture_output=True, timeout=10)
+        sp.run(['systemctl', 'enable', 'cloudflared'], capture_output=True, timeout=10)
+        sp.run(['systemctl', 'start', 'cloudflared'], capture_output=True, timeout=15)
+        log_action('cf_tunnel_configure', 'system', detail=f'Tunnel configured for domain {domain}')
+        return jsonify({'success': True, 'message': f'Tunnel configured and started for {domain}',
+                        'domain': domain, 'tunnel_name': tunnel_name})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Configuration failed: {str(e)[:200]}'}), 500
+
+
+@app.route('/api/cloudflare/start', methods=['POST'])
+@super_admin_required
+def cf_start():
+    """Start cloudflared tunnel service."""
+    import subprocess as sp
+    try:
+        sp.run(['systemctl', 'start', 'cloudflared'], capture_output=True, text=True, timeout=15)
+        log_action('cf_tunnel_start', 'system')
+        return jsonify({'success': True, 'message': 'Tunnel started'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)[:200]}), 500
+
+
+@app.route('/api/cloudflare/stop', methods=['POST'])
+@super_admin_required
+def cf_stop():
+    """Stop cloudflared tunnel service."""
+    import subprocess as sp
+    try:
+        sp.run(['systemctl', 'stop', 'cloudflared'], capture_output=True, text=True, timeout=15)
+        log_action('cf_tunnel_stop', 'system')
+        return jsonify({'success': True, 'message': 'Tunnel stopped'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)[:200]}), 500
+
+
+@app.route('/api/cloudflare/logs', methods=['GET'])
+@super_admin_required
+def cf_logs():
+    """Get recent cloudflared logs."""
+    import subprocess as sp
+    try:
+        logs = sp.run(['journalctl', '-u', 'cloudflared', '--no-pager', '-n', '50'],
+                      capture_output=True, text=True, timeout=10)
+        return jsonify({'success': True, 'logs': logs.stdout})
+    except Exception as e:
+        return jsonify({'success': False, 'logs': '', 'message': str(e)[:200]})
+
+
 @app.route('/api/onu/<int:onu_id>/section-config', methods=['POST'])
 @permission_required('configure_onu')
 def onu_section_config(onu_id):

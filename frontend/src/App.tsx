@@ -23,6 +23,7 @@ const Tr069Profile = lazy(() => import('./pages/Tr069Profile').then(m => ({ defa
 const ActionLogs = lazy(() => import('./pages/ActionLogs').then(m => ({ default: m.ActionLogs })));
 const AlertHistoryPage = lazy(() => import('./pages/AlertHistory').then(m => ({ default: m.AlertHistory })));
 const Traffic = lazy(() => import('./pages/Traffic').then(m => ({ default: m.Traffic })));
+const CloudflareTunnel = lazy(() => import('./pages/CloudflareTunnel').then(m => ({ default: m.CloudflareTunnel })));
 
 const routePermissions: Record<string, string> = {
   '/dashboard/onus': 'view_onus',
@@ -37,6 +38,7 @@ const routePermissions: Record<string, string> = {
   '/dashboard/templates/tr069-profile': 'manage_tr069',
   '/dashboard/logs': 'manage_users',
   '/dashboard/settings/alerts': 'customization',
+  '/dashboard/settings/cloudflare': 'customization',
 };
 
 const routePatterns: { pattern: RegExp; perm: string }[] = [];
@@ -127,6 +129,7 @@ export default function App() {
         <Route path="users" element={<UserManagement />} />
         <Route path="profile" element={<MyProfile />} />
         <Route path="settings/alerts" element={<AlertSettings />} />
+        <Route path="settings/cloudflare" element={<CloudflareTunnel />} />
         <Route path="alerts/history" element={<AlertHistoryPage />} />
         <Route path="ftth" element={<FtthInfrastructure />} />
         <Route path="templates" element={<Templates />} />
