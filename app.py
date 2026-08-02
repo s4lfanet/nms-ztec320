@@ -5495,14 +5495,9 @@ def get_alert_history():
     for h in pagination.items:
         olt_name = ''
         onu_info = ''
-        if h.olt_id:
-            olt = db.session.get(OLT, h.olt_id)
-            olt_name = olt.name if olt else ''
-        if h.onu_id:
-            onu = db.session.get(ONU, h.onu_id)
-            if onu:
-                onu_info = onu.name or onu.serial_number or onu.onu_id_str or ''
-
+        onu = db.session.get(ONU, h.onu_id) if h.onu_id else None
+        if onu:
+            
         results.append({
             'id': h.id,
             'alert_type': h.alert_type,
