@@ -2328,10 +2328,10 @@ def cf_status():
 def cf_install():
     """Install cloudflared on the VPS."""
     import subprocess as sp
+    import shutil
     try:
         # Check if already installed
-        check = sp.run(['which', 'cloudflared'], capture_output=True, text=True, timeout=5)
-        if check.returncode == 0:
+        if shutil.which('cloudflared'):
             ver = sp.run(['cloudflared', 'version'], capture_output=True, text=True, timeout=5)
             return jsonify({'success': True, 'message': 'cloudflared already installed',
                             'version': ver.stdout.strip().split('\n')[0] if ver.returncode == 0 else ''})
