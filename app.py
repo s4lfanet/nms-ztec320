@@ -2313,7 +2313,7 @@ def cf_status():
         pass
     # Check if tunnel service is running
     try:
-        svc = sp.run(['/bin/systemctl', 'is-active', 'cloudflared'], capture_output=True, text=True, timeout=5)
+        svc = sp.run(['/bin/bash', '-c', 'sudo systemctl is-active cloudflared'], capture_output=True, text=True, timeout=5)
         result['tunnel_running'] = svc.stdout.strip() == 'active'
     except (FileNotFoundError, sp.TimeoutExpired):
         pass
@@ -2395,11 +2395,12 @@ User=root
 WantedBy=multi-user.target
 """
     try:
-        with open('/etc/systemd/system/cloudflared.service', 'w') as f:
-            f.write(service_content)
-        sp.run(['/bin/systemctl', 'daemon-reload'], capture_output=True, timeout=10)
-        sp.run(['/bin/systemctl', 'enable', 'cloudflared'], capture_output=True, timeout=10)
-        sp.run(['/bin/systemctl', 'start', 'cloudflared'], capture_output=True, timeout=15)
+        # Write service file via sudo (Flask runs as non-root user)
+        write_cmd = f"echo '{service_content}' | sudo tee /etc/systemd/system/cloudflared.service > /dev/null"
+        sp.run(['/bin/bash', '-c', write_cmd], capture_output=True, text=True, timeout=10)
+        sp.run(['/bin/bash', '-c', 'sudo systemctl daemon-reload'], capture_output=True, text=True, timeout=10)
+        sp.run(['/bin/bash', '-c', 'sudo systemctl enable cloudflared'], capture_output=True, text=True, timeout=10)
+        sp.run(['/bin/bash', '-c', 'sudo systemctl start cloudflared'], capture_output=True, text=True, timeout=15)
         log_action('cf_tunnel_configure', 'system', detail=f'Tunnel configured for domain {domain}')
         return jsonify({'success': True, 'message': f'Tunnel configured and started for {domain}',
                         'domain': domain, 'tunnel_name': tunnel_name})
@@ -2414,7 +2415,7 @@ def cf_start():
     """Start cloudflared tunnel service."""
     import subprocess as sp
     try:
-        sp.run(['/bin/systemctl', 'start', 'cloudflared'], capture_output=True, text=True, timeout=15)
+        sp.run(['/bin/bash', '-c', 'sudo systemctl start cloudflared'], capture_output=True, text=True, timeout=15)
         log_action('cf_tunnel_start', 'system')
         return jsonify({'success': True, 'message': 'Tunnel started'})
     except Exception as e:
@@ -2427,7 +2428,7 @@ def cf_stop():
     """Stop cloudflared tunnel service."""
     import subprocess as sp
     try:
-        sp.run(['/bin/systemctl', 'stop', 'cloudflared'], capture_output=True, text=True, timeout=15)
+        sp.run(['/bin/bash', '-c', 'sudo systemctl stop cloudflared'], capture_output=True, text=True, timeout=15)
         log_action('cf_tunnel_stop', 'system')
         return jsonify({'success': True, 'message': 'Tunnel stopped'})
     except Exception as e:
@@ -2440,7 +2441,7 @@ def cf_logs():
     """Get recent cloudflared logs."""
     import subprocess as sp
     try:
-        logs = sp.run(['/bin/journalctl', '-u', 'cloudflared', '--no-pager', '-n', '50'],
+        logs = sp.run(['/bin/bash', '-c', 'sudo journalctl -u cloudflared --no-pager -n 50'],
                       capture_output=True, text=True, timeout=10)
         return jsonify({'success': True, 'logs': logs.stdout})
     except Exception as e:
