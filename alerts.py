@@ -445,7 +445,11 @@ def _check_onus_for_tenant(force_send=False):
     if not olts:
         return
 
-    now = datetime.now(timezone.utc)
+    # Naive UTC — DB DateTime columns (SQLite) store/return naive datetimes,
+    # so `now` must be naive too to avoid "can't compare offset-naive and
+    # offset-aware datetimes" when comparing against AlertHistory/Notification/
+    # MaintenanceWindow timestamps below.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     notifications_to_create = []
     alerts_to_send = []
     recovery_to_send = []

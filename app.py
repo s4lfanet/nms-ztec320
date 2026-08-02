@@ -5539,7 +5539,7 @@ def get_maintenance_windows():
             'end_time': utc_iso(w.end_time),
             'reason': w.reason,
             'created_by': w.created_by,
-            'is_active': w.start_time <= datetime.now(timezone.utc) <= w.end_time,
+            'is_active': w.start_time <= datetime.now(timezone.utc).replace(tzinfo=None) <= w.end_time,
         } for w in windows]
     })
 
@@ -5557,8 +5557,8 @@ def create_maintenance_window():
         return jsonify({'success': False, 'message': 'start_time and end_time required'}), 400
 
     try:
-        start_dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
-        end_dt = datetime.fromisoformat(end.replace('Z', '+00:00'))
+        start_dt = datetime.fromisoformat(start.replace('Z', '+00:00')).astimezone(timezone.utc).replace(tzinfo=None)
+        end_dt = datetime.fromisoformat(end.replace('Z', '+00:00')).astimezone(timezone.utc).replace(tzinfo=None)
     except Exception:
         return jsonify({'success': False, 'message': 'Invalid datetime format'}), 400
 
