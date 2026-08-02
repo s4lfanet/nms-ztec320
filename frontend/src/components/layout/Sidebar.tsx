@@ -20,7 +20,7 @@ const navItems: NavItem[] = [
   {
     label: 'ONU', icon: <Radio size={20} />, permission: 'view_dashboard',
     children: [
-      { label: 'All ONUs', path: '/dashboard/onus', permission: 'view_onus' },
+      { label: 'All ONUs', path: '/dashboard/onus' },
       { label: 'Provision ONU', path: '/dashboard/onus/provision', permission: 'add_onu' },
       { label: 'Pre-config ONT', path: '/dashboard/onus/pre-config', permission: 'add_onu' },
       { label: 'Register Wizard', path: '/dashboard/onus/register', permission: 'add_onu' },
@@ -53,7 +53,7 @@ const navItems: NavItem[] = [
       { label: 'User Management', path: '/dashboard/users', permission: 'manage_users' },
       { label: 'Alert Settings', path: '/dashboard/settings/alerts', permission: 'customization' },
       { label: 'Cloudflare Tunnel', path: '/dashboard/settings/cloudflare', permission: 'customization' },
-      { label: 'Alert History', path: '/dashboard/alerts/history', permission: 'view_dashboard' },
+      { label: 'Alert History', path: '/dashboard/alerts/history' },
     ],
   },
   { label: 'Activity Log', icon: <ScrollText size={20} />, path: '/dashboard/logs', permission: 'manage_users' },
