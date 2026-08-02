@@ -65,9 +65,17 @@ export function useWebSocket(
     if (opts.baseUrl) {
       return `${opts.baseUrl}${path}`;
     }
-    // Auto-detect: same host as page, but use WS_PORT for WebSocket server
+    // Auto-detect: same host as page.
+    // In production (served via nginx on 80/443, or Cloudflare Tunnel which only
+    // forwards port 80/443), route through nginx's /ws/ proxy without an explicit
+    // port. In dev (Vite on 3000), connect directly to the WS server on 8765.
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
+    const pagePort = window.location.port;
+    const isProdPort = pagePort === '' || pagePort === '80' || pagePort === '443';
+    if (isProdPort) {
+      return `${proto}//${host}${path}`;
+    }
     const wsPort = (window as unknown as { __WS_PORT__?: string }).__WS_PORT__ || '8765';
     return `${proto}//${host}:${wsPort}${path}`;
   }, [path, opts.baseUrl]);
