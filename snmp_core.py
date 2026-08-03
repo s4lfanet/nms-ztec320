@@ -537,11 +537,11 @@ class SNMPCollector:
                             self.community, self.ip, self.port,
                             ObjectType(ObjectIdentity(cur)),
                             nonRepeaters=0, maxRepetitions=max_repetitions,
-                            timeout=5, retries=2)
+                            timeout=10, retries=3)
                     else:
                         ei, es, eidx, vb = await slim.next(
                             self.community, self.ip, self.port,
-                            ObjectType(ObjectIdentity(cur)), timeout=5, retries=2)
+                            ObjectType(ObjectIdentity(cur)), timeout=10, retries=3)
                 except Exception:
                     if use_bulk:
                         use_bulk = False
@@ -549,7 +549,7 @@ class SNMPCollector:
                     break
                 if ei:
                     errors += 1
-                    if errors > 3:
+                    if errors > 10:
                         break
                     continue
                 if es:
