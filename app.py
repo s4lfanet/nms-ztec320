@@ -3283,6 +3283,9 @@ def test_olt_connection(olt_id):
     # Test Telnet
     cli_user = data.get('cli_username', olt.cli_username)
     cli_pass = data.get('cli_password', olt.cli_password)
+    # If password is masked ('***'), use stored password from DB
+    if cli_pass and cli_pass.startswith('***'):
+        cli_pass = olt.cli_password
     if cli_user and cli_pass:
         try:
             from snmp_collector import TelnetCollector, create_cli_collector
@@ -3366,6 +3369,9 @@ def test_new_olt_connection():
     # Test Telnet
     cli_user = data.get('cli_username', '')
     cli_pass = data.get('cli_password', '')
+    # Ignore masked password placeholder
+    if cli_pass and cli_pass.startswith('***'):
+        cli_pass = ''
     if cli_user and cli_pass:
         try:
             from snmp_collector import TelnetCollector, create_cli_collector

@@ -737,7 +737,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             snmp_community_write: d.snmp_community_write || '',
             snmp_port: String(d.snmp_port || 161),
             cli_username: d.cli_username || '',
-            cli_password: d.cli_password || '',
+            cli_password: '',
             telnet_port: String(d.telnet_port || 23),
           });
           setSnmpStatus(d.snmp_status || '');
@@ -754,12 +754,15 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
     if (!form.ip_address) { toast.error('Please enter IP address'); return; }
     setTesting(true); setTestResult(null);
     try {
-      const d = await api.testConnection(olt?.id || null, {
+      const payload: Record<string, unknown> = {
         ip_address: form.ip_address, snmp_community: form.snmp_community,
         snmp_port: parseInt(form.snmp_port), cli_username: form.cli_username,
-        cli_password: form.cli_password, telnet_port: parseInt(form.telnet_port),
+        telnet_port: parseInt(form.telnet_port),
         ...(form.snmp_community_write ? { snmp_community_write: form.snmp_community_write } : {}),
-      });
+      };
+      // Only send password if user typed a new one; for existing OLT with empty field, backend uses stored password
+      if (form.cli_password) payload.cli_password = form.cli_password;
+      const d = await api.testConnection(olt?.id || null, payload);
       if (d.results) {
         setTestResult(d.results);
         if (d.results.snmp) setSnmpStatus(d.results.snmp.ok ? 'connected' : 'disconnected');
@@ -783,28 +786,32 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
       const vendor = 'zte';
       const url = olt ? `/api/olt/${olt.id}` : '/api/olt';
       const method = olt ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method, headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({
+      const savePayload: Record<string, unknown> = {
           name: form.name, ip_address: form.ip_address, model, vendor,
           snmp_community: form.snmp_community, snmp_community_write: form.snmp_community_write,
           snmp_port: parseInt(form.snmp_port),
           telnet_enabled: true, telnet_port: parseInt(form.telnet_port),
           ssh_enabled: false, ssh_port: 22,
-          cli_username: form.cli_username, cli_password: form.cli_password,
-        }),
+          cli_username: form.cli_username,
+      };
+      if (form.cli_password) savePayload.cli_password = form.cli_password;
+      const res = await fetch(url, {
+        method, headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify(savePayload),
       });
       const d = await res.json();
       if (d.success) {
         toast.success('OLT saved! Testing connections...');
         // Auto-test after save
         try {
-          const testD = await api.testConnection(d.id, {
+          const testPayload: Record<string, unknown> = {
             ip_address: form.ip_address, snmp_community: form.snmp_community,
             snmp_port: parseInt(form.snmp_port), cli_username: form.cli_username,
-            cli_password: form.cli_password, telnet_port: parseInt(form.telnet_port),
+            telnet_port: parseInt(form.telnet_port),
             ...(form.snmp_community_write ? { snmp_community_write: form.snmp_community_write } : {}),
-          });
+          };
+          if (form.cli_password) testPayload.cli_password = form.cli_password;
+          const testD = await api.testConnection(d.id, testPayload);
           if (testD.results) {
             const sOk = testD.results.snmp?.ok;
             const tOk = testD.results.telnet?.ok;
@@ -919,7 +926,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
               </div>
               <div>
                 <label className="label-sm mb-1">Password</label>
-                <input type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder="Password" className="input-field" />
+                <input type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder={olt ? '•••• (unchanged)' : 'Password'} className="input-field" />
               </div>
               <div>
                 <label className="label-sm mb-1">Telnet Port</label>
