@@ -4043,11 +4043,45 @@ def get_pon_port_optical(olt_id, port_id):
 @app.route('/api/olt/<int:olt_id>/pon-ports', methods=['GET'])
 @login_required
 def get_pon_ports(olt_id):
-    """Get all PON ports for an OLT with optical module data via Telnet"""
+    """Get all PON ports for an OLT with optical module data via Telnet.
+    Generates placeholder entries from OLTCard table for service cards
+    (GTG/ETG) that have no OLTPort entries yet."""
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'ports': []})
     ports = OLTPort.query.filter_by(olt_id=olt_id).order_by(OLTPort.port_number).all()
+
+    # Build placeholder ports from OLTCard table for service cards without OLTPort entries
+    existing_names = {p.port_name for p in ports}
+    cards = OLTCard.query.filter_by(olt_id=olt_id).all()
+    placeholder_ports = []
+    for card in cards:
+        ct = (card.card_type or '').upper()
+        if ct.startswith('GTG') or ct.startswith('GTC') or ct.startswith('ETG'):
+            is_epon = ct.startswith('ETG')
+            olt_pfx = 'epon-olt' if is_epon else 'gpon-olt'
+            port_count = card.total_ports or 16
+            for pnum in range(1, port_count + 1):
+                pname = f'{olt_pfx}_1/{card.slot}/{pnum}'
+                if pname not in existing_names:
+                    placeholder_ports.append({
+                        'id': None,
+                        'port_number': pnum,
+                        'port_name': pname,
+                        'admin_status': 'up',
+                        'name': '',
+                        'description': '',
+                        'linktrap': 'disable',
+                        'onu_count': 0,
+                        'onu_online': 0,
+                        'onu_offline': 0,
+                        'card_type': card.card_type,
+                        'card_slot': card.slot,
+                        'is_placeholder': True,
+                    })
+
+    # Sort placeholder ports by slot then port number
+    placeholder_ports.sort(key=lambda p: (p.get('card_slot', 0), p['port_number']))
 
     # Collect optical module info via Telnet
     optical_data = {}
@@ -4105,8 +4139,10 @@ def get_pon_ports(olt_id):
             'admin_status': p.admin_status, 'name': p.name, 'description': p.description,
             'linktrap': p.linktrap, 'onu_count': p.onu_count,
             'onu_online': p.onu_online, 'onu_offline': p.onu_offline,
+            'card_type': '',
+            'is_placeholder': False,
             **optical_data.get(p.id, {}),
-        } for p in ports]
+        } for p in ports] + placeholder_ports
     })
 
 
