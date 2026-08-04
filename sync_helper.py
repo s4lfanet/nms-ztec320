@@ -313,8 +313,12 @@ def save_sync_result(olt, result, sync, light=False):
         onu.port = onu_data.get('port', 1)
         onu.onu_id = onu_data.get('onu_id', idx)
         onu.serial_number = onu_data.get('serial_number', '')
-        onu.name = onu_data.get('name', '') or onu_data.get('description', '')
-        onu.description = onu_data.get('description', '')
+        _new_name = onu_data.get('name', '') or onu_data.get('description', '')
+        if _new_name:
+            onu.name = _new_name
+        _new_desc = onu_data.get('description', '')
+        if _new_desc:
+            onu.description = _new_desc
         onu.card = onu_data.get('card_type', '') or onu.card or ''
         _prev_status = onu.status
         onu.status = onu_data.get('status', 'offline')
