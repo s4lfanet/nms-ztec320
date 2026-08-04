@@ -4840,9 +4840,9 @@ class TelnetCollector:
         return onus
 
     def _collect_epon_onus(self, tn, epon_cards):
-        """Collect EPON ONUs via 'show epon onu state' + running-config.
+        """Collect EPON ONUs via 'show epon onu state' + running-config + optical info.
         EPON ONUs use MAC address instead of serial number.
-        No RX/TX power or distance available via CLI for EPON."""
+        RX/TX power collected via 'show epon onu optical-info'."""
         epon_onus = []
 
         # Step 1: Get all EPON ONU states in one command
@@ -4965,6 +4965,56 @@ class TelnetCollector:
                 oui = mac[:6].upper()
                 if oui in oui_map:
                     onu['actual_type'] = oui_map[oui]
+
+        # Step 4: Collect RX/TX power and distance for online EPON ONUs
+        # ZTE C320 EPON supports:
+        #   'show epon onu optical-info epon-onu_X/Y/Z:N'
+        #   'show epon onu distance epon-onu_X/Y/Z:N'
+        for onu in epon_onus:
+            if onu['status'] != 'online':
+                continue
+            iface = f"epon-onu_{onu['frame']}/{onu['slot']}/{onu['port']}:{onu['onu_id']}"
+            try:
+                opt_out = self._send_command(tn, f'show epon onu optical-info {iface}', timeout=10)
+                if opt_out and '%Error' not in opt_out and 'Invalid' not in opt_out:
+                    for line in opt_out.split('\n'):
+                        ls = line.strip()
+                        ll = ls.lower()
+                        if 'rxpower' in ll or 'rx power' in ll or 'rx-power' in ll:
+                            rx_m = re.search(r'[-]?\d+\.?\d*', ls.split(':', 1)[-1] if ':' in ls else ls)
+                            if rx_m:
+                                onu['rx_power'] = float(rx_m.group(0))
+                        elif 'txpower' in ll or 'tx power' in ll or 'tx-power' in ll:
+                            tx_m = re.search(r'[-]?\d+\.?\d*', ls.split(':', 1)[-1] if ':' in ls else ls)
+                            if tx_m:
+                                onu['tx_power'] = float(tx_m.group(0))
+                        elif 'temperature' in ll:
+                            t_m = re.search(r'[-]?\d+\.?\d*', ls.split(':', 1)[-1] if ':' in ls else ls)
+                            if t_m:
+                                onu['temperature'] = float(t_m.group(0))
+                        elif 'voltage' in ll or 'supply-vol' in ll:
+                            v_m = re.search(r'[-]?\d+\.?\d*', ls.split(':', 1)[-1] if ':' in ls else ls)
+                            if v_m:
+                                onu['voltage'] = float(v_m.group(0))
+                        elif 'bias' in ll:
+                            b_m = re.search(r'[-]?\d+\.?\d*', ls.split(':', 1)[-1] if ':' in ls else ls)
+                            if b_m:
+                                onu['bias_current'] = float(b_m.group(0))
+            except Exception as e:
+                logger.debug(f"epon optical-info {iface}: {e}")
+
+            try:
+                dist_out = self._send_command(tn, f'show epon onu distance {iface}', timeout=10)
+                if dist_out and '%Error' not in dist_out and 'Invalid' not in dist_out:
+                    dm = re.search(r'(\d+)\s*(m|meter|km)?', dist_out)
+                    if dm:
+                        val = int(dm.group(1))
+                        unit = (dm.group(2) or '').lower()
+                        if unit == 'km':
+                            val = val * 1000
+                        onu['distance'] = val
+            except Exception as e:
+                logger.debug(f"epon distance {iface}: {e}")
 
         return epon_onus
 
