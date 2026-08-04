@@ -4993,6 +4993,11 @@ class TelnetCollector:
                                     onu['description'] = parts[1]
                                 elif len(parts) == 1:
                                     onu['name'] = parts[0]
+                        elif ls.startswith('name ') and not onu.get('name'):
+                            # Fallback: 'name ONU-Name' line in running-config
+                            onu['name'] = ls.split(' ', 1)[1].strip() if ' ' in ls else ''
+                        elif ls.startswith('description ') and not onu.get('description'):
+                            onu['description'] = ls.split(' ', 1)[1].strip() if ' ' in ls else ''
                         elif ls.startswith('service-port') and 'vlan' in ls:
                             # Extract VLAN for reference
                             vm = re.search(r'vlan\s+(\d+)', ls)
