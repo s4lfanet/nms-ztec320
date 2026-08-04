@@ -467,7 +467,7 @@ export function AllOnus() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <ActionBtn icon={<Eye size={14} />} title="View" onClick={() => navigate(`/dashboard/all-onus/view-c3-r/gpon/${onu.olt_id}/${onu.frame}/${onu.port}/${onu.onu_id}`)} />
+                      <ActionBtn icon={<Eye size={14} />} title="View" onClick={() => navigate(`/dashboard/onus/${onu.id}`)} />
                       {hasPerm('edit_onu_name') && <ActionBtn icon={<Edit3 size={14} />} title="Edit" onClick={() => openEdit(onu)} />}
                       {hasPerm('delete_onu') && <ActionBtn icon={<Trash2 size={14} />} title="Delete" danger
                         onClick={() => deleteMutation.mutate(onu.id)} />}
@@ -536,7 +536,7 @@ export function AllOnus() {
                 </div>
                 {/* Actions */}
                 <div className="flex items-center gap-2 pt-2 border-t border-brd/30">
-                  <button onClick={() => navigate(`/dashboard/all-onus/view-c3-r/gpon/${onu.olt_id}/${onu.frame}/${onu.port}/${onu.onu_id}`)}
+                  <button onClick={() => navigate(`/dashboard/onus/${onu.id}`)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass text-xs text-tx2 hover:text-tx1 transition-colors">
                     <Eye size={14} /> View
                   </button>
