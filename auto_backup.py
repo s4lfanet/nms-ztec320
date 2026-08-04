@@ -24,7 +24,26 @@ except (IOError, OSError):
     sys.exit(0)
 
 from app import app, db
-from models import OLT, OLTConfigBackup, SystemConfig
+from models import OLT, OLTConfigBackup, SystemConfig, Notification, User
+
+
+def notify_backup_failure(olt, error):
+    """Create in-app notification for super admin when auto-backup fails."""
+    try:
+        admins = User.query.filter_by(is_super_admin=True).all()
+        for admin in admins:
+            n = Notification(
+                user_id=admin.id,
+                title=f'Auto-backup failed: {olt.name}',
+                message=f'OLT {olt.name} ({olt.ip_address}) auto-backup failed: {error[:200]}',
+                type='olt_offline',
+                icon_type='warning',
+                is_read=False,
+            )
+            db.session.add(n)
+        db.session.commit()
+    except Exception:
+        pass
 
 
 def get_retention_days():
@@ -148,7 +167,7 @@ with app.app_context():
             backed_up += 1
             print(f'    OK — {len(config_text)} bytes saved (id={backup.id})')
         else:
-            # Record failure
+            # Record failure (but don't update last_backup_at so it retries next cron)
             backup = OLTConfigBackup(
                 olt_id=olt.id,
                 config_text='',
@@ -158,8 +177,8 @@ with app.app_context():
                 error_message=error,
             )
             db.session.add(backup)
-            olt.last_backup_at = now
             db.session.commit()
+            notify_backup_failure(olt, error)
             failed += 1
             print(f'    FAILED — {error}')
 

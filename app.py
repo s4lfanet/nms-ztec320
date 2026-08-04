@@ -1215,7 +1215,8 @@ def _auto_write_config(olt_id):
                     return
                 out = tc._send_command(tn, 'write', timeout=30)
                 tn.close()
-                if 'error' in out.lower() or '%' in out:
+                low = out.lower()
+                if '%error' in low or '% invalid' in low or '%code' in low or 'incomplete command' in low or 'ambiguous command' in low or 'return error' in low:
                     logger.warning(f"Auto-write: write command failed for OLT {olt_id}: {out.strip()[:200]}")
                 else:
                     logger.info(f"Auto-write: Config saved to startup-config for OLT {olt_id}")
@@ -2155,7 +2156,8 @@ def backup_olt_config(olt_id):
         tn = tc._connect()
         if not tn:
             return jsonify({'success': False, 'message': 'Telnet connection failed'})
-        config = tc._send_command(tn, 'show running-config', timeout=30)
+        tc._send_command(tn, 'write memory', timeout=30)
+        config = tc._send_command(tn, 'show running-config', timeout=60)
         tn.close()
         if config and len(config) > 10:
             from flask import Response
