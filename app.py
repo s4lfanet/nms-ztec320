@@ -3798,12 +3798,11 @@ def get_olt_chassis(olt_id):
             # Collect actual port numbers (1-indexed on ZTE C320)
             slot_pon = pon_by_slot.get(sidx, {})
             stat_ports = {int(k.split('/')[1]) for k in port_stats if k.split('/')[0] == str(sidx)}
-            actual_ports = sorted(p for p in set(list(slot_pon.keys()) + list(stat_ports)) if p != 0)
-            # Fall back to 1..port_count if no DB data yet (ZTE C320 is 1-indexed)
-            if not actual_ports:
-                actual_ports = list(range(1, port_count + 1))
+            db_ports = sorted(p for p in set(list(slot_pon.keys()) + list(stat_ports)) if p != 0)
+            # Always include all physical ports 1..port_count, merge with any extra DB ports
+            all_port_nums = sorted(set(list(range(1, port_count + 1)) + db_ports))
             ports = []
-            for p in actual_ports:
+            for p in all_port_nums:
                 s = port_stats.get(f"{sidx}/{p}", {})
                 rx = s.get('rxPowers', [])
                 meta = slot_pon.get(p, {})
@@ -4083,16 +4082,17 @@ def get_pon_ports(olt_id):
     # Sort placeholder ports by slot then port number
     placeholder_ports.sort(key=lambda p: (p.get('card_slot', 0), p['port_number']))
 
-    # Collect optical module info via Telnet
+    # Collect optical module info via Telnet for all ports (DB + placeholders)
     optical_data = {}
+    all_port_names = [p.port_name for p in ports] + [pp['port_name'] for pp in placeholder_ports]
     try:
         from snmp_collector import TelnetCollector, create_cli_collector
         tc = create_cli_collector(olt)
         tn = tc._connect()
         if tn:
-            for p in ports:
+            for pname in all_port_names:
                 try:
-                    opt_out = tc._send_command(tn, f'show interface optical-module-info {p.port_name}', timeout=10)
+                    opt_out = tc._send_command(tn, f'show interface optical-module-info {pname}', timeout=10)
                     if '%Error' not in opt_out and 'Optical module' in opt_out:
                         sfp = {}
                         import re as _re3
@@ -4125,12 +4125,64 @@ def get_pon_ports(olt_id):
                                 elif 'temperature' in key and 'upper' not in key and 'lower' not in key: sfp['temperature'] = val
                                 elif 'supply-vol' in key: sfp['voltage'] = val
                         if sfp:
-                            optical_data[p.id] = sfp
+                            optical_data[pname] = sfp
                 except Exception as e:
-                    logger.debug(f'PON optical {p.port_name}: {e}')
-            tn.write('exit\n'); tn.close()
+                    logger.debug(f'PON optical {pname}: {e}')
+            if not placeholder_ports:
+                tn.write('exit\n'); tn.close()
+                tn = None
     except Exception as e:
         logger.debug(f'PON optical Telnet: {e}')
+        tn = None
+
+    # Also collect ONU state counts for placeholder ports via Telnet
+    placeholder_onu_counts = {}
+    if placeholder_ports:
+        try:
+            if not tn:
+                tn = tc._connect()
+            if tn:
+                for pp in placeholder_ports:
+                    pname = pp['port_name']
+                    is_epon = pname.startswith('epon-olt')
+                    onu_cmd = 'show epon onu state' if is_epon else 'show gpon onu state'
+                    try:
+                        out = tc._send_command(tn, f'{onu_cmd} {pname}', timeout=10)
+                        total = online = offline = 0
+                        for line in out.split('\n'):
+                            line = line.strip()
+                            if not line or '---' in line or line.startswith('OnuIndex') or line.startswith('ONU'): continue
+                            parts = line.split()
+                            if len(parts) < 4 or '/' not in parts[0] or ':' not in parts[0]: continue
+                            if is_epon:
+                                import re as _re4
+                                if not _re4.match(r'^epon-onu_\d+/\d+/\d+:\d+$', parts[0]): continue
+                                total += 1
+                                status_word = parts[1].lower() if len(parts) > 1 else ''
+                                if 'online' in status_word: online += 1
+                                else: offline += 1
+                            else:
+                                import re as _re4
+                                if not _re4.match(r'^\d+/\d+/\d+:\d+$', parts[0]): continue
+                                total += 1
+                                phase = parts[3].lower() if len(parts) > 3 else ''
+                                if 'working' in phase: online += 1
+                                else: offline += 1
+                        placeholder_onu_counts[pname] = {'onu_count': total, 'onu_online': online, 'onu_offline': offline}
+                    except Exception as e:
+                        logger.debug(f'Placeholder ONU state {pname}: {e}')
+                try: tn.write('exit\n'); tn.close()
+                except: pass
+        except Exception as e:
+            logger.debug(f'Placeholder ONU state Telnet: {e}')
+
+    # Merge ONU counts into placeholder ports
+    for pp in placeholder_ports:
+        counts = placeholder_onu_counts.get(pp['port_name'])
+        if counts:
+            pp['onu_count'] = counts['onu_count']
+            pp['onu_online'] = counts['onu_online']
+            pp['onu_offline'] = counts['onu_offline']
 
     return jsonify({
         'success': True,
@@ -4141,8 +4193,11 @@ def get_pon_ports(olt_id):
             'onu_online': p.onu_online, 'onu_offline': p.onu_offline,
             'card_type': '',
             'is_placeholder': False,
-            **optical_data.get(p.id, {}),
-        } for p in ports] + placeholder_ports
+            **optical_data.get(p.port_name, {}),
+        } for p in ports] + [
+            {**pp, **optical_data.get(pp['port_name'], {})}
+            for pp in placeholder_ports
+        ]
     })
 
 
