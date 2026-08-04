@@ -436,7 +436,8 @@ def api_onu_live_detail(onu_id):
         from snmp_collector import TelnetCollector, create_cli_collector
         try:
             tc = create_cli_collector(olt)
-            live_detail = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id)
+            is_epon = (onu.card or '').lower() == 'epon'
+            live_detail = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
             if live_detail and live_detail.get('history_raw'):
                 history = live_detail['history_raw']
             # Update DB with live signal values
@@ -686,7 +687,9 @@ def update_onu(onu_id):
                 tc = create_cli_collector(olt)
                 tn = tc._connect()
                 if tn:
-                    pon_if = f'gpon-olt_{onu.frame}/{onu.slot}/{onu.port}'
+                    is_epon = (onu.card or '').lower() == 'epon'
+                    olt_pfx = 'epon-olt' if is_epon else 'gpon-olt'
+                    pon_if = f'{olt_pfx}_{onu.frame}/{onu.slot}/{onu.port}'
                     tc._send_command(tn, 'end')
                     tc._send_command(tn, 'configure terminal')
                     tc._send_command(tn, f'interface {pon_if}')
@@ -941,24 +944,25 @@ def migrate_onu(onu_id):
 
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
+    is_epon = (onu.card or '').lower() == 'epon'
 
     # Step 1: Deregister from old PON
-    ok1, msg1 = tc.deregister_onu(old_frame, old_slot, old_port, old_id)
+    ok1, msg1 = tc.deregister_onu(old_frame, old_slot, old_port, old_id, is_epon=is_epon)
     if not ok1:
         return jsonify({'success': False, 'message': f'Deregister failed: {msg1}'})
 
     # Step 2: Register on new PON
-    ok2, msg2 = tc.register_onu(onu.frame, new_card, new_pon, new_oid, onu_type, serial)
+    ok2, msg2 = tc.register_onu(onu.frame, new_card, new_pon, new_oid, onu_type, serial, is_epon=is_epon)
     if not ok2:
         # Try to re-register on old PON as rollback
-        tc.register_onu(old_frame, old_slot, old_port, old_id, onu_type, serial)
+        tc.register_onu(old_frame, old_slot, old_port, old_id, onu_type, serial, is_epon=is_epon)
         return jsonify({'success': False, 'message': f'Register on new PON failed: {msg2}. Rolled back to old PON.'})
 
     # Step 3: Re-apply name and description if set
     if onu_name or onu_desc:
         try:
             tc.configure_onu_profile(onu.frame, new_card, new_pon, new_oid,
-                                     name=onu_name, description=onu_desc)
+                                     name=onu_name, description=onu_desc, is_epon=is_epon)
         except Exception:
             pass  # Non-fatal: ONU is registered, just without name/desc
 
@@ -1051,19 +1055,20 @@ def migrate_onu_batch(olt_id):
                 continue
 
         old_frame, old_slot, old_port, old_id = onu.frame, onu.slot, onu.port, onu.onu_id
+        is_epon = (onu.card or '').lower() == 'epon'
 
         # Step 1: Deregister from old PON
-        ok1, msg1 = tc.deregister_onu(old_frame, old_slot, old_port, old_id)
+        ok1, msg1 = tc.deregister_onu(old_frame, old_slot, old_port, old_id, is_epon=is_epon)
         if not ok1:
             results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': False, 'message': f'Deregister failed: {msg1}'})
             failed += 1
             continue
 
         # Step 2: Register on new PON
-        ok2, msg2 = tc.register_onu(onu.frame, new_card, new_pon, new_oid, onu_type, serial)
+        ok2, msg2 = tc.register_onu(onu.frame, new_card, new_pon, new_oid, onu_type, serial, is_epon=is_epon)
         if not ok2:
             # Rollback: re-register on old PON
-            tc.register_onu(old_frame, old_slot, old_port, old_id, onu_type, serial)
+            tc.register_onu(old_frame, old_slot, old_port, old_id, onu_type, serial, is_epon=is_epon)
             results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': False, 'message': f'Register failed: {msg2}'})
             failed += 1
             continue
@@ -1072,7 +1077,7 @@ def migrate_onu_batch(olt_id):
         if onu_name or onu_desc:
             try:
                 tc.configure_onu_profile(onu.frame, new_card, new_pon, new_oid,
-                                         name=onu_name, description=onu_desc)
+                                         name=onu_name, description=onu_desc, is_epon=is_epon)
             except Exception:
                 pass
 
@@ -1237,20 +1242,21 @@ def onu_action(onu_id):
 
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
+    is_epon = (onu.card or '').lower() == 'epon'
 
     if action == 'reboot':
         if not current_user.has_permission('reboot_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: reboot_onu'}), 403
-        success, msg = tc.reset_onu(onu.frame, onu.slot, onu.port, onu.onu_id)
+        success, msg = tc.reset_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
     elif action == 'reset':
         if not current_user.has_permission('reboot_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: reboot_onu'}), 403
-        success, msg = tc.reset_onu(onu.frame, onu.slot, onu.port, onu.onu_id)
+        success, msg = tc.reset_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
     elif action == 'delete':
         if not current_user.has_permission('delete_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: delete_onu'}), 403
         olt_id_for_sync = onu.olt_id
-        success, msg = tc.deregister_onu(onu.frame, onu.slot, onu.port, onu.onu_id)
+        success, msg = tc.deregister_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
         if success:
             db.session.delete(onu)
             db.session.commit()
@@ -1261,7 +1267,7 @@ def onu_action(onu_id):
     elif action == 'clear-config':
         if not current_user.has_permission('clear_config_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: clear_config_onu'}), 403
-        success, msg = tc.clear_onu_config(onu.frame, onu.slot, onu.port, onu.onu_id)
+        success, msg = tc.clear_onu_config(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
         if success:
             # Clear service-related fields in DB
             onu.pppoe = ''
@@ -1272,20 +1278,20 @@ def onu_action(onu_id):
     elif action == 'disable':
         if not current_user.has_permission('disable_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: disable_onu'}), 403
-        success, msg = tc.disable_onu(onu.frame, onu.slot, onu.port, onu.onu_id)
+        success, msg = tc.disable_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
         if success:
             onu.status = 'offline'
             db.session.commit()
     elif action == 'enable':
         if not current_user.has_permission('disable_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: disable_onu'}), 403
-        success, msg = tc.enable_onu(onu.frame, onu.slot, onu.port, onu.onu_id)
+        success, msg = tc.enable_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
         if success:
             onu.status = 'online'
             db.session.commit()
     elif action == 'resync':
         success, msg = (True, 'OK')
-        data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id)
+        data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
         if data:
             if data.get('name'): onu.name = data['name']
             if data.get('description'): onu.description = data['description']
@@ -1339,7 +1345,8 @@ def onu_live_info(onu_id):
 
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
-    data = tc.get_onu_live_data(onu.frame, onu.slot, onu.port, onu.onu_id)
+    is_epon = (onu.card or '').lower() == 'epon'
+    data = tc.get_onu_live_data(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
     if data.get('error') and not data.get('equip') and not data.get('running_config', {}).get('service_ports'):
         return jsonify({'success': False, 'message': data['error']})
     return jsonify({'success': True, 'data': data})
@@ -1365,13 +1372,40 @@ def onu_get_status(onu_id):
     if not tn:
         return jsonify({'success': False, 'message': 'Telnet connection failed'})
 
-    iface = f'gpon-onu_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
+    is_epon = (onu.card or '').lower() == 'epon'
+    prefix = 'epon-onu' if is_epon else 'gpon-onu'
+    iface = f'{prefix}_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
     status_data = {
         'interface': {},
         'optical': {'up': {}, 'down': {}},
         'history': [],
         'macs': [],
     }
+
+    if is_epon:
+        # EPON: only running-config is available — no detail-info, no power attenuation
+        try:
+            raw_cfg = tc._send_command(tn, f'show running-config interface {iface}', timeout=12)
+            info = {}
+            for line in raw_cfg.split('\n'):
+                ls = line.strip()
+                if ls.startswith('property description'):
+                    desc_raw = ls.split('description', 1)[1].strip() if 'description' in ls else ''
+                    if desc_raw:
+                        parts = desc_raw.split('$$')
+                        parts = [p.strip() for p in parts if p.strip()]
+                        if len(parts) >= 1: info['Name'] = parts[0]
+                        if len(parts) >= 2: info['Description'] = parts[1]
+                elif ls.startswith('name '):
+                    info['Name'] = ls.split(' ', 1)[1] if ' ' in ls else ''
+            status_data['interface'] = info
+            tn.write('exit\n'); tn.close()
+        except Exception as e:
+            try: tn.close()
+            except: pass
+        return jsonify({'success': True, 'data': status_data})
+
+    # GPON path (unchanged)
 
     try:
         # 1. detail-info for interface info
@@ -2034,7 +2068,9 @@ def update_onu_field(onu_id):
                 tc = create_cli_collector(olt)
                 tn = tc._connect()
                 if tn:
-                    pon_if = f'gpon-olt_{onu.frame}/{onu.slot}/{onu.port}'
+                    is_epon = (onu.card or '').lower() == 'epon'
+                    olt_pfx = 'epon-olt' if is_epon else 'gpon-olt'
+                    pon_if = f'{olt_pfx}_{onu.frame}/{onu.slot}/{onu.port}'
                     tc._send_command(tn, 'end')
                     tc._send_command(tn, 'configure terminal')
                     tc._send_command(tn, f'interface {pon_if}')
@@ -2755,6 +2791,9 @@ def onu_history(onu_id):
     olt = onu.olt
     if not olt or not olt.telnet_enabled:
         return jsonify({'success': True, 'events': []})
+    # EPON ONUs don't support 'show gpon onu history' — return empty
+    if (onu.card or '').lower() == 'epon':
+        return jsonify({'success': True, 'events': []})
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
     events = tc.collect_onu_history(onu.frame, onu.slot, onu.port, onu.onu_id)
@@ -2795,7 +2834,9 @@ def onu_traffic(onu_id):
             tc = create_cli_collector(olt)
             tn = tc._connect()
             if tn:
-                iface = f'gpon-onu_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
+                is_epon = (onu.card or '').lower() == 'epon'
+                onu_pfx = 'epon-onu' if is_epon else 'gpon-onu'
+                iface = f'{onu_pfx}_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
                 output = tc._send_command(tn, f'show interface {iface}', timeout=10)
                 tn.write('exit\n')
                 tn.close()
@@ -2920,12 +2961,16 @@ def provision_unified():
     if not services:
         return jsonify({'success': False, 'message': 'At least one service required'})
 
+    # Detect EPON from pon_port prefix or explicit is_epon flag
+    pon_port = data.get('pon_port', '')
+    is_epon = data.get('is_epon', False) or 'epon-olt' in pon_port or 'epon_olt' in pon_port
+
     success, msg = tc.register_unified(
         frame=frame, slot=slot, port=port, onu_id=onu_id,
         serial=serial, onu_type=onu_type, tcont_profile=tcont_profile,
         services=services, use_veip=use_veip, traffic_profile=traffic_profile,
         wifi_config=wifi_config, tr069_config=tr069_config,
-        name=name, description=description,
+        name=name, description=description, is_epon=is_epon,
     )
 
     # Save to DB on success
@@ -2943,6 +2988,7 @@ def provision_unified():
                 name=name or 'Unnamed', description=description or '',
                 status='offline', actual_type=onu_type, onu_type=onu_type,
                 technician_id=technician_id or None,
+                card='epon' if is_epon else '',
             )
             db.session.add(onu)
             db.session.commit()
@@ -2951,7 +2997,8 @@ def provision_unified():
         _auto_sync_olt(olt_id)
         # Auto-save config to startup-config so changes persist across reboots
         _auto_write_config(olt_id)
-        log_action('onu_provision', 'onu', target=f'gpon-onu_{frame}/{slot}/{port}:{onu_id}', detail=f'Provisioned SN={serial} on {olt.name} as {onu_type}')
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
+        log_action('onu_provision', 'onu', target=f'{prefix}_{frame}/{slot}/{port}:{onu_id}', detail=f'Provisioned SN={serial} on {olt.name} as {onu_type}')
 
     return jsonify({'success': success, 'message': msg})
 
@@ -2979,39 +3026,43 @@ def pre_register_onu():
     name = data.get('name', '')
     description = data.get('description', '')
     configure = data.get('configure', True)
-    template = data.get('template', 'bridge')  # bridge|pppoe|fiberhome_veip|zte_full|zte_single|huawei_full
+    template = data.get('template', 'bridge')  # bridge|pppoe|fiberhome_veip|zte_full|zte_single|huawei_full|zte_multi
     extra = data.get('extra', {})  # Template-specific extra config
     traffic_profile = data.get('traffic_profile', '')
     if traffic_profile and 'traffic_profile' not in extra:
         extra['traffic_profile'] = traffic_profile
+    # Detect EPON from pon_port prefix or explicit is_epon flag
+    pon_port = data.get('pon_port', '')
+    is_epon = data.get('is_epon', False) or 'epon-olt' in pon_port or 'epon_olt' in pon_port
 
     if template and template != 'bridge':
         success, msg = tc.register_vendor_template(
             frame=frame, slot=slot, port=port, onu_id=onu_id,
             serial=serial, template=template, onu_type=onu_type,
             tcont_profile=tcont_profile, vlan=vlan,
-            name=name, description=description, extra=extra
+            name=name, description=description, extra=extra, is_epon=is_epon
         )
     elif configure:
         success, msg = tc.register_and_configure(
             frame=frame, slot=slot, port=port, onu_id=onu_id,
             onu_type=onu_type, serial=serial, vlan=vlan,
-            tcont_profile=tcont_profile, name=name, description=description
+            tcont_profile=tcont_profile, name=name, description=description, is_epon=is_epon
         )
     else:
         success, msg = tc.register_onu(
             frame=frame, slot=slot, port=port, onu_id=onu_id,
-            onu_type=onu_type, serial=serial, vlan=vlan
+            onu_type=onu_type, serial=serial, vlan=vlan, is_epon=is_epon
         )
         if success and (name or description):
             tc.configure_onu_profile(
                 frame=frame, slot=slot, port=port, onu_id=onu_id,
                 tcont_profile=tcont_profile, user_vlan=vlan, service_vlan=vlan,
-                name=name, description=description
+                name=name, description=description, is_epon=is_epon
             )
 
     if success:
-        log_action('onu_register', 'onu', target=f'gpon-onu_{frame}/{slot}/{port}:{onu_id}', detail=f'Registered SN={serial} on {olt.name} as {onu_type}')
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
+        log_action('onu_register', 'onu', target=f'{prefix}_{frame}/{slot}/{port}:{onu_id}', detail=f'Registered SN={serial} on {olt.name} as {onu_type}')
         # Save technician_id to the ONU record if provided
         technician_id = data.get('technician_id')
         if technician_id:
@@ -3725,7 +3776,7 @@ def get_olt_chassis(olt_id):
 
     def slot_type_for(card_type):
         ct = (card_type or '').upper()
-        if ct.startswith('GTG') or ct.startswith('GTC'):
+        if ct.startswith('GTG') or ct.startswith('GTC') or ct.startswith('ETG'):
             return 'service'
         # C320 uplink: SMXA, GICF, GISF  |  C300 uplink/control: SCXN, SCXM, SCXO, HUVQ
         if ct.startswith('SMXA') or ct in ('GICF', 'GISF', 'SMXA-A', 'SMXA-B') or ct.startswith('SCX') or ct.startswith('HUVQ'):

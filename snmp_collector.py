@@ -98,10 +98,24 @@ def poll_olt(olt, progress_cb=None, light=False):
                     })
             else:
                 onus = collector.collect_onus_light()
+            collector.close()
+
+            # EPON ONUs are invisible to SNMP — collect via Telnet if enabled
+            if olt.telnet_enabled or olt.ssh_enabled:
+                try:
+                    report(50, 'Light sync: collecting EPON ONUs via Telnet...')
+                    port = olt.telnet_port or 23
+                    tc_epon = TelnetCollector(olt.ip_address, olt.cli_username, olt.cli_password, port)
+                    epon_onus = tc_epon._collect_epon_onus_fast(olt.ip_address, olt.cli_username, olt.cli_password, port)
+                    if epon_onus:
+                        onus.extend(epon_onus)
+                        report(70, f'Light sync: +{len(epon_onus)} EPON ONUs via Telnet')
+                except Exception as e:
+                    logger.debug(f"EPON light collection: {e}")
+
             result['onus'] = onus
             result['success'] = True
             report(90, f'Light sync: {len(onus)} ONUs collected')
-            collector.close()
         except Exception as e:
             result['errors'].append(f'SNMP light: {str(e)}')
             logger.error(f"Light sync {olt.name} failed: {e}")
@@ -161,6 +175,10 @@ def poll_olt(olt, progress_cb=None, light=False):
                     onu['rx_power'] = None
                     onu['onu_rx_power'] = None
                     onu['tx_power'] = None
+                    continue
+
+                # Skip SNMP enrichment for EPON ONUs — SNMP doesn't support EPON
+                if onu.get('card_type') == 'epon':
                     continue
 
                 # Try SN match first
@@ -239,7 +257,7 @@ def poll_olt(olt, progress_cb=None, light=False):
             # Collect PON port details from GPON cards
             try:
                 report(96, 'Collecting PON port data...')
-                pon_cards = [c for c in chassis.get('cards', []) if c.get('type', '').upper().startswith('GTG')]
+                pon_cards = [c for c in chassis.get('cards', []) if c.get('type', '').upper().startswith('GTG') or c.get('type', '').upper().startswith('ETG')]
                 all_pon_ports = []
                 for card in pon_cards:
                     slot = card.get('slot', 1)

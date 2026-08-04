@@ -250,11 +250,18 @@ class TelnetCollector:
         return info
 
     def enrich_onus_via_telnet(self, onus_list):
-        """Enrich ONU list with actual type, SN, name from Telnet CLI"""
+        """Enrich ONU list with actual type, SN, name from Telnet CLI.
+        Only enriches GPON ONUs — EPON ONUs are enriched separately in _collect_epon_onus."""
         if not onus_list: return onus_list
 
+        # Skip EPON ONUs — they don't support gpon CLI commands
+        epon_onus = [o for o in onus_list if o.get('card_type') == 'epon']
+        gpon_onus = [o for o in onus_list if o.get('card_type') != 'epon']
+        if not gpon_onus:
+            return onus_list
+
         port_groups = {}
-        for onu in onus_list:
+        for onu in gpon_onus:
             key = (onu['frame'], onu['slot'], onu['port'])
             if key not in port_groups: port_groups[key] = []
             port_groups[key].append(onu)
@@ -396,24 +403,50 @@ class TelnetCollector:
 
         return onus_list
 
-    def get_onu_live_data(self, frame, slot, port, onu_id):
+    def get_onu_live_data(self, frame, slot, port, onu_id, is_epon=False):
         """
         Fetch live ONU data from OLT via Telnet in a single session.
         Returns dict with: detail, equip, running_config, raw_config, error
+        For EPON ONUs, only running-config is available (no detail-info/equip).
         """
         result = {
             'detail': {}, 'equip': {}, 'running_config': {},
             'raw_config': '', 'error': None
         }
-        onu_iface = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
+        onu_iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
         tn = self._connect()
         if not tn:
             result['error'] = 'Telnet connection failed'
             return result
 
         try:
-            # 1. show gpon onu detail-info
             import re as _re
+
+            if is_epon:
+                # EPON: only running-config is available
+                raw_cfg = self._send_command(tn, f'show running-config interface {onu_iface}', timeout=12)
+                result['raw_config'] = raw_cfg.strip()
+                # Parse service-ports from running-config
+                svcports = []
+                for line in raw_cfg.split('\n'):
+                    ls = line.strip()
+                    if ls.startswith('service-port '):
+                        parts = ls.split()
+                        sp = {'id': '', 'vport': '', 'user_vlan': '', 'vlan': ''}
+                        if len(parts) > 1: sp['id'] = parts[1]
+                        for i2, p in enumerate(parts):
+                            if p == 'vport' and i2+1 < len(parts): sp['vport'] = parts[i2+1]
+                            elif p == 'user-vlan' and i2+1 < len(parts): sp['user_vlan'] = parts[i2+1]
+                            elif p == 'vlan' and i2+1 < len(parts) and (i2 == 0 or parts[i2-1] != 'user-vlan'):
+                                sp['vlan'] = parts[i2+1]
+                        svcports.append(sp)
+                result['running_config'] = {'tconts': [], 'gemports': [], 'service_ports': svcports}
+                tn.write('exit\n'); tn.close()
+                return result
+
+            # GPON path (unchanged)
+            # 1. show gpon onu detail-info
             raw_detail = self._send_command(tn, f'show gpon onu detail-info {onu_iface}', timeout=10)
             d = {}
             history = []
@@ -494,10 +527,12 @@ class TelnetCollector:
         return result
 
 
-    def reset_onu(self, frame, slot, port, onu_id):
+    def reset_onu(self, frame, slot, port, onu_id, is_epon=False):
         """Reboot/reset an ONU via CLI — uses pon-onu-mng context + reboot command.
-        ZTE C320: configure terminal > pon-onu-mng gpon-onu_X/Y/Z:N > reboot"""
-        iface = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
+        ZTE C320: configure terminal > pon-onu-mng gpon-onu_X/Y/Z:N > reboot
+        EPON: configure terminal > pon-onu-mng epon-onu_X/Y/Z:N > reboot"""
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
+        iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
@@ -521,15 +556,17 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
-    def deregister_onu(self, frame, slot, port, onu_id):
-        """Delete/deregister an ONU from OLT - must be in interface gpon-olt context"""
-        iface = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
+    def deregister_onu(self, frame, slot, port, onu_id, is_epon=False):
+        """Delete/deregister an ONU from OLT - must be in interface gpon-olt/epon-olt context"""
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
+        iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
+        olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
             tn.write('configure terminal\n')
             tn.read_until(b'#', timeout=5)
-            tn.write(f'interface gpon-olt_{frame}/{slot}/{port}\n')
+            tn.write(f'interface {olt_prefix}_{frame}/{slot}/{port}\n')
             tn.read_until(b'#', timeout=5)
             tn.write(f'no onu {onu_id}\n')
             output = tn.read_until(b'#', timeout=15).decode('utf-8', errors='replace')
@@ -548,13 +585,14 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
-    def disable_onu(self, frame, slot, port, onu_id):
+    def disable_onu(self, frame, slot, port, onu_id, is_epon=False):
         """Disable an ONU on the OLT (admin state down)"""
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
             self._send_command(tn, 'configure terminal')
-            self._send_command(tn, f'interface gpon-onu_{frame}/{slot}/{port}:{onu_id}')
+            self._send_command(tn, f'interface {prefix}_{frame}/{slot}/{port}:{onu_id}')
             output, err = self._send_cmd_check(tn, 'shutdown')
             self._send_command(tn, 'exit')
             self._send_command(tn, 'exit')
@@ -569,13 +607,14 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
-    def enable_onu(self, frame, slot, port, onu_id):
+    def enable_onu(self, frame, slot, port, onu_id, is_epon=False):
         """Enable an ONU on the OLT (admin state up)"""
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
             self._send_command(tn, 'configure terminal')
-            self._send_command(tn, f'interface gpon-onu_{frame}/{slot}/{port}:{onu_id}')
+            self._send_command(tn, f'interface {prefix}_{frame}/{slot}/{port}:{onu_id}')
             output, err = self._send_cmd_check(tn, 'no shutdown')
             self._send_command(tn, 'exit')
             self._send_command(tn, 'exit')
@@ -590,13 +629,14 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
-    def clear_onu_config(self, frame, slot, port, onu_id):
+    def clear_onu_config(self, frame, slot, port, onu_id, is_epon=False):
         """Clear ONU configuration (remove service-ports, tcont, gemport).
 
         IMPORTANT: Only removes service configuration, NOT the ONU itself.
         Does NOT send 'shutdown' — the ONU stays registered and online.
         """
-        iface = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
+        iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
@@ -767,14 +807,15 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
-    def register_onu(self, frame, slot, port, onu_id, onu_type='ZTE-F609', serial='', vlan=100):
+    def register_onu(self, frame, slot, port, onu_id, onu_type='ZTE-F609', serial='', vlan=100, is_epon=False):
         """Pre-register a new ONU on the OLT"""
+        olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
             tn.write('configure terminal\n')
             tn.read_until(b'#', timeout=5)
-            tn.write(f'interface gpon-olt_{frame}/{slot}/{port}\n')
+            tn.write(f'interface {olt_prefix}_{frame}/{slot}/{port}\n')
             tn.read_until(b'#', timeout=5)
             cmd = f'onu {onu_id} type {onu_type} sn {serial}'
             tn.write(cmd + '\n')
@@ -794,14 +835,15 @@ class TelnetCollector:
     def configure_onu_profile(self, frame, slot, port, onu_id,
                                tcont_profile='1G', tcont_id=1, gemport_id=1,
                                user_vlan=100, service_vlan=100, service_port=1, vport=1,
-                               name='', description=''):
+                               name='', description='', is_epon=False):
         """Configure TCONT/GEM/service-port for an ONU after registration.
         Also sets name and description if provided.
         """
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
-            onu_if = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
+            onu_prefix = 'epon-onu' if is_epon else 'gpon-onu'
+            onu_if = f'{onu_prefix}_{frame}/{slot}/{port}:{onu_id}'
             service_name = f'VLAN{user_vlan:04d}'
 
             tn.write('configure terminal\n')
@@ -854,7 +896,7 @@ class TelnetCollector:
 
     def register_and_configure(self, frame, slot, port, onu_id, onu_type='All',
                                 serial='', vlan=100, tcont_profile='1G',
-                                name='', description=''):
+                                name='', description='', is_epon=False):
         """Register ONU + configure profile matching oltc320 register_onu_stepbystep().
         Uses 'type All' (universal), step-by-step with error checking, 2s sleep.
         """
@@ -862,8 +904,10 @@ class TelnetCollector:
         if not tn: return False, 'Telnet connection failed'
         try:
             service_name = f'VLAN{vlan:04d}'
-            onu_if = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
-            pon_if = f'gpon-olt_{frame}/{slot}/{port}'
+            onu_prefix = 'epon-onu' if is_epon else 'gpon-onu'
+            olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
+            onu_if = f'{onu_prefix}_{frame}/{slot}/{port}:{onu_id}'
+            pon_if = f'{olt_prefix}_{frame}/{slot}/{port}'
 
             # Step 1: end (clean state)
             self._send_command(tn, 'end')
@@ -931,7 +975,7 @@ class TelnetCollector:
                                   template='bridge', onu_type='All',
                                   tcont_profile='1G', vlan=100,
                                   name='', description='',
-                                  extra=None):
+                                  extra=None, is_epon=False):
         """Register ONU with vendor-specific service template.
         Uses step-by-step commands matching oltc320 reference.
         Templates: bridge, pppoe, fiberhome_veip, zte_full, zte_single, huawei_full, zte_multi
@@ -947,8 +991,10 @@ class TelnetCollector:
         if not tn: return False, 'Telnet connection failed'
         try:
             import time
-            onu_if = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
-            pon_if = f'gpon-olt_{frame}/{slot}/{port}'
+            onu_prefix = 'epon-onu' if is_epon else 'gpon-onu'
+            olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
+            onu_if = f'{onu_prefix}_{frame}/{slot}/{port}:{onu_id}'
+            pon_if = f'{olt_prefix}_{frame}/{slot}/{port}'
             service_name = f'VLAN{vlan:04d}'
 
             # Step 1: end + configure terminal
@@ -1555,7 +1601,7 @@ class TelnetCollector:
                          tcont_profile, services, use_veip=None,
                          traffic_profile='', wifi_config=None,
                          tr069_config=None, name='', description='',
-                         extra=None):
+                         extra=None, is_epon=False):
         """Unified ONU registration — works for all vendors.
         
         Args:
@@ -1583,8 +1629,10 @@ class TelnetCollector:
             return False, 'Telnet connection failed'
         try:
             import time
-            onu_if = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
-            pon_if = f'gpon-olt_{frame}/{slot}/{port}'
+            onu_prefix = 'epon-onu' if is_epon else 'gpon-onu'
+            olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
+            onu_if = f'{onu_prefix}_{frame}/{slot}/{port}:{onu_id}'
+            pon_if = f'{olt_prefix}_{frame}/{slot}/{port}'
 
             last_err = None
             def sc(cmd):
@@ -3194,7 +3242,8 @@ class TelnetCollector:
     def collect_pon_port_stats(self, slot):
         """Collect per-port PON port info including ONU stats and config.
         Uses:
-        - 'show gpon onu state gpon-olt_1/<slot>/<port>' for ONU counts
+        - 'show gpon onu state gpon-olt_1/<slot>/<port>' for ONU counts (GPON)
+        - 'show epon onu state epon-olt_1/<slot>/<port>' for ONU counts (EPON)
         - 'show running-config interface gpon-olt_1/<slot>/<port>' for port config
         Returns list of dicts."""
         ports = []
@@ -3203,6 +3252,7 @@ class TelnetCollector:
         try:
             output = self._send_command(tn, 'show card', timeout=10)
             port_count = 16  # default
+            is_epon_card = False
             for line in output.split('\n'):
                 line = line.strip()
                 parts = line.split()
@@ -3213,13 +3263,19 @@ class TelnetCollector:
                             pc = parts[5]
                             if pc.isdigit():
                                 port_count = int(pc)
+                            cfg_type = parts[3].upper() if len(parts) > 3 else ''
+                            if cfg_type.startswith('ETG'):
+                                is_epon_card = True
                     except (ValueError, IndexError):
                         continue
+
+            prefix = 'epon-olt' if is_epon_card else 'gpon-olt'
+            onu_cmd = 'show epon onu state' if is_epon_card else 'show gpon onu state'
 
             for port_num in range(1, port_count + 1):
                 port_info = {
                     'port_number': port_num,
-                    'port_name': f'gpon-olt_1/{slot}/{port_num}',
+                    'port_name': f'{prefix}_1/{slot}/{port_num}',
                     'admin_status': 'up',
                     'name': '',
                     'description': '',
@@ -3230,7 +3286,7 @@ class TelnetCollector:
                 }
                 try:
                     # Get ONU state counts
-                    cmd = f'show gpon onu state gpon-olt_1/{slot}/{port_num}'
+                    cmd = f'{onu_cmd} {prefix}_1/{slot}/{port_num}'
                     out = self._send_command(tn, cmd, timeout=10)
                     total = online = offline = dyinggasp = 0
                     for line in out.split('\n'):
@@ -3239,20 +3295,32 @@ class TelnetCollector:
                         # Skip summary line like "ONU Number: 39/40"
                         if line.startswith('ONU'): continue
                         parts = line.split()
-                        # ONU index lines look like "1/1/1:N" in parts[0]
                         if len(parts) < 4 or '/' not in parts[0] or ':' not in parts[0]: continue
-                        # Validate parts[0] looks like slot/port/X:id
                         import re as _re
-                        if not _re.match(r'^\d+/\d+/\d+:\d+$', parts[0]): continue
-                        total += 1
-                        phase = parts[3].lower() if len(parts) > 3 else ''
-                        if 'working' in phase:
-                            online += 1
-                        elif 'dyinggasp' in phase:
-                            dyinggasp += 1
-                            offline += 1  # count dyinggasp as offline too
+                        if is_epon_card:
+                            # EPON format: epon-onu_1/2/2:1  online  ...  MAC
+                            if not _re.match(r'^epon-onu_\d+/\d+/\d+:\d+$', parts[0]): continue
+                            total += 1
+                            status_word = parts[1].lower() if len(parts) > 1 else ''
+                            if 'online' in status_word:
+                                online += 1
+                            elif 'dying' in status_word:
+                                dyinggasp += 1
+                                offline += 1
+                            else:
+                                offline += 1
                         else:
-                            offline += 1
+                            # GPON format: 1/1/1:1  ...  ready
+                            if not _re.match(r'^\d+/\d+/\d+:\d+$', parts[0]): continue
+                            total += 1
+                            phase = parts[3].lower() if len(parts) > 3 else ''
+                            if 'working' in phase:
+                                online += 1
+                            elif 'dyinggasp' in phase:
+                                dyinggasp += 1
+                                offline += 1
+                            else:
+                                offline += 1
                     port_info['onu_count'] = total
                     port_info['onu_online'] = online
                     port_info['onu_offline'] = offline
@@ -3261,7 +3329,7 @@ class TelnetCollector:
 
                 try:
                     # Get port config
-                    cmd = f'show running-config interface gpon-olt_1/{slot}/{port_num}'
+                    cmd = f'show running-config interface {prefix}_1/{slot}/{port_num}'
                     out = self._send_command(tn, cmd, timeout=10)
                     if '%Error' not in out and len(out.strip()) > 20:
                         for line in out.split('\n'):
@@ -3283,7 +3351,7 @@ class TelnetCollector:
 
                 # Get optical module info for this PON port
                 try:
-                    pon_name = f'gpon-olt_1/{slot}/{port_num}'
+                    pon_name = f'{prefix}_1/{slot}/{port_num}'
                     opt_out = self._send_command(tn, f'show interface optical-module-info {pon_name}', timeout=10)
                     if '%Error' not in opt_out and 'Optical module' in opt_out:
                         def _clean_pon_val(v):
@@ -3407,7 +3475,7 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
-    def collect_onu_detail(self, frame, slot, port, onu_id):
+    def collect_onu_detail(self, frame, slot, port, onu_id, is_epon=False):
         """Collect ALL ONU data using ZTE C320 Telnet commands.
 
         Key discovery: ZTE C320 stores ONU config in TWO sections of 'show running-config':
@@ -3416,13 +3484,35 @@ class TelnetCollector:
              eth_0/N vlan mode, wifi_0/N vlan mode, tr069-mgmt
 
         R-Config reads BOTH sections. We must do the same.
+        For EPON ONUs, only running-config is available (no detail-info/equip).
         """
         result = {}
         tn = self._connect()
         if not tn: return result
         try:
-            iface = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
-            olt_iface = f'gpon-olt_{frame}/{slot}/{port}'
+            prefix = 'epon-onu' if is_epon else 'gpon-onu'
+            olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
+            iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
+            olt_iface = f'{olt_prefix}_{frame}/{slot}/{port}'
+
+            if is_epon:
+                # EPON: only running-config is available — parse name/desc/service-port
+                cfg = self._send_command(tn, f'show running-config interface {iface}', timeout=12)
+                result['raw_config'] = cfg.strip()
+                for line in cfg.split('\n'):
+                    ls = line.strip()
+                    if ls.startswith('property description'):
+                        desc_raw = ls.split('description', 1)[1].strip() if 'description' in ls else ''
+                        if desc_raw:
+                            parts = desc_raw.split('$$')
+                            parts = [p.strip() for p in parts if p.strip()]
+                            if len(parts) >= 2:
+                                result['name'] = parts[0]
+                                result['description'] = parts[1]
+                            elif len(parts) == 1:
+                                result['name'] = parts[0]
+                tn.write('exit\n'); tn.close()
+                return result
 
             # ── 1. detail-info: name, status, distance, power, history ──
             output = self._send_command(tn, f'show gpon onu detail-info {iface}', timeout=15)
@@ -4383,6 +4473,33 @@ class TelnetCollector:
                                 'model': model if not _re.match(r'^[A-Z]{4}[0-9A-Fa-f]+$', model) else '',
                             })
 
+                # Format 1b (EPON): "epon-olt_1/2/1    F670LV9.0    ZTEGDC79F447    GDC79F447"
+                elif 'epon-olt' in ll or 'epon_olt' in ll:
+                    match = _re.search(r'epon[_-]olt[_-](\d+/\d+/\d+)\s+(\S+)\s+(\S+)', line)
+                    if match:
+                        pon_port = match.group(1)
+                        model_or_sn = match.group(2)
+                        sn_or_model = match.group(3)
+                        sn_match = _re.match(r'^[A-Z]{4}[0-9A-Fa-f]{4,}', model_or_sn)
+                        if sn_match:
+                            sn = model_or_sn
+                            model = sn_or_model
+                        else:
+                            sn = sn_or_model
+                            model = model_or_sn
+                        # EPON ONUs may use MAC address as SN (no vendor prefix)
+                        if not sn_match and len(model_or_sn) == 12 and _re.match(r'^[0-9A-Fa-f]{12}$', model_or_sn):
+                            sn = model_or_sn
+                            model = sn_or_model
+                        if sn and len(sn) >= 8:
+                            onus.append({
+                                'pon_port': pon_port,
+                                'sn': sn,
+                                'vendor': detect_vendor_from_sn(sn) if _re.match(r'^[A-Z]{4}', sn) else 'Unknown',
+                                'model': model if not _re.match(r'^[A-Z]{4}[0-9A-Fa-f]+$', model) else '',
+                                'is_epon': True,
+                            })
+
                 # Format 2: "gpon-onu_1/1/5:1  ZTEGDC79F447  unknown" (show gpon onu uncfg)
                 elif 'gpon-onu' in ll or 'gpon_onu' in ll:
                     parts = line.split()
@@ -4399,6 +4516,26 @@ class TelnetCollector:
                                     'vendor': detect_vendor_from_sn(sn),
                                     'model': '',
                                     'onu_id': onu_id_val,
+                                })
+
+                # Format 2b: "epon-onu_1/2/1:1  ZTEGDC79F447  unknown" (EPON uncfg)
+                elif 'epon-onu' in ll or 'epon_onu' in ll:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        onu_match = _re.search(r'epon-onu_(\d+/\d+/\d+):(\d+)', parts[0])
+                        if onu_match:
+                            pon_port = onu_match.group(1)
+                            onu_id_val = int(onu_match.group(2))
+                            sn = parts[1] if len(parts) > 1 else ''
+                            # EPON may use MAC as SN (12 hex chars)
+                            if sn and len(sn) >= 8:
+                                onus.append({
+                                    'pon_port': pon_port,
+                                    'sn': sn,
+                                    'vendor': detect_vendor_from_sn(sn) if _re.match(r'^[A-Z]{4}', sn) else 'Unknown',
+                                    'model': '',
+                                    'onu_id': onu_id_val,
+                                    'is_epon': True,
                                 })
 
                 # Format 3: Table with pipes
@@ -4473,11 +4610,13 @@ class TelnetCollector:
             return onus
 
         try:
-            # Step 1: Discover GPON card slots from 'show card'
+            # Step 1: Discover GPON and EPON card slots from 'show card'
             # Format: Rack Shelf Slot CfgType RealType Port HardVer SoftVer Status
-            # Example: 1 1 1 GTGH GTGHG 16 V1.0.0 V2.1.0 INSERVICE
+            # Example: 1 1 1 GTGO GTGOG 8 V1.0.0 V2.1.0 INSERVICE
+            #          1 1 2 ETGO ETGOD 8 V1.0.0 V2.1.0 INSERVICE
             output = self._send_command(tn, 'show card')
             gpon_cards = []
+            epon_cards = []
             for line in output.split('\n'):
                 line = line.strip()
                 if not line or line.startswith('-') or line.startswith('Rack') or line.startswith('Slot'):
@@ -4489,10 +4628,13 @@ class TelnetCollector:
                         shelf = int(parts[1])
                         slot = int(parts[2])
                         cfg_type = parts[3]
-                        # GPON card types: GTGH, GTGHG, GTGO, etc.
+                        port_count = int(parts[5]) if parts[5].isdigit() else 16
+                        # GPON card types: GTGH, GTGHG, GTGO, GTGOG, etc.
                         if cfg_type.upper().startswith('GTG'):
-                            port_count = int(parts[5]) if parts[5].isdigit() else 16
                             gpon_cards.append({'frame': rack, 'slot': slot, 'ports': port_count})
+                        # EPON card types: ETGO, ETGOD, etc.
+                        elif cfg_type.upper().startswith('ETG'):
+                            epon_cards.append({'frame': rack, 'slot': slot, 'ports': port_count})
                     except (ValueError, IndexError):
                         continue
 
@@ -4502,6 +4644,7 @@ class TelnetCollector:
                 for port in range(1, card['ports'] + 1):
                     pon_ports.append((card['frame'], card['slot'], port))
             logger.info(f"  Found {len(gpon_cards)} GPON cards, {len(pon_ports)} PON ports")
+            logger.info(f"  Found {len(epon_cards)} EPON cards")
 
             # Step 2: Get baseinfo (SN + onu_id) per port
             onu_list = []
@@ -4680,6 +4823,12 @@ class TelnetCollector:
                     if vendor and vendor != 'Unknown':
                         onu['actual_type'] = vendor
 
+            # Step 6: Collect EPON ONUs (if any EPON cards exist)
+            if epon_cards:
+                epon_onus = self._collect_epon_onus(tn, epon_cards)
+                onu_list.extend(epon_onus)
+                logger.info(f"  EPON: collected {len(epon_onus)} ONUs")
+
             onus = onu_list
             tn.write('exit\n')
             tn.close()
@@ -4689,6 +4838,191 @@ class TelnetCollector:
             except: pass
 
         return onus
+
+    def _collect_epon_onus(self, tn, epon_cards):
+        """Collect EPON ONUs via 'show epon onu state' + running-config.
+        EPON ONUs use MAC address instead of serial number.
+        No RX/TX power or distance available via CLI for EPON."""
+        epon_onus = []
+
+        # Step 1: Get all EPON ONU states in one command
+        # Output format:
+        # OnuIndex               OnlineStatus  OamStatus   RegMac
+        # epon-onu_1/2/2:1       Online       complete     543e.6496.f469
+        try:
+            state_output = self._send_command(tn, 'show epon onu state', timeout=20)
+        except Exception as e:
+            logger.debug(f"epon onu state failed: {e}")
+            return epon_onus
+
+        # Parse state output
+        for line in state_output.split('\n'):
+            line = line.strip()
+            if not line or line.startswith('---') or line.startswith('OnuIndex') or line.startswith('ONU Number'):
+                continue
+            # epon-onu_1/2/2:1       Online       complete     543e.6496.f469
+            m = re.match(r'epon-onu_(\d+)/(\d+)/(\d+):(\d+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
+            if m:
+                frame = int(m.group(1))
+                slot = int(m.group(2))
+                port = int(m.group(3))
+                onu_id = int(m.group(4))
+                online_status = m.group(5).lower()
+                reg_mac = m.group(7)
+
+                # Map status
+                if 'online' in online_status:
+                    status = 'online'
+                elif 'power' in online_status or 'off' in online_status:
+                    status = 'offline'
+                elif 'los' in online_status:
+                    status = 'los'
+                elif 'dying' in online_status:
+                    status = 'dyinggasp'
+                else:
+                    status = 'offline'
+
+                # Use MAC as serial_number substitute (EPON doesn't have SN)
+                # Format: remove dots, uppercase → e.g. 543E6496F469
+                mac_clean = reg_mac.replace('.', '').upper() if reg_mac and reg_mac != '0000.0000.0000' else ''
+
+                epon_onus.append({
+                    'frame': frame, 'slot': slot, 'port': port,
+                    'onu_id': onu_id,
+                    'onu_index': frame * 100000 + slot * 10000 + port * 100 + onu_id,
+                    'serial_number': mac_clean,
+                    'name': '', 'description': '', 'pppoe': '',
+                    'status': status, 'actual_type': '',
+                    'rx_power': None, 'tx_power': None, 'distance': None,
+                    'last_dereg_reason': '', 'oper_state': 0, 'reg_status': 0,
+                    'card_type': 'epon',
+                })
+
+        if not epon_onus:
+            return epon_onus
+
+        # Step 2: Get name/description from running-config per ONU
+        # show running-config interface epon-onu_1/2/2:1
+        # Output:
+        # interface epon-onu_1/2/2:1
+        #   property description $$Sienny$$Jl. Cepaka
+        #   ems-autocfg-request disable
+        #   sla-profile EPON vport 1
+        #   encrypt direction downstream  enable  vport 1
+        #   service-port 1 vport 1 user-vlan 110 vlan 110
+        for onu in epon_onus:
+            iface = f"epon-onu_{onu['frame']}/{onu['slot']}/{onu['port']}:{onu['onu_id']}"
+            try:
+                cfg_out = self._send_command(tn, f'show running-config interface {iface}', timeout=8)
+                if cfg_out and '%Error' not in cfg_out:
+                    for line in cfg_out.split('\n'):
+                        ls = line.strip()
+                        if ls.startswith('property description'):
+                            # property description $$Name$$Description
+                            desc_raw = ls.split('description', 1)[1].strip() if 'description' in ls else ''
+                            if desc_raw:
+                                # ZTE uses $$ separator: $$Name$$Description
+                                parts = desc_raw.split('$$')
+                                parts = [p.strip() for p in parts if p.strip()]
+                                if len(parts) >= 2:
+                                    onu['name'] = parts[0]
+                                    onu['description'] = parts[1]
+                                elif len(parts) == 1:
+                                    onu['name'] = parts[0]
+                        elif ls.startswith('service-port') and 'vlan' in ls:
+                            # Extract VLAN for reference
+                            vm = re.search(r'vlan\s+(\d+)', ls)
+                            if vm and not onu.get('vlan'):
+                                onu['vlan'] = int(vm.group(1))
+            except Exception as e:
+                logger.debug(f"epon running-config {iface}: {e}")
+
+        # Step 3: Detect vendor from MAC OUI prefix
+        for onu in epon_onus:
+            if not onu.get('actual_type') and onu.get('serial_number'):
+                mac = onu['serial_number']
+                # Common OUI prefixes
+                oui_map = {
+                    '543E64': 'ZTE',
+                    '002FD9': 'ZTE',
+                    'EC6CB5': 'ZTE',
+                    '001141': 'ZTE',
+                    '00D48F': 'ZTE',
+                    'B03055': 'ZTE',
+                    '688B0F': 'ZTE',
+                    '6CD2B2': 'ZTE',
+                    '442295': 'ZTE',
+                    '74B57E': 'ZTE',
+                    '802278': 'ZTE',
+                    '28BF89': 'ZTE',
+                    '1C784E': 'ZTE',
+                    'A09B12': 'ZTE',
+                    'B05365': 'ZTE',
+                    'FC8E5B': 'ZTE',
+                    'B0B194': 'ZTE',
+                    '6458AD': 'ZTE',
+                }
+                oui = mac[:6].upper()
+                if oui in oui_map:
+                    onu['actual_type'] = oui_map[oui]
+
+        return epon_onus
+
+    def _collect_epon_onus_fast(self, ip=None, username=None, password=None, port=None):
+        """Lightweight EPON ONU collection — only 'show epon onu state', no running-config.
+        Used by light sync to get EPON ONU status without slow per-ONU Telnet calls.
+        Can be called standalone (creates own connection) or reuse existing."""
+        epon_onus = []
+        if ip:
+            tc = TelnetCollector(ip, username, password, port)
+        else:
+            tc = self
+        tn = tc._connect()
+        if not tn:
+            return epon_onus
+        try:
+            state_output = tc._send_command(tn, 'show epon onu state', timeout=20)
+            for line in state_output.split('\n'):
+                line = line.strip()
+                if not line or line.startswith('---') or line.startswith('OnuIndex') or line.startswith('ONU Number'):
+                    continue
+                m = re.match(r'epon-onu_(\d+)/(\d+)/(\d+):(\d+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
+                if m:
+                    frame = int(m.group(1))
+                    slot = int(m.group(2))
+                    port = int(m.group(3))
+                    onu_id = int(m.group(4))
+                    online_status = m.group(5).lower()
+                    reg_mac = m.group(7)
+                    if 'online' in online_status:
+                        status = 'online'
+                    elif 'power' in online_status or 'off' in online_status:
+                        status = 'offline'
+                    elif 'los' in online_status:
+                        status = 'los'
+                    elif 'dying' in online_status:
+                        status = 'dyinggasp'
+                    else:
+                        status = 'offline'
+                    mac_clean = reg_mac.replace('.', '').upper() if reg_mac and reg_mac != '0000.0000.0000' else ''
+                    epon_onus.append({
+                        'frame': frame, 'slot': slot, 'port': port,
+                        'onu_id': onu_id,
+                        'onu_index': frame * 100000 + slot * 10000 + port * 100 + onu_id,
+                        'serial_number': mac_clean,
+                        'name': '', 'description': '', 'pppoe': '',
+                        'status': status, 'actual_type': '',
+                        'rx_power': None, 'tx_power': None, 'distance': None,
+                        'last_dereg_reason': '', 'oper_state': 0, 'reg_status': 0,
+                        'card_type': 'epon',
+                    })
+            tn.write('exit\n')
+            tn.close()
+        except Exception as e:
+            logger.debug(f"_collect_epon_onus_fast: {e}")
+            try: tn.close()
+            except: pass
+        return epon_onus
 
     def _parse_show_card(self, output):
         cards = []

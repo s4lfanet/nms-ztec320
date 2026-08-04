@@ -315,6 +315,7 @@ def save_sync_result(olt, result, sync, light=False):
         onu.serial_number = onu_data.get('serial_number', '')
         onu.name = onu_data.get('name', '') or onu_data.get('description', '')
         onu.description = onu_data.get('description', '')
+        onu.card = onu_data.get('card_type', '') or onu.card or ''
         _prev_status = onu.status
         onu.status = onu_data.get('status', 'offline')
         onu.oper_state = onu_data.get('oper_state', 0)

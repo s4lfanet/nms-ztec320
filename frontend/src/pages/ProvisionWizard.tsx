@@ -20,6 +20,7 @@ interface UnconfiguredOnu {
   vendor?: string;
   onu_id?: number;
   matched_type?: string;
+  is_epon?: boolean;
 }
 
 interface ServiceEntry {
@@ -114,8 +115,11 @@ function generateScript(d: WizardState): string {
   const s = match ? match[2] : '1';
   const p = match ? match[3] : '1';
   const oid = onu.onu_id || 1;
-  const onuIf = `gpon-onu_${f}/${s}/${p}:${oid}`;
-  const ponIf = `gpon-olt_${f}/${s}/${p}`;
+  const isEpon = onu.pon_port.includes('epon-olt') || onu.pon_port.includes('epon_olt') || onu.is_epon === true;
+  const onuPfx = isEpon ? 'epon-onu' : 'gpon-onu';
+  const oltPfx = isEpon ? 'epon-olt' : 'gpon-olt';
+  const onuIf = `${onuPfx}_${f}/${s}/${p}:${oid}`;
+  const ponIf = `${oltPfx}_${f}/${s}/${p}`;
 
   // Auto-detect VEIP
   const isZte = (onu.sn || '').toUpperCase().startsWith('ZTEG');
@@ -431,6 +435,8 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             wifi_config: isZte && (data.wifi.ssids || []).some(s => s.name) ? { ssids: data.wifi.ssids } : null,
             tr069_config: data.tr069.enabled ? data.tr069 : null,
             technician_id: data.technicianId,
+            pon_port: onu.pon_port,
+            is_epon: onu.pon_port.includes('epon-olt') || onu.pon_port.includes('epon_olt'),
           }),
         });
         const d = await r.json();

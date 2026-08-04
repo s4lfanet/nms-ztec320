@@ -16,6 +16,7 @@ interface UnconfiguredOnu {
   model?: string;
   vendor?: string;
   onu_id?: number;
+  is_epon?: boolean;
 }
 
 interface WizardData {
@@ -49,8 +50,11 @@ function generateRegisterScript(d: WizardData): string {
   const slot = match ? match[2] : '1';
   const port = match ? match[3] : '1';
   const onuId = onu.onu_id || 1;
-  const onuIf = `gpon-onu_${frame}/${slot}/${port}:${onuId}`;
-  const oltIf = `gpon-olt_${frame}/${slot}/${port}`;
+  const isEpon = onu.pon_port.includes('epon-olt') || onu.pon_port.includes('epon_olt') || onu.is_epon === true;
+  const onuPfx = isEpon ? 'epon-onu' : 'gpon-onu';
+  const oltPfx = isEpon ? 'epon-olt' : 'gpon-olt';
+  const onuIf = `${onuPfx}_${frame}/${slot}/${port}:${onuId}`;
+  const oltIf = `${oltPfx}_${frame}/${slot}/${port}`;
   const vlan = d.vlan;
   const svcName = `VLAN${String(vlan).padStart(4, '0')}`;
   const e = d.extra;
@@ -512,6 +516,8 @@ export function RegisterWizard() {
             description: data.description, configure: data.configure,
             template: data.template, extra: extraToSend,
             technician_id: data.technicianId,
+            pon_port: onu.pon_port,
+            is_epon: onu.pon_port.includes('epon-olt') || onu.pon_port.includes('epon_olt'),
           }),
         });
         const d = await r.json();

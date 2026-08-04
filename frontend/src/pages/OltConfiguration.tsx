@@ -96,13 +96,14 @@ export function OltConfiguration() {
       {(() => {
         const cards = (olt as Record<string, unknown>).cards as Array<Record<string, unknown>> || [];
         const gponCount = cards.filter(c => String(c.card_type || '').toUpperCase().startsWith('GTG')).length;
+        const eponCount = cards.filter(c => String(c.card_type || '').toUpperCase().startsWith('ETG')).length;
         const fans = (olt as Record<string, unknown>).fans as Array<Record<string, unknown>> || [];
         const uplinkCount = Number((olt as Record<string, unknown>).uplink_count || 0);
         return (
           <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2 md:gap-3">
             <MiniStat label="Uplink" value={uplinkCount} />
             <MiniStat label="GPON" value={gponCount} />
-            <MiniStat label="EPON" value="0" />
+            <MiniStat label="EPON" value={eponCount} />
             <MiniStat label="Fan" value={fans.length} />
             <MiniStat label="Total" value={olt.total_onu} />
             <MiniStat label="Online" value={olt.online_onu} color="text-success" />
