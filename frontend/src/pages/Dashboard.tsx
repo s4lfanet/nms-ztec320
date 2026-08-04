@@ -224,6 +224,7 @@ export function Dashboard() {
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <TutorialBanner
+            guideId="dashboard"
             title="Panduan Dashboard"
             steps={[
               { title: 'Statistik ONU', content: <><p>Kartu statistik menampilkan total ONU per status: <strong>Online</strong>, <strong>Offline</strong>, <strong>DyingGasp</strong>, <strong>LOS</strong> (Loss of Signal), dan <strong>Total</strong>.</p><p className="text-xs text-tx3 mt-1">Klik kartu untuk filter ONU berdasarkan status di halaman All ONUs.</p></> },

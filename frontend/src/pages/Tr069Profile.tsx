@@ -66,6 +66,7 @@ export default function Tr069Profile() {
         </div>
         <div className="flex items-center gap-2">
           <TutorialBanner
+            guideId="tr069"
             title="Panduan TR069 Profile"
             steps={[
               { title: 'Create Profile', content: <><p>Buat TR069 profile untuk ACS (Auto Configuration Server) seperti GenieACS. Setiap profile berisi: ACS URL, username, password, VLAN, dan VLAN mode.</p><p className="text-xs text-tx3 mt-1">Profile bisa di-assign ke default OLT tertentu untuk auto-fill saat provisioning.</p></> },

@@ -33,6 +33,7 @@ export function AlertSettings() {
           <p className="text-tx2 text-xs md:text-sm mt-1">{isSuperAdmin ? 'Configure WA Native notifications for tenants & cron job monitoring' : 'Configure monitoring rules and notification channels'}</p>
         </div>
         <TutorialBanner
+          guideId="alert-settings"
           title="Panduan Alert Settings"
           steps={[
             { title: 'Alert Rules', content: <><p>Konfigurasi rule monitoring ONU: ONU Offline, DyingGasp, LOS, RX Power Critical, OLT Offline, OLT High Temperature, OLT CPU High.</p><p className="text-xs text-tx3 mt-1">Toggle enable/disable per rule. Set threshold untuk RX power (dBm), temperature (°C), dan CPU (%).</p></> },

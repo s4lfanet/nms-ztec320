@@ -114,6 +114,7 @@ export function Customization() {
           <p className="text-tx2 text-xs md:text-sm mt-1">All ONUs Custom Page</p>
         </div>
         <TutorialBanner
+          guideId="customization"
           title="Panduan Customization"
           steps={[
             { title: 'Desktop Columns', content: <><p>Atur visibilitas dan urutan kolom tabel All ONUs untuk tampilan desktop. Toggle eye icon untuk show/hide kolom. Arrow up/down untuk reorder.</p><p className="text-xs text-tx3 mt-1">Preview tabel di bawah menampilkan hasil perubahan secara real-time.</p></> },

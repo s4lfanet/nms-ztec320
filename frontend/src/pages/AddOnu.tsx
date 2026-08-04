@@ -254,6 +254,7 @@ export function AddOnu() {
         </div>
         <div className="ml-auto">
           <TutorialBanner
+            guideId="provision-wizard"
             title="Panduan Provisioning ONU"
             prerequisites={
               <>

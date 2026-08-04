@@ -161,6 +161,7 @@ export function FtthInfrastructure() {
             <p className="text-tx2 text-xs md:text-sm mt-1">Manage OTB/ODF → ODC → ODP → ONU chain with map coordinates</p>
           </div>
           <TutorialBanner
+            guideId="ftth"
             title="Panduan FTTH Infrastructure"
             steps={[
               { title: 'Overview', content: <><p>Statistik infrastruktur FTTH: total OTB/ODF, ODC, ODP, ONU, port utilization, dan distribusi per OLT. Auto-refresh setiap 10 detik.</p></> },

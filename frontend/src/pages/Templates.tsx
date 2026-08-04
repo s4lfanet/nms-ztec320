@@ -128,6 +128,7 @@ export default function Templates() {
         </div>
         <div className="flex items-center gap-2">
           <TutorialBanner
+            guideId="templates"
             title="Panduan Templates"
             steps={[
               { title: 'Pilih Template', content: <><p>Pilih template konfigurasi ONU sesuai jenis ONU dan kebutuhan. Klik kartu template untuk melihat detail.</p><p className="text-xs text-tx3 mt-1">Setiap template menampilkan: features, service types, WAN modes, dan SSID support.</p></> },

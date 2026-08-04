@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Radio,
-  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity
+  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity, BookOpen
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../stores/auth';
@@ -56,6 +56,7 @@ const navItems: NavItem[] = [
       { label: 'Alert History', path: '/dashboard/alerts/history' },
     ],
   },
+  { label: 'Panduan', icon: <BookOpen size={20} />, path: '/dashboard/guide' },
   { label: 'Activity Log', icon: <ScrollText size={20} />, path: '/dashboard/logs', permission: 'manage_users' },
 ];
 

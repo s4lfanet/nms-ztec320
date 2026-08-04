@@ -60,6 +60,13 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Technician assignment untuk ONU
 - ONU custom columns
 
+### Centralized Guide System
+- **Panduan page** (`/dashboard/guide`): Pusat panduan penggunaan dengan search dan category filter
+- 17 guides terorganisir dalam 7 kategori (Dashboard, ONU Management, Templates, Traffic, Infrastructure, System, Activity)
+- Accordion UI dengan rich text (bold), prerequisites, dan tips per guide
+- `TutorialBanner` di setiap halaman terhubung ke centralized data via `guideId` — single source of truth
+- Quick-access "Panduan" link button di TutorialBanner untuk navigasi ke guide center
+
 ### WebSocket Real-time
 - Sync progress broadcast per OLT
 - ONU status change notifications
@@ -131,7 +138,8 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ├── frontend/              # React SPA
 │   ├── src/
 │   │   ├── pages/         # Dashboard, AllOnus, ViewOnu, Settings, Customization, etc.
-│   │   ├── components/    # Rack diagrams, UI components, layout
+│   │   ├── components/    # Rack diagrams, UI components, layout, TutorialBanner
+│   │   ├── data/          # Centralized guide data (guides.ts)
 │   │   ├── hooks/         # useRackData, useRackMetrics, etc.
 │   │   ├── stores/        # Zustand auth store
 │   │   ├── types/         # TypeScript interfaces (rack.ts, etc.)

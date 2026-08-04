@@ -60,6 +60,7 @@ export function ActionLogs() {
           <p className="text-tx2 text-xs md:text-sm mt-1">Audit trail of all user activities</p>
         </div>
         <TutorialBanner
+          guideId="action-logs"
           title="Panduan Action Logs"
           steps={[
             { title: 'Filter & Search', content: <><p>Filter log by kategori (auth, olt, onu, user, role, general) dan search by keyword. Log entries menampilkan: timestamp, user, action, target, dan detail.</p><p className="text-xs text-tx3 mt-1">Server-side pagination — 50 entries per halaman. Klik page number untuk navigasi.</p></> },

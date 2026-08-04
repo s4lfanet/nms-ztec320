@@ -205,6 +205,7 @@ export function AllOnus() {
         </div>
         <div className="flex items-center gap-2">
           <TutorialBanner
+            guideId="all-onus"
             title="Panduan All ONUs"
             steps={[
               { title: 'Stat Cards & Filter', content: <><p>Kartu statistik di atas tabel menampilkan jumlah ONU per kategori: <strong>All</strong>, <strong>Online</strong>, <strong>Offline</strong>, <strong>DyingGasp</strong>, <strong>LOS</strong>. Klik kartu untuk filter tabel.</p><p className="text-xs text-tx3 mt-1">Signal cards menampilkan distribusi RX power berdasarkan color range yang dikonfigurasi di Customization.</p></> },
