@@ -4966,55 +4966,31 @@ class TelnetCollector:
                 if oui in oui_map:
                     onu['actual_type'] = oui_map[oui]
 
-        # Step 4: Collect RX/TX power and distance for online EPON ONUs
-        # ZTE C320 EPON supports:
-        #   'show epon onu optical-info epon-onu_X/Y/Z:N'
-        #   'show epon onu distance epon-onu_X/Y/Z:N'
+        # Step 4: Collect RX/TX power for online EPON ONUs
+        # ZTE C320 EPON supports 'show pon power attenuation epon-onu_X/Y/Z:N'
+        # Same output format as GPON:
+        #   up    Rx :-20.915(dbm)   Tx:1.279(dbm)    Attenuation:22.194(dB)
+        #   down  Tx :7.547(dbm)     Rx:-15.590(dbm)  Attenuation:23.137(dB)
         for onu in epon_onus:
             if onu['status'] != 'online':
                 continue
             iface = f"epon-onu_{onu['frame']}/{onu['slot']}/{onu['port']}:{onu['onu_id']}"
             try:
-                opt_out = self._send_command(tn, f'show epon onu optical-info {iface}', timeout=10)
-                if opt_out and '%Error' not in opt_out and 'Invalid' not in opt_out:
-                    for line in opt_out.split('\n'):
+                pw_out = self._send_command(tn, f'show pon power attenuation {iface}', timeout=8)
+                if pw_out and '%Error' not in pw_out and 'Invalid' not in pw_out:
+                    for line in pw_out.split('\n'):
                         ls = line.strip()
                         ll = ls.lower()
-                        if 'rxpower' in ll or 'rx power' in ll or 'rx-power' in ll:
-                            rx_m = re.search(r'[-]?\d+\.?\d*', ls.split(':', 1)[-1] if ':' in ls else ls)
-                            if rx_m:
-                                onu['rx_power'] = float(rx_m.group(0))
-                        elif 'txpower' in ll or 'tx power' in ll or 'tx-power' in ll:
-                            tx_m = re.search(r'[-]?\d+\.?\d*', ls.split(':', 1)[-1] if ':' in ls else ls)
-                            if tx_m:
-                                onu['tx_power'] = float(tx_m.group(0))
-                        elif 'temperature' in ll:
-                            t_m = re.search(r'[-]?\d+\.?\d*', ls.split(':', 1)[-1] if ':' in ls else ls)
-                            if t_m:
-                                onu['temperature'] = float(t_m.group(0))
-                        elif 'voltage' in ll or 'supply-vol' in ll:
-                            v_m = re.search(r'[-]?\d+\.?\d*', ls.split(':', 1)[-1] if ':' in ls else ls)
-                            if v_m:
-                                onu['voltage'] = float(v_m.group(0))
-                        elif 'bias' in ll:
-                            b_m = re.search(r'[-]?\d+\.?\d*', ls.split(':', 1)[-1] if ':' in ls else ls)
-                            if b_m:
-                                onu['bias_current'] = float(b_m.group(0))
+                        if ll.startswith('up'):
+                            rx_m = re.search(r'Rx\s*:\s*([-]?\d+\.?\d*)', ls)
+                            tx_m = re.search(r'Tx\s*:\s*([-]?\d+\.?\d*)', ls)
+                            if rx_m: onu['rx_power'] = float(rx_m.group(1))    # OLT RX upstream
+                            if tx_m: onu['tx_power'] = float(tx_m.group(1))    # ONU TX upstream
+                        elif ll.startswith('down'):
+                            rx_m = re.search(r'Rx\s*:\s*([-]?\d+\.?\d*)', ls)
+                            if rx_m: onu['onu_rx_power'] = float(rx_m.group(1))  # ONU RX downstream
             except Exception as e:
-                logger.debug(f"epon optical-info {iface}: {e}")
-
-            try:
-                dist_out = self._send_command(tn, f'show epon onu distance {iface}', timeout=10)
-                if dist_out and '%Error' not in dist_out and 'Invalid' not in dist_out:
-                    dm = re.search(r'(\d+)\s*(m|meter|km)?', dist_out)
-                    if dm:
-                        val = int(dm.group(1))
-                        unit = (dm.group(2) or '').lower()
-                        if unit == 'km':
-                            val = val * 1000
-                        onu['distance'] = val
-            except Exception as e:
-                logger.debug(f"epon distance {iface}: {e}")
+                logger.debug(f"epon power attenuation {iface}: {e}")
 
         return epon_onus
 
