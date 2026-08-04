@@ -546,7 +546,7 @@ function SlotRow({ slot, onSelectPort }: { slot: ChassisSlot; onSelectPort: (por
             })}
           </div>
         ) : (
-          /* GPON ports — LED indicator boxes with badges */
+          /* PON ports (GPON + EPON) — LED indicator boxes with badges */
           <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap">
             {slot.ports.filter(p => p.port !== 0).map((port) => {
               const hasOnu = port.hasOnus && port.onuCount > 0;
@@ -680,9 +680,8 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
     for (const slot of data.chassis) {
       if (slot.type === 'service') {
         for (const port of slot.ports) {
-          if (port.hasOnus) {
-            portStats[`${slot.index}/${port.port}`] = port;
-          }
+          if (port.port === 0) continue;
+          portStats[`${slot.index}/${port.port}`] = port;
         }
       }
     }
@@ -858,28 +857,39 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
                 const total = port.onuCount;
                 const online = port.onlineCount;
                 const pct = total > 0 ? (online / total) * 100 : 0;
+                const isEmpty = total === 0;
                 return (
-                  <div key={key} className="border border-brd rounded-lg p-2.5">
+                  <div key={key} className={cn('border rounded-lg p-2.5', isEmpty ? 'border-brd opacity-60' : 'border-brd')}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-mono text-xs font-semibold text-tx2">PON {key}</span>
-                      <span className={cn('text-[10px] font-bold',
-                        pct === 100 ? 'text-success' : pct === 0 ? 'text-danger' : 'text-warning')}>
-                        {online}/{total}
-                      </span>
+                      {isEmpty ? (
+                        <span className="text-[10px] text-tx3">—</span>
+                      ) : (
+                        <span className={cn('text-[10px] font-bold',
+                          pct === 100 ? 'text-success' : pct === 0 ? 'text-danger' : 'text-warning')}>
+                          {online}/{total}
+                        </span>
+                      )}
                     </div>
-                    <div className="w-full bg-glass rounded-full h-1.5 mb-1 overflow-hidden">
-                      <div className={cn('h-1.5 rounded-full transition-all',
-                        pct === 100 ? 'bg-success' : pct === 0 ? 'bg-danger' : 'bg-warning')}
-                        style={{ width: `${Math.max(pct, total > 0 ? 4 : 0)}%` }} />
-                    </div>
-                    <div className="flex justify-between text-[9px] text-tx3 gap-1">
-                      <span>
-                        {total} ONU
-                        {(port.losCount ?? 0) > 0 && ` · ${port.losCount} LOS`}
-                        {(port.dyingGaspCount ?? 0) > 0 && ` · ${port.dyingGaspCount} DG`}
-                      </span>
-                      {port.avgRxPower != null && <span>{port.avgRxPower} dBm</span>}
-                    </div>
+                    {isEmpty ? (
+                      <div className="text-[9px] text-tx3 text-center py-1">No ONU</div>
+                    ) : (
+                      <>
+                        <div className="w-full bg-glass rounded-full h-1.5 mb-1 overflow-hidden">
+                          <div className={cn('h-1.5 rounded-full transition-all',
+                            pct === 100 ? 'bg-success' : pct === 0 ? 'bg-danger' : 'bg-warning')}
+                            style={{ width: `${Math.max(pct, 4)}%` }} />
+                        </div>
+                        <div className="flex justify-between text-[9px] text-tx3 gap-1">
+                          <span>
+                            {total} ONU
+                            {(port.losCount ?? 0) > 0 && ` · ${port.losCount} LOS`}
+                            {(port.dyingGaspCount ?? 0) > 0 && ` · ${port.dyingGaspCount} DG`}
+                          </span>
+                          {port.avgRxPower != null && <span>{port.avgRxPower} dBm</span>}
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
