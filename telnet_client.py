@@ -3518,10 +3518,20 @@ class TelnetCollector:
             olt_iface = f'{olt_prefix}_{frame}/{slot}/{port}'
 
             if is_epon:
-                # EPON: running-config for name/desc + power attenuation for optical
+                # EPON: running-config for name/desc/service-ports + power attenuation for optical + interface for traffic
                 cfg = self._send_command(tn, f'show running-config interface {iface}', timeout=12)
                 result['raw_config'] = cfg.strip()
                 result['running_config_raw'] = cfg.strip()
+                result['services'] = []
+                result['wan_services'] = {'service1': {}, 'service2': {}, 'service3': {}, 'service4': {}}
+                result['tcont_profiles'] = []
+                result['gemports'] = []
+                result['wifi_entries'] = []
+                result['eth_entries'] = []
+                result['veip_entries'] = []
+                result['tr069_entries'] = []
+                result['remote_access'] = []
+                wan_svc_idx = 0
                 for line in cfg.split('\n'):
                     ls = line.strip()
                     if ls.startswith('property description'):
@@ -3534,6 +3544,22 @@ class TelnetCollector:
                                 result['description'] = parts[1]
                             elif len(parts) == 1:
                                 result['name'] = parts[0]
+                    elif ls.startswith('name ') and not result.get('name'):
+                        result['name'] = ls.split(' ', 1)[1].strip() if ' ' in ls else ''
+                    elif ls.startswith('description ') and not result.get('description'):
+                        result['description'] = ls.split(' ', 1)[1].strip() if ' ' in ls else ''
+                    elif ls.startswith('service-port '):
+                        result['services'].append(ls)
+                        parts = ls.split()
+                        svc = {}
+                        for i, p in enumerate(parts):
+                            if p == 'vport' and i+1 < len(parts): svc['vport'] = parts[i+1]
+                            elif p == 'user-vlan' and i+1 < len(parts): svc['user_vlan'] = parts[i+1]
+                            elif p == 'vlan' and i+1 < len(parts) and (i == 0 or parts[i-1] != 'user-vlan'):
+                                svc['vlan'] = parts[i+1]
+                        if wan_svc_idx < 4:
+                            result['wan_services'][f'service{wan_svc_idx+1}'] = svc
+                            wan_svc_idx += 1
                 # Power attenuation — same command works for EPON
                 try:
                     opt_out = self._send_command(tn, f'show pon power attenuation {iface}', timeout=10)
@@ -3552,6 +3578,39 @@ class TelnetCollector:
                                 rx_m = re.search(r'Rx\s*:\s*([-]?\d+\.?\d*)', ls)
                                 if rx_m:
                                     result['onu_rx_power'] = float(rx_m.group(1))
+                except Exception:
+                    pass
+                # Traffic stats from 'show interface'
+                try:
+                    intf_out = self._send_command(tn, f'show interface {iface}', timeout=10)
+                    if intf_out and 'Error' not in intf_out:
+                        in_input = False
+                        in_output = False
+                        for line in intf_out.split('\n'):
+                            ls = line.strip()
+                            ll = ls.lower()
+                            if ll == 'input:':
+                                in_input = True; in_output = False
+                            elif ll == 'output:':
+                                in_input = False; in_output = True
+                            elif ls.startswith('Bytes') and ':' in ls:
+                                val_str = ls.split(':', 1)[1].strip().split()[0]
+                                try:
+                                    val = int(val_str)
+                                    if in_input:
+                                        result['input_bytes'] = val
+                                    elif in_output:
+                                        result['output_bytes'] = val
+                                except ValueError:
+                                    pass
+                            elif 'input rate' in ll and ':' in ls:
+                                rate_m = re.search(r'(\d+)\s*Bps', ls)
+                                if rate_m:
+                                    result['input_rate_bps'] = int(rate_m.group(1))
+                            elif 'output rate' in ll and ':' in ls:
+                                rate_m = re.search(r'(\d+)\s*Bps', ls)
+                                if rate_m:
+                                    result['output_rate_bps'] = int(rate_m.group(1))
                 except Exception:
                     pass
                 # ONU state from 'show epon onu state'

@@ -1774,8 +1774,11 @@ def onu_refresh_status(onu_id):
     tc = create_cli_collector(olt)
     is_epon = (onu.card or '').lower() == 'epon'
     data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
-    if data.get('state'):
+    state_val = data.get('state', '').lower()
+    if state_val in ('ready', 'online'):
         onu.status = 'online'
+    elif state_val in ('offline', 'los', 'dyinggasp'):
+        onu.status = state_val
     if data.get('distance_m') is not None:
         onu.distance = data['distance_m']
     if data.get('rx_power') is not None:
@@ -2992,7 +2995,7 @@ def onu_traffic(onu_id):
                 tn.write('exit\n')
                 tn.close()
 
-                # Parse Total Bytes: "Bytes:11028174968" and "Bytes:129065416399"
+                # Parse Total Bytes: "Bytes:11028174968" (GPON) or "Bytes        :11028174968" (EPON)
                 input_bytes = None
                 output_bytes = None
                 in_total = False
@@ -3003,7 +3006,7 @@ def onu_traffic(onu_id):
                         in_total = True; out_total = False
                     elif 'Output:' in ls:
                         in_total = False; out_total = True
-                    elif ls.startswith('Bytes:'):
+                    elif ls.startswith('Bytes') and ':' in ls:
                         val_str = ls.split(':', 1)[1].strip().split()[0]
                         try:
                             val = int(val_str)
