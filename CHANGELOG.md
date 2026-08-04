@@ -4,6 +4,61 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 2026-08-04 — Auto-Backup Audit & Fix
+
+#### Fixed
+- `backup_olt_config()` download endpoint: Added missing `write memory` before `show running-config` — downloaded config could miss unsaved changes
+- `backup_olt_config()` download endpoint: Increased timeout from 30s to 60s to match auto-backup and backup-save endpoints (prevents truncation on large configs)
+- `_auto_write_config()`: Replaced overly broad `'%' in out` error check with specific ZTE CLI error patterns (`%error`, `% invalid`, `%code`, `incomplete command`, `ambiguous command`, `return error`) — legitimate output containing `%` (VLAN names, descriptions) was causing false "write failed" warnings
+- `auto_backup.py`: Failed backups no longer update `last_backup_at` — previously a failed backup would set `last_backup_at = now`, preventing retry until the full interval elapsed again. Now failed backups retry on the next hourly cron run
+
+#### Added
+- `auto_backup.py`: `notify_backup_failure()` function creates in-app notification for super admins when auto-backup fails (type=`olt_offline`, icon=`warning`)
+
+---
+
+### 2026-08-04 — EPON ONU Support (Register/Provision/Pre-Config + Unconfigured Scan)
+
+#### Added
+- **EPON support in ONU registration**: All registration methods (`register_onu`, `configure_onu_profile`, `register_and_configure`, `register_vendor_template`, `register_unified`) now accept `is_epon` parameter and use `epon-olt_`/`epon-onu_` CLI prefixes when true
+- **EPON unconfigured ONU scanning**: `collect_unregistered_onus()` now parses `epon-olt_` and `epon-onu_` patterns from `show pon onu uncfg` output, including MAC-as-SN fallback (12 hex chars for EPON ONUs without vendor prefix)
+- **EPON detection in API endpoints**: `/api/pre-register` and `/api/provision/unified` detect EPON from `pon_port` prefix or explicit `is_epon` flag in request body
+- **EPON card count in OltConfiguration**: Stats row now calculates EPON card count dynamically from `ETG` prefix instead of hardcoded `"0"`
+- Frontend `UnconfiguredOnu` interface: Added `is_epon` field in both `RegisterWizard.tsx` and `ProvisionWizard.tsx`
+- Frontend wizards: API calls now send `pon_port` and `is_epon` in request body
+
+#### Changed
+- **Register/Provision script preview**: `RegisterWizard.tsx` and `ProvisionWizard.tsx` now use dynamic `epon-onu_`/`epon-olt_` or `gpon-onu_`/`gpon-olt_` prefixes based on `is_epon` detection from `pon_port` prefix
+- **Migrate ONU**: `migrate_onu()` and batch migrate now read `onu.card` to determine `is_epon` and pass to `deregister_onu`/`register_onu`/`configure_onu_profile`
+- **Update ONU re-register**: `update_onu` and `update_onu_type` inline edit now use dynamic `epon-olt_`/`gpon-olt_` prefix based on `onu.card` field
+- **ONU traffic endpoint**: `onu_traffic` now uses dynamic `epon-onu_`/`gpon-onu_` prefix for `show interface` command
+- **Provision DB save**: `/api/provision/unified` now saves `card='epon'` to ONU record on success for EPON ONUs
+- **Log action prefix**: `log_action` targets now use `epon-onu_` or `gpon-onu_` prefix based on `is_epon`
+
+---
+
+### 2026-08-03 — EPON ONU Support (Sync, Actions, Live Data, Rack Diagram)
+
+#### Added
+- `_collect_epon_onus_fast()` method in `telnet_client.py` for lightweight EPON ONU collection during light sync (Telnet-based, no SNMP)
+- EPON card detection (ETG prefix) in `collect_pon_port_stats` — uses `epon-olt` prefix and `show epon onu state` command
+- EPON-specific ONU state parsing — EPON uses `epon-onu_` prefix and different status keywords
+- `is_epon` parameter support in `reset_onu`, `deregister_onu`, `disable_onu`, `enable_onu`, `clear_onu_config`, `get_onu_live_data`, `collect_onu_detail`
+- Early return for EPON ONUs in `get_onu_live_data` and `collect_onu_detail` (EPON doesn't support GPON-specific commands like `detail-info` or `pon power attenuation`)
+- EPON early return in `onu_get_status` endpoint — EPON ONUs don't support `detail-info` or `pon power attenuation`
+- Empty events for EPON ONUs in `collect_onu_history` (GPON-specific commands not supported)
+- ETG prefix detection in `slot_type_for()` so EPON cards show as service slots in rack diagram
+- `sync_helper.py`: `sync_onus` now stores `card_type` ('epon' or 'gpon') from ONU data into ONU model's `card` field
+- `snmp_collector.py`: Light sync now includes EPON ONU collection via Telnet after SNMP collection
+- `snmp_collector.py`: PON port collection now includes EPON cards (ETG prefix) alongside GPON (GTG prefix)
+
+#### Changed
+- `enrich_onus_via_telnet` now skips EPON ONUs (GPON-specific enrichment not applicable)
+- `app.py`: All ONU action endpoints pass `is_epon` flag to TelnetCollector methods based on `onu.card` field
+- `app.py`: `/api/onu/<id>/detail` and `/api/onu/<id>/live-detail` endpoints pass `is_epon` to `collect_onu_detail` and `get_onu_live_data`
+
+---
+
 ### 2026-08-01 — Notification System Audit & Fix
 
 #### Added
