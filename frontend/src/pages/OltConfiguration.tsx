@@ -786,10 +786,10 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
   });
 
   return (
-    <div className={cn('rounded-xl border-l-4 p-3 md:p-4 transition-all', isPlaceholder ? 'border-l-tx3 bg-glass opacity-70' : isUp ? 'border-l-success bg-glass' : 'border-l-danger bg-glass')}>
-      <div className={cn('flex items-center justify-between gap-2', hasId && 'cursor-pointer')} onClick={() => hasId && setExpanded(!expanded)}>
+    <div className={cn('rounded-xl border-l-4 p-3 md:p-4 transition-all', isPlaceholder ? 'border-l-info/40 bg-glass' : isUp ? 'border-l-success bg-glass' : 'border-l-danger bg-glass')}>
+      <div className="flex items-center justify-between gap-2 cursor-pointer" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
-          <div className={cn('w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center border-2 flex-shrink-0', isPlaceholder ? 'bg-glass-hover border-brd text-tx3' : isUp ? 'bg-glass-hover border-success/30 text-success' : 'bg-glass-hover border-brd text-tx3')}>
+          <div className={cn('w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center border-2 flex-shrink-0', isPlaceholder ? 'bg-glass-hover border-info/30 text-info' : isUp ? 'bg-glass-hover border-success/30 text-success' : 'bg-glass-hover border-brd text-tx3')}>
             <HardDrive size={16} />
           </div>
           <div className="min-w-0">
@@ -804,7 +804,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
                 <span className={cn('px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium', isUp ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{isUp ? 'UP' : 'DOWN'}</span>
               )}
               {isPlaceholder && (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium bg-tx3/15 text-tx3">No Data</span>
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium bg-info/15 text-info">Synced</span>
               )}
               {String(port.name || '') && <span className="text-xs md:text-sm font-semibold text-accent truncate">{String(port.name)}</span>}
             </div>
@@ -830,7 +830,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
             </button>}
             {canManage && hasId && <button onClick={e => { e.stopPropagation(); setEditing(true); }} className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent hidden sm:flex"><Edit3 size={14} /></button>}
           </div>
-          {hasId && (expanded ? <ChevronDown size={16} className="text-tx3" /> : <ChevronRight size={16} className="text-tx3" />)}
+          {expanded ? <ChevronDown size={16} className="text-tx3" /> : <ChevronRight size={16} className="text-tx3" />}
         </div>
       </div>
 
@@ -847,7 +847,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
         </div>
       )}
 
-      {expanded && hasId && (
+      {expanded && (
         <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-brd animate-fade-in">
           <div className="p-3 rounded-lg bg-glass border border-brd mb-3">
             <h6 className="text-xs font-semibold text-tx3 uppercase mb-2 flex items-center gap-1">
@@ -889,8 +889,10 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
               })()}
             </div>
           </div>
-          <h6 className="text-xs font-semibold text-tx3 mb-2">ONU List for {String(port.port_name || port.port_number)}</h6>
-          {onuList?.onus && onuList.onus.length > 0 ? (
+          {hasId ? (
+            <>
+            <h6 className="text-xs font-semibold text-tx3 mb-2">ONU List for {String(port.port_name || port.port_number)}</h6>
+            {onuList?.onus && onuList.onus.length > 0 ? (
             <div className="overflow-x-auto -mx-3 px-3">
               <table className="w-full text-xs">
                 <thead><tr className="text-tx3"><th className="text-left py-1 px-2">#</th><th className="text-left py-1 px-2">ONU</th><th className="text-left py-1 px-2">Name</th><th className="text-left py-1 px-2">Status</th><th className="text-left py-1 px-2">RX Power</th></tr></thead>
@@ -908,6 +910,12 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
               </table>
             </div>
           ) : <div className="text-xs text-tx3">No ONU data for this port.</div>}
+            </>
+          ) : (
+            <div className="p-3 rounded-lg bg-glass border border-brd text-center">
+              <p className="text-xs text-tx3">Run a full sync to register this port and enable ONU list.</p>
+            </div>
+          )}
         </div>
       )}
     </div>
