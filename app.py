@@ -745,7 +745,9 @@ def update_onu(onu_id):
             tc = create_cli_collector(olt)
             tn = tc._connect()
             if tn:
-                onu_if = f'gpon-onu_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
+                is_epon = (onu.card or '').lower() == 'epon'
+                onu_pfx = 'epon-onu' if is_epon else 'gpon-onu'
+                onu_if = f'{onu_pfx}_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
                 tc._send_command(tn, 'end')
                 tc._send_command(tn, 'configure terminal')
                 tc._send_command(tn, f'interface {onu_if}')
@@ -841,7 +843,7 @@ def olt_pon_structure(olt_id):
     ports = OLTPort.query.filter_by(olt_id=olt_id).all()
     structure = {}
     for p in ports:
-        m = _re.match(r'gpon-olt_(\d+)/(\d+)/(\d+)', p.port_name or '')
+        m = _re.match(r'(?:gpon|epon)-olt_(\d+)/(\d+)/(\d+)', p.port_name or '')
         if m:
             slot = int(m.group(2))
             port = int(m.group(3))
@@ -1114,7 +1116,8 @@ def delete_onu(onu_id):
     if olt and olt.telnet_enabled:
         from snmp_collector import TelnetCollector, create_cli_collector
         tc = create_cli_collector(olt)
-        tc.deregister_onu(onu.frame, onu.slot, onu.port, onu.onu_id)
+        is_epon = (onu.card or '').lower() == 'epon'
+        tc.deregister_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
     db.session.delete(onu)
     db.session.commit()
     # Auto-sync OLT after delete
@@ -1384,7 +1387,7 @@ def onu_get_status(onu_id):
     }
 
     if is_epon:
-        # EPON: only running-config is available — no detail-info, no power attenuation
+        # EPON: running-config for name/desc + power attenuation for optical
         try:
             raw_cfg = tc._send_command(tn, f'show running-config interface {iface}', timeout=12)
             info = {}
@@ -1400,6 +1403,62 @@ def onu_get_status(onu_id):
                 elif ls.startswith('name '):
                     info['Name'] = ls.split(' ', 1)[1] if ' ' in ls else ''
             status_data['interface'] = info
+
+            # Power attenuation — same command works for EPON with epon-onu_ prefix
+            try:
+                att_out = tc._send_command(tn, f'show pon power attenuation {iface}', timeout=10)
+                if att_out and 'Error' not in att_out and 'Incomplete' not in att_out:
+                    for line in att_out.split('\n'):
+                        ls = line.strip()
+                        if not ls or '---' in ls or ls.lower().startswith('olt') or 'attenuation' in ls.lower():
+                            continue
+                        ll = ls.lower()
+                        if ll.startswith('up'):
+                            rx_m = _re.search(r'Rx\s*:\s*([-]?\d+\.?\d*)', ls)
+                            tx_m = _re.search(r'Tx\s*:\s*([-]?\d+\.?\d*)', ls)
+                            att_m = _re.findall(r'([-]?\d+\.?\d*)\s*\(dB\)', ls)
+                            if rx_m:
+                                val = f'{float(rx_m.group(1)):.3f} dBm'
+                                status_data['optical']['up']['rx'] = val
+                                status_data['optical']['up']['olt_rx'] = val
+                            if tx_m:
+                                val = f'{float(tx_m.group(1)):.3f} dBm'
+                                status_data['optical']['up']['tx'] = val
+                                status_data['optical']['up']['onu_tx'] = val
+                            if att_m:
+                                status_data['optical']['up']['attenuation'] = f'{float(att_m[-1]):.3f} dB'
+                        elif ll.startswith('down'):
+                            rx_m = _re.search(r'Rx\s*:\s*([-]?\d+\.?\d*)', ls)
+                            tx_m = _re.search(r'Tx\s*:\s*([-]?\d+\.?\d*)', ls)
+                            att_m = _re.findall(r'([-]?\d+\.?\d*)\s*\(dB\)', ls)
+                            if tx_m:
+                                val = f'{float(tx_m.group(1)):.3f} dBm'
+                                status_data['optical']['down']['tx'] = val
+                                status_data['optical']['down']['olt_tx'] = val
+                            if rx_m:
+                                val = f'{float(rx_m.group(1)):.3f} dBm'
+                                status_data['optical']['down']['rx'] = val
+                                status_data['optical']['down']['onu_rx'] = val
+                            if att_m:
+                                status_data['optical']['down']['attenuation'] = f'{float(att_m[-1]):.3f} dB'
+            except Exception:
+                pass
+
+            # Update DB with live optical values
+            try:
+                up_rx = status_data['optical']['up'].get('olt_rx')
+                down_rx = status_data['optical']['down'].get('onu_rx')
+                up_tx = status_data['optical']['up'].get('onu_tx')
+                if up_rx:
+                    onu.rx_power = float(_re.search(r'[-]?\d+\.?\d*', up_rx).group())
+                if down_rx:
+                    onu.onu_rx_power = float(_re.search(r'[-]?\d+\.?\d*', down_rx).group())
+                if up_tx:
+                    onu.tx_power = float(_re.search(r'[-]?\d+\.?\d*', up_tx).group())
+                db.session.commit()
+            except Exception as e:
+                logger.debug(f"EPON DB optical update failed: {e}")
+
             tn.write('exit\n'); tn.close()
         except Exception as e:
             try: tn.close()
@@ -1632,7 +1691,8 @@ def onu_refresh_status(onu_id):
         return jsonify({'success': False, 'message': 'OLT not configured'})
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
-    data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id)
+    is_epon = (onu.card or '').lower() == 'epon'
+    data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
     if data.get('state'):
         onu.status = 'online'
     if data.get('distance_m') is not None:
@@ -1659,7 +1719,8 @@ def onu_running_config(onu_id):
         return jsonify({'success': False, 'message': 'OLT not configured'})
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
-    data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id)
+    is_epon = (onu.card or '').lower() == 'epon'
+    data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
     config = data.get('running_config_raw', '')
     return jsonify({'success': True, 'config': config or 'No config available'})
 
@@ -1705,7 +1766,8 @@ def onu_resync_config(onu_id):
     try:
         from snmp_collector import TelnetCollector, create_cli_collector
         tc = create_cli_collector(olt)
-        data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id)
+        is_epon = (onu.card or '').lower() == 'epon'
+        data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
         if not data:
             return jsonify({'success': False, 'message': 'Failed to collect ONU data from OLT'})
         updated = False
@@ -1793,7 +1855,9 @@ def onu_wan_service_edit(onu_id, svc_idx):
         tn = tc._connect()
         if not tn:
             return jsonify({'success': False, 'message': 'Telnet connection failed'})
-        onu_path = f'gpon-onu_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
+        is_epon = (onu.card or '').lower() == 'epon'
+        onu_pfx = 'epon-onu' if is_epon else 'gpon-onu'
+        onu_path = f'{onu_pfx}_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
         tc._send_command(tn, 'configure terminal', timeout=10)
         import time as _t
 
@@ -2041,7 +2105,9 @@ def update_onu_field(onu_id):
             tc = create_cli_collector(olt)
             tn = tc._connect()
             if tn:
-                onu_if = f'gpon-onu_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
+                is_epon = (onu.card or '').lower() == 'epon'
+                onu_pfx = 'epon-onu' if is_epon else 'gpon-onu'
+                onu_if = f'{onu_pfx}_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
                 tc._send_command(tn, 'end')
                 tc._send_command(tn, 'configure terminal')
                 tc._send_command(tn, f'interface {onu_if}')
@@ -2528,7 +2594,9 @@ def onu_section_config(onu_id):
         if not tn:
             return jsonify({'success': False, 'message': 'Telnet connection failed'})
 
-        onu_path = f'gpon-onu_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
+        is_epon = (onu.card or '').lower() == 'epon'
+        onu_pfx = 'epon-onu' if is_epon else 'gpon-onu'
+        onu_path = f'{onu_pfx}_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
         msg = ''
         ok = False
         last_err = None

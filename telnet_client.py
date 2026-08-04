@@ -424,7 +424,7 @@ class TelnetCollector:
             import re as _re
 
             if is_epon:
-                # EPON: only running-config is available
+                # EPON: running-config + power attenuation
                 raw_cfg = self._send_command(tn, f'show running-config interface {onu_iface}', timeout=12)
                 result['raw_config'] = raw_cfg.strip()
                 # Parse service-ports from running-config
@@ -442,6 +442,28 @@ class TelnetCollector:
                                 sp['vlan'] = parts[i2+1]
                         svcports.append(sp)
                 result['running_config'] = {'tconts': [], 'gemports': [], 'service_ports': svcports}
+                # Power attenuation
+                try:
+                    opt_out = self._send_command(tn, f'show pon power attenuation {onu_iface}', timeout=10)
+                    if opt_out and 'Error' not in opt_out and 'Incomplete' not in opt_out:
+                        optical = {}
+                        for line in opt_out.split('\n'):
+                            ls = line.strip()
+                            ll = ls.lower()
+                            if ll.startswith('up'):
+                                rx_m = _re.search(r'Rx\s*:\s*([-]?\d+\.?\d*)', ls)
+                                tx_m = _re.search(r'Tx\s*:\s*([-]?\d+\.?\d*)', ls)
+                                if rx_m: optical['olt_rx'] = float(rx_m.group(1))
+                                if tx_m: optical['onu_tx'] = float(tx_m.group(1))
+                            elif ll.startswith('down'):
+                                rx_m = _re.search(r'Rx\s*:\s*([-]?\d+\.?\d*)', ls)
+                                tx_m = _re.search(r'Tx\s*:\s*([-]?\d+\.?\d*)', ls)
+                                if rx_m: optical['onu_rx'] = float(rx_m.group(1))
+                                if tx_m: optical['olt_tx'] = float(tx_m.group(1))
+                        if optical:
+                            result['detail']['optical'] = optical
+                except Exception:
+                    pass
                 tn.write('exit\n'); tn.close()
                 return result
 
@@ -3496,9 +3518,10 @@ class TelnetCollector:
             olt_iface = f'{olt_prefix}_{frame}/{slot}/{port}'
 
             if is_epon:
-                # EPON: only running-config is available — parse name/desc/service-port
+                # EPON: running-config for name/desc + power attenuation for optical
                 cfg = self._send_command(tn, f'show running-config interface {iface}', timeout=12)
                 result['raw_config'] = cfg.strip()
+                result['running_config_raw'] = cfg.strip()
                 for line in cfg.split('\n'):
                     ls = line.strip()
                     if ls.startswith('property description'):
@@ -3511,6 +3534,47 @@ class TelnetCollector:
                                 result['description'] = parts[1]
                             elif len(parts) == 1:
                                 result['name'] = parts[0]
+                # Power attenuation — same command works for EPON
+                try:
+                    opt_out = self._send_command(tn, f'show pon power attenuation {iface}', timeout=10)
+                    if opt_out and 'Error' not in opt_out and 'Incomplete' not in opt_out:
+                        for line in opt_out.split('\n'):
+                            ls = line.strip()
+                            ll = ls.lower()
+                            if ll.startswith('up'):
+                                rx_m = re.search(r'Rx\s*:\s*([-]?\d+\.?\d*)', ls)
+                                tx_m = re.search(r'Tx\s*:\s*([-]?\d+\.?\d*)', ls)
+                                if rx_m:
+                                    result['rx_power'] = float(rx_m.group(1))
+                                if tx_m:
+                                    result['tx_power'] = float(tx_m.group(1))
+                            elif ll.startswith('down'):
+                                rx_m = re.search(r'Rx\s*:\s*([-]?\d+\.?\d*)', ls)
+                                if rx_m:
+                                    result['onu_rx_power'] = float(rx_m.group(1))
+                except Exception:
+                    pass
+                # ONU state from 'show epon onu state'
+                try:
+                    state_out = self._send_command(tn, f'show epon onu state', timeout=15)
+                    for line in state_out.split('\n'):
+                        line = line.strip()
+                        m = re.match(r'epon-onu_\d+/\d+/\d+:\d+\s+(\S+)', line)
+                        if m and str(onu_id) in line:
+                            status = m.group(1).lower()
+                            if 'online' in status:
+                                result['state'] = 'ready'
+                            elif 'power' in status or 'off' in status:
+                                result['state'] = 'offline'
+                            elif 'los' in status:
+                                result['state'] = 'los'
+                            elif 'dying' in status:
+                                result['state'] = 'dyinggasp'
+                            else:
+                                result['state'] = status
+                            break
+                except Exception:
+                    pass
                 tn.write('exit\n'); tn.close()
                 return result
 
