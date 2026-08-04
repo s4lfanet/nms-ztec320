@@ -4903,11 +4903,37 @@ def get_pon_port_onus(olt_id, port_id):
     port = db.session.get(OLTPort, port_id)
     if not port or port.olt_id != olt_id:
         return jsonify({'success': False, 'message': 'Port not found'}), 404
-    # Extract frame/slot/port from port_name like gpon-olt_1/1/1
-    parts = port.port_name.replace('gpon-olt_', '').replace('gpon-onu_', '').split('/')
+    # Extract frame/slot/port from port_name like gpon-olt_1/1/1 or epon-olt_1/1/1
+    parts = port.port_name.replace('gpon-olt_', '').replace('gpon-onu_', '').replace('epon-olt_', '').replace('epon-onu_', '').split('/')
     if len(parts) >= 3:
         frame, slot, pon_port = int(parts[0]), int(parts[1]), int(parts[2])
         onus = ONU.query.filter_by(olt_id=olt_id, frame=frame, slot=slot, port=pon_port).order_by(ONU.onu_id).all()
+    else:
+        onus = []
+    return jsonify({
+        'success': True,
+        'onus': [{
+            'id': o.id, 'onu_id': o.onu_id, 'onu_id_str': f'{o.frame}/{o.slot}/{o.port}:{o.onu_id}',
+            'serial_number': o.serial_number or '',
+            'name': o.name or '', 'status': o.status or 'offline',
+            'rx_power': o.rx_power, 'onu_rx_power': o.onu_rx_power,
+            'onu_type': o.onu_type or '', 'distance': o.distance or '',
+            'slot': o.slot, 'port': o.port, 'frame': o.frame,
+        } for o in onus]
+    })
+
+
+@app.route('/api/olt/<int:olt_id>/pon-port-by-name/<path:port_name>/onus', methods=['GET'])
+@login_required
+def get_pon_port_onus_by_name(olt_id, port_name):
+    """Get ONU list for a PON port by port_name (for placeholder ports without DB id)"""
+    parts = port_name.replace('gpon-olt_', '').replace('gpon-onu_', '').replace('epon-olt_', '').replace('epon-onu_', '').split('/')
+    if len(parts) >= 3:
+        try:
+            frame, slot, pon_port = int(parts[0]), int(parts[1]), int(parts[2])
+            onus = ONU.query.filter_by(olt_id=olt_id, frame=frame, slot=slot, port=pon_port).order_by(ONU.onu_id).all()
+        except (ValueError, IndexError):
+            onus = []
     else:
         onus = []
     return jsonify({
