@@ -780,9 +780,17 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
   const hasId = port.id != null;
 
   const { data: onuList } = useQuery({
-    queryKey: ['pon-onu-list', oltId, port.id],
-    queryFn: async () => { const r = await fetch(`/api/olt/${oltId}/pon-port/${port.id}/onus`, { credentials: 'include' }); return r.json(); },
-    enabled: expanded && hasId,
+    queryKey: ['pon-onu-list', oltId, port.id, portName],
+    queryFn: async () => {
+      if (hasId) {
+        const r = await fetch(`/api/olt/${oltId}/pon-port/${port.id}/onus`, { credentials: 'include' });
+        return r.json();
+      } else {
+        const r = await fetch(`/api/olt/${oltId}/pon-port-by-name/${portName}/onus`, { credentials: 'include' });
+        return r.json();
+      }
+    },
+    enabled: expanded,
   });
 
   return (
@@ -804,7 +812,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
                 <span className={cn('px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium', isUp ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{isUp ? 'UP' : 'DOWN'}</span>
               )}
               {isPlaceholder && (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium bg-info/15 text-info">Synced</span>
+                <span className={cn('px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium', isUp ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{isUp ? 'UP' : 'DOWN'}</span>
               )}
               {String(port.name || '') && <span className="text-xs md:text-sm font-semibold text-accent truncate">{String(port.name)}</span>}
             </div>
@@ -912,9 +920,27 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
           ) : <div className="text-xs text-tx3">No ONU data for this port.</div>}
             </>
           ) : (
-            <div className="p-3 rounded-lg bg-glass border border-brd text-center">
-              <p className="text-xs text-tx3">Run a full sync to register this port and enable ONU list.</p>
+            <>
+            <h6 className="text-xs font-semibold text-tx3 mb-2">ONU List for {portName}</h6>
+            {onuList?.onus && onuList.onus.length > 0 ? (
+            <div className="overflow-x-auto -mx-3 px-3">
+              <table className="w-full text-xs">
+                <thead><tr className="text-tx3"><th className="text-left py-1 px-2">#</th><th className="text-left py-1 px-2">ONU</th><th className="text-left py-1 px-2">Name</th><th className="text-left py-1 px-2">Status</th><th className="text-left py-1 px-2">RX Power</th></tr></thead>
+                <tbody>
+                  {onuList.onus.map((onu: Record<string, unknown>, i: number) => (
+                    <tr key={String(onu.id)} className="border-t border-brd/50">
+                      <td className="py-1 px-2">{i + 1}</td>
+                      <td className="py-1 px-2 font-mono">{String(onu.onu_id)}</td>
+                      <td className="py-1 px-2">{String(onu.name || onu.serial_number || '-')}</td>
+                      <td className="py-1 px-2"><span className={cn('px-1.5 py-0.5 rounded text-xs', onu.status === 'online' ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{String(onu.status)}</span></td>
+                      <td className="py-1 px-2">{onu.onu_rx_power != null ? `${Number(onu.onu_rx_power).toFixed(2)} dBm` : (onu.rx_power != null ? `${Number(onu.rx_power).toFixed(2)} dBm` : '-')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          ) : <div className="text-xs text-tx3">No ONU registered on this port.</div>}
+            </>
           )}
         </div>
       )}
