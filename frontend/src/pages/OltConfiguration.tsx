@@ -723,11 +723,13 @@ function PonCardsTab({ oltId, canManage }: { oltId: number; canManage: boolean }
   });
 
   if (isLoading) return <TabSkeleton />;
-  const ports = ponData?.ports || [];
+  const ports: Array<Record<string, unknown>> = ponData?.ports || [];
   if (ports.length === 0) return <EmptyTab message="No PON ports found. Run Sync to collect." />;
 
   const totalOnu = ports.reduce((s: number, p: Record<string, unknown>) => s + Number(p.onu_count || 0), 0);
   const totalOnline = ports.reduce((s: number, p: Record<string, unknown>) => s + Number(p.onu_online || 0), 0);
+  const gponCount = ports.filter(p => !String(p.port_name || '').startsWith('epon-olt')).length;
+  const eponCount = ports.filter(p => String(p.port_name || '').startsWith('epon-olt')).length;
 
   return (
     <div className="space-y-3">
@@ -742,14 +744,16 @@ function PonCardsTab({ oltId, canManage }: { oltId: number; canManage: boolean }
         </div>
       </div>
       <div className="flex items-center gap-3 md:gap-6 p-3 md:p-4 rounded-xl bg-accent/5 border border-accent/20 mb-3">
-        <div className="flex items-center gap-2"><HardDrive size={18} className="text-accent" /><strong className="text-xs md:text-sm">GPON</strong></div>
+        <div className="flex items-center gap-2"><HardDrive size={18} className="text-accent" /><strong className="text-xs md:text-sm">PON</strong></div>
+        {gponCount > 0 && <span className="text-[10px] text-success font-mono">GPON: {gponCount}</span>}
+        {eponCount > 0 && <span className="text-[10px] text-info font-mono">EPON: {eponCount}</span>}
         <div className="flex-1" />
         <div className="text-center"><div className="text-base md:text-lg font-extrabold">{totalOnu}</div><div className="text-[10px] md:text-xs text-tx3">Total</div></div>
         <div className="text-center"><div className="text-base md:text-lg font-extrabold text-success">{totalOnline}</div><div className="text-[10px] md:text-xs text-tx3">Online</div></div>
         <div className="text-center"><div className="text-base md:text-lg font-extrabold text-danger">{totalOnu - totalOnline}</div><div className="text-[10px] md:text-xs text-tx3">Offline</div></div>
       </div>
-      {ports.map((pp: Record<string, unknown>) => (
-        <PonPortCard key={String(pp.id)} port={pp} canManage={canManage} onToggle={toggleMut} onEdit={editMut} oltId={oltId} />
+      {ports.map((pp: Record<string, unknown>, i: number) => (
+        <PonPortCard key={String(pp.id ?? `ph-${i}`)} port={pp} canManage={canManage} onToggle={toggleMut} onEdit={editMut} oltId={oltId} />
       ))}
     </div>
   );
@@ -770,27 +774,41 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
   const onuCount = Number(port.onu_count || 0);
   const onuOnline = Number(port.onu_online || 0);
   const util = onuCount > 0 ? Math.round((onuOnline / onuCount) * 100) : 0;
+  const isPlaceholder = port.is_placeholder === true;
+  const portName = String(port.port_name || '');
+  const isEpon = portName.startsWith('epon-olt') || String(port.card_type || '').toUpperCase().startsWith('ETG');
+  const hasId = port.id != null;
 
   const { data: onuList } = useQuery({
     queryKey: ['pon-onu-list', oltId, port.id],
     queryFn: async () => { const r = await fetch(`/api/olt/${oltId}/pon-port/${port.id}/onus`, { credentials: 'include' }); return r.json(); },
-    enabled: expanded,
+    enabled: expanded && hasId,
   });
 
   return (
-    <div className={cn('rounded-xl border-l-4 p-3 md:p-4 transition-all', isUp ? 'border-l-success bg-glass' : 'border-l-danger bg-glass')}>
-      <div className="flex items-center justify-between cursor-pointer gap-2" onClick={() => setExpanded(!expanded)}>
+    <div className={cn('rounded-xl border-l-4 p-3 md:p-4 transition-all', isPlaceholder ? 'border-l-tx3 bg-glass opacity-70' : isUp ? 'border-l-success bg-glass' : 'border-l-danger bg-glass')}>
+      <div className={cn('flex items-center justify-between gap-2', hasId && 'cursor-pointer')} onClick={() => hasId && setExpanded(!expanded)}>
         <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
-          <div className={cn('w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center border-2 flex-shrink-0', isUp ? 'bg-glass-hover border-success/30 text-success' : 'bg-glass-hover border-brd text-tx3')}>
+          <div className={cn('w-9 h-9 md:w-10 md:h-10 rounded-lg flex items-center justify-center border-2 flex-shrink-0', isPlaceholder ? 'bg-glass-hover border-brd text-tx3' : isUp ? 'bg-glass-hover border-success/30 text-success' : 'bg-glass-hover border-brd text-tx3')}>
             <HardDrive size={16} />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <strong className="text-sm">Port {String(port.port_number)}</strong>
-              <span className={cn('px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium', isUp ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{isUp ? 'UP' : 'DOWN'}</span>
+              {isEpon ? (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium bg-info/15 text-info">EPON</span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium bg-success/15 text-success">GPON</span>
+              )}
+              {!isPlaceholder && (
+                <span className={cn('px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium', isUp ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{isUp ? 'UP' : 'DOWN'}</span>
+              )}
+              {isPlaceholder && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] md:text-xs font-medium bg-tx3/15 text-tx3">No Data</span>
+              )}
               {String(port.name || '') && <span className="text-xs md:text-sm font-semibold text-accent truncate">{String(port.name)}</span>}
             </div>
-            {String(port.description || '') && <div className="text-[10px] md:text-xs text-tx3 mt-0.5 truncate">{String(port.description)}</div>}
+            <div className="text-[10px] md:text-xs text-tx3 mt-0.5 truncate font-mono">{portName}</div>
           </div>
         </div>
         <div className="flex items-center gap-1.5 md:gap-4 flex-shrink-0">
@@ -806,13 +824,13 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
             <div className="text-[10px] md:text-xs text-tx3 text-center mt-0.5">{util}%</div>
           </div>
           <div className="flex gap-1">
-            {canManage && <button onClick={e => { e.stopPropagation(); onToggle.mutate({ portId: Number(port.id), action: isUp ? 'disable' : 'enable' }); }}
+            {canManage && hasId && <button onClick={e => { e.stopPropagation(); onToggle.mutate({ portId: Number(port.id), action: isUp ? 'disable' : 'enable' }); }}
               className={cn('p-1.5 rounded-lg transition-colors', isUp ? 'hover:bg-warning/15 text-tx3 hover:text-warning' : 'hover:bg-success/15 text-tx3 hover:text-success')}>
               {isUp ? <Pause size={14} /> : <Play size={14} />}
             </button>}
-            {canManage && <button onClick={e => { e.stopPropagation(); setEditing(true); }} className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent hidden sm:flex"><Edit3 size={14} /></button>}
+            {canManage && hasId && <button onClick={e => { e.stopPropagation(); setEditing(true); }} className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent hidden sm:flex"><Edit3 size={14} /></button>}
           </div>
-          {expanded ? <ChevronDown size={16} className="text-tx3" /> : <ChevronRight size={16} className="text-tx3" />}
+          {hasId && (expanded ? <ChevronDown size={16} className="text-tx3" /> : <ChevronRight size={16} className="text-tx3" />)}
         </div>
       </div>
 
@@ -829,7 +847,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
         </div>
       )}
 
-      {expanded && (
+      {expanded && hasId && (
         <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-brd animate-fade-in">
           <div className="p-3 rounded-lg bg-glass border border-brd mb-3">
             <h6 className="text-xs font-semibold text-tx3 uppercase mb-2 flex items-center gap-1">
