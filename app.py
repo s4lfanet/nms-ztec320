@@ -3793,6 +3793,8 @@ def get_olt_chassis(olt_id):
         sidx = card.slot
         if stype == 'service':
             port_count = card.total_ports or 16
+            is_epon_card = (card.card_type or '').upper().startswith('ETG')
+            olt_pfx = 'epon-olt' if is_epon_card else 'gpon-olt'
             # Collect actual port numbers (1-indexed on ZTE C320)
             slot_pon = pon_by_slot.get(sidx, {})
             stat_ports = {int(k.split('/')[1]) for k in port_stats if k.split('/')[0] == str(sidx)}
@@ -3808,7 +3810,7 @@ def get_olt_chassis(olt_id):
                 ports.append({
                     'port': p,
                     'portId': meta.get('id'),
-                    'portName': meta.get('port_name', f'gpon-olt_1/{sidx}/{p}'),
+                    'portName': meta.get('port_name', f'{olt_pfx}_1/{sidx}/{p}'),
                     'name': meta.get('name', ''),
                     'description': meta.get('description', ''),
                     'adminStatus': meta.get('admin_status', 'up'),
