@@ -594,6 +594,7 @@ export interface ONUData {
   slot: number;
   port: number;
   onu_id: number;
+  card: string;
   distance: number | null;
   technician_id: number | null;
   technician_name: string;

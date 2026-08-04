@@ -303,7 +303,7 @@ export function ViewOnu() {
         <div className="p-3 md:p-5">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
             <DetailField label="OLT" value={onu.olt_name} />
-            <DetailField label="Gpon Onu" value={onu.onu_id_str} mono onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'moveOnu' }) : undefined} />
+            <DetailField label={(onu.card || '').toLowerCase() === 'epon' ? 'Epon Onu' : 'Gpon Onu'} value={onu.onu_id_str} mono onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'moveOnu' }) : undefined} />
             <EditableField label="Actual Type" field="actual_type" value={onu.actual_type} onEdit={hasPerm('edit_onu_name') ? openFieldEdit : () => {}} />
             <DetailField label="Onu Type" value={onu.onu_type || (ld.onu_type as string) || '-'} onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'onuType' }) : undefined} />
             <DetailField label="SN/MAC" value={onu.serial_number} mono />

@@ -480,11 +480,15 @@ def _check_onus_for_tenant(force_send=False):
         onus = ONU.query.filter_by(olt_id=olt.id).all()
 
         for onu in onus:
-            pon_key = (olt.id, onu.slot, onu.port)
+            pon_key = (olt.id, onu.frame, onu.slot, onu.port)
 
             if pon_key not in pon_groups:
+                is_epon = (onu.card or '').lower() == 'epon'
+                olt_pfx = 'epon-olt' if is_epon else 'gpon-olt'
                 pon_groups[pon_key] = {
-                    'olt': olt, 'slot': onu.slot, 'port': onu.port,
+                    'olt': olt, 'frame': onu.frame, 'slot': onu.slot, 'port': onu.port,
+                    'is_epon': is_epon,
+                    'interface': f"{olt_pfx}_{onu.frame}/{onu.slot}/{onu.port}",
                     'total': 0, 'offline': [], 'signal_drop': [], 'recovery': [],
                 }
             pon_groups[pon_key]['total'] += 1
@@ -587,7 +591,7 @@ def _check_onus_for_tenant(force_send=False):
     # ─── Build batched alerts from PON groups ───
     for pon_key, group in pon_groups.items():
         olt = group['olt']
-        interface = f"gpon-olt_1/{group['slot']}/{group['port']}"
+        interface = group.get('interface', f"gpon-olt_1/{group['slot']}/{group['port']}")
         total = group['total']
 
         offline_onus = group['offline']
@@ -1102,7 +1106,8 @@ def _build_unregistered_alert(olt, unregistered, now, notifications, alerts, for
         model = u.get('model', '') or u.get('type', '')
         iface = u.get('pon_port', '') or u.get('interface', '')
         if iface:
-            iface = f'gpon-olt_{iface}'
+            olt_pfx = 'epon-olt' if u.get('is_epon') else 'gpon-olt'
+            iface = f'{olt_pfx}_{iface}'
         line = f"  • {iface} — SN: {sn}"
         if model:
             line += f" ({model})"
