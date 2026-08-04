@@ -1,6 +1,6 @@
 # Salfanet NMS — ZTE OLT Management System
 
-Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600, C650). Dibangun dengan Flask + React, mendukung sinkronisasi SNMP/Telnet, monitoring ONU real-time, alerting, provisioning, dan manajemen infrastruktur FTTH dari satu dashboard.
+Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600, C650). Mendukung kartu **GPON** (GTG) dan **EPON** (ETG). Dibangun dengan Flask + React, mendukung sinkronisasi SNMP/Telnet, monitoring ONU real-time, alerting, provisioning, dan manajemen infrastruktur FTTH dari satu dashboard.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.12+-green)
@@ -15,6 +15,8 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Aksi CLI: reboot, reset, delete, clear config, enable/disable, restore factory, restore WiFi
 - Auto-sync setelah aksi ONU (reboot/delete/clear-config)
 - Rack diagram visual untuk chassis OLT (slot, port, fan, PSU)
+- **GPON + EPON support**: Kartu GTG (GPON) dan ETG (EPON) terdeteksi otomatis, CLI commands menggunakan prefix yang sesuai (`gpon-olt_`/`gpon-onu_` vs `epon-olt_`/`epon-onu_`)
+- **Auto-backup OLT config**: Backup running-config via Telnet (`write memory` + `show running-config`), simpan ke DB, download/restore, auto-prune berdasarkan retention policy, notifikasi failure ke admin
 
 ### ONU Provisioning
 - Pre-register wizard: scan ONU → pilih template → konfigurasi → preview CLI → register
@@ -22,6 +24,7 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Template ZTE (Single/Dual/Multi VLAN), Huawei Full, Fiberhome VEIP
 - WiFi SSID OMCI config: Open/WPA/WPA2/Mixed auth untuk dual-band (2.4G & 5G)
 - TR069/ACS profile support untuk Fiberhome VEIP template
+- **EPON support**: Deteksi otomatis kartu ETG, CLI prefix `epon-olt_`/`epon-onu_`, scan uncfg EPON, script preview dinamis
 
 ### Alerting & Monitoring
 - Rule-based alerts untuk OLT offline, ONU offline/dyinggasp, sinyal rendah, CPU/memory/temperature
@@ -417,13 +420,13 @@ npm run test
 
 ## Supported OLT Models
 
-| Model | SNMP | Telnet CLI | Notes |
-|-------|------|-----------|-------|
-| ZTE C320 | ✅ | ✅ | Primary tested model |
-| ZTE C300 | ✅ | ✅ | Full support |
-| ZTE C300-M | ✅ | ✅ | Full support |
-| ZTE C600 | ✅ | ✅ | Full support |
-| ZTE C650 | ✅ | ✅ | Full support |
+| Model | SNMP | Telnet CLI | GPON | EPON | Notes |
+|-------|------|-----------|------|------|-------|
+| ZTE C320 | ✅ | ✅ | ✅ | ✅ | Primary tested model (GTG + ETG cards) |
+| ZTE C300 | ✅ | ✅ | ✅ | ✅ | Full support |
+| ZTE C300-M | ✅ | ✅ | ✅ | ✅ | Full support |
+| ZTE C600 | ✅ | ✅ | ✅ | ✅ | Full support |
+| ZTE C650 | ✅ | ✅ | ✅ | ✅ | Full support |
 
 ## Supported ONU Vendors (on ZTE OLT)
 
