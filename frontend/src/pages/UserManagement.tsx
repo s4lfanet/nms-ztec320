@@ -89,6 +89,7 @@ export function UserManagement() {
         </div>
         <div className="flex items-center gap-2">
           <TutorialBanner
+            guideId="user-management"
             title="Panduan User Management"
             steps={[
               { title: 'Users Tab', content: <><p>Daftar user di sistem. Tambah/edit/hapus user. Setiap user punya: username, name, role, phone, dan status (active/disabled).</p><p className="text-xs text-tx3 mt-1">Role menentukan permission apa yang dimiliki user (view, configure, manage, dll).</p></> },

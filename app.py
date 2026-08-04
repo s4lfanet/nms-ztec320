@@ -530,6 +530,8 @@ def api_onu_live_detail(onu_id):
                     onu.onu_rx_power = live_detail['onu_rx_power']; updated = True
                 if live_detail.get('tx_power') is not None:
                     onu.tx_power = live_detail['tx_power']; updated = True
+                if live_detail.get('onu_type'):
+                    onu.onu_type = live_detail['onu_type']; updated = True
                 # Read-back WiFi config from ONU running-config
                 wifi_entries = live_detail.get('wifi_entries', [])
                 if wifi_entries:
@@ -2204,10 +2206,18 @@ def update_onu_field(onu_id):
 
     if field == 'name':
         onu.name = value
-        _send_onu_cli(olt, onu, f'name {value}')
+        is_epon = (onu.card or '').lower() == 'epon'
+        if is_epon:
+            _send_onu_cli(olt, onu, f'property description $${value}$${onu.description or ""}')
+        else:
+            _send_onu_cli(olt, onu, f'name {value}')
     elif field == 'description':
         onu.description = value
-        _send_onu_cli(olt, onu, f'description {value}')
+        is_epon = (onu.card or '').lower() == 'epon'
+        if is_epon:
+            _send_onu_cli(olt, onu, f'property description $${onu.name or ""}$${value}')
+        else:
+            _send_onu_cli(olt, onu, f'description {value}')
     elif field == 'actual_type':
         onu.actual_type = value
     elif field == 'onu_type':
@@ -2226,7 +2236,11 @@ def update_onu_field(onu_id):
                     tc._send_command(tn, 'configure terminal')
                     tc._send_command(tn, f'interface {pon_if}')
                     # Re-register with new type WITHOUT removing first — preserves config
-                    tc._send_command(tn, f'onu {onu.onu_id} type {value} sn {onu.serial_number}')
+                    # EPON uses 'mac' keyword, GPON uses 'sn' keyword
+                    if is_epon:
+                        tc._send_command(tn, f'onu {onu.onu_id} type {value} mac {onu.serial_number}')
+                    else:
+                        tc._send_command(tn, f'onu {onu.onu_id} type {value} sn {onu.serial_number}')
                     tc._send_command(tn, 'end')
                     tn.close()
                     logger.info(f"[update_onu_type] CLI: re-registered ONU {onu.onu_id} type={value}")

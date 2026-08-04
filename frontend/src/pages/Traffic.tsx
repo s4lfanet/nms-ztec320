@@ -262,6 +262,7 @@ export function Traffic() {
           <p className="text-tx2 text-xs md:text-sm mt-1">Real-time and historical bandwidth usage per OLT / PON port</p>
         </div>
         <TutorialBanner
+          guideId="traffic"
           title="Panduan Traffic Monitoring"
           steps={[
             { title: 'Pilih OLT & Port Type', content: <><p>Pilih OLT dari dropdown, lalu pilih port type: <strong>Uplink</strong> (port uplink OLT) atau <strong>PON</strong> (port PON GPON).</p><p className="text-xs text-tx3 mt-1">Pilih periode: <strong>Live</strong> (real-time, update 5 detik), <strong>1H/6H/1D/3D/7D/30D</strong> (historical dari database).</p></> },

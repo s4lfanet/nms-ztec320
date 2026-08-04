@@ -569,6 +569,7 @@ export function RegisterWizard() {
           </div>
         </div>
         <TutorialBanner
+          guideId="register-wizard"
           title="Panduan Register ONU Wizard"
           prerequisites={
             <>

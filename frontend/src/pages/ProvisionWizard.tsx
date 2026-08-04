@@ -502,6 +502,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           </div>
         </div>
         <TutorialBanner
+          guideId="provision-wizard"
           title={manualMode ? 'Panduan Pre-config ONT' : 'Panduan Provision ONU'}
           prerequisites={
             <>

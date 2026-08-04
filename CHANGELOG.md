@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 2026-08-05 — Centralized Guide System
+
+#### Added
+- **Centralized guide data** (`frontend/src/data/guides.ts`): All 17 page guides consolidated into a single structured TypeScript file with `Guide` and `GuideStep` interfaces, category grouping, and helper functions (`getGuideById`, `searchGuides`, `getGuidesByCategory`)
+- **Guide page** (`frontend/src/pages/GuidePage.tsx`): Dedicated "Panduan" page at `/dashboard/guide` with:
+  - Search bar (searches title, description, steps, tips)
+  - Category filter buttons with counts
+  - Accordion layout grouped by 7 categories (Dashboard, ONU Management, Templates, Traffic, Infrastructure, System, Activity)
+  - Rich text rendering (**bold** support via `renderRichText`)
+  - Prerequisites and Tips sections per guide
+- **Sidebar menu**: "Panduan" menu item with BookOpen icon, visible to all users
+- **TutorialBanner `guideId` prop**: When set, TutorialBanner pulls content from centralized `guides.ts` instead of inline JSX. Adds "Panduan" link button that navigates to `/dashboard/guide`
+- All 17 pages updated with `guideId` prop: Dashboard, AllOnus, ViewOnu, AddOnu, ProvisionWizard, RegisterWizard, OltSettings, OltConfiguration, Traffic, FtthInfrastructure, Customization, Templates, Tr069Profile, UserManagement, AlertSettings, AlertHistory, ActionLogs
+
+#### Changed
+- `TutorialBanner.tsx`: Refactored to support both inline JSX (fallback) and centralized data (guideId). Added Prasyarat/Tips section headers with icons. Added "Panduan" link button when guideId is set
+- Guide data is code-split into a separate chunk (~16KB gzipped) — no impact on initial bundle size
+
+#### Fixed
+- EPON ONU name/description edit: Uses `property description $$name$$description` CLI format for EPON ONUs instead of separate `name`/`description` commands
+- EPON ONU type change: Uses `mac` keyword instead of `sn` for EPON ONU re-registration
+- ViewOnu GetStatusModal crash: Added null guard for undefined status data
+- `sync_helper.py`: Now stores `onu_type` from ONU data during sync
+
+---
+
 ### 2026-08-04 — Auto-Backup Audit & Fix
 
 #### Fixed

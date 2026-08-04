@@ -24,6 +24,7 @@ const ActionLogs = lazy(() => import('./pages/ActionLogs').then(m => ({ default:
 const AlertHistoryPage = lazy(() => import('./pages/AlertHistory').then(m => ({ default: m.AlertHistory })));
 const Traffic = lazy(() => import('./pages/Traffic').then(m => ({ default: m.Traffic })));
 const CloudflareTunnel = lazy(() => import('./pages/CloudflareTunnel').then(m => ({ default: m.CloudflareTunnel })));
+const GuidePage = lazy(() => import('./pages/GuidePage').then(m => ({ default: m.GuidePage })));
 
 const routePermissions: Record<string, string> = {
   '/dashboard/onus/add': 'add_onu',
@@ -135,6 +136,7 @@ export default function App() {
         <Route path="templates/tr069-profile" element={<Tr069Profile />} />
         <Route path="traffic" element={<Traffic />} />
         <Route path="logs" element={<ActionLogs />} />
+        <Route path="guide" element={<GuidePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

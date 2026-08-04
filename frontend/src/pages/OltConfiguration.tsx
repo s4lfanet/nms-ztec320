@@ -42,6 +42,7 @@ export function OltConfiguration() {
         <span className="text-tx1">Configurations</span>
         <div className="ml-auto">
           <TutorialBanner
+            guideId="olt-configuration"
             title="Panduan OLT Configuration"
             steps={[
               { title: 'Uplinks', content: <><p>Konfigurasi port uplink OLT (ge_0/1, ge_0/2, dll). Menampilkan speed, duplex, VLAN mode (trunk/access/hybrid), dan trunk VLANs.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Sync Data</strong> untuk fetch uplink info dari OLT via Telnet. Edit untuk ubah VLAN mode dan trunk VLANs.</p></> },

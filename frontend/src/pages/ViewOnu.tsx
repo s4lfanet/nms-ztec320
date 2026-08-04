@@ -144,7 +144,7 @@ export function ViewOnu() {
 
   const getStatusMut = useMutation({
     mutationFn: async () => { setPendingAction('get-status'); return api.onuGetStatus(onuId); },
-    onSuccess: (d) => { setPendingAction(null); if (d.success) { setModal({ type: 'getStatus', data: d.status }); qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); } else toast.error('Get Status failed'); },
+    onSuccess: (d) => { setPendingAction(null); if (d.success && d.status) { setModal({ type: 'getStatus', data: d.status }); qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); } else toast.error('Get Status failed'); },
     onError: () => { setPendingAction(null); toast.error('Get Status failed'); },
   });
 
@@ -239,22 +239,38 @@ export function ViewOnu() {
   const tr069Entries = (ld.tr069_entries as Array<Record<string, string>>) || [];
   const wifiEntriesRaw = (ld.wifi_entries as Array<Record<string, string>>) || [];
   // Merge password from DB wifi_config (ZTE doesn't expose WPA keys in running-config)
+  // For EPON ONUs, live_detail has no wifi_entries — show from DB wifi_config
   let wifiEntries = wifiEntriesRaw;
   if (onu.wifi_config) {
     try {
       const wcfg = JSON.parse(onu.wifi_config);
       const dbSsids = wcfg.ssids || [];
-      wifiEntries = wifiEntriesRaw.map(w => {
-        const num = w.wifi_num || '';
-        const dbMatch = dbSsids.find((s: Record<string, unknown>) => String(s.ssid_num) === String(num));
-        if (dbMatch && (!w.ssid_password || w.ssid_password === '--')) {
-          return { ...w, ssid_password: dbMatch.ssid_password || '' };
-        }
-        return w;
-      });
+      if (wifiEntriesRaw.length > 0) {
+        // Merge passwords from DB into live entries
+        wifiEntries = wifiEntriesRaw.map(w => {
+          const num = w.wifi_num || '';
+          const dbMatch = dbSsids.find((s: Record<string, unknown>) => String(s.ssid_num) === String(num));
+          if (dbMatch && (!w.ssid_password || w.ssid_password === '--')) {
+            return { ...w, ssid_password: dbMatch.ssid_password || '' };
+          }
+          return w;
+        });
+      } else if (dbSsids.length > 0) {
+        // No live wifi entries (EPON) — show from DB
+        wifiEntries = dbSsids.map((s: Record<string, unknown>) => ({
+          wifi_num: String(s.ssid_num || ''),
+          ssid_name: String(s.ssid_name || ''),
+          ssid_auth_type: String(s.ssid_auth_type || ''),
+          ssid_password: String(s.ssid_password || ''),
+          status: String(s.wifi_status || 'up'),
+          mode: String(s.wifi_mode || ''),
+          vlan: String(s.vlan || ''),
+        }));
+      }
     } catch { /* ignore */ }
   }
   const ethEntries = (ld.eth_entries as Array<Record<string, string>>) || [];
+  const isEpon = (onu.card || '').toLowerCase() === 'epon';
 
   return (
     <div className="space-y-4 md:space-y-5 animate-fade-in">
@@ -264,6 +280,7 @@ export function ViewOnu() {
         <span>/</span><span className="text-tx1">View / Onu</span>
         <div className="ml-auto">
           <TutorialBanner
+            guideId="view-onu"
             title="Panduan View ONU"
             steps={[
               { title: 'ONU Details', content: <><p>Menampilkan info dasar ONU: nama, serial number, type, status (Online/Offline/DyingGasp/LOS), RX/TX power, distance, technician, dan ODP port.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Refresh Live</strong> untuk fetch data real-time dari OLT via Telnet (rx power, state, distance). Klik <strong>Save Config</strong> untuk backup running-config ONU ke file.</p></> },
@@ -460,7 +477,7 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={<Shield size={24} />} text="No remote access rules" />}
+        ) : <EmptyState icon={<Shield size={24} />} text={isEpon ? 'Remote Access not available for EPON ONUs' : 'No remote access rules'} />}
       </Card>
 
       {/* VEIP */}
@@ -474,7 +491,7 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={<Key size={24} />} text="No VEIP config from OLT" />}
+        ) : <EmptyState icon={<Key size={24} />} text={isEpon ? 'VEIP not available for EPON ONUs' : 'No VEIP config from OLT'} />}
       </Card>
 
       {/* TR069 */}
@@ -488,7 +505,7 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={<Shield size={24} />} text="No TR069 config from OLT" />}
+        ) : <EmptyState icon={<Shield size={24} />} text={isEpon ? 'TR069 not available for EPON ONUs' : 'No TR069 config from OLT'} />}
       </Card>
 
       {/* WiFi */}
@@ -527,7 +544,7 @@ export function ViewOnu() {
             </div>
           ) : null;
           return <div>{renderGroup('2.4 GHz', band24)}{renderGroup('5 GHz', band5)}</div>;
-        })() : <EmptyState icon={<Wifi size={24} />} text="No WiFi config from OLT" />}
+        })() : <EmptyState icon={<Wifi size={24} />} text={isEpon ? 'No WiFi config (EPON — configured via ONU Web UI)' : 'No WiFi config from OLT'} />}
       </Card>
 
       {/* Ethernet */}
@@ -543,7 +560,7 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={<Plug size={24} />} text="No Ethernet config from OLT" />}
+        ) : <EmptyState icon={<Plug size={24} />} text={isEpon ? 'Ethernet detail not available for EPON ONUs' : 'No Ethernet config from OLT'} />}
       </Card>
 
       {/* Optical Signal */}
@@ -567,7 +584,7 @@ export function ViewOnu() {
           <h6 className="text-xs text-tx3 mb-2 mt-4 font-semibold">GEM Ports</h6>
           <DataTable headers={['#','GEM Port','TCONT']}>{gemports.map((g, i) => (<tr key={i}><td>{i+1}</td><td><strong>{g.split(" ")[1] || '-'}</strong></td><td>{g.includes("tcont ") ? g.split("tcont ")[1].split(" ")[0] : '-'}</td></tr>))}</DataTable>
         </>)}
-        {tcontProfiles.length === 0 && gemports.length === 0 && <EmptyState icon={<Database size={24} />} text="No TCONT/GEM data. Run Sync to collect." />}
+        {tcontProfiles.length === 0 && gemports.length === 0 && <EmptyState icon={<Database size={24} />} text={isEpon ? 'TCONT/GEM not applicable to EPON ONUs' : 'No TCONT/GEM data. Run Sync to collect.'} />}
       </Card>
 
       {/* VLAN Services */}
@@ -576,7 +593,7 @@ export function ViewOnu() {
           <DataTable headers={['#','Service Port','Vport','User VLAN','VLAN']}>
             {services.map((s, i) => { const parts = s.split(" "); const getVal = (kw: string) => { const idx = parts.indexOf(kw); return idx >= 0 && parts[idx+1] ? parts[idx+1] : '-'; }; return (<tr key={i}><td>{i+1}</td><td>{parts[1]||'-'}</td><td>{getVal('vport')}</td><td>{getVal('user-vlan')}</td><td>{getVal('vlan')}</td></tr>); })}
           </DataTable>
-        ) : <EmptyState icon={<Layers size={24} />} text="No service-port data." />}
+        ) : <EmptyState icon={<Layers size={24} />} text={isEpon ? 'No service-port data (EPON)' : 'No service-port data.'} />}
       </Card>
 
       {/* MODALS */}
@@ -1245,14 +1262,15 @@ function AclEditModal({ data, onuId, onClose, onSuccess }: { data: Record<string
 }
 
 // ═══ GET STATUS MODAL (matches R-Config Get Status output) ═══
-function GetStatusModal({ status, onClose }: { status: Record<string, unknown>; onClose: () => void }) {
-  const info = (status.interface || {}) as Record<string, string>;
-  const opt = (status.optical || {}) as Record<string, Record<string, string>>;
+function GetStatusModal({ status, onClose }: { status: Record<string, unknown> | undefined | null; onClose: () => void }) {
+  const safeStatus = status || {};
+  const info = (safeStatus.interface || {}) as Record<string, string>;
+  const opt = (safeStatus.optical || {}) as Record<string, Record<string, string>>;
   const upOpt = opt.up || {};
   const downOpt = opt.down || {};
   const onuModule = opt.onu_module || {};
-  const hist = (status.history || []) as Array<{ authpass_time: string; offline_time: string; cause: string }>;
-  const macs = (status.macs || []) as Array<{ mac: string; vlan: string; type: string; port: string; vport: string }>;
+  const hist = (safeStatus.history || []) as Array<{ authpass_time: string; offline_time: string; cause: string }>;
+  const macs = (safeStatus.macs || []) as Array<{ mac: string; vlan: string; type: string; port: string; vport: string }>;
   const infoFields = [
     ['ONU Interface', info['ONU interface'] || ''],
     ['Name', info['Name'] || ''],

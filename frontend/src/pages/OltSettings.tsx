@@ -190,6 +190,7 @@ export function OltSettings() {
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <TutorialBanner
+            guideId="olt-settings"
             title="Panduan OLT Settings"
             steps={[
               { title: 'OLT List', content: <><p>Daftar OLT yang terdaftar di sistem. Setiap OLT menampilkan: nama, IP, vendor, model, status SNMP/Telnet, jumlah ONU, dan last sync.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Edit</strong> untuk ubah konfigurasi OLT (IP, SNMP community, CLI credentials). Klik <strong>Config</strong> untuk ke halaman OLT Configuration.</p></> },

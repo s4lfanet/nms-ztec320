@@ -3531,6 +3531,18 @@ class TelnetCollector:
                 result['veip_entries'] = []
                 result['tr069_entries'] = []
                 result['remote_access'] = []
+                # Get ONU type from PON port running-config
+                try:
+                    olt_cfg = self._send_command(tn, f'show running-config interface {olt_iface}', timeout=8)
+                    if olt_cfg and '%Error' not in olt_cfg:
+                        for line in olt_cfg.split('\n'):
+                            ls = line.strip()
+                            tm = re.match(r'onu\s+(\d+)\s+type\s+(\S+)\s+mac\s+(\S+)', ls)
+                            if tm and int(tm.group(1)) == onu_id:
+                                result['onu_type'] = tm.group(2)
+                                break
+                except Exception:
+                    pass
                 wan_svc_idx = 0
                 for line in cfg.split('\n'):
                     ls = line.strip()
@@ -5023,6 +5035,43 @@ class TelnetCollector:
 
         if not epon_onus:
             return epon_onus
+
+        # Step 1b: Get ONU types from PON port running-config
+        # show running-config interface epon-olt_1/2/2
+        # Output:
+        # interface epon-olt_1/2/2
+        #   no shutdown
+        #   linktrap disable
+        #   p2p mode group
+        #   onu 1 type ALL-EPON mac 543e.6496.f469 ip-cfg static
+        #   onu 2 type ALL-EPON mac 002f.d94d.a599 ip-cfg static
+        epon_type_map = {}  # (slot, port, onu_id) -> type_name
+        seen_ports = set()
+        for onu in epon_onus:
+            port_key = (onu['frame'], onu['slot'], onu['port'])
+            if port_key in seen_ports:
+                continue
+            seen_ports.add(port_key)
+            olt_iface = f"epon-olt_{onu['frame']}/{onu['slot']}/{onu['port']}"
+            try:
+                olt_cfg = self._send_command(tn, f'show running-config interface {olt_iface}', timeout=8)
+                if olt_cfg and '%Error' not in olt_cfg:
+                    for line in olt_cfg.split('\n'):
+                        ls = line.strip()
+                        # onu 1 type ALL-EPON mac 543e.6496.f469 ip-cfg static
+                        tm = re.match(r'onu\s+(\d+)\s+type\s+(\S+)\s+mac\s+(\S+)', ls)
+                        if tm:
+                            oid = int(tm.group(1))
+                            type_name = tm.group(2)
+                            epon_type_map[(onu['slot'], onu['port'], oid)] = type_name
+            except Exception as e:
+                logger.debug(f"epon olt running-config {olt_iface}: {e}")
+
+        # Apply ONU type
+        for onu in epon_onus:
+            type_key = (onu['slot'], onu['port'], onu['onu_id'])
+            if type_key in epon_type_map:
+                onu['onu_type'] = epon_type_map[type_key]
 
         # Step 2: Get name/description from running-config per ONU
         # show running-config interface epon-onu_1/2/2:1

@@ -68,6 +68,7 @@ export function AlertHistory() {
           <p className="text-tx2 text-xs md:text-sm mt-1">Riwayat semua alert yang terdeteksi oleh sistem monitoring</p>
         </div>
         <TutorialBanner
+          guideId="alert-history"
           title="Panduan Alert History"
           steps={[
             { title: 'Filter Alert', content: <><p>Filter alert by type: ONU Offline, DyingGasp, LOS, RX Critical, OLT Offline, OLT High Temp, OLT CPU High.</p><p className="text-xs text-tx3 mt-1">Klik filter button untuk toggle filter. "All" menampilkan semua alert type.</p></> },

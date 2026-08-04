@@ -364,6 +364,9 @@ def save_sync_result(olt, result, sync, light=False):
                 onu.actual_type = _new_type
             elif not onu.actual_type:
                 onu.actual_type = _new_type
+        _new_onu_type = onu_data.get('onu_type', '')
+        if _new_onu_type:
+            onu.onu_type = _new_onu_type
         onu.last_seen = datetime.now(timezone.utc)
 
         # Track online/offline timestamps for online duration calculation
