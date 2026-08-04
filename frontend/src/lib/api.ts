@@ -622,11 +622,24 @@ export interface SignalStats {
   total: number;
 }
 
+export interface PonPortEntry {
+  value: string;
+  label: string;
+  port: number;
+}
+
+export interface PonSlotGroup {
+  slot: number;
+  card_type: string;
+  card_status: string;
+  ports: PonPortEntry[];
+}
+
 export interface AllOnusData {
   onus: ONUData[];
   signal_stats: SignalStats;
   olts: OltInfo[];
-  pon_ports: { value: string; label: string }[];
+  pon_ports: PonSlotGroup[];
   total: number;
   page: number;
   page_size: number;

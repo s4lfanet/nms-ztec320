@@ -23,6 +23,7 @@ export function AllOnus() {
   const [oltFilter, setOltFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState(() => searchParams.get('filter') || 'all');
   const [ponFilter, setPonFilter] = useState('all');
+  const [slotFilter, setSlotFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -49,8 +50,8 @@ export function AllOnus() {
   }, [search]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['all-onus', oltFilter, statusFilter, ponFilter, debouncedSearch, page, pageSize, sortBy, sortDir],
-    queryFn: () => api.allOnus({ olt: oltFilter, status: statusFilter, pon: ponFilter, search: debouncedSearch, page, page_size: pageSize, sort_by: sortBy || undefined, sort_dir: sortDir }),
+    queryKey: ['all-onus', oltFilter, statusFilter, ponFilter, slotFilter, debouncedSearch, page, pageSize, sortBy, sortDir],
+    queryFn: () => api.allOnus({ olt: oltFilter, status: statusFilter, pon: ponFilter !== 'all' ? ponFilter : (slotFilter !== 'all' ? `slot/${slotFilter}` : 'all'), search: debouncedSearch, page, page_size: pageSize, sort_by: sortBy || undefined, sort_dir: sortDir }),
     refetchInterval: 30000,
     placeholderData: keepPreviousData,
   });
@@ -137,7 +138,7 @@ export function AllOnus() {
   });
 
   // Reset page when filters change
-  useEffect(() => { setPage(1); }, [oltFilter, statusFilter, debouncedSearch, pageSize]);
+  useEffect(() => { setPage(1); }, [oltFilter, statusFilter, slotFilter, ponFilter, debouncedSearch, pageSize]);
 
   if (isLoading) return <TableSkeleton />;
 
@@ -229,6 +230,7 @@ export function AllOnus() {
               if (oltFilter !== 'all') params.set('olt', oltFilter);
               if (statusFilter !== 'all') params.set('status', statusFilter);
               if (ponFilter !== 'all') params.set('pon', ponFilter);
+              else if (slotFilter !== 'all') params.set('pon', `slot/${slotFilter}`);
               if (debouncedSearch) params.set('search', debouncedSearch);
               if (sortBy) { params.set('sort_by', sortBy); params.set('sort_dir', sortDir); }
               const qs = params.toString();
@@ -296,25 +298,46 @@ export function AllOnus() {
 
         <div className="flex flex-wrap gap-2 items-center">
           <div className="flex gap-1 p-1 rounded-xl bg-glass border border-brd overflow-x-auto max-w-full">
-            <FilterBtn active={oltFilter === 'all'} onClick={() => { setOltFilter('all'); setPonFilter('all'); }}>All</FilterBtn>
+            <FilterBtn active={oltFilter === 'all'} onClick={() => { setOltFilter('all'); setPonFilter('all'); setSlotFilter('all'); }}>All</FilterBtn>
             {olts.map(o => (
-              <FilterBtn key={o.id} active={oltFilter === String(o.id)} onClick={() => { setOltFilter(String(o.id)); setPonFilter('all'); }}>
+              <FilterBtn key={o.id} active={oltFilter === String(o.id)} onClick={() => { setOltFilter(String(o.id)); setPonFilter('all'); setSlotFilter('all'); }}>
                 {o.name}
               </FilterBtn>
             ))}
           </div>
 
           {oltFilter !== 'all' && pon_ports.length > 0 && (
-            <select
-              value={ponFilter}
-              onChange={e => { setPonFilter(e.target.value); setPage(1); }}
-              className="h-10 px-3 rounded-xl bg-glass border border-brd text-sm text-tx1 focus:outline-none focus:border-accent/50 flex-shrink-0"
-            >
-              <option value="all">All PON</option>
-              {pon_ports.map(p => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </select>
+            <>
+              <select
+                value={slotFilter}
+                onChange={e => { setSlotFilter(e.target.value); setPonFilter('all'); setPage(1); }}
+                className="h-10 px-3 rounded-xl bg-glass border border-brd text-sm text-tx1 focus:outline-none focus:border-accent/50 flex-shrink-0"
+              >
+                <option value="all">All Slots</option>
+                {pon_ports.map(s => (
+                  <option key={s.slot} value={String(s.slot)}>
+                    Slot {s.slot}{s.card_type ? ` (${s.card_type})` : ''}
+                  </option>
+                ))}
+              </select>
+
+              {slotFilter !== 'all' && (() => {
+                const slotGroup = pon_ports.find(s => String(s.slot) === slotFilter);
+                if (!slotGroup) return null;
+                return (
+                  <select
+                    value={ponFilter}
+                    onChange={e => { setPonFilter(e.target.value); setPage(1); }}
+                    className="h-10 px-3 rounded-xl bg-glass border border-brd text-sm text-tx1 focus:outline-none focus:border-accent/50 flex-shrink-0"
+                  >
+                    <option value="all">All PON</option>
+                    {slotGroup.ports.map(p => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                );
+              })()}
+            </>
           )}
 
           <select

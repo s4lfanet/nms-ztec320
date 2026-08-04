@@ -194,6 +194,8 @@ def api_all_onus():
             parts = pon_filter.split('/')
             if len(parts) == 3:
                 query = query.filter_by(frame=int(parts[0]), slot=int(parts[1]), port=int(parts[2]))
+            elif len(parts) == 2 and parts[0] == 'slot':
+                query = query.filter_by(slot=int(parts[1]))
         except (ValueError, IndexError):
             pass
 
@@ -329,15 +331,92 @@ def api_all_onus():
     olt_map = {o.id: o.name for o in olts}
     olt_vendor_map = {o.id: (o.vendor or '').lower() for o in olts}
 
-    # Build PON port list per OLT (for frontend filter dropdown)
+    # Build PON port list per OLT grouped by slot/card (for frontend filter dropdowns)
     pon_ports = []
     if olt_filter != 'all':
         try:
             olt_id_int = int(olt_filter)
-            pon_rows = ONU.query.filter_by(olt_id=olt_id_int).with_entities(
+            # 1. Get service cards (GTG/GTC/ETG) from OLTCard table
+            cards = OLTCard.query.filter_by(olt_id=olt_id_int).order_by(OLTCard.slot).all()
+            service_cards = [c for c in cards if (c.card_type or '').upper().startswith(('GTG', 'GTC', 'ETG'))]
+            # 2. Get all OLTPort entries for this OLT
+            oltp_rows = OLTPort.query.filter_by(olt_id=olt_id_int).all()
+            # 3. Get distinct frame/slot/port from ONU table (fallback for ports not in OLTPort)
+            onu_ports = ONU.query.filter_by(olt_id=olt_id_int).with_entities(
                 ONU.frame, ONU.slot, ONU.port
-            ).distinct().order_by(ONU.frame, ONU.slot, ONU.port).all()
-            pon_ports = [{'value': f'{r[0]}/{r[1]}/{r[2]}', 'label': f'PON {r[0]}/{r[1]}/{r[2]}'} for r in pon_rows]
+            ).distinct().all()
+            onu_slot_ports = {}
+            for r in onu_ports:
+                onu_slot_ports.setdefault(r[1], set()).add(r[2])
+
+            if service_cards:
+                # Build from OLTCard + OLTPort + ONU fallback
+                for card in service_cards:
+                    slot = card.slot
+                    ct = (card.card_type or '').upper()
+                    is_epon = ct.startswith('ETG')
+                    olt_pfx = 'epon-olt' if is_epon else 'gpon-olt'
+                    frame = 1  # ZTE C320 frame is always 1
+                    # Collect ports for this slot from OLTPort
+                    slot_ports = []
+                    port_nums_seen = set()
+                    for p in oltp_rows:
+                        pparts = (p.port_name or '').replace('gpon-olt_', '').replace('epon-olt_', '').split('/')
+                        if len(pparts) >= 3:
+                            try:
+                                pframe, pslot, pport = int(pparts[0]), int(pparts[1]), int(pparts[2])
+                                if pslot == slot:
+                                    port_nums_seen.add(pport)
+                                    slot_ports.append({
+                                        'value': f'{pframe}/{pslot}/{pport}',
+                                        'label': f'PON {pport}',
+                                        'port': pport,
+                                    })
+                            except (ValueError, IndexError):
+                                pass
+                    # Add placeholder ports from card total_ports if not in OLTPort
+                    total_ports = card.total_ports or 0
+                    for pn in range(1, total_ports + 1):
+                        if pn not in port_nums_seen:
+                            slot_ports.append({
+                                'value': f'{frame}/{slot}/{pn}',
+                                'label': f'PON {pn}',
+                                'port': pn,
+                            })
+                    # Add ports from ONU table that aren't in OLTPort or placeholders
+                    for pn in sorted(onu_slot_ports.get(slot, [])):
+                        if pn not in port_nums_seen:
+                            slot_ports.append({
+                                'value': f'{frame}/{slot}/{pn}',
+                                'label': f'PON {pn}',
+                                'port': pn,
+                            })
+                    slot_ports.sort(key=lambda x: x['port'])
+                    if slot_ports:
+                        pon_ports.append({
+                            'slot': slot,
+                            'card_type': card.card_type or '',
+                            'card_status': card.status or '',
+                            'ports': slot_ports,
+                        })
+            else:
+                # No OLTCard data — fall back to ONU table only
+                onu_slot_map = {}
+                for r in onu_ports:
+                    frame, slot, port = r[0], r[1], r[2]
+                    onu_slot_map.setdefault(slot, []).append({
+                        'value': f'{frame}/{slot}/{port}',
+                        'label': f'PON {port}',
+                        'port': port,
+                    })
+                for slot in sorted(onu_slot_map.keys()):
+                    ports = sorted(onu_slot_map[slot], key=lambda x: x['port'])
+                    pon_ports.append({
+                        'slot': slot,
+                        'card_type': '',
+                        'card_status': '',
+                        'ports': ports,
+                    })
         except (ValueError, TypeError):
             pass
     onu_list = [{
@@ -7354,6 +7433,8 @@ def all_onus_export():
             parts = pon_filter.split('/')
             if len(parts) == 3:
                 query = query.filter_by(frame=int(parts[0]), slot=int(parts[1]), port=int(parts[2]))
+            elif len(parts) == 2 and parts[0] == 'slot':
+                query = query.filter_by(slot=int(parts[1]))
         except (ValueError, IndexError):
             pass
     if search:
