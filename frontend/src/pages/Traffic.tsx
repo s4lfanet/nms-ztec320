@@ -5,7 +5,6 @@ import { Activity, ArrowDown, ArrowUp, Search, Server, Radio, Clock } from 'luci
 import { api } from '../lib/api';
 import type { TrafficCard, TrafficPoint } from '../lib/api';
 import { Modal } from '../components/ui';
-import { TutorialBanner } from '../components/TutorialBanner';
 import { cn } from '../lib/utils';
 
 const PERIODS: { key: string; label: string }[] = [
@@ -261,25 +260,6 @@ export function Traffic() {
           <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2"><Activity size={22} className="text-accent" /> Traffic Monitoring</h1>
           <p className="text-tx2 text-xs md:text-sm mt-1">Real-time and historical bandwidth usage per OLT / PON port</p>
         </div>
-        <TutorialBanner
-          guideId="traffic"
-          title="Panduan Traffic Monitoring"
-          steps={[
-            { title: 'Pilih OLT & Port Type', content: <><p>Pilih OLT dari dropdown, lalu pilih port type: <strong>Uplink</strong> (port uplink OLT) atau <strong>PON</strong> (port PON GPON).</p><p className="text-xs text-tx3 mt-1">Pilih periode: <strong>Live</strong> (real-time, update 5 detik), <strong>1H/6H/1D/3D/7D/30D</strong> (historical dari database).</p></> },
-            { title: 'Traffic Cards', content: <><p>Setiap port ditampilkan sebagai kartu dengan grafik area (download/upload) dan nilai current, average, dan peak.</p><p className="text-xs text-tx3 mt-1">Klik kartu untuk popup detail dengan grafik lebih besar dan live traffic (5 detik interval).</p></> },
-            { title: 'Search Port', content: <><p>Gunakan search bar untuk cari port by nama atau nomor. Untuk PON port, format: <code>gpon-olt_1/1/2</code>.</p></> },
-          ]}
-          tips={
-            <>
-              <strong className="text-tx2">Tips:</strong>
-              <ul className="mt-1 ml-4 space-y-0.5">
-                <li>Live mode: grafik update setiap 5 detik via polling API</li>
-                <li>Historical data dikumpulkan oleh traffic_poller (cron job)</li>
-                <li>Klik kartu port untuk modal detail dengan live traffic</li>
-              </ul>
-            </>
-          }
-        />
       </div>
 
       {/* Filters */}

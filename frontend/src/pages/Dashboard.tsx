@@ -5,7 +5,6 @@ import { api, type DashboardData, type OltInfo } from '../lib/api';
 import { formatDate, cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
-import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Server, Wifi, WifiOff, AlertTriangle, Thermometer,
   RefreshCw, Radio, Clock, Fan, Zap, Activity, Search,
@@ -223,26 +222,6 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <TutorialBanner
-            guideId="dashboard"
-            title="Panduan Dashboard"
-            steps={[
-              { title: 'Statistik ONU', content: <><p>Kartu statistik menampilkan total ONU per status: <strong>Online</strong>, <strong>Offline</strong>, <strong>DyingGasp</strong>, <strong>LOS</strong> (Loss of Signal), dan <strong>Total</strong>.</p><p className="text-xs text-tx3 mt-1">Klik kartu untuk filter ONU berdasarkan status di halaman All ONUs.</p></> },
-              { title: 'OLT Cards', content: <><p>Setiap OLT ditampilkan sebagai kartu dengan info: status online/offline, uptime, suhu, CPU, fan, jumlah ONU online/offline, dan progress bar.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Sync</strong> pada kartu OLT untuk sync OLT tersebut. Klik <strong>Config</strong> untuk ke halaman OLT Configuration.</p><p className="text-xs text-tx3 mt-1">Klik kartu OLT untuk navigasi ke All ONUs yang difilter per OLT tersebut.</p></> },
-              { title: 'Sync All', content: <><p>Tombol <strong>Sync All</strong> di header untuk sync semua OLT sekaligus. Progress sync ditampilkan real-time per OLT.</p><p className="text-xs text-tx3 mt-1">Sync mengumpulkan data ONU via SNMP (light) atau SNMP+Telnet (full). Auto-refresh setiap 30 detik.</p></> },
-            ]}
-            tips={
-              <>
-                <strong className="text-tx2">Tips:</strong>
-                <ul className="mt-1 ml-4 space-y-0.5">
-                  <li>Dashboard auto-refresh setiap 30 detik — tidak perlu manual refresh</li>
-                  <li>WebSocket aktif: alert baru akan otomatis muncul tanpa refresh</li>
-                  <li>Klik kartu ONU untuk drill-down ke All ONUs per OLT</li>
-                  <li>Sort OLT cards by status/name/problems/offline count</li>
-                </ul>
-              </>
-            }
-          />
           {hasPerm('settings_ip_olts') && (
             <button onClick={() => syncAllMutation.mutate()} disabled={syncingAll || syncingOlt !== null}
               className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-sm font-medium transition-all disabled:opacity-50 flex-1 sm:flex-none justify-center">

@@ -4,7 +4,6 @@ import { api } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
-import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Wifi, Clock, RefreshCw, RotateCcw, Trash2, Ban, Eraser,
   FileText, Radio, Globe, Shield, Key, Plug, Database, Layers,
@@ -278,31 +277,6 @@ export function ViewOnu() {
         <button onClick={() => navigate('/dashboard')} className="hover:text-accent transition-colors">Dashboard</button>
         <span>/</span><button onClick={() => navigate('/dashboard/onus')} className="hover:text-accent transition-colors">All-ONUs</button>
         <span>/</span><span className="text-tx1">View / Onu</span>
-        <div className="ml-auto">
-          <TutorialBanner
-            guideId="view-onu"
-            title="Panduan View ONU"
-            steps={[
-              { title: 'ONU Details', content: <><p>Menampilkan info dasar ONU: nama, serial number, type, status (Online/Offline/DyingGasp/LOS), RX/TX power, distance, technician, dan ODP port.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Refresh Live</strong> untuk fetch data real-time dari OLT via Telnet (rx power, state, distance). Klik <strong>Save Config</strong> untuk backup running-config ONU ke file.</p></> },
-              { title: 'Status History', content: <><p>Grafik history status ONU (online/offline/dyinggasp/LOS) dalam 24 jam terakhir. Setiap titik menampilkan timestamp dan status pada saat itu.</p><p className="text-xs text-tx3 mt-1">Data history diupdate setiap kali OLT sync berjalan (manual atau auto-sync).</p></> },
-              { title: 'WiFi Configuration', content: <><p>Tabel WiFi SSID yang terdaftar di ONU. Klik baris untuk edit SSID name, auth type (WPA2-PSK/WPA-PSK/Open), password, VLAN, dan mode.</p><p className="text-xs text-tx3 mt-1">Password ditampilkan dari database (ZTE OLT tidak expose WPA key di running-config). Hint <strong>"(dari database)"</strong> menandakan password berasal dari DB, bukan dari ONU live config.</p><p className="text-xs text-tx3 mt-1">Perubahan langsung diterapkan ke ONU via Telnet + disimpan ke DB + auto-sync OLT.</p></> },
-              { title: 'WAN Services', content: <><p>Konfigurasi WAN service per ONU (Internet/IPTV/VoIP/Bridge). Klik untuk edit VLAN, WAN mode (Bridge/DHCP/PPPoE/PPPoE+NAT), dan PPPoE credentials.</p><p className="text-xs text-tx3 mt-1">Service 1-4 sesuai dengan service-port di OLT. Checkbox menandakan service sudah dikonfigurasi.</p></> },
-              { title: 'VLAN & GEM Ports', content: <><p>Menampilkan service-port, vport, user-vlan, dan VLAN ID yang terdaftar di OLT untuk ONU ini. Data diambil dari running-config OLT.</p></> },
-              { title: 'Remote Access & Actions', content: <><p><strong>Remote Access</strong>: konfigurasi ACL (HTTP/HTTPS/SNMP/SSH/Telnet/TR069) untuk akses remote ke ONU.</p><p className="text-xs text-tx3 mt-1"><strong>Actions</strong>: Reboot (restart ONU), Delete (deregister dari OLT), Clear Config (factory reset), Disable/Enable (shutdown/enable ONU).</p><p className="text-xs text-tx3 mt-1">Setiap action akan auto-sync OLT setelah eksekusi.</p></> },
-            ]}
-            tips={
-              <>
-                <strong className="text-tx2">Tips:</strong>
-                <ul className="mt-1 ml-4 space-y-0.5">
-                  <li>Edit WiFi/LAN/VEIP/TR069 langsung klik baris tabel — perubahan langsung ke ONU + DB</li>
-                  <li>Refresh Live fetch data real-time via Telnet (bisa lambat jika OLT sibuk)</li>
-                  <li>Resync Config untuk read-back full config dari ONU ke database</li>
-                  <li>Password WiFi yang ditampilkan berasal dari database, bukan dari ONU live</li>
-                </ul>
-              </>
-            }
-          />
-        </div>
       </div>
 
       {/* ONU Details Card */}

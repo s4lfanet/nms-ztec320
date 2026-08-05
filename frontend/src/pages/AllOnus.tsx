@@ -5,7 +5,6 @@ import { api, type ONUData, type AllOnusData, type TechnicianData, type RxColorR
 import { cn, formatSn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
-import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Search, Eye, Edit3, Trash2,
   CheckCircle2, AlertTriangle, XCircle, HelpCircle, Wifi, WifiOff,
@@ -204,27 +203,6 @@ export function AllOnus() {
           <p className="text-tx2 text-xs md:text-sm mt-1">{total} optical network units</p>
         </div>
         <div className="flex items-center gap-2">
-          <TutorialBanner
-            guideId="all-onus"
-            title="Panduan All ONUs"
-            steps={[
-              { title: 'Stat Cards & Filter', content: <><p>Kartu statistik di atas tabel menampilkan jumlah ONU per kategori: <strong>All</strong>, <strong>Online</strong>, <strong>Offline</strong>, <strong>DyingGasp</strong>, <strong>LOS</strong>. Klik kartu untuk filter tabel.</p><p className="text-xs text-tx3 mt-1">Signal cards menampilkan distribusi RX power berdasarkan color range yang dikonfigurasi di Customization.</p></> },
-              { title: 'Search & Filter', content: <><p>Gunakan search bar untuk cari ONU by name, OLT, serial number, PPPoE, atau type. Filter dropdown untuk OLT dan vendor.</p><p className="text-xs text-tx3 mt-1">Search di-debounce 400ms — otomatis trigger setelah berhenti mengetik.</p></> },
-              { title: 'Tabel ONU', content: <><p>Tabel menampilkan semua ONU dengan kolom: name, OLT, SN, type, status, RX power, PPPoE, technician, ODP port, dan actions.</p><p className="text-xs text-tx3 mt-1">Klik header kolom untuk sort. Server-side pagination — 50 ONU per halaman.</p><p className="text-xs text-tx3 mt-1">Klik <strong>View</strong> untuk detail ONU (ViewOnu page). Klik <strong>Edit</strong> untuk edit inline (name, PPPoE, technician, ODP port). Klik <strong>Delete</strong> untuk deregister ONU dari OLT.</p></> },
-              { title: 'Export & Signal Refresh', content: <><p><strong>Export CSV</strong>: download semua ONU ke file CSV (semua halaman, tidak hanya halaman current).</p><p className="text-xs text-tx3 mt-1"><strong>Signal Refresh</strong>: kirim SNMP get RX power ke semua OLT untuk update nilai terbaru. Bisa lambat jika OLT banyak.</p></> },
-            ]}
-            tips={
-              <>
-                <strong className="text-tx2">Tips:</strong>
-                <ul className="mt-1 ml-4 space-y-0.5">
-                  <li>WebSocket aktif: tabel auto-refresh saat OLT sync selesai</li>
-                  <li>Inline edit: klik cell Technician/ODP port untuk edit langsung di tabel</li>
-                  <li>Column visibility & order bisa diatur di Customization page</li>
-                  <li>Export CSV include semua ONU (tidak terfilter by pagination)</li>
-                </ul>
-              </>
-            }
-          />
           <button
             onClick={() => {
               const params = new URLSearchParams();

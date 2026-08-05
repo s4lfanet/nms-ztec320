@@ -7,7 +7,6 @@ import { useHasPerm } from '../hooks/useHasPerm';
 import { cn, formatDate } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
-import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Server, Plus, RefreshCw, Settings, Trash2, Edit3,
   Thermometer, Clock, CheckCircle, XCircle, Loader2,
@@ -189,27 +188,6 @@ export function OltSettings() {
           <p className="text-tx2 text-xs md:text-sm mt-1">{isSuperAdmin ? 'View all tenant OLT devices' : 'Manage OLT devices and connections'}</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <TutorialBanner
-            guideId="olt-settings"
-            title="Panduan OLT Settings"
-            steps={[
-              { title: 'OLT List', content: <><p>Daftar OLT yang terdaftar di sistem. Setiap OLT menampilkan: nama, IP, vendor, model, status SNMP/Telnet, jumlah ONU, dan last sync.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Edit</strong> untuk ubah konfigurasi OLT (IP, SNMP community, CLI credentials). Klik <strong>Config</strong> untuk ke halaman OLT Configuration.</p></> },
-              { title: 'Add OLT', content: <><p>Tambah OLT baru: nama, IP address, model (ZTE C320/C300/C600/C650), SNMP community, CLI username & password.</p><p className="text-xs text-tx3 mt-1">SNMP community wajib untuk sync ONU status. CLI credentials wajib untuk provisioning dan config changes via Telnet.</p></> },
-              { title: 'Sync', content: <><p><strong>Sync per OLT</strong>: kirim SNMP get ke OLT untuk collect ONU status, rx power, dll. <strong>Sync All</strong>: sync semua OLT sekaligus.</p><p className="text-xs text-tx3 mt-1">Progress sync ditampilkan real-time. Light sync = SNMP only (cepat). Full sync = SNMP + Telnet (lengkap).</p></> },
-              { title: 'Connection Status', content: <><p>Badge koneksi menampilkan status <strong>SNMP</strong> dan <strong>Telnet/CLI</strong> per OLT — Connected atau Disconnected.</p><p className="text-xs text-tx3 mt-1">Jika SNMP disconnected, cek IP dan community string. Jika Telnet disconnected, cek CLI username & password.</p></> },
-            ]}
-            tips={
-              <>
-                <strong className="text-tx2">Tips:</strong>
-                <ul className="mt-1 ml-4 space-y-0.5">
-                  <li>SNMP community default ZTE: public. Ubah jika diperlukan untuk security</li>
-                  <li>CLI credentials wajib untuk provisioning & config changes</li>
-                  <li>Sync All butuh waktu jika OLT banyak — progress real-time tersedia</li>
-                  <li>Super admin dapat melihat semua OLT dari semua tenant</li>
-                </ul>
-              </>
-            }
-          />
           {canManage && (
             <button onClick={() => syncAllMutation.mutate()} disabled={syncingAll || syncingId !== null}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-sm font-medium transition-all disabled:opacity-50 flex-1 sm:flex-none justify-center">
