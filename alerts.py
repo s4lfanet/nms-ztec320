@@ -614,8 +614,8 @@ def _check_onus_for_tenant(force_send=False):
         if not olt.telnet_enabled:
             continue
         try:
-            from snmp_collector import TelnetCollector
-            tc = TelnetCollector(olt.ip_address, olt.cli_username, olt.cli_password, olt.telnet_port)
+            from snmp_collector import create_cli_collector
+            tc = create_cli_collector(olt)
             unregistered = tc.collect_unregistered_onus()
             if unregistered:
                 _build_unregistered_alert(olt, unregistered, now,

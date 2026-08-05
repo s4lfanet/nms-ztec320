@@ -776,7 +776,11 @@ def update_onu(onu_id):
                     tc._send_command(tn, 'end')
                     tc._send_command(tn, 'configure terminal')
                     tc._send_command(tn, f'interface {pon_if}')
-                    tc._send_command(tn, f'onu {onu.onu_id} type {data["onu_type"].strip()} sn {onu.serial_number}')
+                    if is_epon:
+                        from telnet_client import _format_epon_mac
+                        tc._send_command(tn, f'onu {onu.onu_id} type {data["onu_type"].strip()} mac {_format_epon_mac(onu.serial_number)}')
+                    else:
+                        tc._send_command(tn, f'onu {onu.onu_id} type {data["onu_type"].strip()} sn {onu.serial_number}')
                     tc._send_command(tn, 'end')
                     tn.close()
                     logger.info(f"[update_onu] CLI: re-registered ONU {onu.onu_id} type={data['onu_type'].strip()}")
@@ -2238,7 +2242,8 @@ def update_onu_field(onu_id):
                     # Re-register with new type WITHOUT removing first — preserves config
                     # EPON uses 'mac' keyword, GPON uses 'sn' keyword
                     if is_epon:
-                        tc._send_command(tn, f'onu {onu.onu_id} type {value} mac {onu.serial_number}')
+                        from telnet_client import _format_epon_mac
+                        tc._send_command(tn, f'onu {onu.onu_id} type {value} mac {_format_epon_mac(onu.serial_number)}')
                     else:
                         tc._send_command(tn, f'onu {onu.onu_id} type {value} sn {onu.serial_number}')
                     tc._send_command(tn, 'end')
@@ -3132,6 +3137,9 @@ def provision_unified():
     # Detect EPON from pon_port prefix or explicit is_epon flag
     pon_port = data.get('pon_port', '')
     is_epon = data.get('is_epon', False) or 'epon-olt' in pon_port or 'epon_olt' in pon_port
+    # ZTE EPON universal onu-type is named 'ALL-EPON', not 'All' (GPON)
+    if is_epon and onu_type.strip().upper() == 'ALL':
+        onu_type = 'ALL-EPON'
 
     success, msg = tc.register_unified(
         frame=frame, slot=slot, port=port, onu_id=onu_id,
@@ -3202,6 +3210,9 @@ def pre_register_onu():
     # Detect EPON from pon_port prefix or explicit is_epon flag
     pon_port = data.get('pon_port', '')
     is_epon = data.get('is_epon', False) or 'epon-olt' in pon_port or 'epon_olt' in pon_port
+    # ZTE EPON universal onu-type is named 'ALL-EPON', not 'All' (GPON)
+    if is_epon and onu_type.strip().upper() == 'ALL':
+        onu_type = 'ALL-EPON'
 
     if template and template != 'bridge':
         success, msg = tc.register_vendor_template(

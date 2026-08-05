@@ -25,6 +25,7 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - WiFi SSID OMCI config: Open/WPA/WPA2/Mixed auth untuk dual-band (2.4G & 5G)
 - TR069/ACS profile support untuk Fiberhome VEIP template
 - **EPON support**: Deteksi otomatis kartu ETG, CLI prefix `epon-olt_`/`epon-onu_`, scan uncfg EPON, script preview dinamis
+- **EPON ONU registration**: MAC address diformat dotted (`xxxx.xxxx.xxxx`) untuk CLI ZTE, ONU type `ALL-EPON` (bukan `All`), keyword `mac` (bukan `sn`), skip GPON-only template commands (tcont/gemport), apply basic bridge service via `service-port`
 
 ### Alerting & Monitoring
 - Rule-based alerts untuk OLT offline, ONU offline/dyinggasp, sinyal rendah, CPU/memory/temperature

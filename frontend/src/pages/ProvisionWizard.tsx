@@ -127,7 +127,9 @@ function generateScript(d: WizardState): string {
 
   lines.push('! --- Register ONU ---');
   lines.push(`interface ${ponIf}`);
-  lines.push(`  onu ${oid} type ${d.onuType} sn ${onu.sn}`);
+  const regKw = isEpon ? (onu.sn.startsWith('EPON-') ? '' : 'mac') : 'sn';
+  const regPart = regKw ? `${regKw} ${onu.sn}` : '';
+  lines.push(`  onu ${oid} type ${d.onuType} ${regPart}`.trim());
   lines.push('!');
   lines.push(`interface ${onuIf}`);
   if (d.namePrefix) lines.push(`  name ${d.namePrefix}-1`);
@@ -409,6 +411,9 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
       const frame = match ? parseInt(match[1]) : 1;
       const slot = match ? parseInt(match[2]) : 1;
       const port = match ? parseInt(match[3]) : 1;
+      const isEpon = onu.pon_port.includes('epon-olt') || onu.pon_port.includes('epon_olt') || onu.is_epon === true;
+      // Universal onu-type name differs per PON type ('All' for GPON, 'ALL-EPON' for EPON)
+      const onuTypeToSend = isEpon && data.onuType === 'All' ? 'ALL-EPON' : data.onuType;
 
       try {
         const r = await fetch('/api/provision/unified', {
@@ -416,7 +421,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           body: JSON.stringify({
             olt_id: data.oltId, frame, slot, port,
             onu_id: onu.onu_id || (i + 1), serial: onu.sn,
-            onu_type: data.onuType, tcont_profile: data.tcontProfile,
+            onu_type: onuTypeToSend, tcont_profile: data.tcontProfile,
             traffic_profile: data.trafficProfile,
             name: data.namePrefix ? `${data.namePrefix}-${i + 1}` : '',
             description: data.description,
@@ -436,7 +441,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             tr069_config: data.tr069.enabled ? data.tr069 : null,
             technician_id: data.technicianId,
             pon_port: onu.pon_port,
-            is_epon: onu.pon_port.includes('epon-olt') || onu.pon_port.includes('epon_olt'),
+            is_epon: isEpon,
           }),
         });
         const d = await r.json();
