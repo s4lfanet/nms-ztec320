@@ -4609,6 +4609,7 @@ class TelnetCollector:
                             })
 
                 # Format 1b (EPON): "epon-olt_1/2/1    F670LV9.0    ZTEGDC79F447    GDC79F447"
+                # Also handles: "epon-olt_1/2/8    HWTC-245C    N/A    N/A" (SN not available)
                 elif 'epon-olt' in ll or 'epon_olt' in ll:
                     match = _re.search(r'epon[_-]olt[_-](\d+/\d+/\d+)\s+(\S+)\s+(\S+)', line)
                     if match:
@@ -4622,18 +4623,24 @@ class TelnetCollector:
                         else:
                             sn = sn_or_model
                             model = model_or_sn
-                        # EPON ONUs may use MAC address as SN (no vendor prefix)
+                        # EPON ONUs may use MAC address as SN (12 hex chars, no vendor prefix)
                         if not sn_match and len(model_or_sn) == 12 and _re.match(r'^[0-9A-Fa-f]{12}$', model_or_sn):
                             sn = model_or_sn
                             model = sn_or_model
-                        if sn and len(sn) >= 8:
-                            onus.append({
-                                'pon_port': pon_port,
-                                'sn': sn,
-                                'vendor': detect_vendor_from_sn(sn) if _re.match(r'^[A-Z]{4}', sn) else 'Unknown',
-                                'model': model if not _re.match(r'^[A-Z]{4}[0-9A-Fa-f]+$', model) else '',
-                                'is_epon': True,
-                            })
+                        # EPON uncfg often shows N/A for SN — still include the ONU
+                        # Use generated SN from port if SN is N/A or too short
+                        if not sn or sn.upper() == 'N/A' or len(sn) < 8:
+                            sn = f'EPON-{pon_port.replace("/", "-")}'
+                        # Clean model: remove N/A
+                        if model and model.upper() == 'N/A':
+                            model = ''
+                        onus.append({
+                            'pon_port': pon_port,
+                            'sn': sn,
+                            'vendor': detect_vendor_from_sn(sn) if _re.match(r'^[A-Z]{4}', sn) else 'Unknown',
+                            'model': model if not _re.match(r'^[A-Z]{4}[0-9A-Fa-f]+$', model) else '',
+                            'is_epon': True,
+                        })
 
                 # Format 2: "gpon-onu_1/1/5:1  ZTEGDC79F447  unknown" (show gpon onu uncfg)
                 elif 'gpon-onu' in ll or 'gpon_onu' in ll:
@@ -4688,6 +4695,108 @@ class TelnetCollector:
                                 'model': model,
                             })
 
+            # ─── EPON uncfg scan ───
+            # 'show pon onu uncfg' and 'show gpon onu uncfg' only return GPON ONUs.
+            # EPON unconfigured ONUs require 'show epon onu uncfg'.
+            try:
+                epon_output = self._send_command(tn, 'show epon onu uncfg', timeout=15)
+                epon_output = epon_output.replace('\x00', '').replace('\xff', '')
+                epon_output = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', epon_output)
+                logger.info(f"[epon uncfg raw] {epon_output[:500]}")
+
+                if epon_output.strip() and 'no unconfigured' not in epon_output.lower() and 'no related' not in epon_output.lower():
+                    for line in epon_output.split('\n'):
+                        line = line.strip('\r').strip()
+                        if not line:
+                            continue
+                        if '---' in line or '===' in line:
+                            continue
+                        ll = line.lower()
+                        if 'oltindex' in ll or 'onuindex' in ll or 'f/s/p' in ll or 'onuid' in ll or 'onutype' in ll:
+                            continue
+                        if ll.startswith('pon port') or ll.startswith('slot') or ll.startswith('no '):
+                            continue
+
+                        # Format: "epon-olt_1/2/1    F670LV9.0    ZTEGDC79F447    GDC79F447"
+                        if 'epon-olt' in ll or 'epon_olt' in ll:
+                            match = _re.search(r'epon[_-]olt[_-](\d+/\d+/\d+)\s+(\S+)\s+(\S+)', line)
+                            if match:
+                                pon_port = match.group(1)
+                                model_or_sn = match.group(2)
+                                sn_or_model = match.group(3)
+                                sn_match = _re.match(r'^[A-Z]{4}[0-9A-Fa-f]{4,}', model_or_sn)
+                                if sn_match:
+                                    sn = model_or_sn
+                                    model = sn_or_model
+                                else:
+                                    sn = sn_or_model
+                                    model = model_or_sn
+                                # EPON ONUs may use MAC address as SN (12 hex chars, no vendor prefix)
+                                if not sn_match and len(model_or_sn) == 12 and _re.match(r'^[0-9A-Fa-f]{12}$', model_or_sn):
+                                    sn = model_or_sn
+                                    model = sn_or_model
+                                if sn and len(sn) >= 8:
+                                    onus.append({
+                                        'pon_port': pon_port,
+                                        'sn': sn,
+                                        'vendor': detect_vendor_from_sn(sn) if _re.match(r'^[A-Z]{4}', sn) else 'Unknown',
+                                        'model': model if not _re.match(r'^[A-Z]{4}[0-9A-Fa-f]+$', model) else '',
+                                        'is_epon': True,
+                                    })
+
+                        # Format: "epon-onu_1/2/1:1  ZTEGDC79F447  unknown"
+                        elif 'epon-onu' in ll or 'epon_onu' in ll:
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                onu_match = _re.search(r'epon-onu_(\d+/\d+/\d+):(\d+)', parts[0])
+                                if onu_match:
+                                    pon_port = onu_match.group(1)
+                                    onu_id_val = int(onu_match.group(2))
+                                    sn = parts[1] if len(parts) > 1 else ''
+                                    # EPON may use MAC as SN (12 hex chars)
+                                    if sn and len(sn) >= 8:
+                                        onus.append({
+                                            'pon_port': pon_port,
+                                            'sn': sn,
+                                            'vendor': detect_vendor_from_sn(sn) if _re.match(r'^[A-Z]{4}', sn) else 'Unknown',
+                                            'model': '',
+                                            'onu_id': onu_id_val,
+                                            'is_epon': True,
+                                        })
+            except Exception as e:
+                logger.debug(f"EPON uncfg scan failed: {e}")
+
+            # ─── Enrich EPON uncfg ONUs with MAC from 'show epon onu state' ───
+            # EPON uncfg output often shows N/A for SN. Try to get the real MAC
+            # from 'show epon onu state' which shows all EPON ONUs including unregistered ones.
+            epon_uncfg_onus = [o for o in onus if o.get('is_epon') and o['sn'].startswith('EPON-')]
+            if epon_uncfg_onus:
+                try:
+                    state_output = self._send_command(tn, 'show epon onu state', timeout=20)
+                    state_output = state_output.replace('\x00', '').replace('\xff', '')
+                    state_output = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', state_output)
+                    # Parse: "epon-onu_1/2/8:1   offline   unknown   543e.6496.f469"
+                    port_mac_map = {}  # pon_port → mac
+                    for line in state_output.split('\n'):
+                        line = line.strip()
+                        if not line or line.startswith('---') or line.startswith('OnuIndex'):
+                            continue
+                        m = _re.match(r'epon-onu_(\d+/\d+/\d+):(\d+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
+                        if m:
+                            pon_port = m.group(1)
+                            reg_mac = m.group(5)
+                            mac_clean = reg_mac.replace('.', '').upper() if reg_mac and reg_mac != '0000.0000.0000' else ''
+                            if mac_clean:
+                                port_mac_map[pon_port] = mac_clean
+                    # Replace generated SNs with real MACs
+                    for o in epon_uncfg_onus:
+                        mac = port_mac_map.get(o['pon_port'])
+                        if mac:
+                            o['sn'] = mac
+                            logger.info(f"[epon uncfg] Replaced generated SN with MAC {mac} for port {o['pon_port']}")
+                except Exception as e:
+                    logger.debug(f"EPON state enrichment failed: {e}")
+
             # Deduplicate by SN
             seen = set()
             unique = []
@@ -4705,22 +4814,28 @@ class TelnetCollector:
             except: pass
         return onus
 
-    def get_next_available_onu_id(self, frame, slot, port):
+    def get_next_available_onu_id(self, frame, slot, port, is_epon=False):
         """Get next available ONU ID on a PON port.
-        Parses 'show gpon onu baseinfo' to find used IDs, returns first free (1-128).
-        Matches oltc320 reference: get_next_available_onu_id()
+        GPON: Parses 'show gpon onu baseinfo gpon-olt_X/Y/Z' to find used IDs.
+        EPON: Parses 'show epon onu state epon-olt_X/Y/Z' to find used IDs.
+        Returns first free (1-128).
         """
         import re as _re
         tn = self._connect()
         if not tn: return None
         try:
-            cmd = f'show gpon onu baseinfo gpon-olt_{frame}/{slot}/{port}'
+            if is_epon:
+                cmd = f'show epon onu state epon-olt_{frame}/{slot}/{port}'
+                pattern = r'epon-onu_\d+/\d+/\d+:(\d+)'
+            else:
+                cmd = f'show gpon onu baseinfo gpon-olt_{frame}/{slot}/{port}'
+                pattern = r'gpon-onu_\d+/\d+/\d+:(\d+)'
             output = self._send_command(tn, cmd, timeout=15)
             tn.write('exit\n'); tn.close()
 
             used_ids = set()
             for line in output.split('\n'):
-                m = _re.search(r'gpon-onu_\d+/\d+/\d+:(\d+)', line)
+                m = _re.search(pattern, line)
                 if m:
                     used_ids.add(int(m.group(1)))
 

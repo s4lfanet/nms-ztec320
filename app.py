@@ -3298,12 +3298,13 @@ def scan_unconfigured():
     for onu in unconfigured:
         if 'onu_id' not in onu or not onu['onu_id']:
             pon_port = onu.get('pon_port', '')
+            is_epon = onu.get('is_epon', False)
             if pon_port not in port_onu_ids:
                 # Parse port: "1/1/5" → frame=1, slot=1, port=5
                 parts = pon_port.split('/')
                 if len(parts) == 3:
                     try:
-                        next_id = tc.get_next_available_onu_id(int(parts[0]), int(parts[1]), int(parts[2]))
+                        next_id = tc.get_next_available_onu_id(int(parts[0]), int(parts[1]), int(parts[2]), is_epon=is_epon)
                         port_onu_ids[pon_port] = next_id or 1
                     except Exception:
                         port_onu_ids[pon_port] = 1
