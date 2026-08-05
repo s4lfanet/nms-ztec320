@@ -32,6 +32,21 @@ from snmp_core import (
 logger = logging.getLogger(__name__)
 
 
+def _format_epon_mac(serial):
+    """Format a MAC address for ZTE EPON CLI 'mac' keyword.
+    ZTE C320 EPON CLI requires dotted format (7488.2a70.7346), not raw hex
+    (74882A707346) or colon-separated (74:88:2A:70:73:46) — the OLT rejects
+    other formats with '%Error 20202: Invalid input detected'.
+    Passes through unrecognized formats unchanged."""
+    if not serial:
+        return serial
+    hex_only = re.sub(r'[^0-9A-Fa-f]', '', serial)
+    if len(hex_only) == 12:
+        hex_only = hex_only.lower()
+        return f'{hex_only[0:4]}.{hex_only[4:8]}.{hex_only[8:12]}'
+    return serial
+
+
 def _rate_to_mbps(value, unit):
     """Convert a rate value with unit (Bps/Kbps/Mbps/Gbps) to Mbps.
     ZTE 'Bps' unit is Bytes-per-second; Kbps/Mbps/Gbps are bits-per-second."""
@@ -140,12 +155,15 @@ class SimpleTelnet:
 class TelnetCollector:
     """CLI Collector for ZTE OLT (C300/C320 via Telnet).
     Same CLI commands work on both models."""
-    def __init__(self, ip, username, password, port=23, use_ssh=False):
+    def __init__(self, ip, username, password, port=23, use_ssh=False,
+                 snmp_community='public', snmp_port=161):
         self.ip = ip
         self.username = username
         self.password = password
         self.port = int(port)
         self.use_ssh = use_ssh
+        self.snmp_community = snmp_community
+        self.snmp_port = int(snmp_port) if snmp_port else 161
 
     def _connect(self):
         return self._connect_telnet()
@@ -839,7 +857,12 @@ class TelnetCollector:
             tn.read_until(b'#', timeout=5)
             tn.write(f'interface {olt_prefix}_{frame}/{slot}/{port}\n')
             tn.read_until(b'#', timeout=5)
-            cmd = f'onu {onu_id} type {onu_type} sn {serial}'
+            if is_epon and (not serial or serial.startswith('EPON-')):
+                cmd = f'onu {onu_id} type {onu_type}'
+            elif is_epon:
+                cmd = f'onu {onu_id} type {onu_type} mac {_format_epon_mac(serial)}'
+            else:
+                cmd = f'onu {onu_id} type {onu_type} sn {serial}'
             tn.write(cmd + '\n')
             tn.read_until(b'#', timeout=10)
             tn.write('exit\n')
@@ -944,7 +967,12 @@ class TelnetCollector:
                 return False, f'Failed to enter PON interface: {err}'
 
             # Step 4: register ONU (type All per oltc320 reference)
-            _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} sn {serial}')
+            if is_epon and (not serial or serial.startswith('EPON-')):
+                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type}')
+            elif is_epon:
+                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} mac {_format_epon_mac(serial)}')
+            else:
+                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} sn {serial}')
             if err:
                 tn.write('end\n'); tn.close()
                 return False, f'Registration failed: {err}'
@@ -964,6 +992,14 @@ class TelnetCollector:
                 self._send_command(tn, 'end')
                 tn.close()
                 return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered (config skipped - ONU not ready)'
+
+            if is_epon:
+                # EPON ONU interface has no 'name'/'description'/'tcont'/'gemport' keywords
+                # (GPON OMCI concepts) — only 'service-port' applies directly.
+                self._send_cmd_check(tn, f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
+                self._send_command(tn, 'end')
+                tn.close()
+                return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered with basic bridge service (VLAN {vlan})'
 
             # Step 8: set name/description if provided
             if name:
@@ -1029,12 +1065,36 @@ class TelnetCollector:
                 self._send_command(tn, 'end'); tn.close()
                 return False, f'Failed to enter PON interface: {err}'
 
-            _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} sn {serial}')
+            if is_epon and (not serial or serial.startswith('EPON-')):
+                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type}')
+            elif is_epon:
+                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} mac {_format_epon_mac(serial)}')
+            else:
+                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} sn {serial}')
             if err:
                 self._send_command(tn, 'end'); tn.close()
                 return False, f'Registration failed: {err}'
 
             self._send_command(tn, 'exit')
+
+            if is_epon:
+                # EPON ONUs are managed via ZTE ExtOAM ('pon-onu-mng'), not GPON OMCI.
+                # Vendor OMCI templates below (tcont/gemport/wan-ip/tr069-mgmt/security-mgmt,
+                # WiFi SSID via OMCI UNI ports) do not apply to EPON and would only produce
+                # CLI errors. Provide a basic working bridge service instead.
+                time.sleep(2)
+                _, err = self._send_cmd_check(tn, f'interface {onu_if}')
+                if err:
+                    logger.warning(f"EPON ONU interface not ready after registration: {err}")
+                    self._send_command(tn, 'end'); tn.close()
+                    return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered (basic service skipped - ONU not ready)'
+                self._send_cmd_check(tn, f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
+                self._send_command(tn, 'exit')
+                self._send_command(tn, 'end')
+                tn.close()
+                return True, (f'ONU {frame}/{slot}/{port}:{onu_id} registered with basic bridge service '
+                              f'(VLAN {vlan}). EPON uses ExtOAM management, not OMCI — template "{template}" '
+                              f'features (WiFi SSID/PPPoE/TR069/VEIP) are GPON-only and were not applied.')
 
             # Step 2b: Ensure ONU type has wifi UNI ports defined (for OMCI SSID config)
             # This prevents 'UNI does not exist' error when configuring SSID
@@ -1681,11 +1741,35 @@ class TelnetCollector:
                 self._send_command(tn, 'end'); tn.close()
                 return False, f'PON interface error: {err}'
 
-            _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} sn {serial}')
+            if is_epon and (not serial or serial.startswith('EPON-')):
+                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type}')
+            elif is_epon:
+                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} mac {_format_epon_mac(serial)}')
+            else:
+                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} sn {serial}')
             if err:
                 self._send_command(tn, 'end'); tn.close()
                 return False, f'Registration failed: {err}'
             self._send_command(tn, 'exit')
+
+            if is_epon:
+                # EPON ONUs are managed via ZTE ExtOAM ('pon-onu-mng'), not GPON OMCI.
+                # The service/tcont/gemport/wan-ip/pppoe/tr069-mgmt config below is
+                # GPON-only and would only produce CLI errors on EPON. Apply a basic
+                # bridge service for the first requested VLAN instead.
+                time.sleep(2)
+                _, err = self._send_cmd_check(tn, f'interface {onu_if}')
+                if err:
+                    self._send_command(tn, 'end'); tn.close()
+                    return True, f'ONU registered but basic service skipped (interface not ready)'
+                svc_vlan = int(services[0].get('vlan', 100)) if services else 100
+                self._send_cmd_check(tn, f'service-port 1 vport 1 user-vlan {svc_vlan} vlan {svc_vlan}')
+                self._send_command(tn, 'exit')
+                self._send_command(tn, 'end')
+                tn.close()
+                return True, (f'ONU {frame}/{slot}/{port}:{onu_id} registered with basic bridge service '
+                              f'(VLAN {svc_vlan}). EPON uses ExtOAM management, not OMCI — WiFi/PPPoE/TR069/'
+                              f'VEIP service config requested is GPON-only and was not applied.')
 
             # Step 2b: Ensure WiFi UNI ports exist if WiFi config provided
             # Parse dynamic SSID list from wifi_config.ssids or fall back to old fields
@@ -4538,6 +4622,73 @@ class TelnetCollector:
             except: pass
         return traffic
 
+    def _fetch_epon_uncfg_macs_snmp(self):
+        """Fetch unconfigured EPON ONU MAC addresses via SNMP.
+        Uses private ZTE EPON MIB table (onuRegisterMacAddr) at
+        1.3.6.1.4.1.3902.1015.1010.1.7.14.1.2, which is the only known
+        source (CLI or SNMP) that exposes MAC addresses for EPON ONUs
+        that have not yet been registered on ZTE C320 firmware V2.1.0.
+        Returns a list of (snmp_index, mac_hex) tuples sorted by index
+        ascending (index order generally follows physical port order).
+        """
+        import asyncio as _asyncio
+        results = []
+        try:
+            from pysnmp.hlapi.v1arch.asyncio import Slim, ObjectType, ObjectIdentity
+        except Exception as e:
+            logger.debug(f"pysnmp unavailable for EPON MAC SNMP fetch: {e}")
+            return results
+
+        oid_base = '1.3.6.1.4.1.3902.1015.1010.1.7.14.1.2'
+
+        async def _walk():
+            slim = Slim(1)
+            cur = oid_base
+            out = []
+            try:
+                for _ in range(64):
+                    try:
+                        ei, es, eidx, vb = await slim.next(
+                            self.snmp_community, self.ip, self.snmp_port,
+                            ObjectType(ObjectIdentity(cur)), timeout=5, retries=1)
+                    except Exception:
+                        break
+                    if ei or es or not vb:
+                        break
+                    done = False
+                    for var_bind in vb:
+                        roid = str(var_bind[0])
+                        if not roid.startswith(oid_base):
+                            done = True
+                            break
+                        try:
+                            ob = var_bind[1].asOctets() if hasattr(var_bind[1], 'asOctets') else None
+                        except Exception:
+                            ob = None
+                        if not ob or len(ob) != 6:
+                            done = True
+                            break
+                        mac_hex = ''.join(f'{b:02X}' for b in ob)
+                        idx_suffix = roid[len(oid_base) + 1:]
+                        out.append((idx_suffix, mac_hex))
+                        cur = roid
+                    if done:
+                        break
+            finally:
+                slim.close()
+            return out
+
+        try:
+            out = _asyncio.run(_walk())
+            def _sort_key(item):
+                parts = item[0].split('.')
+                return tuple(int(p) for p in parts if p.isdigit())
+            out.sort(key=_sort_key)
+            results = out
+        except Exception as e:
+            logger.debug(f"EPON MAC SNMP walk failed: {e}")
+        return results
+
     def collect_unregistered_onus(self):
         """Discover unconfigured ONUs matching oltc320 reference implementation.
         Uses 'show pon onu uncfg' (not 'show gpon onu uncfg') per ZTE C320 firmware 2.1+.
@@ -4775,6 +4926,8 @@ class TelnetCollector:
                     state_output = self._send_command(tn, 'show epon onu state', timeout=20)
                     state_output = state_output.replace('\x00', '').replace('\xff', '')
                     state_output = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', state_output)
+                    logger.info(f"[epon state raw] {state_output[:800]}")
+
                     # Parse: "epon-onu_1/2/8:1   offline   unknown   543e.6496.f469"
                     port_mac_map = {}  # pon_port → mac
                     for line in state_output.split('\n'):
@@ -4788,12 +4941,82 @@ class TelnetCollector:
                             mac_clean = reg_mac.replace('.', '').upper() if reg_mac and reg_mac != '0000.0000.0000' else ''
                             if mac_clean:
                                 port_mac_map[pon_port] = mac_clean
+
+                    # Try SNMP first — ZTE C320 V2.1.0 EPON firmware does not expose
+                    # uncfg ONU MACs via any CLI command, but the private MIB table
+                    # onuRegisterMacAddr (.1015.1010.1.7.14.1.2) does have them.
+                    still_missing = [o for o in epon_uncfg_onus if o['pon_port'] not in port_mac_map]
+                    if still_missing:
+                        try:
+                            snmp_macs = self._fetch_epon_uncfg_macs_snmp()
+                        except Exception as e:
+                            snmp_macs = []
+                            logger.debug(f"EPON MAC SNMP enrichment failed: {e}")
+                        if snmp_macs and len(snmp_macs) == len(still_missing):
+                            still_missing_sorted = sorted(still_missing, key=lambda o: tuple(
+                                int(p) for p in o['pon_port'].split('/')))
+                            for o, (idx, mac) in zip(still_missing_sorted, snmp_macs):
+                                port_mac_map[o['pon_port']] = mac
+                                logger.info(f"[epon uncfg] SNMP MAC {mac} matched to port {o['pon_port']} (snmp_index={idx})")
+                        elif snmp_macs:
+                            logger.warning(f"[epon uncfg] SNMP returned {len(snmp_macs)} MAC(s) but {len(still_missing)} uncfg ONU(s) missing MAC — ambiguous, skipping auto-match")
+
+                    # For each EPON uncfg ONU still missing a MAC, try per-port commands
+                    for o in epon_uncfg_onus:
+                        pon_port = o['pon_port']
+                        if pon_port in port_mac_map:
+                            continue
+                        try:
+                            # Try per-port uncfg first (may show MAC)
+                            port_out = self._send_command(tn, f'show epon onu uncfg epon-olt_{pon_port}', timeout=15)
+                            port_out = port_out.replace('\x00', '').replace('\xff', '')
+                            port_out = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', port_out)
+                            logger.info(f"[epon uncfg port {pon_port}] {port_out[:500]}")
+                            for line in port_out.split('\n'):
+                                line = line.strip()
+                                if not line or line.startswith('---') or 'OltIndex' in line:
+                                    continue
+                                # Look for MAC pattern (xxxx.xxxx.xxxx or 12 hex chars)
+                                mac_m = _re.search(r'([0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4})', line)
+                                if mac_m:
+                                    mac_clean = mac_m.group(1).replace('.', '').upper()
+                                    if mac_clean != '000000000000':
+                                        port_mac_map[pon_port] = mac_clean
+                                else:
+                                    mac_m2 = _re.search(r'\b([0-9A-Fa-f]{12})\b', line)
+                                    if mac_m2:
+                                        mac_clean = mac_m2.group(1).upper()
+                                        if mac_clean != '000000000000':
+                                            port_mac_map[pon_port] = mac_clean
+
+                            # If still no MAC, try per-port state
+                            if pon_port not in port_mac_map:
+                                port_out2 = self._send_command(tn, f'show epon onu state epon-olt_{pon_port}', timeout=15)
+                                port_out2 = port_out2.replace('\x00', '').replace('\xff', '')
+                                port_out2 = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', port_out2)
+                                logger.info(f"[epon state port {pon_port}] {port_out2[:500]}")
+                                for line in port_out2.split('\n'):
+                                    line = line.strip()
+                                    if not line or line.startswith('---') or line.startswith('OnuIndex'):
+                                        continue
+                                    m = _re.match(r'epon-onu_(\d+/\d+/\d+):(\d+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
+                                    if m:
+                                        pp = m.group(1)
+                                        reg_mac = m.group(5)
+                                        mac_clean = reg_mac.replace('.', '').upper() if reg_mac and reg_mac != '0000.0000.0000' else ''
+                                        if mac_clean:
+                                            port_mac_map[pp] = mac_clean
+                        except Exception as e:
+                            logger.debug(f"Per-port enrichment {pon_port}: {e}")
+
                     # Replace generated SNs with real MACs
                     for o in epon_uncfg_onus:
                         mac = port_mac_map.get(o['pon_port'])
                         if mac:
                             o['sn'] = mac
                             logger.info(f"[epon uncfg] Replaced generated SN with MAC {mac} for port {o['pon_port']}")
+                        else:
+                            logger.info(f"[epon uncfg] No MAC found for port {o['pon_port']}, using fallback SN {o['sn']}")
                 except Exception as e:
                     logger.debug(f"EPON state enrichment failed: {e}")
 

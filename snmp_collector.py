@@ -36,7 +36,10 @@ def create_cli_collector(olt):
     """Factory: create CLI collector for ZTE OLT (Telnet for both C300 and C320).
     Returns TelnetCollector with Telnet transport."""
     port = olt.telnet_port or 23
-    return TelnetCollector(olt.ip_address, olt.cli_username, olt.cli_password, port)
+    return TelnetCollector(
+        olt.ip_address, olt.cli_username, olt.cli_password, port,
+        snmp_community=olt.snmp_community or 'public',
+        snmp_port=olt.snmp_port or 161)
 
 
 # ==================== COMBINED POLL ====================
