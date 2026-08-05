@@ -4,7 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### 2026-08-05 — Centralized Guide System
+### 2026-08-05 — EPON ONU Registration Fix & Centralized Guide System
+
+#### Fixed — EPON Registration
+- **MAC address format for EPON CLI**: Added `_format_epon_mac()` helper in `telnet_client.py` — formats 12-char hex MAC as dotted `xxxx.xxxx.xxxx` (ZTE EPON CLI requirement). Previously raw hex was passed, causing `Invalid parameter` error
+- **ONU type auto-correction**: `/api/pre-register` and `/api/provision/unified` now auto-correct universal type `All` → `ALL-EPON` for EPON ONUs. Previously GPON type `All` was sent for EPON, causing registration failure
+- **EPON registration commands**: All 4 registration methods (`register_onu`, `register_and_configure`, `register_vendor_template`, `register_unified`) now use `mac` keyword with dotted MAC format for EPON (e.g. `onu 1 type ALL-EPON mac 7488.2a70.7346`) instead of `sn` keyword
+- **Frontend is_epon detection**: `RegisterWizard.tsx` and `ProvisionWizard.tsx` now correctly detect `is_epon` from `onu.is_epon` flag and `pon_port` prefix, and send correct `onu_type` in API payload
+- **EPON template short-circuit**: After EPON ONU registration, GPON-only template commands (tcont/gemport/name) are skipped. Basic bridge service (`service-port`) is applied instead, since EPON ONUs use ZTE ExtOAM (`pon-onu-mng`) not GPON OMCI
+- **SNMP MAC enrichment for unconfigured EPON ONUs**: `collect_unregistered_onus()` now fetches MAC addresses from ZTE private MIB table (`.1.3.6.1.4.1.3902.1015.1010.1.7.14`) for EPON ONUs that show N/A serial in CLI uncfg output
+
+#### Added — Centralized Guide System
 
 #### Added
 - **Centralized guide data** (`frontend/src/data/guides.ts`): All 17 page guides consolidated into a single structured TypeScript file with `Guide` and `GuideStep` interfaces, category grouping, and helper functions (`getGuideById`, `searchGuides`, `getGuidesByCategory`)
