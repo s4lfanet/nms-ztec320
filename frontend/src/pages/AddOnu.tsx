@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type TechnicianData } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
-import { TutorialBanner } from '../components/TutorialBanner';
 import {
   ArrowLeft, ArrowRight, Server, Cpu, Settings, Check,
   Loader2, Zap, Wifi, Globe, Search, Wrench
@@ -251,43 +250,6 @@ export function AddOnu() {
         <div className="min-w-0">
           <h1 className="text-xl md:text-2xl font-bold truncate">Add New ONU</h1>
           <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">ZTE ONT provisioning</p>
-        </div>
-        <div className="ml-auto">
-          <TutorialBanner
-            guideId="provision-wizard"
-            title="Panduan Provisioning ONU"
-            prerequisites={
-              <>
-                <strong className="text-warning">Sebelum Mulai — Pastikan hal berikut sudah dikonfigurasi di OLT:</strong>
-                <ul className="mt-1.5 ml-4 space-y-0.5 text-tx3">
-                  <li>1. <strong className="text-tx2">ONU Type</strong> sudah terdaftar di OLT (OLT Configuration → ONU Types tab)</li>
-                  <li>2. <strong className="text-tx2">TCONT Profile</strong> sudah dibuat (OLT Configuration → Speed Profiles tab, type=tcont)</li>
-                  <li>3. <strong className="text-tx2">VLAN</strong> sudah dibuat di OLT (OLT Configuration → VLANs tab)</li>
-                  <li>4. <strong className="text-tx2">WAN-IP Profile</strong> sudah dibuat jika menggunakan DHCP/PPPoE mode (OLT Configuration → WAN-IP tab)</li>
-                  <li>5. <strong className="text-tx2">CLI/Telnet access</strong> OLT sudah dikonfigurasi (OLT Settings → CLI Username & Password)</li>
-                  <li>6. ONU sudah terhubung fisik ke PON port OLT dan menyala (LED PON menyala hijau)</li>
-                </ul>
-              </>
-            }
-            steps={[
-              { title: 'Select OLT', content: <><p>Pilih OLT tempat ONU akan didaftarkan. Pastikan OLT berstatus <span className="text-success">Online</span>.</p><p className="text-xs text-tx3 mt-1">Jika OLT belum ada, tambahkan di halaman OLT Settings terlebih dahulu.</p></> },
-              { title: 'ONU Info', content: <><p>Masukkan Serial Number ONU.</p><p className="text-xs text-tx3 mt-1">Gunakan tombol <strong>Scan ONUs</strong> untuk menemukan ONU yang belum terdaftar di OLT secara otomatis. Klik ONU dari hasil scan untuk auto-fill Serial Number, ONU Type, Frame/Slot/Port — tidak perlu input manual.</p><p className="text-xs text-tx3 mt-1">Format SN: 4 huruf vendor + 8 hex (contoh: ZTEG0A1B2C3D)</p></> },
-              { title: 'Configuration', content: <><p>Atur TCONT profile (upload bandwidth), Traffic profile (download), Service VLAN, dan WAN mode:</p><ul className="text-xs text-tx3 mt-1 ml-4 space-y-0.5"><li><strong className="text-tx2">Bridge</strong> — L2 transparent, VLAN via service-port saja. Cocok untuk ONU yang dikelola router eksternal</li><li><strong className="text-tx2">DHCP</strong> — ONU dapat IP via DHCP, butuh <strong>VLAN Profile (wan-ip)</strong>. Buat WAN-IP Profile di OLT Configuration → WAN-IP tab terlebih dahulu</li><li><strong className="text-tx2">PPPoE</strong> — ONU dial via PPPoE. Isi username & password untuk ZTE ONU.</li></ul><p className="mt-2">Aktifkan <strong>TR-069</strong> untuk manajemen remote via ACS (GenieACS). Pilih VLAN tag/untag sesuai topologi jaringan.</p><p className="text-xs text-tx3 mt-1">TR069 Profile: Buat TR069 Profile di halaman TR069 Profile terlebih dahulu untuk menyimpan ACS URL, Username, Password, dan VLAN config — tinggal pilih saat provisioning.</p></> },
-              { title: 'Review & Provision', content: <><p>Periksa semua parameter. Klik <strong>Preview</strong> untuk melihat CLI commands yang akan dikirim tanpa eksekusi — berguna untuk verifikasi sebelum commit.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Provision Now</strong> untuk eksekusi. Proses provisioning mengirim CLI via Telnet ke OLT: register ONU → TCONT → GEM port → service-port → pon-onu-mng (LAN/WAN/TR069).</p><p className="text-xs text-tx3 mt-1">Setelah provisioning berhasil, OLT akan <strong>auto-sync</strong> untuk update status ONU di All ONUs page. Anda akan otomatis diarahkan ke halaman All ONUs.</p></> },
-            ]}
-            tips={
-              <>
-                <strong className="text-tx2">Tips:</strong>
-                <ul className="mt-1 ml-4 space-y-0.5">
-                  <li>Gunakan <strong>Preview</strong> dulu untuk verifikasi commands sebelum eksekusi</li>
-                  <li>Jika ada error CLI, cek apakah ONU type dan TCONT profile sudah terdaftar di OLT (OLT Configuration page)</li>
-                  <li>Untuk DHCP/PPPoE mode, pastikan WAN-IP Profile sudah dibuat di OLT Configuration → WAN-IP tab</li>
-                  <li>Scan ONUs auto-fills Serial Number, ONU Type, dan Frame/Slot/Port — lebih cepat dari input manual</li>
-                  <li>Setelah provisioning berhasil, OLT akan auto-sync — tunggu beberapa detik lalu refresh All ONUs page</li>
-                </ul>
-              </>
-            }
-          />
         </div>
       </div>
 

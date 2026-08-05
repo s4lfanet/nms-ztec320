@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type RxColorRange } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
-import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Eye, EyeOff, Monitor, Smartphone, Save, ArrowUp, ArrowDown,
   RotateCcw, Signal, AlertTriangle, CheckCircle, AlertCircle, Palette, Plus, Trash2
@@ -113,26 +112,6 @@ export function Customization() {
           <h1 className="text-xl md:text-2xl font-bold">Customization</h1>
           <p className="text-tx2 text-xs md:text-sm mt-1">All ONUs Custom Page</p>
         </div>
-        <TutorialBanner
-          guideId="customization"
-          title="Panduan Customization"
-          steps={[
-            { title: 'Desktop Columns', content: <><p>Atur visibilitas dan urutan kolom tabel All ONUs untuk tampilan desktop. Toggle eye icon untuk show/hide kolom. Arrow up/down untuk reorder.</p><p className="text-xs text-tx3 mt-1">Preview tabel di bawah menampilkan hasil perubahan secara real-time.</p></> },
-            { title: 'Mobile Columns', content: <><p>Atur visibilitas kolom untuk tampilan mobile. Kolom mobile terpisah dari desktop — bisa lebih sedikit untuk hemat layar.</p></> },
-            { title: 'Signal Filter', content: <><p>Set threshold RX power untuk filter ONU: <strong>Critical</strong> (di bawah threshold), <strong>Good</strong> (di atas threshold). Slider untuk adjust nilai threshold.</p><p className="text-xs text-tx3 mt-1">Filter ini dipakai di All ONUs page untuk stat cards dan filter ONU by signal quality.</p></> },
-            { title: 'RX Colors', content: <><p>Konfigurasi color range untuk RX power display. Setiap range punya label, min/max dBm, dan warna (green/yellow/red/gray).</p><p className="text-xs text-tx3 mt-1">Color range dipakai di All ONUs stat cards, ViewOnu RX display, dan PowerBadge.</p></> },
-          ]}
-          tips={
-            <>
-              <strong className="text-tx2">Tips:</strong>
-              <ul className="mt-1 ml-4 space-y-0.5">
-                <li>Reset untuk kembali ke default column settings</li>
-                <li>Preview tabel update real-time saat perubahan</li>
-                <li>RX color ranges juga dipakai di ViewOnu dan PowerBadge</li>
-              </ul>
-            </>
-          }
-        />
       </div>
 
       {/* Tabs */}

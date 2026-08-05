@@ -11,7 +11,6 @@ import { api, type FTTHItem, type FTTHOtb, type FTTHOdc, type FTTHOdp, type FTTH
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
-import { TutorialBanner } from '../components/TutorialBanner';
 import { LocationPicker } from '../components/LocationPicker';
 import { LeafletMap } from '../components/LeafletMap';
 import { useHasPerm } from '../hooks/useHasPerm';
@@ -160,29 +159,6 @@ export function FtthInfrastructure() {
             <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2"><Network size={20} /> FTTH Infrastructure</h1>
             <p className="text-tx2 text-xs md:text-sm mt-1">Manage OTB/ODF → ODC → ODP → ONU chain with map coordinates</p>
           </div>
-          <TutorialBanner
-            guideId="ftth"
-            title="Panduan FTTH Infrastructure"
-            steps={[
-              { title: 'Overview', content: <><p>Statistik infrastruktur FTTH: total OTB/ODF, ODC, ODP, ONU, port utilization, dan distribusi per OLT. Auto-refresh setiap 10 detik.</p></> },
-              { title: 'Tree', content: <><p>Struktur tree infrastruktur: <strong>OTB/ODF → ODC → ODP → ONU</strong>. Expand/collapse setiap node untuk melihat child items.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Add OTB</strong> untuk tambah OTB/ODF baru. Setiap OTB bisa punya multiple ODC, setiap ODC punya multiple ODP.</p></> },
-              { title: 'PON Ports', content: <><p>Daftar PON port OLT (gpon-olt_1/1/1, dll). Menampilkan total ONU, online ONU, dan ODP yang terhubung ke PON port tersebut.</p><p className="text-xs text-tx3 mt-1">Link PON port ke ODP untuk tracking jalur fiber dari OLT ke customer.</p></> },
-              { title: 'OTB / ODC / ODP', content: <><p>Manajemen individual OTB/ODF, ODC, dan ODP. Tambah/edit/hapus item dengan koordinat GPS (latitude/longitude).</p><p className="text-xs text-tx3 mt-1">ODP punya port (1-16) yang bisa di-link ke ONU customer. Setiap port bisa di-assign ke ONU dari All ONUs page.</p></> },
-              { title: 'Map', content: <><p>Peta interaktif menampilkan semua OTB/ODF, ODC, dan ODP yang punya koordinat GPS. Garis menghubungkan parent-child (OTB→ODC→ODP).</p><p className="text-xs text-tx3 mt-1">Klik marker untuk info detail. Gunakan LocationPicker untuk set koordinat saat add/edit.</p></> },
-              { title: 'Import / Export', content: <><p><strong>Export CSV</strong>: download semua data FTTH ke CSV. <strong>Import CSV</strong>: upload data FTTH dari CSV (bulk create).</p></> },
-            ]}
-            tips={
-              <>
-                <strong className="text-tx2">Tips:</strong>
-                <ul className="mt-1 ml-4 space-y-0.5">
-                  <li>Urutan: buat OTB/ODF → ODC → ODP → assign ODP port ke ONU</li>
-                  <li>Set koordinat GPS untuk tampil di peta Map tab</li>
-                  <li>Link PON port OLT ke ODP untuk tracking jalur fiber</li>
-                  <li>Import CSV untuk bulk create dari spreadsheet</li>
-                </ul>
-              </>
-            }
-          />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex bg-glass rounded-lg p-0.5 overflow-x-auto scrollbar-thin max-w-full">

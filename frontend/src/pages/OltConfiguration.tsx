@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn, formatDate } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
-import { TutorialBanner } from '../components/TutorialBanner';
 import {
   Server, Activity, HardDrive, Network, Globe, Gauge, Settings,
   CheckCircle, XCircle, ChevronDown, ChevronRight, RefreshCw,
@@ -40,31 +39,6 @@ export function OltConfiguration() {
         <button onClick={() => navigate('/dashboard')} className="hover:text-accent">Home</button><span>/</span>
         <button onClick={() => navigate('/dashboard/settings/olts')} className="hover:text-accent">Settings</button><span>/</span>
         <span className="text-tx1">Configurations</span>
-        <div className="ml-auto">
-          <TutorialBanner
-            guideId="olt-configuration"
-            title="Panduan OLT Configuration"
-            steps={[
-              { title: 'Uplinks', content: <><p>Konfigurasi port uplink OLT (ge_0/1, ge_0/2, dll). Menampilkan speed, duplex, VLAN mode (trunk/access/hybrid), dan trunk VLANs.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Sync Data</strong> untuk fetch uplink info dari OLT via Telnet. Edit untuk ubah VLAN mode dan trunk VLANs.</p></> },
-              { title: 'PON Cards', content: <><p>Menampilkan kartu GPON yang terpasang di slot OLT (show card). Termasuk card type, status, hardware version, dan port count.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Refresh</strong> untuk re-fetch card info. Rack diagram menampilkan visual chassis dengan slot dan port.</p></> },
-              { title: 'VLANs', content: <><p>Daftar semua VLAN di OLT (show vlan summary). Tambah/edit/hapus VLAN (vlan database context).</p><p className="text-xs text-tx3 mt-1">VLAN wajib dibuat di sini sebelum digunakan di service-port ONU atau uplink trunk.</p></> },
-              { title: 'ONU Types', content: <><p>Daftar ONU type terdaftar di OLT (show onu-type). Tambah/hapus type untuk provisioning ONU baru.</p><p className="text-xs text-tx3 mt-1">ONU type wajib ada sebelum register/provision ONU baru. Contoh: <code>ZTE-F660</code>, <code>ZTE-F670L</code>.</p></> },
-              { title: 'WAN-IP Profiles', content: <><p>Profile WAN IP untuk DHCP/PPPoE mode ONU. Berisi IP address, netmask, dan gateway.</p><p className="text-xs text-tx3 mt-1">Dibutuhkan jika ONU menggunakan WAN mode DHCP (bukan bridge). Buat profile sebelum provisioning.</p></> },
-              { title: 'Speed Profiles', content: <><p>TCONT profile (upload bandwidth) dan Traffic profile (download limit). TCONT wajib untuk provisioning.</p><p className="text-xs text-tx3 mt-1"><strong>TCONT</strong>: type 1-5, maximum bandwidth. <strong>Traffic</strong>: SIR (committed) + PIR (peak) rate.</p></> },
-              { title: 'System', content: <><p>Info sistem OLT: hostname, uptime, CPU, memory, temperature, fan status, dan power supply.</p><p className="text-xs text-tx3 mt-1">Data diambil via Telnet <code>show processor</code>, <code>show fan</code>, <code>show power</code>.</p></> },
-            ]}
-            tips={
-              <>
-                <strong className="text-tx2">Tips:</strong>
-                <ul className="mt-1 ml-4 space-y-0.5">
-                  <li>Urutan setup: VLANs → ONU Types → Speed Profiles → baru provision ONU</li>
-                  <li>Sync Data di tab Uplinks untuk fetch running-config dari OLT</li>
-                  <li>Rack diagram visual menampilkan chassis, slot, fan, dan PSU real-time</li>
-                </ul>
-              </>
-            }
-          />
-        </div>
       </div>
 
       {/* OLT Header */}

@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type TechnicianData } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
-import { TutorialBanner } from '../components/TutorialBanner';
 import {
   ArrowLeft, ArrowRight, Server, Search, Check, Loader2,
   Zap, Wifi, Globe,
@@ -506,42 +505,6 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">{manualMode ? 'Manual SN input — no OLT scan needed' : 'Unified wizard — all vendors, dynamic services'}</p>
           </div>
         </div>
-        <TutorialBanner
-          guideId="provision-wizard"
-          title={manualMode ? 'Panduan Pre-config ONT' : 'Panduan Provision ONU'}
-          prerequisites={
-            <>
-              <strong className="text-warning">Sebelum Mulai — Pastikan hal berikut sudah dikonfigurasi di OLT:</strong>
-              <ul className="mt-1.5 ml-4 space-y-0.5 text-tx3">
-                <li>1. <strong className="text-tx2">ONU Type</strong> sudah terdaftar di OLT (OLT Configuration → ONU Types tab)</li>
-                <li>2. <strong className="text-tx2">TCONT Profile</strong> sudah dibuat (OLT Configuration → Speed Profiles tab, type=tcont)</li>
-                <li>3. <strong className="text-tx2">Traffic Profile</strong> sudah dibuat (opsional, untuk download limit — Speed Profiles tab, type=traffic)</li>
-                <li>4. <strong className="text-tx2">VLAN</strong> sudah dibuat di OLT (OLT Configuration → VLANs tab)</li>
-                <li>5. <strong className="text-tx2">CLI/Telnet access</strong> OLT sudah dikonfigurasi (OLT Settings → CLI Username & Password)</li>
-                <li>6. ONU sudah terhubung fisik ke PON port OLT dan menyala (LED PON menyala hijau)</li>
-              </ul>
-            </>
-          }
-          steps={[
-            { title: 'Select OLT', content: <><p>Pilih OLT tempat ONU akan dipasang. Pastikan OLT berstatus <span className="text-success">Online</span> dan CLI access sudah dikonfigurasi.</p><p className="text-xs text-tx3 mt-1">Jika OLT belum ada, tambahkan di halaman OLT Settings terlebih dahulu.</p></> },
-            { title: manualMode ? 'Enter ONU Details' : 'Scan & Select ONUs', content: manualMode ? <><p>Masukkan Serial Number ONU secara manual tanpa scan OLT. Pastikan SN benar dan ONU sudah terhubung ke PON port yang dituju.</p><p className="text-xs text-tx3 mt-1">Format SN: 4 huruf vendor + 8 hex (contoh: ZTEG0A1B2C3D, HWTCF95F8CAC). Pilih Frame, Slot (Card), dan PON Port sesuai posisi ONU di OLT.</p></> : <><p>Klik <strong>Scan OLT</strong> untuk menemukan ONU yang belum terdaftar (unconfigured). ONU yang muncul adalah ONU yang sudah terhubung fisik ke PON port tapi belum diregister di OLT.</p><p className="text-xs text-tx3 mt-1">Pilih satu atau multiple ONU dengan klik pada list. Gunakan tombol <strong>Select All</strong> untuk select semua. Vendor ONU auto-detect dari Serial Number (ZTEG=ZTE, HWTC=Huawei, FHTT=Fiberhome).</p></> },
-            { title: 'Configure Services', content: <><p>Atur <strong>Service VLAN</strong> dan <strong>WAN mode</strong> untuk setiap service:</p><ul className="text-xs text-tx3 mt-1 ml-4 space-y-0.5"><li><strong className="text-tx2">Bridge</strong> — L2 transparent, VLAN via service-port saja. Cocok untuk ONU yang dikelola router eksternal</li><li><strong className="text-tx2">DHCP</strong> — ONU dapat IP via DHCP dari uplink</li><li><strong className="text-tx2">PPPoE</strong> — ONU dial via PPPoE. Isi username & password PPPoE</li><li><strong className="text-tx2">PPPoE + NAT</strong> — PPPoE dengan NAT untuk sharing internet</li></ul><p className="mt-2">Klik <strong>Add Service</strong> untuk menambah service (Internet/IPTV/VoIP/Bridge). Setiap service punya VLAN dan WAN mode sendiri.</p><p className="text-xs text-tx3 mt-1">TCONT Profile (upload bandwidth) dan Traffic Profile (download limit) wajib diisi. Pilih dari dropdown yang sudah terdaftar di OLT.</p></> },
-            { title: 'WiFi Configuration (ZTE only)', content: <><p>Untuk ZTE ONU, konfigurasi WiFi SSID langsung dari wizard. Tambah SSID 2.4GHz dan/atau 5GHz dengan nama, password, dan auth type (WPA2-PSK/WPA-PSK/Open).</p><p className="text-xs text-tx3 mt-1">Pilih <strong>Open (No Password)</strong> untuk WiFi tanpa password. Password field akan otomatis tersembunyi.</p><p className="text-xs text-tx3 mt-1">Kosongkan jika tidak ingin set WiFi via wizard — gunakan default ONU atau set manual via View ONU nanti.</p></> },
-            { title: 'TR-069 & Technician', content: <><p>Aktifkan <strong>TR-069</strong> untuk manajemen remote via ACS (GenieACS). Pilih TR069 Profile dari dropdown — ACS URL, Username, Password, dan VLAN akan auto-fill.</p><p className="text-xs text-tx3 mt-1">Pilih <strong>Technician</strong> yang melakukan instalasi (opsional). Tekniksi harus sudah terdaftar di User Management.</p></> },
-            { title: 'Review & Provision', content: <><p>Periksa semua parameter, configuration details, dan list ONU. Ada <strong>Script Preview</strong> yang menampilkan CLI commands yang akan dikirim ke OLT — bisa di-copy dengan tombol <strong>Copy Script</strong>.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Provision</strong> untuk memulai. Setiap ONU diproses berurutan: register → TCONT → GEM → service-port → pon-onu-mng (LAN/WAN/WiFi/TR069).</p><p className="text-xs text-tx3 mt-1">Setelah selesai, hasil berhasil/gagal ditampilkan per ONU. OLT akan auto-sync untuk update status.</p></> },
-          ]}
-          tips={
-            <>
-              <strong className="text-tx2">Tips:</strong>
-              <ul className="mt-1 ml-4 space-y-0.5">
-                <li>Gunakan <strong>Pre-config Mode</strong> jika ONU belum online — SN bisa diinput manual tanpa scan</li>
-                <li>Pastikan ONU Type dan TCONT Profile sudah terdaftar di OLT sebelum provision (OLT Configuration page)</li>
-                <li>Untuk DHCP/PPPoE mode, pastikan VLAN dan WAN-IP Profile sudah dikonfigurasi di OLT</li>
-                <li>Setelah provisioning berhasil, OLT akan auto-sync — tunggu beberapa detik lalu refresh All ONUs page</li>
-              </ul>
-            </>
-          }
-        />
       </div>
 
       {/* Step Indicator */}

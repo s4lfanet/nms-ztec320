@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type TechnicianData } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
-import { TutorialBanner } from '../components/TutorialBanner';
 import {
   ArrowLeft, ArrowRight, Server, Radio, Search, Check, Loader2,
   Settings, FileText, Zap, Copy, Plus, Trash2, Wrench
@@ -573,41 +572,6 @@ export function RegisterWizard() {
             <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">Step-by-step ONU registration with auto-configuration</p>
           </div>
         </div>
-        <TutorialBanner
-          guideId="register-wizard"
-          title="Panduan Register ONU Wizard"
-          prerequisites={
-            <>
-              <strong className="text-warning">Sebelum Mulai — Pastikan hal berikut sudah dikonfigurasi di OLT:</strong>
-              <ul className="mt-1.5 ml-4 space-y-0.5 text-tx3">
-                <li>1. <strong className="text-tx2">ONU Type</strong> sudah terdaftar di OLT (OLT Configuration → ONU Types tab)</li>
-                <li>2. <strong className="text-tx2">TCONT Profile</strong> sudah dibuat (OLT Configuration → Speed Profiles tab, type=tcont)</li>
-                <li>3. <strong className="text-tx2">Traffic Profile</strong> sudah dibuat (opsional, untuk download limit — Speed Profiles tab, type=traffic)</li>
-                <li>4. <strong className="text-tx2">VLAN</strong> sudah dibuat di OLT (OLT Configuration → VLANs tab)</li>
-                <li>5. <strong className="text-tx2">CLI/Telnet access</strong> OLT sudah dikonfigurasi (OLT Settings → CLI Username & Password)</li>
-                <li>6. ONU sudah terhubung fisik ke PON port OLT dan menyala (LED PON menyala hijau)</li>
-              </ul>
-            </>
-          }
-          steps={[
-            { title: 'Select OLT', content: <><p>Pilih OLT tempat ONU akan diregister. Pastikan OLT berstatus <span className="text-success">Online</span> dan CLI access sudah dikonfigurasi.</p><p className="text-xs text-tx3 mt-1">Jika OLT belum ada, tambahkan di halaman OLT Settings terlebih dahulu.</p></> },
-            { title: 'Scan ONUs', content: <><p>Klik <strong>Scan OLT</strong> untuk menemukan ONU yang belum terdaftar (unconfigured). ONU yang muncul adalah ONU yang sudah terhubung fisik ke PON port tapi belum diregister di OLT.</p><p className="text-xs text-tx3 mt-1">Pilih satu atau multiple ONU dengan klik pada list. Gunakan tombol <strong>All</strong> untuk select semua. Hanya ONU dengan serial number terdeteksi (show gpon onu uncfg) yang akan muncul.</p></> },
-            { title: 'Configure', content: <><p>Pilih <strong>Service Template</strong> sesuai jenis ONU dan kebutuhan:</p><ul className="text-xs text-tx3 mt-1 ml-4 space-y-0.5"><li><strong className="text-tx2">Bridge</strong> — Transparent L2, ONU hanya bridge VLAN. Cocok untuk ONU yang dikelola router eksternal</li><li><strong className="text-tx2">PPPoE</strong> — ONU dial PPPoE langsung. Isi username & password PPPoE</li><li><strong className="text-tx2">ZTE Single</strong> — 1 SSID WiFi 2.4GHz + 1 VLAN. Untuk ZTE ONU (F660, F609, dll). VEIP auto-detect dari SN</li><li><strong className="text-tx2">ZTE Dual Band</strong> — 2 SSID (2.4GHz + 5GHz) + 2 VLAN + TR069. Untuk ZTE ONU dual band (F670L, F670LV9)</li><li><strong className="text-tx2">ZTE Multi-Service</strong> — 1-4 dynamic services (Internet/IPTV/TR069/Bridge) + SSID + TR069. Untuk ZTE ONU dengan multi-service</li><li><strong className="text-tx2">Huawei Full</strong> — Multi VLAN (Mgmt/Internet/VoIP) + WAN DHCP + TR069. Untuk Huawei ONU (HG8145V5, dll)</li><li><strong className="text-tx2">Fiberhome VEIP</strong> — VEIP mode, TR069 + Internet + VoIP. Untuk Fiberhome ONU (HG6145D2, dll)</li></ul><p className="mt-2">Lengkapi parameter: ONU Type, TCONT Profile, Traffic Profile, VLAN ID, Name Prefix, Description.</p><p className="mt-1 text-xs text-accent">TR069: Pilih dari saved TR069 Profile. ACS URL, Username, Password, VLAN & mode akan auto-fill.</p><p className="mt-1 text-xs text-tx3">WiFi SSID: Untuk ZTE template, isi SSID name & password jika ingin set WiFi via wizard. Kosongkan jika ingin default ONU.</p></> },
-            { title: 'Review & Register', content: <><p>Periksa semua parameter, configuration details, dan list ONU yang akan diregister. Ada <strong>Script Preview</strong> yang menampilkan CLI commands yang akan dikirim ke OLT — bisa di-copy dengan tombol <strong>Copy Script</strong>.</p><p className="text-xs text-tx3 mt-1">Klik <strong>Register</strong> untuk memulai proses. Setiap ONU diregister berurutan dengan delay 1 detik. Proses: register ONU → TCONT → GEM → service-port → pon-onu-mng (LAN/WAN/TR069 sesuai template).</p><p className="text-xs text-tx3 mt-1">Setelah selesai, hasil berhasil/gagal ditampilkan per ONU. Klik <strong>View All ONUs</strong> untuk melihat di All ONUs page.</p></> },
-          ]}
-          tips={
-            <>
-              <strong className="text-tx2">Tips:</strong>
-              <ul className="mt-1 ml-4 space-y-0.5">
-                <li>Pastikan ONU Type dan TCONT Profile sudah terdaftar di OLT sebelum register (OLT Configuration page)</li>
-                <li>Jika ada error CLI, cek pesan error di halaman results — biasanya ONU type tidak terdaftar atau TCONT profile tidak ditemukan</li>
-                <li>Setelah registrasi berhasil, OLT akan auto-sync untuk update status ONU di All ONUs page</li>
-                <li>Untuk batch registrasi banyak ONU, gunakan Name Prefix agar nama ONU terurut otomatis</li>
-                <li>Gunakan <strong>Copy Script</strong> di Step 4 untuk dokumentasi atau manual troubleshooting via Telnet</li>
-              </ul>
-            </>
-          }
-        />
       </div>
 
       {/* Step Indicator */}

@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, X, Server, Lock, Unlock } from 'lucide-react';
 import { api } from '../lib/api';
 import { toast } from '../components/Toast';
-import { TutorialBanner } from '../components/TutorialBanner';
 import { useHasPerm } from '../hooks/useHasPerm';
 
 interface Tr069Profile {
@@ -65,23 +64,6 @@ export default function Tr069Profile() {
           <p className="text-tx2 text-xs md:text-sm mt-1">Manage ACS profiles for TR069 remote management</p>
         </div>
         <div className="flex items-center gap-2">
-          <TutorialBanner
-            guideId="tr069"
-            title="Panduan TR069 Profile"
-            steps={[
-              { title: 'Create Profile', content: <><p>Buat TR069 profile untuk ACS (Auto Configuration Server) seperti GenieACS. Setiap profile berisi: ACS URL, username, password, VLAN, dan VLAN mode.</p><p className="text-xs text-tx3 mt-1">Profile bisa di-assign ke default OLT tertentu untuk auto-fill saat provisioning.</p></> },
-              { title: 'Use in Provisioning', content: <><p>Saat register/provision ONU, pilih TR069 profile dari dropdown — ACS URL, username, password, dan VLAN akan auto-fill.</p><p className="text-xs text-tx3 mt-1">Tanpa profile, TR069 config harus diinput manual setiap kali provisioning.</p></> },
-            ]}
-            tips={
-              <>
-                <strong className="text-tx2">Tips:</strong>
-                <ul className="mt-1 ml-4 space-y-0.5">
-                  <li>Buat satu profile per ACS server (contoh: GenieACS-Production, GenieACS-Test)</li>
-                  <li>Password terenkripsi di database — tidak ditampilkan plain text</li>
-                </ul>
-              </>
-            }
-          />
           {canManage && <button onClick={() => setModal({ mode: 'add' })} className="btn-primary flex items-center gap-2 text-sm">
             <Plus size={16} />
             Create

@@ -3,7 +3,6 @@ import { useState, useCallback } from 'react';
 import { cn } from '../lib/utils';
 import { api } from '../lib/api';
 import { Search, ChevronLeft, ChevronRight, ChevronFirst, ChevronLast, User, Server, Radio, Shield, KeyRound, Activity } from 'lucide-react';
-import { TutorialBanner } from '../components/TutorialBanner';
 
 const categoryIcons: Record<string, React.ReactNode> = {
   auth: <KeyRound size={14} />,
@@ -59,23 +58,6 @@ export function ActionLogs() {
           <h1 className="text-xl md:text-2xl font-bold">Action Logs</h1>
           <p className="text-tx2 text-xs md:text-sm mt-1">Audit trail of all user activities</p>
         </div>
-        <TutorialBanner
-          guideId="action-logs"
-          title="Panduan Action Logs"
-          steps={[
-            { title: 'Filter & Search', content: <><p>Filter log by kategori (auth, olt, onu, user, role, general) dan search by keyword. Log entries menampilkan: timestamp, user, action, target, dan detail.</p><p className="text-xs text-tx3 mt-1">Server-side pagination — 50 entries per halaman. Klik page number untuk navigasi.</p></> },
-            { title: 'Log Categories', content: <><p><strong>Auth</strong>: login/logout. <strong>OLT</strong>: sync, add/edit/delete OLT. <strong>ONU</strong>: provision, edit, delete, reboot, clear-config. <strong>User</strong>: add/edit/delete user. <strong>Role</strong>: role management.</p></> },
-          ]}
-          tips={
-            <>
-              <strong className="text-tx2">Tips:</strong>
-              <ul className="mt-1 ml-4 space-y-0.5">
-                <li>Log tidak bisa dihapus — audit trail permanen</li>
-                <li>Search by username, action type, atau target ONU/OLT</li>
-              </ul>
-            </>
-          }
-        />
       </div>
 
       {/* Filters */}
