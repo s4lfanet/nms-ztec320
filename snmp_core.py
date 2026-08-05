@@ -7,6 +7,7 @@ SNMP core collector for ZTE C320 OLT.
 import logging
 import asyncio
 import concurrent.futures
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -230,10 +231,12 @@ def parse_pon_index(pon_index):
 class SNMPCollector:
     """Fast SNMP collector using pysnmp v1arch Slim API"""
 
-    def __init__(self, ip, community='public', port=161):
+    def __init__(self, ip, community='public', port=161, use_walk=False, max_repetitions=50):
         self.ip = ip
         self.community = community
         self.port = int(port)
+        self.use_walk = use_walk  # Force GetNext for lossy/high-latency links
+        self.max_repetitions = max_repetitions
 
     def close(self):
         pass
@@ -516,19 +519,195 @@ class SNMPCollector:
         except RuntimeError:
             return asyncio.run(coro)
 
-    async def _bulk_walk(self, oid, max_repetitions=50):
+    # ==================== Batch SNMP GET ====================
+
+    async def _batch_get_async(self, oids: list[str]) -> dict[str, Any]:
+        """Fetch multiple OIDs in a single SNMP GET request.
+
+        Instead of N separate get() calls (one per OID), this sends 1 GET
+        with all OIDs — reducing network round-trips from N to 1.
+
+        Returns dict {oid: value} for successfully retrieved OIDs.
+        """
+        from pysnmp.hlapi.v1arch.asyncio import Slim, ObjectType, ObjectIdentity
+
+        result = {}
+        slim = Slim(1)
+        try:
+            # pysnmp Slim.get() accepts multiple ObjectType args in one call
+            obj_types = [ObjectType(ObjectIdentity(oid)) for oid in oids]
+            ei, es, eidx, vb = await slim.get(
+                self.community, self.ip, self.port,
+                *obj_types, timeout=10, retries=3
+            )
+            if not ei and not es and vb:
+                for var_bind in vb:
+                    oid_str = str(var_bind[0])
+                    val = var_bind[1]
+                    val_str = str(val)
+                    if 'noSuch' not in val_str:
+                        result[oid_str] = val
+        except Exception as e:
+            logger.error(f"Batch GET failed ({len(oids)} OIDs): {e}")
+        finally:
+            slim.close()
+        return result
+
+    def batch_get(self, oids: list[str]) -> dict[str, Any]:
+        """Synchronous wrapper for _batch_get_async.
+
+        Fetch multiple OIDs in 1 SNMP GET request.
+        Returns dict {oid: raw_value} for successfully retrieved OIDs.
+        """
+        if not oids:
+            return {}
+        try:
+            return self._run(self._batch_get_async(oids))
+        except Exception as e:
+            logger.error(f"batch_get failed: {e}")
+            return {}
+
+    def collect_onu_detail_batch(self, pon_index: int, onu_slot: int) -> dict:
+        """Fetch ONU detail (name, serial, status, rx, tx, olt_rx, description)
+        in a SINGLE batch GET request instead of 7 sequential walks.
+
+        This is the optimized equivalent of walking 7 separate OID tables
+        for one ONU — reduces SNMP round-trips from 7 to 1.
+
+        Args:
+            pon_index: ZTE PON index (e.g. 268500992 for board 1 port 0)
+            onu_slot: ONU slot/ID on that PON port
+
+        Returns:
+            Dict with keys: name, serial, status, rx_power, tx_power,
+            olt_rx, description, oper_state
+        """
+        # cfgTable OIDs: suffix = .ponIndex.onuSlot
+        # regTable OIDs: suffix = .ponIndex.onuSlot.onuId (onuId=1 for ZTE C320)
+        cfg_suffix = f'.{pon_index}.{onu_slot}'
+        reg_suffix = f'.{pon_index}.{onu_slot}.1'
+
+        oids = [
+            f'{OID_ONU_NAME}{cfg_suffix}',
+            f'{OID_ONU_SERIAL}{cfg_suffix}',
+            f'{OID_ONU_DESCRIPTION}{cfg_suffix}',
+            f'{OID_OPER_STATE}{reg_suffix}',
+            f'{OID_RX_POWER}{reg_suffix}',
+            f'{OID_TX_POWER}{reg_suffix}',
+            f'{OID_OLT_RX}{reg_suffix}',
+        ]
+
+        raw = self.batch_get(oids)
+
+        # Parse results
+        name = ''
+        serial = ''
+        description = ''
+        oper_state = 0
+        rx_power = None
+        tx_power = None
+        olt_rx = None
+
+        for oid, val in raw.items():
+            if oid.startswith(OID_ONU_NAME):
+                name = str(val)
+            elif oid.startswith(OID_ONU_SERIAL):
+                serial = parse_serial(val)
+            elif oid.startswith(OID_ONU_DESCRIPTION):
+                description = str(val)
+            elif oid.startswith(OID_OPER_STATE):
+                try: oper_state = int(val)
+                except: pass
+            elif oid.startswith(OID_RX_POWER):
+                try: rx_power = decode_rx_power(int(val))
+                except: pass
+            elif oid.startswith(OID_TX_POWER):
+                try: tx_power = decode_rx_power(int(val))
+                except: pass
+            elif oid.startswith(OID_OLT_RX):
+                try: olt_rx = decode_rx_power(int(val))
+                except: pass
+
+        status = decode_oper_state(oper_state)
+        if status == 'online' and olt_rx is None and rx_power is None:
+            status = 'dyinggasp'
+
+        return {
+            'name': name,
+            'serial_number': serial,
+            'description': description,
+            'status': status,
+            'oper_state': oper_state,
+            'rx_power': olt_rx,
+            'onu_rx_power': rx_power,
+            'tx_power': tx_power,
+        }
+
+    def collect_onus_batch(self, onu_keys: list[tuple[int, int]]) -> list[dict]:
+        """Fetch detail for multiple ONUs using batch GET per ONU.
+
+        Instead of 7 concurrent walks across the entire OLT, this does
+        1 batch GET (7 OIDs) per ONU — much faster for small ONU counts
+        and avoids walking the entire OID tree.
+
+        Args:
+            onu_keys: List of (pon_index, onu_slot) tuples
+
+        Returns:
+            List of ONU dicts with position, status, signal, name, serial
+        """
+        onus = []
+        for pon_index, onu_slot in onu_keys:
+            frame, port = parse_pon_index(pon_index)
+            if frame == 0:
+                continue
+
+            detail = self.collect_onu_detail_batch(pon_index, onu_slot)
+            if not detail['serial_number']:
+                continue
+
+            onu = {
+                'frame': frame,
+                'slot': frame,
+                'port': port,
+                'onu_id': onu_slot,
+                'onu_index': frame * 100000 + frame * 10000 + port * 100 + onu_slot,
+                'serial_number': detail['serial_number'],
+                'name': detail['name'],
+                'description': detail['description'],
+                'status': detail['status'],
+                'oper_state': detail['oper_state'],
+                'reg_status': 0,
+                'rx_power': detail['rx_power'],
+                'onu_rx_power': detail['onu_rx_power'],
+                'tx_power': detail['tx_power'],
+                'distance': None,
+                'actual_type': '',
+                'last_dereg_reason': '',
+                'pppoe': '',
+            }
+            onus.append(onu)
+
+        logger.info(f"SNMP batch GET: collected {len(onus)} ONUs ({len(onu_keys)} keys)")
+        return onus
+
+    async def _bulk_walk(self, oid, max_repetitions=None):
         """SNMP GETBULK walk — fetches up to max_repetitions OIDs per packet.
         
         Falls back to GETNEXT (1 OID per packet) if GETBULK fails.
+        When self.use_walk=True, always uses GETNEXT (for lossy/high-latency links).
         Returns list of (oid_str, raw_val, str_val) tuples.
         """
         from pysnmp.hlapi.v1arch.asyncio import Slim, ObjectType, ObjectIdentity
+
+        if max_repetitions is None:
+            max_repetitions = self.max_repetitions
 
         results = []
         slim = Slim(1)
         cur = oid
         errors = 0
-        use_bulk = True
+        use_bulk = not self.use_walk  # If use_walk=True, start with GetNext
         try:
             while True:
                 try:
