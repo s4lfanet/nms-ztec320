@@ -67,7 +67,9 @@ function generateRegisterScript(d: WizardData): string {
 
   lines.push('!');
   lines.push(`interface ${oltIf}`);
-  lines.push(`  onu ${onuId} type ${d.onuType} sn ${onu.sn}`);
+  const regKw = isEpon ? (onu.sn.startsWith('EPON-') ? '' : 'mac') : 'sn';
+  const regPart = regKw ? `${regKw} ${onu.sn}` : '';
+  lines.push(`  onu ${onuId} type ${d.onuType} ${regPart}`.trim());
   lines.push('!');
   lines.push(`interface ${onuIf}`);
   if (d.namePrefix) lines.push(`  name ${d.namePrefix}-1`);
@@ -502,6 +504,9 @@ export function RegisterWizard() {
       const frame = match ? parseInt(match[1]) : 1;
       const slot = match ? parseInt(match[2]) : 1;
       const port = match ? parseInt(match[3]) : 1;
+      const isEpon = ponPort.includes('epon-olt') || ponPort.includes('epon_olt') || onu.is_epon === true;
+      // Universal onu-type name differs per PON type ('All' for GPON, 'ALL-EPON' for EPON)
+      const onuTypeToSend = isEpon && data.onuType === 'All' ? 'ALL-EPON' : data.onuType;
 
       try {
         const extraToSend = data.extra;
@@ -509,7 +514,7 @@ export function RegisterWizard() {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
           body: JSON.stringify({
             olt_id: data.oltId, frame, slot, port,
-            onu_id: onu.onu_id || (i + 1), onu_type: data.onuType, serial: onu.sn,
+            onu_id: onu.onu_id || (i + 1), onu_type: onuTypeToSend, serial: onu.sn,
             vlan: data.vlan, tcont_profile: data.tcontProfile,
             traffic_profile: data.trafficProfile,
             name: data.namePrefix ? `${data.namePrefix}-${i + 1}` : '',
@@ -517,7 +522,7 @@ export function RegisterWizard() {
             template: data.template, extra: extraToSend,
             technician_id: data.technicianId,
             pon_port: onu.pon_port,
-            is_epon: onu.pon_port.includes('epon-olt') || onu.pon_port.includes('epon_olt'),
+            is_epon: isEpon,
           }),
         });
         const d = await r.json();
