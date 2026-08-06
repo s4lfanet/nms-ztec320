@@ -22,9 +22,6 @@ const navItems: NavItem[] = [
     children: [
       { label: 'All ONUs', path: '/dashboard/onus' },
       { label: 'Unconfigured', path: '/dashboard/onus/unconfigured', permission: 'add_onu' },
-      { label: 'Wizard: Register', path: '/dashboard/onus/wizard/register', permission: 'add_onu' },
-      { label: 'Wizard: Provision', path: '/dashboard/onus/wizard/provision', permission: 'add_onu' },
-      { label: 'Wizard: Pre-config', path: '/dashboard/onus/wizard/preconfig', permission: 'add_onu' },
       { label: 'Provision ONU', path: '/dashboard/onus/provision', permission: 'add_onu' },
       { label: 'Pre-config ONT', path: '/dashboard/onus/pre-config', permission: 'add_onu' },
       { label: 'Register Wizard', path: '/dashboard/onus/register', permission: 'add_onu' },
