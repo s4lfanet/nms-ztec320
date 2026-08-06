@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### 2026-08-06 — Non-ZTE ONU Reboot Fix & Replace ONU (Swap SN/MAC)
+
+#### Fixed — Non-ZTE ONU Reboot
+- **Vendor-aware reboot method**: `reset_onu()` in `telnet_client.py` now detects ONU vendor from serial number prefix. ZTE ONUs use OMCI reboot (`pon-onu-mng > reboot`), non-ZTE ONUs (FiberHome, Huawei, etc.) use `shutdown` + 2s delay + `no shutdown` on the ONU interface — forcing re-registration as an effective reboot. Previously, FiberHome/Huawei ONUs did not respond to OMCI reboot command, making reboot from View ONU non-functional
+- **Serial number passthrough**: `app.py` `onu_action` endpoint now passes `serial_number` to `reset_onu()` for vendor detection
+- **Auto-sync after reboot/reset**: OLT auto-sync triggered after reboot/reset action to refresh DB with real ONU state
+
+#### Added — Replace ONU (Swap SN/MAC)
+- **Replace ONU feature**: New action button on View ONU page to replace a faulty ONU with a new device while preserving all configuration. Flow: backup running-config → delete old ONU → register new ONU with new SN → re-apply all config (service-ports, interface, pon-onu-mng)
+- **`replace_onu()` method** in `telnet_client.py`: Full automated swap with retry mechanism (3x registration, 5x interface ready check), GPON/EPON differentiation, progress callback for step-by-step logging
+- **`/api/onu/<id>/replace` endpoint** in `app.py`: Vendor validation via SN prefix (ZTE/FHT/HW — blocks mismatch), permission check, comprehensive logging, DB serial update, auto-sync, audit log
+- **ReplaceOnuModal** in `ViewOnu.tsx`: Warning message ("Pergantian ONU akan menghapus ONU lama dan mengganti dengan perangkat baru menggunakan konfigurasi yang sama"), confirm checkbox, SN input field, progress steps display during loading, delayed re-fetch after completion
+- **`api.onuReplace()`** in `api.ts`: New API call for replace endpoint
+- **Aksi CLI**: reboot, reset, delete, clear config, enable/disable, restore factory, restore WiFi, **replace ONU (swap SN/MAC)**
+
+#### Fixed — ONU Action Audit (from previous session)
+- **EPON get-status**: Returns `status` key instead of `data` key to match frontend expectation and GPON path
+- **restore_factory_onu & restore_wifi_onu**: Added `is_epon` support — uses dynamic prefix instead of hardcoded `gpon-onu`
+- **Resync config**: Preserves user-set name/description (only updates if empty), merges DB-only WiFi SSIDs with read-back
+- **Frontend get-status**: Handles both `status` and `data` keys for EPON compatibility
+- **Frontend reboot/reset**: Delayed re-fetch (15-30s) after reboot to allow ONU to come back online
+
+---
+
 ### 2026-08-05 — EPON ONU Registration Fix & Centralized Guide System
 
 #### Fixed — EPON Registration

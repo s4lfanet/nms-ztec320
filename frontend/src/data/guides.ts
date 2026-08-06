@@ -104,7 +104,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Actions',
-        content: '**Reboot**: restart ONU. **Get Status**: fetch status lengkap dari OLT (interface info, optical, history, MAC table). **Show Config**: tampilkan running-config ONU. **Resync Config**: re-collect config dari OLT. **Clear Config**: hapus config ONU. **Delete**: deregister ONU dari OLT.',
+        content: '**Reboot**: restart ONU (ZTE: OMCI reboot, non-ZTE: shutdown/no-shutdown fallback). **Get Status**: fetch status lengkap dari OLT (interface info, optical, history, MAC table). **Show Config**: tampilkan running-config ONU. **Resync Config**: re-collect config dari OLT. **Clear Config**: hapus config ONU. **Reset WiFi**: reset WiFi SSID config. **Reset Factory**: factory reset ONU. **Delete**: deregister ONU dari OLT.\n\n**Replace ONU (Swap SN/MAC)**: Ganti perangkat ONU rusak dengan SN/MAC baru tanpa konfigurasi ulang. Sistem akan: backup config lama → delete ONU lama → register ONU baru → re-apply config. Vendor harus sama (ZTE→ZTE, FiberHome→FiberHome).',
       },
     ],
     tips: [
