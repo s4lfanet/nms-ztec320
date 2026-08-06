@@ -25,12 +25,18 @@ const AlertHistoryPage = lazy(() => import('./pages/AlertHistory').then(m => ({ 
 const Traffic = lazy(() => import('./pages/Traffic').then(m => ({ default: m.Traffic })));
 const CloudflareTunnel = lazy(() => import('./pages/CloudflareTunnel').then(m => ({ default: m.CloudflareTunnel })));
 const GuidePage = lazy(() => import('./pages/GuidePage').then(m => ({ default: m.GuidePage })));
+const UnconfiguredOnus = lazy(() => import('./pages/UnconfiguredOnus').then(m => ({ default: m.UnconfiguredOnus })));
+const OnuWizard = lazy(() => import('./pages/OnuWizard').then(m => ({ default: m.OnuWizard })));
 
 const routePermissions: Record<string, string> = {
   '/dashboard/onus/add': 'add_onu',
   '/dashboard/onus/register': 'add_onu',
   '/dashboard/onus/provision': 'add_onu',
   '/dashboard/onus/pre-config': 'add_onu',
+  '/dashboard/onus/unconfigured': 'add_onu',
+  '/dashboard/onus/wizard/register': 'add_onu',
+  '/dashboard/onus/wizard/provision': 'add_onu',
+  '/dashboard/onus/wizard/preconfig': 'add_onu',
   '/dashboard/settings/olts': 'settings_ip_olts',
   '/dashboard/customization': 'customization',
   '/dashboard/users': 'manage_users',
@@ -121,6 +127,10 @@ export default function App() {
         <Route path="onus/register" element={<RegisterWizard />} />
         <Route path="onus/provision" element={<ProvisionWizard />} />
         <Route path="onus/pre-config" element={<ProvisionWizard manualMode />} />
+        <Route path="onus/unconfigured" element={<UnconfiguredOnus />} />
+        <Route path="onus/wizard/register" element={<OnuWizard mode="register" />} />
+        <Route path="onus/wizard/provision" element={<OnuWizard mode="provision" />} />
+        <Route path="onus/wizard/preconfig" element={<OnuWizard mode="preconfig" />} />
         <Route path="onus/:id" element={<ViewOnu />} />
         <Route path="all-onus/view-c3-r/gpon/:oltId/:frame/:slot/:onuNum" element={<ViewOnu />} />
         <Route path="settings/olts" element={<OltSettings />} />
