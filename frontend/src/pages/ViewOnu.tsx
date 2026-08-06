@@ -810,7 +810,7 @@ function OnuTypeModal({ onuId, oltId, currentType, onClose, onSuccess }: { onuId
         else setStatus('No types found.');
       }).catch(e => setStatus('Error: ' + e.message));
   }, [oltId]);
-  const save = async () => { if (!selected) { toast.error('Please select a type'); return; } setLoading(true); try { await fetch(`/api/onu/${onuId}/update-field`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ field: 'onu_type', value: selected }) }); onSuccess(); toast.success('Onu type updated!'); } catch { toast.error('Failed'); } setLoading(false); };
+  const save = async () => { if (!selected) { toast.error('Please select a type'); return; } setLoading(true); try { const res = await fetch(`/api/onu/${onuId}/update-field`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ field: 'onu_type', value: selected }) }); const d = await res.json(); if (d.success) { onSuccess(); toast.success('Onu type updated!'); } else { toast.error(d.message || 'Failed to update ONU type'); } } catch { toast.error('Failed'); } setLoading(false); };
   return (
     <div className="glass-card w-full max-w-md">
       <div className="modal-header"><h2 className="text-sm font-semibold">Onu Type</h2><button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button></div>
