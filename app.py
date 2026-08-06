@@ -97,7 +97,7 @@ def prometheus_metrics():
     """Prometheus metrics endpoint for monitoring."""
     data, content_type = metrics_response()
     from flask import Response
-    return Response(data, mimetype=content_type)
+    return Response(data, content_type=content_type)
 
 
 @login_manager.user_loader
