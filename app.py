@@ -2769,93 +2769,120 @@ def onu_section_config(onu_id):
             cli_idx = int(cfg_data.get('ssid_num', raw_idx + 1))
             tc._send_command(tn, 'configure terminal', timeout=10)
             tc._send_command(tn, f'pon-onu-mng {onu_path}', timeout=10)
-            mode = cfg_data.get('wifiMode', 'N/A')
-            status = cfg_data.get('wifiStatus', 'enable')
-            new_vlan = cfg_data.get('vlan', '')
-            new_priority = cfg_data.get('priority', '')
 
-            # Enable/disable WiFi radio interface (lock = disable, unlock = enable)
-            if status == 'disable':
-                sc(f'interface wifi_0/{cli_idx} state lock')
+            if action == 'delete':
+                # Remove SSID from OLT: clear name, auth, and VLAN config
+                sc(f'no ssid ctrl wifi_0/{cli_idx} name', optional=True)
+                sc(f'ssid auth wpa wifi_0/{cli_idx} no-auth', optional=True)
+                sc(f'ssid auth wpa wifi_0/{cli_idx} encrypt none', optional=True)
+                sc(f'ssid auth wpa wifi_0/{cli_idx} no-key', optional=True)
+                tc._send_command(tn, f'no vlan port wifi_0/{cli_idx} mode', timeout=10)
+                logger.info(f"[section-config] WiFi delete: ONU {onu_id} SSID {cli_idx} — CLI commands sent")
+
+                # Remove SSID from DB wifi_config
+                import json as _json_wdel
+                existing_wifi = {}
+                if onu.wifi_config:
+                    try:
+                        existing_wifi = _json_wdel.loads(onu.wifi_config)
+                    except Exception:
+                        existing_wifi = {}
+                ssids_list = existing_wifi.get('ssids', [])
+                ssids_list = [s for s in ssids_list if int(s.get('ssid_num', 0)) != cli_idx]
+                existing_wifi['ssids'] = ssids_list
+                onu.wifi_config = _json_wdel.dumps(existing_wifi)
+                db.session.commit()
+                logger.info(f"[section-config] WiFi delete: DB updated — {len(ssids_list)} SSIDs remaining")
+
+                ok, msg = True, f'WiFi SSID {cli_idx} deleted'
             else:
-                sc(f'interface wifi_0/{cli_idx} state unlock', optional=True)
+                mode = cfg_data.get('wifiMode', 'N/A')
+                status = cfg_data.get('wifiStatus', 'enable')
+                new_vlan = cfg_data.get('vlan', '')
+                new_priority = cfg_data.get('priority', '')
 
-            # Set VLAN config (only when enabled and mode is not N/A)
-            if status == 'enable' and mode != 'N/A':
-                tc._send_command(tn, f'no vlan port wifi_0/{cli_idx} mode', timeout=10)
-                if mode == 'Access' and new_vlan:
-                    sc(f'vlan port wifi_0/{cli_idx} mode tag vlan {new_vlan}')
-                elif mode == 'Hybrid' and new_vlan:
-                    sc(f'vlan port wifi_0/{cli_idx} mode hybrid def-vlan {new_vlan}')
-                elif mode == 'Trunk':
-                    sc(f'vlan port wifi_0/{cli_idx} mode trunk')
-                # Try priority as separate optional command (not all firmware supports it)
-                if new_priority and str(new_priority) != '0':
-                    err = sc(f'vlan port wifi_0/{cli_idx} priority {new_priority}', optional=True)
-                    logger.info(f'[WIFI] priority {new_priority} for wifi_0/{cli_idx}: {"unsupported" if err else "ok"}')
-            elif mode == 'N/A' or status == 'disable':
-                tc._send_command(tn, f'no vlan port wifi_0/{cli_idx} mode', timeout=10)
-            # SSID broadcast name — correct ZTE C320 pon-onu-mng syntax: 'ssid ctrl wifi_0/N name'
-            ssid_name = cfg_data.get('ssid_name', '').strip().replace(' ', '_')
-            if ssid_name:
-                sc(f'ssid ctrl wifi_0/{cli_idx} name {ssid_name}')
-
-            # SSID authentication — correct ZTE C320 syntax: 'ssid auth wpa wifi_0/N ...'
-            ssid_auth = cfg_data.get('ssid_auth_type', '').strip()  # 'wpa2-psk', 'wpa-psk', 'wpa-wpa2-psk', or 'open'
-            ssid_pass = cfg_data.get('ssid_password', '').strip()
-            if ssid_auth in ('wpa2-psk', 'wpa-psk', 'wpa-wpa2-psk') and ssid_pass:
-                sc(f'ssid auth wpa wifi_0/{cli_idx} {ssid_auth}')
-                sc(f'ssid auth wpa wifi_0/{cli_idx} encrypt aes')
-                sc(f'ssid auth wpa wifi_0/{cli_idx} key {ssid_pass}')
-            elif ssid_auth == 'open':
-                # Firmware builds express "open" auth differently and reject the
-                # variants they don't implement with %Error 20201. Try them all
-                # and treat the SSID as configured if any one is accepted.
-                open_cmds = (
-                    f'ssid auth wpa wifi_0/{cli_idx} no-auth',
-                    f'ssid auth wpa wifi_0/{cli_idx} encrypt none',
-                    f'ssid auth wpa wifi_0/{cli_idx} no-key',
-                    f'ssid auth wep wifi_0/{cli_idx} open-system',
-                )
-                accepted = [c for c in open_cmds if sc(c, optional=True) is None]
-                if accepted:
-                    logger.info(f'[WIFI] Open auth set for wifi_0/{cli_idx} via: {"; ".join(accepted)}')
+                # Enable/disable WiFi radio interface (lock = disable, unlock = enable)
+                if status == 'disable':
+                    sc(f'interface wifi_0/{cli_idx} state lock')
                 else:
-                    last_err = f'ONU firmware rejected all open-auth commands for wifi_0/{cli_idx}'
-                    logger.warning(last_err)
+                    sc(f'interface wifi_0/{cli_idx} state unlock', optional=True)
 
-            ok, msg = True, f'WiFi SSID {cli_idx} config updated'
+                # Set VLAN config (only when enabled and mode is not N/A)
+                if status == 'enable' and mode != 'N/A':
+                    tc._send_command(tn, f'no vlan port wifi_0/{cli_idx} mode', timeout=10)
+                    if mode == 'Access' and new_vlan:
+                        sc(f'vlan port wifi_0/{cli_idx} mode tag vlan {new_vlan}')
+                    elif mode == 'Hybrid' and new_vlan:
+                        sc(f'vlan port wifi_0/{cli_idx} mode hybrid def-vlan {new_vlan}')
+                    elif mode == 'Trunk':
+                        sc(f'vlan port wifi_0/{cli_idx} mode trunk')
+                    # Try priority as separate optional command (not all firmware supports it)
+                    if new_priority and str(new_priority) != '0':
+                        err = sc(f'vlan port wifi_0/{cli_idx} priority {new_priority}', optional=True)
+                        logger.info(f'[WIFI] priority {new_priority} for wifi_0/{cli_idx}: {"unsupported" if err else "ok"}')
+                elif mode == 'N/A' or status == 'disable':
+                    tc._send_command(tn, f'no vlan port wifi_0/{cli_idx} mode', timeout=10)
+                # SSID broadcast name — correct ZTE C320 pon-onu-mng syntax: 'ssid ctrl wifi_0/N name'
+                ssid_name = cfg_data.get('ssid_name', '').strip().replace(' ', '_')
+                if ssid_name:
+                    sc(f'ssid ctrl wifi_0/{cli_idx} name {ssid_name}')
 
-            # Save WiFi config to database
-            import json as _json_wifi
-            existing_wifi = {}
-            if onu.wifi_config:
-                try:
-                    existing_wifi = _json_wifi.loads(onu.wifi_config)
-                except Exception:
-                    existing_wifi = {}
-            ssids_list = existing_wifi.get('ssids', [])
-            ssid_entry = {
-                'ssid_num': cli_idx,
-                'ssid_name': ssid_name,
-                'ssid_auth_type': ssid_auth,
-                'ssid_password': ssid_pass,
-                'wifi_mode': mode,
-                'wifi_status': status,
-                'vlan': new_vlan,
-            }
-            found = False
-            for i, s in enumerate(ssids_list):
-                if s.get('ssid_num') == cli_idx:
-                    ssids_list[i] = ssid_entry
-                    found = True
-                    break
-            if not found:
-                ssids_list.append(ssid_entry)
-            existing_wifi['ssids'] = ssids_list
-            onu.wifi_config = _json_wifi.dumps(existing_wifi)
-            db.session.commit()
-            logger.info(f"[section-config] WiFi DB saved: ONU {onu_id} SSID {cli_idx} '{ssid_name}' auth={ssid_auth} — {len(ssids_list)} SSIDs total")
+                # SSID authentication — correct ZTE C320 syntax: 'ssid auth wpa wifi_0/N ...'
+                ssid_auth = cfg_data.get('ssid_auth_type', '').strip()  # 'wpa2-psk', 'wpa-psk', 'wpa-wpa2-psk', or 'open'
+                ssid_pass = cfg_data.get('ssid_password', '').strip()
+                if ssid_auth in ('wpa2-psk', 'wpa-psk', 'wpa-wpa2-psk') and ssid_pass:
+                    sc(f'ssid auth wpa wifi_0/{cli_idx} {ssid_auth}')
+                    sc(f'ssid auth wpa wifi_0/{cli_idx} encrypt aes')
+                    sc(f'ssid auth wpa wifi_0/{cli_idx} key {ssid_pass}')
+                elif ssid_auth == 'open':
+                    # Firmware builds express "open" auth differently and reject the
+                    # variants they don't implement with %Error 20201. Try them all
+                    # and treat the SSID as configured if any one is accepted.
+                    open_cmds = (
+                        f'ssid auth wpa wifi_0/{cli_idx} no-auth',
+                        f'ssid auth wpa wifi_0/{cli_idx} encrypt none',
+                        f'ssid auth wpa wifi_0/{cli_idx} no-key',
+                        f'ssid auth wep wifi_0/{cli_idx} open-system',
+                    )
+                    accepted = [c for c in open_cmds if sc(c, optional=True) is None]
+                    if accepted:
+                        logger.info(f'[WIFI] Open auth set for wifi_0/{cli_idx} via: {"; ".join(accepted)}')
+                    else:
+                        last_err = f'ONU firmware rejected all open-auth commands for wifi_0/{cli_idx}'
+                        logger.warning(last_err)
+
+                ok, msg = True, f'WiFi SSID {cli_idx} config updated'
+
+                # Save WiFi config to database
+                import json as _json_wifi
+                existing_wifi = {}
+                if onu.wifi_config:
+                    try:
+                        existing_wifi = _json_wifi.loads(onu.wifi_config)
+                    except Exception:
+                        existing_wifi = {}
+                ssids_list = existing_wifi.get('ssids', [])
+                ssid_entry = {
+                    'ssid_num': cli_idx,
+                    'ssid_name': ssid_name,
+                    'ssid_auth_type': ssid_auth,
+                    'ssid_password': ssid_pass,
+                    'wifi_mode': mode,
+                    'wifi_status': status,
+                    'vlan': new_vlan,
+                }
+                found = False
+                for i, s in enumerate(ssids_list):
+                    if s.get('ssid_num') == cli_idx:
+                        ssids_list[i] = ssid_entry
+                        found = True
+                        break
+                if not found:
+                    ssids_list.append(ssid_entry)
+                existing_wifi['ssids'] = ssids_list
+                onu.wifi_config = _json_wifi.dumps(existing_wifi)
+                db.session.commit()
+                logger.info(f"[section-config] WiFi DB saved: ONU {onu_id} SSID {cli_idx} '{ssid_name}' auth={ssid_auth} — {len(ssids_list)} SSIDs total")
 
         elif section == 'lan':
             cli_idx = raw_idx + 1

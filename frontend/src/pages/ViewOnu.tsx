@@ -1028,7 +1028,8 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
     const ok = await confirm({ title: `Delete ${section}`, message: `Delete this ${section} entry?`, confirmLabel: 'Delete', variant: 'danger' });
     if (ok) {
       try {
-        const res = await fetch(`/api/onu/${onuId}/section-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ section, action: 'delete', index: data.index, data: {} }) });
+        const deleteData = section === 'wifi' ? { ssid_num: Number(ssidNum) } : {};
+        const res = await fetch(`/api/onu/${onuId}/section-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ section, action: 'delete', index: data.index, data: deleteData }) });
         const d = await res.json();
         if (d.success) { onSuccess(); toast.success('Deleted!'); } else { toast.error(d.message || 'Failed'); }
       } catch { toast.error('Failed'); }
