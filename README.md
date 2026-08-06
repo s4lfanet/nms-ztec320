@@ -62,6 +62,7 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Role-based access control (Full Access, Viewer, Limited, Technician)
 - Technician assignment untuk ONU
 - ONU custom columns
+- **Sidebar menu disederhanakan**: Menu ONU dari 8 ke 5 item (All ONUs, Unconfigured, Provision ONU, Pre-config ONT, Register Wizard). Route wizard tetap aktif, diakses dari halaman Unconfigured
 
 ### Centralized Guide System
 - **Panduan page** (`/dashboard/guide`): Pusat panduan penggunaan dengan search dan category filter

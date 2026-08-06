@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-08-06 — Penyederhanaan Menu Sidebar ONU
+
+#### Diubah — Sidebar Menu
+- **Menu ONU disederhanakan dari 8 ke 5 item**: Hapus 3 item "Wizard:" (Wizard: Register, Wizard: Provision, Wizard: Pre-config) dari sidebar. Item ini adalah versi baru (`OnuWizard`) yang duplikat dengan item legacy (Register Wizard, Provision ONU, Pre-config ONT). Fungsi wizard tetap tersedia — halaman Unconfigured sudah punya tombol "Register" per ONU yang navigasi ke route wizard. Route wizard (`/wizard/register`, `/wizard/provision`, `/wizard/preconfig`) tetap aktif, hanya tidak ditampilkan di sidebar
+- **5 item tersisa**: All ONUs, Unconfigured, Provision ONU, Pre-config ONT, Register Wizard
+
+---
+
 ### 2026-08-06 — Perbaikan Reboot ONU Non-ZTE & Replace ONU (Swap SN/MAC)
 
 #### Diperbaiki — Reboot ONU Non-ZTE
