@@ -1504,7 +1504,14 @@ class TelnetCollector:
                         else:
                             sc(f'service-port {n} vport {n} user-vlan {primary_vlan} vlan {primary_vlan}')
                     else:
-                        sc(f'service-port {n} vport {n} user-vlan {primary_vlan} vlan {primary_vlan}')
+                        vlan_mode = svc.get('vlan_mode', 'tag')
+                        cvlan_val = int(svc.get('cvlan', 0))
+                        if vlan_mode == 'qinq' and cvlan_val:
+                            sc(f'service-port {n} vport {n} user-vlan {cvlan_val} vlan {primary_vlan} QinQ')
+                        elif vlan_mode == 'untag':
+                            sc(f'service-port {n} vport {n} untag')
+                        else:
+                            sc(f'service-port {n} vport {n} user-vlan {primary_vlan} vlan {primary_vlan}')
                 self._send_command(tn, 'exit')  # exit ONU interface
 
                 # Phase 2: pon-onu-mng config
@@ -1529,14 +1536,24 @@ class TelnetCollector:
                     else:
                         svc_vlan_for_service = primary_vlan
 
+                    # VLAN mode handling for service definition
+                    svc_vlan_mode = svc.get('vlan_mode', 'tag')
+                    svc_cvlan = int(svc.get('cvlan', 0))
+                    if svc_vlan_mode == 'untag':
+                        vlan_suffix = ''
+                    elif svc_vlan_mode == 'qinq' and svc_cvlan:
+                        vlan_suffix = f' vlan {svc_vlan_for_service} cvlan {svc_cvlan}'
+                    else:
+                        vlan_suffix = f' vlan {svc_vlan_for_service}'
+
                     # Service definition — services with WAN-IP/PPPoE need iphost, bridge/iptv don't
                     needs_iphost = (not use_veip) and (svc_type in ('internet', 'tr069') and wan_mode in ('nat', 'wan'))
                     if needs_iphost:
-                        sc(f'service {svc_name} gemport {n} iphost {n} vlan {svc_vlan_for_service}')
+                        sc(f'service {svc_name} gemport {n} iphost {n}{vlan_suffix}')
                     elif not use_veip and n == 1:
-                        sc(f'service {svc_name} gemport {n} iphost 1 vlan {svc_vlan_for_service}')
+                        sc(f'service {svc_name} gemport {n} iphost 1{vlan_suffix}')
                     else:
-                        sc(f'service {svc_name} gemport {n} vlan {svc_vlan_for_service}')
+                        sc(f'service {svc_name} gemport {n}{vlan_suffix}')
 
                     # WAN config based on service type and wan_mode
                     if svc_type == 'bridge':
@@ -1830,9 +1847,15 @@ class TelnetCollector:
                     sc(f'gemport {n} traffic-limit downstream {down_profile}')
 
                 svc_type = svc.get('service_type', 'internet')
+                vlan_mode = svc.get('vlan_mode', 'tag')
+                cvlan = int(svc.get('cvlan', 0))
                 if svc_type == 'iptv':
                     mvlan = int(svc.get('mvlan', 0))
                     sc(f'service-port {n} vport {n} user-vlan {mvlan or svc_vlan} vlan {mvlan or svc_vlan}')
+                elif vlan_mode == 'qinq' and cvlan:
+                    sc(f'service-port {n} vport {n} user-vlan {cvlan} vlan {svc_vlan} QinQ')
+                elif vlan_mode == 'untag':
+                    sc(f'service-port {n} vport {n} untag')
                 else:
                     sc(f'service-port {n} vport {n} user-vlan {svc_vlan} vlan {svc_vlan}')
 
@@ -1864,14 +1887,24 @@ class TelnetCollector:
                 password = svc.get('pppoe_pass', '') or svc.get('password', '')
                 svc_name = f'service{n}'
 
+                # VLAN mode handling for service definition
+                svc_vlan_mode = svc.get('vlan_mode', 'tag')
+                svc_cvlan = int(svc.get('cvlan', 0))
+                if svc_vlan_mode == 'untag':
+                    vlan_suffix = ''
+                elif svc_vlan_mode == 'qinq' and svc_cvlan:
+                    vlan_suffix = f' vlan {svc_vlan} cvlan {svc_cvlan}'
+                else:
+                    vlan_suffix = f' vlan {svc_vlan}'
+
                 # Service definition
                 needs_iphost = (not use_veip) and svc_type in ('internet', 'tr069') and wan_mode in ('nat', 'wan')
                 if needs_iphost:
-                    sc(f'service {svc_name} gemport {n} iphost {n} vlan {svc_vlan}')
+                    sc(f'service {svc_name} gemport {n} iphost {n}{vlan_suffix}')
                 elif not use_veip and n == 1:
-                    sc(f'service {svc_name} gemport {n} iphost 1 vlan {svc_vlan}')
+                    sc(f'service {svc_name} gemport {n} iphost 1{vlan_suffix}')
                 else:
-                    sc(f'service {svc_name} gemport {n} vlan {svc_vlan}')
+                    sc(f'service {svc_name} gemport {n}{vlan_suffix}')
 
                 # WAN config
                 if svc_type == 'bridge':
@@ -4717,8 +4750,8 @@ class TelnetCollector:
             logger.info(f"[uncfg raw] {output[:500]}")
 
             if not output.strip() or 'no unconfigured' in output.lower() or 'no related' in output.lower():
-                tn.write('exit\n'); tn.close()
-                return onus
+                # GPON scan found nothing — skip GPON parsing but continue to EPON scan
+                output = ''
 
             for line in output.split('\n'):
                 line = line.strip('\r').strip()
