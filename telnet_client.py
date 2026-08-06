@@ -567,29 +567,58 @@ class TelnetCollector:
         return result
 
 
-    def reset_onu(self, frame, slot, port, onu_id, is_epon=False):
-        """Reboot/reset an ONU via CLI — uses pon-onu-mng context + reboot command.
-        ZTE C320: configure terminal > pon-onu-mng gpon-onu_X/Y/Z:N > reboot
-        EPON: configure terminal > pon-onu-mng epon-onu_X/Y/Z:N > reboot"""
+    def reset_onu(self, frame, slot, port, onu_id, is_epon=False, serial_number=''):
+        """Reboot/reset an ONU via CLI.
+
+        ZTE ONUs: pon-onu-mng context + 'reboot' (OMCI reboot — ZTE ONUs respond to this).
+        Non-ZTE ONUs (FiberHome, Huawei, etc.): shutdown + delay + no shutdown on interface
+        (forces ONU re-registration — works for all ONU vendors since it's OLT-side).
+
+        EPON uses epon-onu prefix, GPON uses gpon-onu prefix."""
         prefix = 'epon-onu' if is_epon else 'gpon-onu'
         iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
+
+        # Detect ONU vendor from serial number prefix
+        sn_upper = (serial_number or '').upper()
+        is_zte = sn_upper.startswith('ZTE')
+        method = 'omci' if is_zte else 'shutdown'
+        logger.info(f"reset_onu: {iface} serial={serial_number} vendor={'ZTE' if is_zte else 'non-ZTE'} method={method}")
+
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
             tn.write('configure terminal\n')
             tn.read_until(b'#', timeout=5)
-            tn.write(f'pon-onu-mng {iface}\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('reboot\n')
-            output = tn.read_until(b'#', timeout=20).decode('utf-8', errors='replace')
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
+
+            if is_zte:
+                # ZTE ONU: use OMCI reboot via pon-onu-mng
+                tn.write(f'pon-onu-mng {iface}\n')
+                tn.read_until(b'#', timeout=5)
+                tn.write('reboot\n')
+                output = tn.read_until(b'#', timeout=20).decode('utf-8', errors='replace')
+                tn.write('exit\n')
+                tn.read_until(b'#', timeout=5)
+            else:
+                # Non-ZTE ONU (FiberHome, Huawei, etc.): shutdown + delay + no shutdown
+                # This forces the ONU to go offline and re-register — effectively a reboot
+                tn.write(f'interface {iface}\n')
+                tn.read_until(b'#', timeout=5)
+                tn.write('shutdown\n')
+                tn.read_until(b'#', timeout=10)
+                import time as _time
+                _time.sleep(2)
+                tn.write('no shutdown\n')
+                output = tn.read_until(b'#', timeout=10).decode('utf-8', errors='replace')
+                tn.write('exit\n')
+                tn.read_until(b'#', timeout=5)
+
             tn.write('exit\n')
             tn.read_until(b'#', timeout=5)
             tn.write('exit\n'); tn.close()
             if 'error' in output.lower() and 'ambiguous' not in output.lower():
                 return False, f'CLI error: {output.strip()[:100]}'
-            return True, f'ONU {iface} rebooted successfully'
+            method_desc = 'OMCI reboot' if is_zte else 'shutdown/no-shutdown (non-ZTE fallback)'
+            return True, f'ONU {iface} rebooted successfully ({method_desc})'
         except Exception as e:
             logger.error(f"reset_onu failed: {e}")
             try: tn.close()

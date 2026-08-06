@@ -1371,14 +1371,14 @@ def onu_action(onu_id):
     if action == 'reboot':
         if not current_user.has_permission('reboot_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: reboot_onu'}), 403
-        success, msg = tc.reset_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+        success, msg = tc.reset_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon, serial_number=onu.serial_number or '')
         logger.info(f"[onu-action] reboot ONU {onu_id} ({device_type}): success={success} msg={msg}")
         if success:
             _auto_sync_olt(onu.olt_id)
     elif action == 'reset':
         if not current_user.has_permission('reboot_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: reboot_onu'}), 403
-        success, msg = tc.reset_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+        success, msg = tc.reset_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon, serial_number=onu.serial_number or '')
         logger.info(f"[onu-action] reset ONU {onu_id} ({device_type}): success={success} msg={msg}")
         if success:
             _auto_sync_olt(onu.olt_id)
