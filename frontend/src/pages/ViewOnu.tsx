@@ -245,8 +245,10 @@ export function ViewOnu() {
       const wcfg = JSON.parse(onu.wifi_config);
       const dbSsids = wcfg.ssids || [];
       if (wifiEntriesRaw.length > 0) {
-        // Merge passwords from DB into live entries
-        wifiEntries = wifiEntriesRaw.map(w => {
+        // Merge passwords from DB into live entries, and add DB-only SSIDs
+        // (newly added SSIDs may not appear in OLT running-config immediately)
+        const liveNums = new Set(wifiEntriesRaw.map(w => String(w.wifi_num || '')));
+        const merged = wifiEntriesRaw.map(w => {
           const num = w.wifi_num || '';
           const dbMatch = dbSsids.find((s: Record<string, unknown>) => String(s.ssid_num) === String(num));
           if (dbMatch && (!w.ssid_password || w.ssid_password === '--')) {
@@ -254,6 +256,21 @@ export function ViewOnu() {
           }
           return w;
         });
+        // Append DB-only SSIDs not in live read-back
+        for (const s of dbSsids) {
+          if (!liveNums.has(String(s.ssid_num))) {
+            merged.push({
+              wifi_num: String(s.ssid_num || ''),
+              ssid_name: String(s.ssid_name || ''),
+              ssid_auth_type: String(s.ssid_auth_type || ''),
+              ssid_password: String(s.ssid_password || ''),
+              status: String(s.wifi_status || 'up'),
+              mode: String(s.wifi_mode || ''),
+              vlan: String(s.vlan || ''),
+            });
+          }
+        }
+        wifiEntries = merged;
       } else if (dbSsids.length > 0) {
         // No live wifi entries (EPON) — show from DB
         wifiEntries = dbSsids.map((s: Record<string, unknown>) => ({
