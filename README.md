@@ -12,8 +12,9 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 ### OLT & ONU Management
 - Tambah, edit, hapus, dan sinkronisasi OLT via SNMP + Telnet
 - Monitoring status ONU, sinyal RX/TX, jarak, serial number, dan detail perangkat
-- Aksi CLI: reboot, reset, delete, clear config, enable/disable, restore factory, restore WiFi
+- Aksi CLI: reboot, reset, delete, clear config, enable/disable, restore factory, restore WiFi, **replace ONU (swap SN/MAC)**
 - Auto-sync setelah aksi ONU (reboot/delete/clear-config)
+- **Non-ZTE ONU reboot**: FiberHome/Huawei ONUs menggunakan `shutdown`/`no shutdown` fallback (OMCI reboot tidak direspons). Deteksi vendor via SN prefix
 - Rack diagram visual untuk chassis OLT (slot, port, fan, PSU)
 - **GPON + EPON support**: Kartu GTG (GPON) dan ETG (EPON) terdeteksi otomatis, CLI commands menggunakan prefix yang sesuai (`gpon-olt_`/`gpon-onu_` vs `epon-olt_`/`epon-onu_`)
 - **Auto-backup OLT config**: Backup running-config via Telnet (`write memory` + `show running-config`), simpan ke DB, download/restore, auto-prune berdasarkan retention policy, notifikasi failure ke admin
@@ -26,6 +27,7 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - TR069/ACS profile support untuk Fiberhome VEIP template
 - **EPON support**: Deteksi otomatis kartu ETG, CLI prefix `epon-olt_`/`epon-onu_`, scan uncfg EPON, script preview dinamis
 - **EPON ONU registration**: MAC address diformat dotted (`xxxx.xxxx.xxxx`) untuk CLI ZTE, ONU type `ALL-EPON` (bukan `All`), keyword `mac` (bukan `sn`), skip GPON-only template commands (tcont/gemport), apply basic bridge service via `service-port`
+- **Replace ONU (Swap SN/MAC)**: Ganti perangkat ONU rusak dengan SN/MAC baru tanpa konfigurasi ulang manual. Backup config → delete old → register new → re-apply config. Vendor validation (ZTE/FiberHome/Huawei), retry mechanism, progress logging
 
 ### Alerting & Monitoring
 - Rule-based alerts untuk OLT offline, ONU offline/dyinggasp, sinyal rendah, CPU/memory/temperature
