@@ -71,7 +71,7 @@ function generateRegisterScript(d: WizardData): string {
   lines.push(`  onu ${onuId} type ${d.onuType} ${regPart}`.trim());
   lines.push('!');
   lines.push(`interface ${onuIf}`);
-  if (d.namePrefix) lines.push(`  name ${d.namePrefix}-1`);
+  if (d.namePrefix) lines.push(`  name ${d.namePrefix}`);
   if (d.description) lines.push(`  description ${d.description}`);
 
   if (d.template === 'bridge') {
@@ -516,7 +516,7 @@ export function RegisterWizard() {
             onu_id: onu.onu_id || (i + 1), onu_type: onuTypeToSend, serial: onu.sn,
             vlan: data.vlan, tcont_profile: data.tcontProfile,
             traffic_profile: data.trafficProfile,
-            name: data.namePrefix ? `${data.namePrefix}-${i + 1}` : '',
+            name: data.namePrefix || '',
             description: data.description, configure: data.configure,
             template: data.template, extra: extraToSend,
             technician_id: data.technicianId,
@@ -1665,10 +1665,10 @@ export function RegisterWizard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             {/* Name prefix */}
             <div>
-              <label className="label-sm mb-1.5">Name Prefix (optional)</label>
+              <label className="label-sm mb-1.5">ONU Name (optional)</label>
               <input type="text" value={data.namePrefix} onChange={e => update('namePrefix', e.target.value)}
-                placeholder="e.g. ODP-RW03" className="input-field" />
-              <p className="text-xs text-tx3 mt-1">ONUs will be named: prefix-1, prefix-2, ...</p>
+                placeholder="e.g. salsa@rw04" className="input-field" />
+              <p className="text-xs text-tx3 mt-1">Name will be saved exactly as input, without auto suffix.</p>
             </div>
 
             {/* Description */}
@@ -1711,7 +1711,7 @@ export function RegisterWizard() {
               <InfoBox label="TCONT Profile" value={data.tcontProfile || '-'} />
               <InfoBox label="Traffic Profile" value={data.trafficProfile || 'None'} />
               <InfoBox label="Auto-Configure" value={data.configure ? 'Yes' : 'No'} />
-              <InfoBox label="Name Prefix" value={data.namePrefix || '-'} />
+              <InfoBox label="ONU Name" value={data.namePrefix || '-'} />
               <InfoBox label="Description" value={data.description || '-'} />
             </div>
           </div>
@@ -1930,7 +1930,7 @@ export function RegisterWizard() {
                   <span className="text-tx3 w-5 md:w-6 flex-shrink-0">{i + 1}.</span>
                   <span className="font-mono truncate">{onu.sn}</span>
                   <span className="text-tx3 text-[10px] md:text-xs flex-shrink-0">{onu.pon_port}</span>
-                  {data.namePrefix && <span className="text-accent text-[10px] md:text-xs flex-shrink-0">{data.namePrefix}-{i + 1}</span>}
+                  {data.namePrefix && <span className="text-accent text-[10px] md:text-xs flex-shrink-0">{data.namePrefix}</span>}
                 </div>
               ))}
             </div>

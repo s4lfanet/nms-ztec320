@@ -131,7 +131,7 @@ function generateScript(d: WizardState): string {
   lines.push(`  onu ${oid} type ${d.onuType} ${regPart}`.trim());
   lines.push('!');
   lines.push(`interface ${onuIf}`);
-  if (d.namePrefix) lines.push(`  name ${d.namePrefix}-1`);
+  if (d.namePrefix) lines.push(`  name ${d.namePrefix}`);
   if (d.description) lines.push(`  description ${d.description}`);
 
   // TCONT + GEM + service-port per VLAN
@@ -422,7 +422,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             onu_id: onu.onu_id || (i + 1), serial: onu.sn,
             onu_type: onuTypeToSend, tcont_profile: data.tcontProfile,
             traffic_profile: data.trafficProfile,
-            name: data.namePrefix ? `${data.namePrefix}-${i + 1}` : '',
+            name: data.namePrefix || '',
             description: data.description,
             services: data.services.map(s => ({
               service_type: s.wan_mode === 'bridge' ? 'bridge' : 'internet',
@@ -690,8 +690,8 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               )}
             </div>
             <div>
-              <label className="text-xs text-tx3 mb-1 block">Name Prefix</label>
-              <input value={data.namePrefix} onChange={e => update('namePrefix', e.target.value)} placeholder="ODP-RW03" className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
+              <label className="text-xs text-tx3 mb-1 block">ONU Name</label>
+              <input value={data.namePrefix} onChange={e => update('namePrefix', e.target.value)} placeholder="salsa@rw04" className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
             </div>
             <div>
               <label className="text-xs text-tx3 mb-1 block">Description</label>
@@ -1059,7 +1059,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                 <span className="text-tx3">{i + 1}.</span>
                 <span className="font-mono font-semibold">{onu.sn}</span>
                 <span className="text-tx3">on {onu.pon_port}</span>
-                {data.namePrefix && <span className="text-accent ml-auto">{data.namePrefix}-{i + 1}</span>}
+                {data.namePrefix && <span className="text-accent ml-auto">{data.namePrefix}</span>}
               </div>
             ))}
           </div>
