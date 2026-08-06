@@ -844,7 +844,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                     {vlanList.length > 0 ? (
                       <select value={svc.vlans[0] || ''} onChange={e => updateService(idx, { vlans: [e.target.value] })} className="input-field">
                         <option value="">Select VLAN...</option>
-                        {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} \u2014 {v.name || '(unnamed)'}</option>)}
+                        {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                       </select>
                     ) : (
                       <input type="number" value={svc.vlans[0] || ''} onChange={e => updateService(idx, { vlans: [e.target.value] })} className="input-field" placeholder="VLAN ID" />
@@ -873,7 +873,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                     <div><label className="label-sm mb-1">VLAN Profile</label>
                       <select value={svc.vlan_profile} onChange={e => updateService(idx, { vlan_profile: e.target.value })} className="input-field">
                         <option value="">Select VLAN Profile...</option>
-                        {wanIpProfiles.map(p => <option key={p.name} value={p.name}>{p.vlan || '\u2014'} \u2014 {p.name}</option>)}
+                        {wanIpProfiles.map(p => <option key={p.name} value={p.name}>{p.vlan || '—'} — {p.name}</option>)}
                       </select></div>
                   )}
                   {svc.service_type === 'iptv' && (
@@ -951,7 +951,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                     {vlanList.length > 0 ? (
                       <select value={s.vlan} onChange={e => updateSsid(i, { vlan: e.target.value })} className="input-field" disabled={!s.enabled}>
                         <option value="">No VLAN tag</option>
-                        {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} \u2014 {v.name || '(unnamed)'}</option>)}
+                        {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                       </select>
                     ) : (
                       <input type="number" value={s.vlan} onChange={e => updateSsid(i, { vlan: e.target.value })} className="input-field" placeholder="VLAN ID" disabled={!s.enabled} />
@@ -982,7 +982,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                   {vlanList.length > 0 ? (
                     <select value={state.lanVlans[ethPort - 1] || ''} onChange={e => { const next = [...state.lanVlans]; next[ethPort - 1] = e.target.value; update('lanVlans', next); }} className="input-field">
                       <option value="">Primary VLAN</option>
-                      {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} \u2014 {v.name || '(unnamed)'}</option>)}
+                      {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                     </select>
                   ) : (
                     <input type="number" value={state.lanVlans[ethPort - 1] || ''} onChange={e => { const next = [...state.lanVlans]; next[ethPort - 1] = e.target.value; update('lanVlans', next); }} className="input-field" placeholder="VLAN ID" />
@@ -1017,7 +1017,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                 <div className="space-y-2 pl-6">
                   <select value={state.tr069ProfileId} onChange={e => selectTr069Profile(e.target.value)} className="input-field">
                     <option value="">Select Profile...</option>
-                    {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} \u2014 {p.acs_url}</option>)}
+                    {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                   </select>
                   {state.tr069ProfileId && (
                     <div className="grid grid-cols-2 gap-2 text-xs text-tx3">
@@ -1049,7 +1049,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
             <div>
               <label className="label-sm mb-1.5 flex items-center gap-1.5"><Wrench size={12} /> Teknisi</label>
               <select value={state.technicianId ?? ''} onChange={e => update('technicianId', e.target.value ? Number(e.target.value) : null)} className="input-field">
-                <option value="">\u2014 Tidak ada teknisi \u2014</option>
+                <option value="">— Tidak ada teknisi —</option>
                 {technicians.map(t => <option key={t.id} value={t.id}>{t.full_name}{t.phone ? ` (${t.phone})` : ''}</option>)}
               </select>
             </div>
