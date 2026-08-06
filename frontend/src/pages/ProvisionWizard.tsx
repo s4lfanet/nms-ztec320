@@ -25,6 +25,8 @@ interface UnconfiguredOnu {
 interface ServiceEntry {
   id: string;
   vlan: number;
+  cvlan: number;           // C-VLAN (inner) for Q-in-Q mode
+  vlan_mode: 'tag' | 'untag' | 'qinq';
   label: string;           // e.g. "Internet", "VoIP", "TR069", "IPTV"
   wan_mode: 'bridge' | 'dhcp' | 'pppoe' | 'pppoe-nat';
   pppoe_user: string;
@@ -85,6 +87,8 @@ let _nextId = 1;
 const newService = (overrides?: Partial<ServiceEntry>): ServiceEntry => ({
   id: `svc-${_nextId++}`,
   vlan: 100,
+  cvlan: 0,
+  vlan_mode: 'tag',
   label: '',
   wan_mode: 'bridge',
   pppoe_user: '',
@@ -138,13 +142,20 @@ function generateScript(d: WizardState): string {
   d.services.forEach((svc, i) => {
     const n = i + 1;
     const v = svc.vlan || 100;
+    const cv = svc.cvlan || 0;
     const svcName = svc.label ? svc.label.replace(/[^a-zA-Z0-9]/g, '') : `service${n}`;
     lines.push(`  tcont ${n} name ${svcName} profile ${d.tcontProfile}`);
     lines.push(`  gemport ${n} tcont ${n}`);
     if (svc.traffic_profile || d.trafficProfile) {
       lines.push(`  gemport ${n} traffic-limit downstream ${svc.traffic_profile || d.trafficProfile}`);
     }
-    lines.push(`  service-port ${n} vport ${n} user-vlan ${v} vlan ${v}`);
+    if (svc.vlan_mode === 'qinq' && cv) {
+      lines.push(`  service-port ${n} vport ${n} user-vlan ${cv} vlan ${v} QinQ`);
+    } else if (svc.vlan_mode === 'untag') {
+      lines.push(`  service-port ${n} vport ${n} untag`);
+    } else {
+      lines.push(`  service-port ${n} vport ${n} user-vlan ${v} vlan ${v}`);
+    }
   });
 
   lines.push('!');
@@ -154,15 +165,17 @@ function generateScript(d: WizardState): string {
   d.services.forEach((svc, i) => {
     const n = i + 1;
     const v = svc.vlan || 100;
+    const cv = svc.cvlan || 0;
     const svcName = svc.label ? svc.label.replace(/[^a-zA-Z0-9]/g, '') : `service${n}`;
     const needsIphost = !useVeip && svc.wan_mode !== 'bridge';
+    const vlanSuffix = svc.vlan_mode === 'untag' ? '' : svc.vlan_mode === 'qinq' && cv ? ` vlan ${v} cvlan ${cv}` : ` vlan ${v}`;
 
     if (needsIphost) {
-      lines.push(`  service ${svcName} gemport ${n} iphost ${n} vlan ${v}`);
+      lines.push(`  service ${svcName} gemport ${n} iphost ${n}${vlanSuffix}`);
     } else if (!useVeip && n === 1) {
-      lines.push(`  service ${svcName} gemport ${n} iphost 1 vlan ${v}`);
+      lines.push(`  service ${svcName} gemport ${n} iphost 1${vlanSuffix}`);
     } else {
-      lines.push(`  service ${svcName} gemport ${n} vlan ${v}`);
+      lines.push(`  service ${svcName} gemport ${n}${vlanSuffix}`);
     }
 
     // WAN config
@@ -427,6 +440,8 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             services: data.services.map(s => ({
               service_type: s.wan_mode === 'bridge' ? 'bridge' : 'internet',
               vlan: s.vlan,
+              cvlan: s.cvlan,
+              vlan_mode: s.vlan_mode,
               wan_mode: s.wan_mode === 'pppoe-nat' ? 'nat' : s.wan_mode === 'pppoe' ? 'wan' : s.wan_mode,
               wan_ip_mode: s.wan_mode === 'pppoe' ? 'PPPoE' : s.wan_mode === 'dhcp' ? 'DHCP' : '',
               pppoe_user: s.pppoe_user,
@@ -470,7 +485,12 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
       if (manualMode) return manualSn.length >= 8 && manualFrame > 0 && manualSlot > 0 && manualPort > 0;
       return data.selectedOnus.length > 0;
     }
-    if (step === 3) return data.services.length > 0 && data.services.every(s => s.vlan > 0);
+    if (step === 3) return data.services.length > 0 && data.services.every(s => {
+      if (s.vlan_mode === 'untag') return true;
+      if (s.vlan_mode === 'tag') return s.vlan > 0;
+      if (s.vlan_mode === 'qinq') return s.vlan > 0 && s.cvlan > 0;
+      return false;
+    });
     return true;
   };
 
@@ -767,24 +787,56 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           <div className="space-y-2">
             {data.services.map((svc, idx) => (
               <div key={svc.id} className="p-3 rounded-xl border border-brd bg-glass">
-                {/* Row 1: VLAN + Label + WAN + Delete */}
+                {/* Row 1: VLAN Mode + VLAN + Label + WAN + Delete */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="w-5 h-5 rounded-full bg-accent/15 text-accent flex items-center justify-center text-[10px] font-bold flex-shrink-0">{idx + 1}</span>
 
-                  {/* VLAN input */}
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-tx3">VLAN</span>
-                    {vlanList.length > 0 ? (
-                      <select value={svc.vlan} onChange={e => updateService(svc.id, 'vlan', Number(e.target.value))}
-                        className="h-8 w-20 px-1.5 rounded-lg bg-glass border border-brd text-xs font-mono">
-                        {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id}</option>)}
-                        {!vlanList.find(v => v.vlan_id === svc.vlan) && svc.vlan > 0 && <option value={svc.vlan}>{svc.vlan}</option>}
-                      </select>
-                    ) : (
-                      <input type="number" value={svc.vlan || ''} onChange={e => updateService(svc.id, 'vlan', Number(e.target.value))}
-                        min={1} max={4094} className="h-8 w-20 px-2 rounded-lg bg-glass border border-brd text-xs font-mono" />
-                    )}
-                  </div>
+                  {/* VLAN Mode */}
+                  <select value={svc.vlan_mode} onChange={e => {
+                    const mode = e.target.value as ServiceEntry['vlan_mode'];
+                    if (mode === 'untag') { updateService(svc.id, 'vlan_mode', mode); updateService(svc.id, 'vlan', 0); }
+                    else updateService(svc.id, 'vlan_mode', mode);
+                  }}
+                    className="h-8 px-1.5 rounded-lg bg-glass border border-brd text-xs font-medium">
+                    <option value="tag">Tag</option>
+                    <option value="untag">Untag</option>
+                    <option value="qinq">Q-in-Q</option>
+                  </select>
+
+                  {/* VLAN input (disabled for untag) */}
+                  {svc.vlan_mode !== 'untag' && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-tx3">{svc.vlan_mode === 'qinq' ? 'S-VLAN' : 'VLAN'}</span>
+                      {vlanList.length > 0 ? (
+                        <select value={svc.vlan} onChange={e => updateService(svc.id, 'vlan', Number(e.target.value))}
+                          className="h-8 w-20 px-1.5 rounded-lg bg-glass border border-brd text-xs font-mono">
+                          <option value={0}>—</option>
+                          {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id}</option>)}
+                          {!vlanList.find(v => v.vlan_id === svc.vlan) && svc.vlan > 0 && <option value={svc.vlan}>{svc.vlan}</option>}
+                        </select>
+                      ) : (
+                        <input type="number" value={svc.vlan || ''} onChange={e => updateService(svc.id, 'vlan', Number(e.target.value))}
+                          min={1} max={4094} className="h-8 w-20 px-2 rounded-lg bg-glass border border-brd text-xs font-mono" />
+                      )}
+                    </div>
+                  )}
+
+                  {/* C-VLAN input (only for QinQ) */}
+                  {svc.vlan_mode === 'qinq' && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-tx3">C-VLAN</span>
+                      {vlanList.length > 0 ? (
+                        <select value={svc.cvlan} onChange={e => updateService(svc.id, 'cvlan', Number(e.target.value))}
+                          className="h-8 w-20 px-1.5 rounded-lg bg-glass border border-brd text-xs font-mono">
+                          <option value={0}>—</option>
+                          {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id}</option>)}
+                        </select>
+                      ) : (
+                        <input type="number" value={svc.cvlan || ''} onChange={e => updateService(svc.id, 'cvlan', Number(e.target.value))}
+                          min={1} max={4094} className="h-8 w-20 px-2 rounded-lg bg-glass border border-brd text-xs font-mono" />
+                      )}
+                    </div>
+                  )}
 
                   {/* Label */}
                   <input value={svc.label} onChange={e => updateService(svc.id, 'label', e.target.value)}
