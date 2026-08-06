@@ -61,7 +61,7 @@ export const api = {
   onuDetail: (id: number) => request<OnuDetailData>(`/api/onu/${id}/detail`),
   onuLiveDetail: (id: number) => request<{ success: boolean; live_detail: Record<string, unknown> | null; history: Array<{ date: string; event: string }>; wan_services_json: string }>(`/api/onu/${id}/live-detail`),
   onuTraffic: (id: number) => request<{ success: boolean; traffic: { downstream_kbps: string; upstream_kbps: string } }>(`/api/onu/${id}/traffic`),
-  onuGetStatus: (id: number) => request<{ success: boolean; status: Record<string, unknown> }>(`/api/onu/${id}/get-status`, { method: 'POST' }),
+  onuGetStatus: (id: number) => request<{ success: boolean; status?: Record<string, unknown>; data?: Record<string, unknown>; message?: string }>(`/api/onu/${id}/get-status`, { method: 'POST' }),
   onuLiveInfo: (id: number) => request(`/api/onu/${id}/live-info`),
   refreshSignal: (oltId: number) =>
     request<{ success: boolean; updated: number; total: number }>(`/api/olt/${oltId}/refresh-signal`, { method: 'POST' }),
