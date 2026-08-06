@@ -559,28 +559,36 @@ def api_onu_live_detail(onu_id):
                 wifi_entries = live_detail.get('wifi_entries', [])
                 if wifi_entries:
                     import json as _json_wb
-                    # Preserve existing passwords from DB (ZTE doesn't expose WPA keys in read-back)
-                    existing_pw = {}
+                    # Preserve existing passwords and newly-added SSIDs from DB
+                    # (ZTE doesn't expose WPA keys in read-back, and newly added
+                    # SSIDs may not appear in OLT running-config immediately)
+                    existing_ssids = {}
                     if onu.wifi_config:
                         try:
                             _prev = _json_wb.loads(onu.wifi_config)
                             for s in _prev.get('ssids', []):
-                                existing_pw[int(s.get('ssid_num', 0))] = s.get('ssid_password', '')
+                                existing_ssids[int(s.get('ssid_num', 0))] = s
                         except Exception:
                             pass
                     ssids = []
+                    readback_nums = set()
                     for w in wifi_entries:
                         num = int(w.get('wifi_num', 0))
+                        readback_nums.add(num)
                         rb_pw = w.get('ssid_password', '')
                         ssids.append({
                             'ssid_num': num,
                             'ssid_name': w.get('ssid_name', ''),
                             'ssid_auth_type': w.get('ssid_auth_type', ''),
-                            'ssid_password': rb_pw if rb_pw and rb_pw != '--' else existing_pw.get(num, ''),
+                            'ssid_password': rb_pw if rb_pw and rb_pw != '--' else existing_ssids.get(num, {}).get('ssid_password', ''),
                             'wifi_mode': w.get('mode', ''),
                             'wifi_status': w.get('status', 'up'),
                             'vlan': w.get('vlan', ''),
                         })
+                    # Preserve DB entries not in read-back (newly added, OLT may not have applied yet)
+                    for num, s in existing_ssids.items():
+                        if num not in readback_nums:
+                            ssids.append(s)
                     onu.wifi_config = _json_wb.dumps({'ssids': ssids})
                     updated = True
                 if updated: db.session.commit()
@@ -2847,6 +2855,7 @@ def onu_section_config(onu_id):
             existing_wifi['ssids'] = ssids_list
             onu.wifi_config = _json_wifi.dumps(existing_wifi)
             db.session.commit()
+            logger.info(f"[section-config] WiFi DB saved: ONU {onu_id} SSID {cli_idx} '{ssid_name}' auth={ssid_auth} — {len(ssids_list)} SSIDs total")
 
         elif section == 'lan':
             cli_idx = raw_idx + 1
