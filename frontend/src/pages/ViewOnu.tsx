@@ -7,7 +7,7 @@ import { confirm } from '../components/ConfirmDialog';
 import {
   Wifi, Clock, RefreshCw, RotateCcw, Trash2, Ban, Eraser,
   FileText, Radio, Globe, Shield, Key, Plug, Database, Layers,
-  Edit3, X, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff, ChevronDown
+  Edit3, X, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff, ChevronDown, Replace
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -164,6 +164,34 @@ export function ViewOnu() {
       if (d.success && status) { setModal({ type: 'getStatus', data: status }); qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); } else toast.error(d.message || 'Get Status failed');
     },
     onError: () => { setPendingAction(null); toast.error('Get Status failed'); },
+  });
+
+  const replaceMut = useMutation({
+    mutationFn: async (newSerial: string) => { setPendingAction('replace'); return api.onuReplace(onuId, newSerial); },
+    onSuccess: (d) => {
+      setPendingAction(null);
+      if (d.success) {
+        toast.success(d.message || 'ONU replaced successfully!');
+        qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
+        qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
+        qc.invalidateQueries({ queryKey: ['all-onus'] });
+        qc.invalidateQueries({ queryKey: ['dashboard'] });
+        qc.invalidateQueries({ queryKey: ['olts'] });
+        // Re-fetch after auto-sync (sync takes ~5-10s)
+        setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
+          qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
+          qc.invalidateQueries({ queryKey: ['all-onus'] });
+          qc.invalidateQueries({ queryKey: ['dashboard'] });
+        }, 8000);
+        setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
+          qc.invalidateQueries({ queryKey: ['all-onus'] });
+        }, 15000);
+      } else toast.error(d.message || 'Replace failed');
+      setModal(null);
+    },
+    onError: () => { setPendingAction(null); toast.error('Replace ONU failed'); setModal(null); },
   });
 
   const updateFieldMut = useMutation({
@@ -440,6 +468,7 @@ export function ViewOnu() {
           <ActBtn icon={<Activity size={14} />} label="Enable ONU" onClick={() => doAction('enable', 'Enable')} variant="success" loading={pendingAction === 'enable'} />
         ))}
         {hasPerm('delete_onu') && <ActBtn icon={<Trash2 size={14} />} label="Delete" onClick={() => doAction('delete', 'Delete')} variant="danger" loading={pendingAction === 'delete'} />}
+        {hasPerm('configure_onu') && <ActBtn icon={<Replace size={14} />} label="Replace ONU" onClick={() => setModal({ type: 'replaceOnu' })} variant="warning" loading={pendingAction === 'replace'} />}
       </div>
 
       {/* WAN */}
@@ -624,6 +653,7 @@ export function ViewOnu() {
         )}
         {modal.type === 'getStatus' && <GetStatusModal status={modal.data as Record<string, unknown>} onClose={() => setModal(null)} />}
         {modal.type === 'wanEdit' && <WanEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
+        {modal.type === 'replaceOnu' && <ReplaceOnuModal onu={onu} onClose={() => setModal(null)} onConfirm={(newSerial) => replaceMut.mutate(newSerial)} loading={replaceMut.isPending} />}
       </ModalPortal>}
     </div>
   );
@@ -828,6 +858,101 @@ function MoveOnuModal({ onuId, onu, onClose, onSuccess }: { onuId: number; onu: 
         <div className="flex gap-3 ml-auto">
           <button onClick={onClose} className="btn-cancel">Cancel</button>
           <button onClick={save} disabled={loading} className="btn-primary">{loading ? 'Moving...' : 'Save Changes'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReplaceOnuModal({ onu, onClose, onConfirm, loading }: {
+  onu: { serial_number: string; name: string; actual_type: string; card: string };
+  onClose: () => void; onConfirm: (newSerial: string) => void; loading: boolean;
+}) {
+  const [newSerial, setNewSerial] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const oldSn = onu.serial_number || '';
+  const isEpon = (onu.card || '').toLowerCase() === 'epon';
+
+  const handleConfirm = () => {
+    if (!newSerial.trim()) return;
+    onConfirm(newSerial.trim().toUpperCase());
+  };
+
+  const steps = [
+    { label: 'Backup config from old ONU', icon: Database },
+    { label: 'Delete old ONU from OLT', icon: Trash2 },
+    { label: 'Register new ONU with new SN', icon: Plus },
+    { label: 'Apply config to new ONU', icon: Replace },
+  ];
+
+  return (
+    <div className="glass-card w-full max-w-md animate-fade-in">
+      <div className="modal-header">
+        <h2 className="text-sm font-semibold flex items-center gap-2"><Replace size={16} /> Replace ONU (Swap SN)</h2>
+        <button onClick={onClose} className="text-tx3 hover:text-tx1" disabled={loading}><X size={18} /></button>
+      </div>
+      <div className="p-4 md:p-5 space-y-4">
+        {/* Current SN */}
+        <div className="p-3 rounded-lg bg-glass">
+          <div className="text-xs text-tx3 mb-1">Current SN / MAC</div>
+          <div className="text-sm font-mono font-bold">{oldSn || '--'}</div>
+          <div className="text-xs text-tx3 mt-1">Name: {onu.name || '--'} | Type: {onu.actual_type || '--'} | {isEpon ? 'EPON' : 'GPON'}</div>
+        </div>
+
+        {/* New SN input */}
+        <div>
+          <label className="label-sm mb-2">New SN / MAC</label>
+          <input
+            type="text"
+            value={newSerial}
+            onChange={e => setNewSerial(e.target.value)}
+            placeholder={isEpon ? 'e.g. 7488.2a70.7346 or 74882A707346' : 'e.g. ZTEGC1A2B3C4 or FHTTC18705B0'}
+            className="input-field font-mono"
+            disabled={loading}
+            autoFocus
+          />
+        </div>
+
+        {/* Warning */}
+        <div className="p-3 rounded-lg border border-warning/30 bg-warning/10">
+          <div className="flex items-start gap-2">
+            <Shield size={16} className="text-warning shrink-0 mt-0.5" />
+            <div className="text-xs text-warning leading-relaxed">
+              <strong>Warning:</strong> Pergantian ONU akan menghapus ONU lama dan mengganti dengan perangkat baru menggunakan konfigurasi yang sama.
+              Pastikan model ONU baru sama dengan ONU lama. Semua service, VLAN, dan profile akan dipertahankan.
+            </div>
+          </div>
+        </div>
+
+        {/* Confirm checkbox */}
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} disabled={loading} />
+          Saya memahami konsekuensi dan ingin melanjutkan
+        </label>
+
+        {/* Progress steps (shown during loading) */}
+        {loading && (
+          <div className="space-y-2 pt-2">
+            {steps.map((step, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs text-tx3">
+                <RefreshCw size={12} className="animate-spin text-accent" />
+                <step.icon size={12} />
+                <span>{step.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="modal-footer">
+        <div className="flex gap-3 ml-auto">
+          <button onClick={onClose} className="btn-cancel" disabled={loading}>Cancel</button>
+          <button
+            onClick={handleConfirm}
+            disabled={loading || !newSerial.trim() || !confirmed}
+            className="btn-primary bg-warning text-white border-warning hover:bg-warning/80"
+          >
+            {loading ? 'Replacing...' : 'Replace ONU'}
+          </button>
         </div>
       </div>
     </div>

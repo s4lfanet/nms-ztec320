@@ -881,6 +881,190 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
+    def replace_onu(self, frame, slot, port, onu_id, new_serial, old_serial='',
+                    is_epon=False, onu_type='All', progress_cb=None):
+        """Replace ONU with new SN/MAC, preserving all config.
+
+        Flow:
+        1. Backup running-config from old ONU (service-ports, interface, pon-onu-mng)
+        2. Delete old ONU from OLT
+        3. Register new ONU with new SN (retry if needed)
+        4. Wait for ONU interface to be ready
+        5. Re-apply backed-up config (service-ports, interface, pon-onu-mng)
+        6. Return success with details
+
+        Supports both GPON and EPON.
+        """
+        import time
+
+        def report(step, msg):
+            logger.info(f"[replace_onu] {step}: {msg}")
+            if progress_cb:
+                try: progress_cb(step, msg)
+                except: pass
+
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
+        olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
+        iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
+        pon_if = f'{olt_prefix}_{frame}/{slot}/{port}'
+
+        report('backup', f'Backing up config for {iface} (old SN: {old_serial})')
+
+        tn = self._connect()
+        if not tn:
+            return False, 'Telnet connection failed'
+
+        try:
+            # Step 1: Backup running-config
+            cfg = self._send_command(tn, f'show running-config interface {iface}', timeout=15)
+            if not cfg or 'error' in cfg.lower():
+                report('backup', 'Failed to read running-config')
+                tn.close()
+                return False, 'Failed to read old ONU running-config'
+
+            # Parse config into sections
+            service_ports = []
+            interface_lines = []
+            pon_mng_lines = []
+            current_section = None
+
+            for line in cfg.split('\n'):
+                ls = line.strip()
+                if ls.startswith('service-port '):
+                    service_ports.append(ls)
+                    current_section = 'global'
+                elif ls.startswith(f'interface {iface}'):
+                    current_section = 'interface'
+                elif ls.startswith(f'pon-onu-mng {iface}'):
+                    current_section = 'pon-mng'
+                elif ls == '!' or ls.startswith('!'):
+                    current_section = None
+                elif ls and current_section == 'interface':
+                    interface_lines.append(ls)
+                elif ls and current_section == 'pon-mng':
+                    pon_mng_lines.append(ls)
+
+            report('backup', f'Backed up: {len(service_ports)} service-ports, {len(interface_lines)} interface lines, {len(pon_mng_lines)} pon-onu-mng lines')
+
+            # Step 2: Delete old ONU
+            report('delete', f'Deleting old ONU {iface}')
+            tn.write('configure terminal\n')
+            tn.read_until(b'#', timeout=5)
+            tn.write(f'interface {pon_if}\n')
+            tn.read_until(b'#', timeout=5)
+            tn.write(f'no onu {onu_id}\n')
+            output = tn.read_until(b'#', timeout=15).decode('utf-8', errors='replace')
+            if 'error' in output.lower() and 'ambiguous' not in output.lower():
+                report('delete', f'Failed to delete: {output.strip()[:100]}')
+                tn.write('exit\n'); tn.write('exit\n'); tn.close()
+                return False, f'Failed to delete old ONU: {output.strip()[:100]}'
+            report('delete', 'Old ONU deleted successfully')
+            tn.write('exit\n')
+            tn.read_until(b'#', timeout=5)
+
+            # Step 3: Register new ONU
+            time.sleep(1)
+            report('register', f'Registering new ONU with SN: {new_serial}')
+
+            # Retry registration up to 3 times (ONU slot may need time to clear)
+            max_reg_retries = 3
+            reg_success = False
+            for attempt in range(max_reg_retries):
+                tn.write(f'interface {pon_if}\n')
+                tn.read_until(b'#', timeout=5)
+
+                if is_epon:
+                    if new_serial and not new_serial.startswith('EPON-'):
+                        cmd = f'onu {onu_id} type {onu_type} mac {_format_epon_mac(new_serial)}'
+                    else:
+                        cmd = f'onu {onu_id} type {onu_type}'
+                else:
+                    cmd = f'onu {onu_id} type {onu_type} sn {new_serial}'
+
+                tn.write(cmd + '\n')
+                output = tn.read_until(b'#', timeout=10).decode('utf-8', errors='replace')
+                tn.write('exit\n')
+                tn.read_until(b'#', timeout=5)
+
+                if 'error' not in output.lower() or 'ambiguous' in output.lower():
+                    reg_success = True
+                    report('register', f'New ONU registered successfully (attempt {attempt+1})')
+                    break
+                else:
+                    report('register', f'Registration attempt {attempt+1} failed: {output.strip()[:80]}')
+                    if attempt < max_reg_retries - 1:
+                        time.sleep(2)
+
+            if not reg_success:
+                report('register', 'All registration attempts failed')
+                tn.write('exit\n'); tn.close()
+                return False, f'Registration failed after {max_reg_retries} attempts: {output.strip()[:100]}'
+
+            # Step 4: Wait for ONU interface to be ready
+            report('wait', 'Waiting for ONU to initialize...')
+            time.sleep(3)
+
+            max_ready_retries = 5
+            ready = False
+            for attempt in range(max_ready_retries):
+                tn.write(f'interface {iface}\n')
+                output = tn.read_until(b'#', timeout=5).decode('utf-8', errors='replace')
+                if 'error' not in output.lower() and 'invalid' not in output.lower():
+                    ready = True
+                    report('wait', f'ONU interface ready (attempt {attempt+1})')
+                    break
+                report('wait', f'ONU not ready, retrying... (attempt {attempt+1}/{max_ready_retries})')
+                time.sleep(2)
+
+            if not ready:
+                report('wait', 'ONU interface not ready after retries — config will be skipped')
+                tn.write('exit\n'); tn.close()
+                # ONU is registered but config couldn't be applied
+                return True, f'ONU replaced (SN: {old_serial} -> {new_serial}) — registered but config could not be applied (ONU not ready). Please re-apply config manually.'
+
+            # Step 5: Re-apply interface config
+            report('apply', f'Applying {len(interface_lines)} interface config lines...')
+            for line in interface_lines:
+                tn.write(line + '\n')
+                tn.read_until(b'#', timeout=5)
+
+            tn.write('exit\n')
+            tn.read_until(b'#', timeout=5)
+
+            # Re-apply service-ports from global context
+            if service_ports:
+                report('apply', f'Applying {len(service_ports)} service-ports...')
+                for sp in service_ports:
+                    tn.write(sp + '\n')
+                    tn.read_until(b'#', timeout=5)
+
+            # Re-apply pon-onu-mng config (GPON only — EPON uses ExtOAM)
+            if pon_mng_lines and not is_epon:
+                report('apply', f'Applying {len(pon_mng_lines)} pon-onu-mng config lines...')
+                tn.write(f'pon-onu-mng {iface}\n')
+                out = tn.read_until(b'#', timeout=5).decode('utf-8', errors='replace')
+                if 'error' not in out.lower():
+                    for line in pon_mng_lines:
+                        tn.write(line + '\n')
+                        tn.read_until(b'#', timeout=5)
+                    tn.write('exit\n')
+                    tn.read_until(b'#', timeout=5)
+                else:
+                    report('apply', f'Could not enter pon-onu-mng context: {out.strip()[:80]}')
+
+            tn.write('exit\n')
+            tn.read_until(b'#', timeout=5)
+            tn.write('exit\n'); tn.close()
+
+            report('done', f'ONU replaced: {old_serial} -> {new_serial}, config restored')
+            return True, f'ONU replaced successfully (SN: {old_serial} -> {new_serial}), all config restored'
+
+        except Exception as e:
+            logger.error(f"replace_onu failed: {e}")
+            try: tn.close()
+            except: pass
+            return False, str(e)
+
     def register_onu(self, frame, slot, port, onu_id, onu_type='ZTE-F609', serial='', vlan=100, is_epon=False):
         """Pre-register a new ONU on the OLT"""
         olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
