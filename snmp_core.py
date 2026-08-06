@@ -815,13 +815,27 @@ class SNMPCollector:
     def collect_onus_light(self):
         """SNMP-only light collection — returns full ONU list with position, status, signal.
         No Telnet needed. Used for frequent auto-sync to minimize OLT CPU load."""
+        import time as _time
+        _t0 = _time.time()
         try:
             logger.info(f"SNMP light: collecting ONU data from {self.ip}...")
             onus = self._run(self._collect_onus_light_async())
-            logger.info(f"SNMP light: found {len(onus)} ONUs")
+            _dur = _time.time() - _t0
+            logger.info(f"SNMP light: found {len(onus)} ONUs ({_dur:.1f}s)")
+            try:
+                from metrics_service import track_snmp_poll
+                track_snmp_poll(0, 'light', _dur)
+            except Exception:
+                pass
             return onus
         except Exception as e:
+            _dur = _time.time() - _t0
             logger.error(f"SNMP light collection failed: {e}")
+            try:
+                from metrics_service import track_snmp_poll
+                track_snmp_poll(0, 'light', _dur, error=type(e).__name__)
+            except Exception:
+                pass
             return []
 
     def collect_onus(self):

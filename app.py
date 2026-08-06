@@ -31,6 +31,11 @@ from services_sync import (
     start_single_sync, start_sync_all,
 )
 from routes_auth import bp as auth_bp
+from metrics_service import (
+    metrics_response, track_http_request, track_snmp_poll, track_sync,
+    update_olt_gauge, update_onu_gauge, track_cache_hit, track_cache_miss,
+    set_ws_connections, set_active_users, _ENABLED as METRICS_ENABLED,
+)
 
 from config import ActiveConfig
 
@@ -46,6 +51,12 @@ login_manager.init_app(app)
 login_manager.login_message = 'Please login to access this page.'
 
 app.register_blueprint(auth_bp)
+
+
+@app.before_request
+def _metrics_before_request():
+    """Record request start time for Prometheus timing."""
+    g._req_start = time.time()
 
 
 @app.after_request
@@ -71,10 +82,22 @@ def add_security_headers(response):
     if request.path.startswith('/api/'):
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response.headers['CDN-Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    # Prometheus metrics
+    if METRICS_ENABLED and hasattr(g, '_req_start') and not request.path.startswith('/metrics'):
+        duration = time.time() - g._req_start
+        track_http_request(request.method, request.path, response.status_code, duration)
     return response
 
 
 # Rate limiting functions moved to helpers.py
+
+
+@app.route('/metrics')
+def prometheus_metrics():
+    """Prometheus metrics endpoint for monitoring."""
+    data, content_type = metrics_response()
+    from flask import Response
+    return Response(data, mimetype=content_type)
 
 
 @login_manager.user_loader

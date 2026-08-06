@@ -17,5 +17,8 @@ uvicorn[standard]>=0.34.0
 # === Caching ===
 redis>=5.0
 
+# === Monitoring ===
+prometheus-client>=0.20.0
+
 # === Testing ===
 pytest>=8.0
