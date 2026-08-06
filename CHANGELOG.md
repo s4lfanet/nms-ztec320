@@ -1,207 +1,207 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
-### 2026-08-06 — Non-ZTE ONU Reboot Fix & Replace ONU (Swap SN/MAC)
+### 2026-08-06 — Perbaikan Reboot ONU Non-ZTE & Replace ONU (Swap SN/MAC)
 
-#### Fixed — Non-ZTE ONU Reboot
-- **Vendor-aware reboot method**: `reset_onu()` in `telnet_client.py` now detects ONU vendor from serial number prefix. ZTE ONUs use OMCI reboot (`pon-onu-mng > reboot`), non-ZTE ONUs (FiberHome, Huawei, etc.) use `shutdown` + 2s delay + `no shutdown` on the ONU interface — forcing re-registration as an effective reboot. Previously, FiberHome/Huawei ONUs did not respond to OMCI reboot command, making reboot from View ONU non-functional
-- **Serial number passthrough**: `app.py` `onu_action` endpoint now passes `serial_number` to `reset_onu()` for vendor detection
-- **Auto-sync after reboot/reset**: OLT auto-sync triggered after reboot/reset action to refresh DB with real ONU state
+#### Diperbaiki — Reboot ONU Non-ZTE
+- **Metode reboot berbasis vendor**: `reset_onu()` di `telnet_client.py` sekarang mendeteksi vendor ONU dari prefix serial number. ONU ZTE menggunakan OMCI reboot (`pon-onu-mng > reboot`), ONU non-ZTE (FiberHome, Huawei, dll.) menggunakan `shutdown` + delay 2 detik + `no shutdown` pada interface ONU — memaksa re-registrasi sebagai reboot efektif. Sebelumnya, ONU FiberHome/Huawei tidak merespons command OMCI reboot, sehingga reboot dari View ONU tidak berfungsi
+- **Penerusan serial number**: Endpoint `onu_action` di `app.py` sekarang meneruskan `serial_number` ke `reset_onu()` untuk deteksi vendor
+- **Auto-sync setelah reboot/reset**: Auto-sync OLT dipicu setelah aksi reboot/reset untuk menyegarkan DB dengan status ONU yang sebenarnya
 
-#### Added — Replace ONU (Swap SN/MAC)
-- **Replace ONU feature**: New action button on View ONU page to replace a faulty ONU with a new device while preserving all configuration. Flow: backup running-config → delete old ONU → register new ONU with new SN → re-apply all config (service-ports, interface, pon-onu-mng)
-- **`replace_onu()` method** in `telnet_client.py`: Full automated swap with retry mechanism (3x registration, 5x interface ready check), GPON/EPON differentiation, progress callback for step-by-step logging
-- **`/api/onu/<id>/replace` endpoint** in `app.py`: Vendor validation via SN prefix (ZTE/FHT/HW — blocks mismatch), permission check, comprehensive logging, DB serial update, auto-sync, audit log
-- **ReplaceOnuModal** in `ViewOnu.tsx`: Warning message ("Pergantian ONU akan menghapus ONU lama dan mengganti dengan perangkat baru menggunakan konfigurasi yang sama"), confirm checkbox, SN input field, progress steps display during loading, delayed re-fetch after completion
-- **`api.onuReplace()`** in `api.ts`: New API call for replace endpoint
+#### Ditambahkan — Replace ONU (Swap SN/MAC)
+- **Fitur Replace ONU**: Tombol aksi baru di halaman View ONU untuk mengganti ONU rusak dengan perangkat baru sambil mempertahankan semua konfigurasi. Alur: backup running-config → hapus ONU lama → registrasi ONU baru dengan SN baru → re-apply semua config (service-ports, interface, pon-onu-mng)
+- **Method `replace_onu()`** di `telnet_client.py`: Swap otomatis penuh dengan mekanisme retry (3x registrasi, 5x cek interface siap), diferensiasi GPON/EPON, progress callback untuk logging per langkah
+- **Endpoint `/api/onu/<id>/replace`** di `app.py`: Validasi vendor via prefix SN (ZTE/FHT/HW — blok jika tidak cocok), cek permission, logging komprehensif, update serial di DB, auto-sync, audit log
+- **ReplaceOnuModal** di `ViewOnu.tsx`: Pesan peringatan ("Pergantian ONU akan menghapus ONU lama dan mengganti dengan perangkat baru menggunakan konfigurasi yang sama"), checkbox konfirmasi, field input SN, tampilan progress steps saat loading, delayed re-fetch setelah selesai
+- **`api.onuReplace()`** di `api.ts`: API call baru untuk endpoint replace
 - **Aksi CLI**: reboot, reset, delete, clear config, enable/disable, restore factory, restore WiFi, **replace ONU (swap SN/MAC)**
 
-#### Fixed — ONU Action Audit (from previous session)
-- **EPON get-status**: Returns `status` key instead of `data` key to match frontend expectation and GPON path
-- **restore_factory_onu & restore_wifi_onu**: Added `is_epon` support — uses dynamic prefix instead of hardcoded `gpon-onu`
-- **Resync config**: Preserves user-set name/description (only updates if empty), merges DB-only WiFi SSIDs with read-back
-- **Frontend get-status**: Handles both `status` and `data` keys for EPON compatibility
-- **Frontend reboot/reset**: Delayed re-fetch (15-30s) after reboot to allow ONU to come back online
+#### Diperbaiki — Audit Aksi ONU (dari sesi sebelumnya)
+- **EPON get-status**: Mengembalikan key `status` bukan `data` untuk mencocokkan ekspektasi frontend dan path GPON
+- **restore_factory_onu & restore_wifi_onu**: Ditambahkan dukungan `is_epon` — menggunakan prefix dinamis alih-alih hardcoded `gpon-onu`
+- **Resync config**: Mempertahankan name/description yang sudah di-set user (hanya update jika kosong), menggabungkan WiFi SSIDs dari DB dengan read-back
+- **Frontend get-status**: Menangani baik key `status` maupun `data` untuk kompatibilitas EPON
+- **Frontend reboot/reset**: Delayed re-fetch (15-30 detik) setelah reboot untuk memberi waktu ONU kembali online
 
 ---
 
-### 2026-08-05 — EPON ONU Registration Fix & Centralized Guide System
+### 2026-08-05 — Perbaikan Registrasi EPON ONU & Sistem Panduan Terpusat
 
-#### Fixed — EPON Registration
-- **MAC address format for EPON CLI**: Added `_format_epon_mac()` helper in `telnet_client.py` — formats 12-char hex MAC as dotted `xxxx.xxxx.xxxx` (ZTE EPON CLI requirement). Previously raw hex was passed, causing `Invalid parameter` error
-- **ONU type auto-correction**: `/api/pre-register` and `/api/provision/unified` now auto-correct universal type `All` → `ALL-EPON` for EPON ONUs. Previously GPON type `All` was sent for EPON, causing registration failure
-- **EPON registration commands**: All 4 registration methods (`register_onu`, `register_and_configure`, `register_vendor_template`, `register_unified`) now use `mac` keyword with dotted MAC format for EPON (e.g. `onu 1 type ALL-EPON mac 7488.2a70.7346`) instead of `sn` keyword
-- **Frontend is_epon detection**: `RegisterWizard.tsx` and `ProvisionWizard.tsx` now correctly detect `is_epon` from `onu.is_epon` flag and `pon_port` prefix, and send correct `onu_type` in API payload
-- **EPON template short-circuit**: After EPON ONU registration, GPON-only template commands (tcont/gemport/name) are skipped. Basic bridge service (`service-port`) is applied instead, since EPON ONUs use ZTE ExtOAM (`pon-onu-mng`) not GPON OMCI
-- **SNMP MAC enrichment for unconfigured EPON ONUs**: `collect_unregistered_onus()` now fetches MAC addresses from ZTE private MIB table (`.1.3.6.1.4.1.3902.1015.1010.1.7.14`) for EPON ONUs that show N/A serial in CLI uncfg output
+#### Diperbaiki — Registrasi EPON
+- **Format MAC address untuk EPON CLI**: Ditambahkan helper `_format_epon_mac()` di `telnet_client.py` — memformat MAC hex 12-karakter menjadi dotted `xxxx.xxxx.xxxx` (syarat CLI EPON ZTE). Sebelumnya hex mentah dikirim, menyebabkan error `Invalid parameter`
+- **Auto-koreksi tipe ONU**: `/api/pre-register` dan `/api/provision/unified` sekarang auto-koreksi tipe universal `All` → `ALL-EPON` untuk ONU EPON. Sebelumnya tipe GPON `All` dikirim untuk EPON, menyebabkan kegagalan registrasi
+- **Command registrasi EPON**: Semua 4 method registrasi (`register_onu`, `register_and_configure`, `register_vendor_template`, `register_unified`) sekarang menggunakan keyword `mac` dengan format MAC dotted untuk EPON (contoh `onu 1 type ALL-EPON mac 7488.2a70.7346`) alih-alih keyword `sn`
+- **Deteksi is_epon di frontend**: `RegisterWizard.tsx` dan `ProvisionWizard.tsx` sekarang mendeteksi `is_epon` dengan benar dari flag `onu.is_epon` dan prefix `pon_port`, serta mengirim `onu_type` yang benar dalam payload API
+- **Short-circuit template EPON**: Setelah registrasi ONU EPON, command GPON-only (tcont/gemport/name) dilewati. Basic bridge service (`service-port`) di-apply sebagai gantinya, karena ONU EPON menggunakan ZTE ExtOAM (`pon-onu-mng`) bukan GPON OMCI
+- **Enrichment MAC via SNMP untuk EPON unconfigured**: `collect_unregistered_onus()` sekarang mengambil MAC address dari ZTE private MIB table (`.1.3.6.1.4.1.3902.1015.1010.1.7.14`) untuk ONU EPON yang menampilkan serial N/A di output CLI uncfg
 
-#### Added — Centralized Guide System
+#### Ditambahkan — Sistem Panduan Terpusat
 
-#### Added
-- **Centralized guide data** (`frontend/src/data/guides.ts`): All 17 page guides consolidated into a single structured TypeScript file with `Guide` and `GuideStep` interfaces, category grouping, and helper functions (`getGuideById`, `searchGuides`, `getGuidesByCategory`)
-- **Guide page** (`frontend/src/pages/GuidePage.tsx`): Dedicated "Panduan" page at `/dashboard/guide` with:
-  - Search bar (searches title, description, steps, tips)
-  - Category filter buttons with counts
-  - Accordion layout grouped by 7 categories (Dashboard, ONU Management, Templates, Traffic, Infrastructure, System, Activity)
-  - Rich text rendering (**bold** support via `renderRichText`)
-  - Prerequisites and Tips sections per guide
-- **Sidebar menu**: "Panduan" menu item with BookOpen icon, visible to all users
-- **TutorialBanner `guideId` prop**: When set, TutorialBanner pulls content from centralized `guides.ts` instead of inline JSX. Adds "Panduan" link button that navigates to `/dashboard/guide`
-- All 17 pages updated with `guideId` prop: Dashboard, AllOnus, ViewOnu, AddOnu, ProvisionWizard, RegisterWizard, OltSettings, OltConfiguration, Traffic, FtthInfrastructure, Customization, Templates, Tr069Profile, UserManagement, AlertSettings, AlertHistory, ActionLogs
+#### Ditambahkan
+- **Data panduan terpusat** (`frontend/src/data/guides.ts`): Semua 17 panduan halaman dikonsolidasikan ke dalam satu file TypeScript terstruktur dengan interface `Guide` dan `GuideStep`, grouping kategori, dan helper functions (`getGuideById`, `searchGuides`, `getGuidesByCategory`)
+- **Halaman Panduan** (`frontend/src/pages/GuidePage.tsx`): Halaman "Panduan" khusus di `/dashboard/guide` dengan:
+  - Search bar (mencari judul, deskripsi, langkah, tips)
+  - Tombol filter kategori dengan jumlah
+  - Layout accordion dikelompokkan dalam 7 kategori (Dashboard, ONU Management, Templates, Traffic, Infrastructure, System, Activity)
+  - Rich text rendering (dukungan **bold** via `renderRichText`)
+  - Section Prasyarat dan Tips per panduan
+- **Menu sidebar**: Item menu "Panduan" dengan ikon BookOpen, terlihat oleh semua user
+- **Prop `guideId` di TutorialBanner**: Jika di-set, TutorialBanner mengambil konten dari `guides.ts` terpusat alih-alih inline JSX. Menambahkan tombol link "Panduan" yang navigasi ke `/dashboard/guide`
+- Semua 17 halaman diupdate dengan prop `guideId`: Dashboard, AllOnus, ViewOnu, AddOnu, ProvisionWizard, RegisterWizard, OltSettings, OltConfiguration, Traffic, FtthInfrastructure, Customization, Templates, Tr069Profile, UserManagement, AlertSettings, AlertHistory, ActionLogs
 
-#### Changed
-- `TutorialBanner.tsx`: Refactored to support both inline JSX (fallback) and centralized data (guideId). Added Prasyarat/Tips section headers with icons. Added "Panduan" link button when guideId is set
-- Guide data is code-split into a separate chunk (~16KB gzipped) — no impact on initial bundle size
+#### Diubah
+- `TutorialBanner.tsx`: Di-refactor untuk mendukung inline JSX (fallback) dan data terpusat (guideId). Ditambahkan header section Prasyarat/Tips dengan ikon. Ditambahkan tombol link "Panduan" saat guideId di-set
+- Data panduan di-code-split ke chunk terpisah (~16KB gzipped) — tidak berdampak pada ukuran bundle awal
 
-#### Fixed
-- EPON ONU name/description edit: Uses `property description $$name$$description` CLI format for EPON ONUs instead of separate `name`/`description` commands
-- EPON ONU type change: Uses `mac` keyword instead of `sn` for EPON ONU re-registration
-- ViewOnu GetStatusModal crash: Added null guard for undefined status data
-- `sync_helper.py`: Now stores `onu_type` from ONU data during sync
-
----
-
-### 2026-08-04 — Auto-Backup Audit & Fix
-
-#### Fixed
-- `backup_olt_config()` download endpoint: Added missing `write memory` before `show running-config` — downloaded config could miss unsaved changes
-- `backup_olt_config()` download endpoint: Increased timeout from 30s to 60s to match auto-backup and backup-save endpoints (prevents truncation on large configs)
-- `_auto_write_config()`: Replaced overly broad `'%' in out` error check with specific ZTE CLI error patterns (`%error`, `% invalid`, `%code`, `incomplete command`, `ambiguous command`, `return error`) — legitimate output containing `%` (VLAN names, descriptions) was causing false "write failed" warnings
-- `auto_backup.py`: Failed backups no longer update `last_backup_at` — previously a failed backup would set `last_backup_at = now`, preventing retry until the full interval elapsed again. Now failed backups retry on the next hourly cron run
-
-#### Added
-- `auto_backup.py`: `notify_backup_failure()` function creates in-app notification for super admins when auto-backup fails (type=`olt_offline`, icon=`warning`)
+#### Diperbaiki
+- Edit name/description ONU EPON: Menggunakan format CLI `property description $$name$$description` untuk ONU EPON alih-alih command `name`/`description` terpisah
+- Perubahan tipe ONU EPON: Menggunakan keyword `mac` alih-alih `sn` untuk re-registrasi ONU EPON
+- Crash ViewOnu GetStatusModal: Ditambahkan null guard untuk data status yang undefined
+- `sync_helper.py`: Sekarang menyimpan `onu_type` dari data ONU saat sync
 
 ---
 
-### 2026-08-04 — EPON ONU Support (Register/Provision/Pre-Config + Unconfigured Scan)
+### 2026-08-04 — Audit & Perbaikan Auto-Backup
 
-#### Added
-- **EPON support in ONU registration**: All registration methods (`register_onu`, `configure_onu_profile`, `register_and_configure`, `register_vendor_template`, `register_unified`) now accept `is_epon` parameter and use `epon-olt_`/`epon-onu_` CLI prefixes when true
-- **EPON unconfigured ONU scanning**: `collect_unregistered_onus()` now parses `epon-olt_` and `epon-onu_` patterns from `show pon onu uncfg` output, including MAC-as-SN fallback (12 hex chars for EPON ONUs without vendor prefix)
-- **EPON detection in API endpoints**: `/api/pre-register` and `/api/provision/unified` detect EPON from `pon_port` prefix or explicit `is_epon` flag in request body
-- **EPON card count in OltConfiguration**: Stats row now calculates EPON card count dynamically from `ETG` prefix instead of hardcoded `"0"`
-- Frontend `UnconfiguredOnu` interface: Added `is_epon` field in both `RegisterWizard.tsx` and `ProvisionWizard.tsx`
-- Frontend wizards: API calls now send `pon_port` and `is_epon` in request body
+#### Diperbaiki
+- Endpoint download `backup_olt_config()`: Ditambahkan `write memory` sebelum `show running-config` — config yang didownload bisa kehilangan perubahan yang belum disimpan
+- Endpoint download `backup_olt_config()`: Timeout ditingkatkan dari 30s ke 60s untuk mencocokkan endpoint auto-backup dan backup-save (mencegah truncation pada config besar)
+- `_auto_write_config()`: Mengganti pengecekan error `'%' in out` yang terlalu luas dengan pola error CLI ZTE spesifik (`%error`, `% invalid`, `%code`, `incomplete command`, `ambiguous command`, `return error`) — output legitimate yang mengandung `%` (nama VLAN, deskripsi) sebelumnya menyebabkan false warning "write failed"
+- `auto_backup.py`: Backup yang gagal tidak lagi mengupdate `last_backup_at` — sebelumnya backup gagal akan set `last_backup_at = now`, mencegah retry hingga interval penuh berlalu lagi. Sekarang backup gagal retry pada cron run per jam berikutnya
 
-#### Changed
-- **Register/Provision script preview**: `RegisterWizard.tsx` and `ProvisionWizard.tsx` now use dynamic `epon-onu_`/`epon-olt_` or `gpon-onu_`/`gpon-olt_` prefixes based on `is_epon` detection from `pon_port` prefix
-- **Migrate ONU**: `migrate_onu()` and batch migrate now read `onu.card` to determine `is_epon` and pass to `deregister_onu`/`register_onu`/`configure_onu_profile`
-- **Update ONU re-register**: `update_onu` and `update_onu_type` inline edit now use dynamic `epon-olt_`/`gpon-olt_` prefix based on `onu.card` field
-- **ONU traffic endpoint**: `onu_traffic` now uses dynamic `epon-onu_`/`gpon-onu_` prefix for `show interface` command
-- **Provision DB save**: `/api/provision/unified` now saves `card='epon'` to ONU record on success for EPON ONUs
-- **Log action prefix**: `log_action` targets now use `epon-onu_` or `gpon-onu_` prefix based on `is_epon`
+#### Ditambahkan
+- `auto_backup.py`: Function `notify_backup_failure()` membuat notifikasi in-app untuk super admin saat auto-backup gagal (type=`olt_offline`, icon=`warning`)
 
 ---
 
-### 2026-08-03 — EPON ONU Support (Sync, Actions, Live Data, Rack Diagram)
+### 2026-08-04 — Dukungan EPON ONU (Register/Provision/Pre-Config + Scan Unconfigured)
 
-#### Added
-- `_collect_epon_onus_fast()` method in `telnet_client.py` for lightweight EPON ONU collection during light sync (Telnet-based, no SNMP)
-- EPON card detection (ETG prefix) in `collect_pon_port_stats` — uses `epon-olt` prefix and `show epon onu state` command
-- EPON-specific ONU state parsing — EPON uses `epon-onu_` prefix and different status keywords
-- `is_epon` parameter support in `reset_onu`, `deregister_onu`, `disable_onu`, `enable_onu`, `clear_onu_config`, `get_onu_live_data`, `collect_onu_detail`
-- Early return for EPON ONUs in `get_onu_live_data` and `collect_onu_detail` (EPON doesn't support GPON-specific commands like `detail-info` or `pon power attenuation`)
-- EPON early return in `onu_get_status` endpoint — EPON ONUs don't support `detail-info` or `pon power attenuation`
-- Empty events for EPON ONUs in `collect_onu_history` (GPON-specific commands not supported)
-- ETG prefix detection in `slot_type_for()` so EPON cards show as service slots in rack diagram
-- `sync_helper.py`: `sync_onus` now stores `card_type` ('epon' or 'gpon') from ONU data into ONU model's `card` field
-- `snmp_collector.py`: Light sync now includes EPON ONU collection via Telnet after SNMP collection
-- `snmp_collector.py`: PON port collection now includes EPON cards (ETG prefix) alongside GPON (GTG prefix)
+#### Ditambahkan
+- **Dukungan EPON di registrasi ONU**: Semua method registrasi (`register_onu`, `configure_onu_profile`, `register_and_configure`, `register_vendor_template`, `register_unified`) sekarang menerima parameter `is_epon` dan menggunakan prefix CLI `epon-olt_`/`epon-onu_` saat true
+- **Scan ONU unconfigured EPON**: `collect_unregistered_onus()` sekarang memparsing pola `epon-olt_` dan `epon-onu_` dari output `show pon onu uncfg`, termasuk fallback MAC-as-SN (12 hex chars untuk ONU EPON tanpa prefix vendor)
+- **Deteksi EPON di endpoint API**: `/api/pre-register` dan `/api/provision/unified` mendeteksi EPON dari prefix `pon_port` atau flag `is_epon` eksplisit di request body
+- **Hitung kartu EPON di OltConfiguration**: Baris stats sekarang menghitung jumlah kartu EPON dinamis dari prefix `ETG` alih-alih hardcoded `"0"`
+- Interface frontend `UnconfiguredOnu`: Ditambahkan field `is_epon` di `RegisterWizard.tsx` dan `ProvisionWizard.tsx`
+- Wizard frontend: API call sekarang mengirim `pon_port` dan `is_epon` di request body
 
-#### Changed
-- `enrich_onus_via_telnet` now skips EPON ONUs (GPON-specific enrichment not applicable)
-- `app.py`: All ONU action endpoints pass `is_epon` flag to TelnetCollector methods based on `onu.card` field
-- `app.py`: `/api/onu/<id>/detail` and `/api/onu/<id>/live-detail` endpoints pass `is_epon` to `collect_onu_detail` and `get_onu_live_data`
+#### Diubah
+- **Preview script Register/Provision**: `RegisterWizard.tsx` dan `ProvisionWizard.tsx` sekarang menggunakan prefix dinamis `epon-onu_`/`epon-olt_` atau `gpon-onu_`/`gpon-olt_` berdasarkan deteksi `is_epon` dari prefix `pon_port`
+- **Migrate ONU**: `migrate_onu()` dan batch migrate sekarang membaca `onu.card` untuk menentukan `is_epon` dan meneruskan ke `deregister_onu`/`register_onu`/`configure_onu_profile`
+- **Re-register update ONU**: `update_onu` dan `update_onu_type` inline edit sekarang menggunakan prefix dinamis `epon-olt_`/`gpon-olt_` berdasarkan field `onu.card`
+- **Endpoint traffic ONU**: `onu_traffic` sekarang menggunakan prefix dinamis `epon-onu_`/`gpon-onu_` untuk command `show interface`
+- **Simpan DB provision**: `/api/provision/unified` sekarang menyimpan `card='epon'` ke record ONU saat sukses untuk ONU EPON
+- **Prefix log action**: Target `log_action` sekarang menggunakan prefix `epon-onu_` atau `gpon-onu_` berdasarkan `is_epon`
 
 ---
 
-### 2026-08-01 — Notification System Audit & Fix
+### 2026-08-03 — Dukungan EPON ONU (Sync, Actions, Live Data, Rack Diagram)
 
-#### Added
-- `Notification.resolved` and `Notification.resolved_at` columns for notification lifecycle tracking (Active → Resolved)
-- `AlertHistory.first_seen_at` column for debounce tracking (first detection vs actual alert fire)
-- **Debounce mechanism**: ONU offline/dyinggasp/los alerts require 2 consecutive detections within 120 seconds before firing — prevents false alerts from transient status flaps
-- **Auto-resolve**: When ONU comes back online, all old offline/dyinggasp/los notifications are automatically marked as RESOLVED
-- **Auto-resolve OLT**: OLT offline notification auto-resolved when OLT becomes reachable again
-- **Auto-resolve OLT health**: CPU/memory/temperature alerts auto-resolve when values drop below threshold
-- **Recovery notification dedup**: Check existing unread recovery notification before creating new one (updates if exists)
-- **OLT recovery dedup**: Same dedup for OLT recovery notifications
-- **Auto-cleanup**: Read notifications older than 7 days are automatically deleted on each alert check cycle
-- **Stale debounce cleanup**: If ONU recovers during debounce window, AlertHistory `first_seen_at` is reset (no alert fired)
-- Frontend: Resolved notifications shown in separate section with `RESOLVED` badge and strikethrough title
-- Frontend: Bell badge count only includes active (non-resolved) unread notifications
-- Database migration: Auto-adds new columns on startup via `migrate_schema()`
+#### Ditambahkan
+- Method `_collect_epon_onus_fast()` di `telnet_client.py` untuk koleksi ONU EPON ringan saat light sync (berbasis Telnet, tanpa SNMP)
+- Deteksi kartu EPON (prefix ETG) di `collect_pon_port_stats` — menggunakan prefix `epon-olt` dan command `show epon onu state`
+- Parsing state ONU khusus EPON — EPON menggunakan prefix `epon-onu_` dan keyword status berbeda
+- Dukungan parameter `is_epon` di `reset_onu`, `deregister_onu`, `disable_onu`, `enable_onu`, `clear_onu_config`, `get_onu_live_data`, `collect_onu_detail`
+- Early return untuk ONU EPON di `get_onu_live_data` dan `collect_onu_detail` (EPON tidak mendukung command GPON-specific seperti `detail-info` atau `pon power attenuation`)
+- Early return EPON di endpoint `onu_get_status` — ONU EPON tidak mendukung `detail-info` atau `pon power attenuation`
+- Events kosong untuk ONU EPON di `collect_onu_history` (command GPON-specific tidak didukung)
+- Deteksi prefix ETG di `slot_type_for()` agar kartu EPON tampil sebagai service slot di rack diagram
+- `sync_helper.py`: `sync_onus` sekarang menyimpan `card_type` ('epon' atau 'gpon') dari data ONU ke field `card` model ONU
+- `snmp_collector.py`: Light sync sekarang termasuk koleksi ONU EPON via Telnet setelah koleksi SNMP
+- `snmp_collector.py`: Koleksi PON port sekarang termasuk kartu EPON (prefix ETG) bersama GPON (prefix GTG)
 
-#### Changed
-- `alerts.py`: ONU offline detection rewritten with debounce logic (first_seen_at → wait 120s → fire on second detection)
-- `alerts.py`: Recovery section now auto-resolves old notifications instead of just marking `is_read=True`
-- `alerts.py`: OLT recovery section now deduplicates and auto-resolves old offline notification
-- `alerts.py`: OLT health alerts (CPU/mem/temp) auto-resolve when condition clears
-- `app.py`: Notifications API unread counts now filter `resolved=False` (only active alerts counted)
-- `app.py`: Notifications API response now includes `resolved` and `resolved_at` fields
-- `frontend/Topbar.tsx`: Notification list split into Active and Resolved sections
-- `frontend/Topbar.tsx`: Removed SaaS subscription UI (subscription status badges in topbar)
-
-#### Fixed
-- False alerts from transient ONU status flaps (offline → online within 1 polling cycle)
-- Notification accumulation — old offline notifications no longer stack up when ONU recovers
-- Duplicate recovery notifications for same OLT/PON
-- Stale OLT health alerts remaining active after condition clears
-- Bell icon showing resolved notifications in unread count
+#### Diubah
+- `enrich_onus_via_telnet` sekarang melewatkan ONU EPON (enrichment GPON-specific tidak berlaku)
+- `app.py`: Semua endpoint aksi ONU meneruskan flag `is_epon` ke method TelnetCollector berdasarkan field `onu.card`
+- `app.py`: Endpoint `/api/onu/<id>/detail` dan `/api/onu/<id>/live-detail` meneruskan `is_epon` ke `collect_onu_detail` dan `get_onu_live_data`
 
 ---
 
-### 2026-08-01 — VPS Installer, Uninstaller & SaaS Removal
+### 2026-08-01 — Audit & Perbaikan Sistem Notifikasi
 
-#### Added
-- `install-vps.sh`: Full one-click VPS installer for fresh Ubuntu 22.04/24.04 servers
-  - Installs Python 3, Node.js 22, nginx, git
-  - Clones repo, creates venv, builds frontend
-  - Sets up systemd service (`salfanet-nms`)
-  - Configures Nginx reverse proxy (port 80 → Flask 5000 + WebSocket 8765)
-  - Auto-generates `SECRET_KEY`
-- `uninstall-vps.sh`: Full VPS uninstaller
-  - Stops & removes systemd service
-  - Removes Nginx config
-  - Removes iptables port redirect
-  - Deletes app files (`/opt/salfanet-nms/` including database)
-  - Removes app user (`salfanet`)
-- `deploy/update_vps.sh`: Quick update script (pull + rebuild + restart)
-- `deploy/test_uninstall.sh`: Uninstaller verification script
-- `deploy/test_uninstall_reinstall.sh`: Full uninstall → reinstall test cycle
-- `install.sh --start` flag: Auto-start server after local installation
-- README: VPS installer, uninstaller, update, and service management documentation
+#### Ditambahkan
+- Kolom `Notification.resolved` dan `Notification.resolved_at` untuk tracking lifecycle notifikasi (Active → Resolved)
+- Kolom `AlertHistory.first_seen_at` untuk tracking debounce (deteksi pertama vs alert fire sebenarnya)
+- **Mekanisme debounce**: Alert ONU offline/dyinggasp/los memerlukan 2 deteksi berturut-turut dalam 120 detik sebelum fire — mencegah false alert dari status flap transient
+- **Auto-resolve**: Saat ONU kembali online, semua notifikasi offline/dyinggasp/los lama otomatis ditandai RESOLVED
+- **Auto-resolve OLT**: Notifikasi OLT offline auto-resolved saat OLT kembali reachable
+- **Auto-resolve OLT health**: Alert CPU/memory/temperature auto-resolve saat nilai turun di bawah threshold
+- **Dedup notifikasi recovery**: Cek notifikasi recovery unread yang ada sebelum membuat baru (update jika ada)
+- **Dedup recovery OLT**: Dedup yang sama untuk notifikasi recovery OLT
+- **Auto-cleanup**: Notifikasi yang sudah dibaca berusia >7 hari otomatis dihapus di setiap siklus pengecekan alert
+- **Cleanup debounce stale**: Jika ONU pulih selama window debounce, `first_seen_at` AlertHistory di-reset (tidak ada alert yang fire)
+- Frontend: Notifikasi resolved ditampilkan di section terpisah dengan badge `RESOLVED` dan title strikethrough
+- Frontend: Count badge bell hanya termasuk notifikasi unread aktif (non-resolved)
+- Migrasi database: Auto-tambah kolom baru saat startup via `migrate_schema()`
 
-#### Changed
-- `deploy/vps-setup.sh`: Updated to use `run_server.py` (Flask + FastAPI), fix WebSocket proxy to port 8765, rename to `salfanet-nms`
-- `frontend/App.tsx`: Root route `/` now redirects directly to `/login` (removed SaaS landing page)
-- `frontend/App.tsx`: Removed all SaaS public pages (LandingPage, RegisterPage, PaymentResultPage, RenewalPage, TenantNotFound)
-- `frontend/Dashboard.tsx`: Removed `SuperAdminDashboard` rendering for super admins
-- `app.py`: CSP `connect-src` now includes `ws:` for plain WebSocket connections
-- `frontend/useWebSocket.ts`: Fixed WebSocket URL to use WS_PORT (8765) instead of page host port
+#### Diubah
+- `alerts.py`: Deteksi ONU offline ditulis ulang dengan logika debounce (first_seen_at → tunggu 120s → fire pada deteksi kedua)
+- `alerts.py`: Section recovery sekarang auto-resolve notifikasi lama alih-alih hanya menandai `is_read=True`
+- `alerts.py`: Section recovery OLT sekarang dedup dan auto-resolve notifikasi offline lama
+- `alerts.py`: Alert OLT health (CPU/mem/temp) auto-resolve saat kondisi cleared
+- `app.py`: Count unread API notifikasi sekarang filter `resolved=False` (hanya alert aktif yang dihitung)
+- `app.py`: Response API notifikasi sekarang termasuk field `resolved` dan `resolved_at`
+- `frontend/Topbar.tsx`: List notifikasi dipisah menjadi section Active dan Resolved
+- `frontend/Topbar.tsx`: Dihapus UI subscription SaaS (badge status subscription di topbar)
 
-#### Fixed
-- WebSocket connection failure on HTTP deployments (CSP blocking `ws:` protocol)
-- `/api/admin/dashboard` 404 error (SuperAdminDashboard removed)
-- SaaS landing page still appearing after SaaS removal (`/api/public/packages` 404)
-- `git pull` on VPS failing with "dubious ownership" error
-- OLT settings page not auto-reloading after add/edit OLT
+#### Diperbaiki
+- False alert dari status flap ONU transient (offline → online dalam 1 polling cycle)
+- Akumulasi notifikasi — notifikasi offline lama tidak lagi menumpuk saat ONU pulih
+- Notifikasi recovery duplikat untuk OLT/PON yang sama
+- Alert OLT health stale yang tetap aktif setelah kondisi cleared
+- Bell icon menampilkan notifikasi resolved di count unread
 
 ---
 
-### 2026-07-31 — Redis Caching & SaaS UI Removal
+### 2026-08-01 — VPS Installer, Uninstaller & Penghapusan SaaS
 
-#### Added
-- Redis caching with fallback to in-memory cache
-- Cache TTLs: 300s (static), 60s (semi-static), 30s (chassis/PON), 15s (dashboard)
-- Cache invalidation on sync and config changes
-- Cache keys prefixed with `olt:<olt_id>:<datatype>`
+#### Ditambahkan
+- `install-vps.sh`: Installer VPS one-click lengkap untuk server Ubuntu 22.04/24.04 fresh
+  - Install Python 3, Node.js 22, nginx, git
+  - Clone repo, buat venv, build frontend
+  - Setup systemd service (`salfanet-nms`)
+  - Konfigurasi Nginx reverse proxy (port 80 → Flask 5000 + WebSocket 8765)
+  - Auto-generate `SECRET_KEY`
+- `uninstall-vps.sh`: Uninstaller VPS lengkap
+  - Stop & hapus systemd service
+  - Hapus konfigurasi Nginx
+  - Hapus redirect iptables port
+  - Hapus file aplikasi (`/opt/salfanet-nms/` termasuk database)
+  - Hapus user aplikasi (`salfanet`)
+- `deploy/update_vps.sh`: Script update cepat (pull + rebuild + restart)
+- `deploy/test_uninstall.sh`: Script verifikasi uninstaller
+- `deploy/test_uninstall_reinstall.sh`: Siklus test uninstall → reinstall lengkap
+- Flag `install.sh --start`: Auto-start server setelah instalasi lokal
+- README: Dokumentasi VPS installer, uninstaller, update, dan service management
 
-#### Removed
-- SaaS multi-tenancy features from admin panel
-- SaaS subscription management UI
-- SaaS tenant registration and payment flows
+#### Diubah
+- `deploy/vps-setup.sh`: Diupdate untuk menggunakan `run_server.py` (Flask + FastAPI), fix proxy WebSocket ke port 8765, rename ke `salfanet-nms`
+- `frontend/App.tsx`: Root route `/` sekarang redirect langsung ke `/login` (hapus SaaS landing page)
+- `frontend/App.tsx`: Dihapus semua halaman publik SaaS (LandingPage, RegisterPage, PaymentResultPage, RenewalPage, TenantNotFound)
+- `frontend/Dashboard.tsx`: Dihapus rendering `SuperAdminDashboard` untuk super admin
+- `app.py`: CSP `connect-src` sekarang termasuk `ws:` untuk koneksi WebSocket plain
+- `frontend/useWebSocket.ts`: Fix URL WebSocket untuk menggunakan WS_PORT (8765) alih-alih port host halaman
+
+#### Diperbaiki
+- Kegagalan koneksi WebSocket pada deployment HTTP (CSP memblokir protokol `ws:`)
+- Error 404 `/api/admin/dashboard` (SuperAdminDashboard dihapus)
+- SaaS landing page masih muncul setelah penghapusan SaaS (`/api/public/packages` 404)
+- `git pull` di VPS gagal dengan error "dubious ownership"
+- Halaman settings OLT tidak auto-reload setelah add/edit OLT
+
+---
+
+### 2026-07-31 — Redis Caching & Penghapusan UI SaaS
+
+#### Ditambahkan
+- Redis caching dengan fallback ke in-memory cache
+- Cache TTL: 300s (static), 60s (semi-static), 30s (chassis/PON), 15s (dashboard)
+- Cache invalidation saat sync dan perubahan config
+- Cache key di-prefix dengan `olt:<olt_id>:<datatype>`
+
+#### Dihapus
+- Fitur multi-tenancy SaaS dari admin panel
+- UI manajemen subscription SaaS
+- Alur registrasi dan pembayaran tenant SaaS
