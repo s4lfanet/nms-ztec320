@@ -4,36 +4,33 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
-### 2026-08-06 — Audit & Perbaikan Permission RBAC
-
-#### Audit — Role Permission Implementation
-- Audit menyeluruh implementasi RBAC di frontend (route protection, sidebar filtering, `useHasPerm` hook) dan backend (decorator `@permission_required`, `@login_required`, inline checks)
-- 18 permission terdefinisi di `AVAILABLE_PERMISSIONS`, 4 default roles (Full Access, Viewer, Limited, Technician)
-- Super admin bypass via `is_super_admin` dan `all_olt` bekerja konsisten di frontend dan backend
+### 2026-08-06 — Audit & Perbaikan Role Permission (RBAC)
 
 #### Diperbaiki — Endpoint Admin Tanpa Permission Check (HIGH)
-- `PUT /api/alert-rules/<id>` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `PUT /api/bot-config/<bot_type>` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `POST /api/alert-rules/recheck` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `POST /api/bot-config/telegram/test` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `POST /api/bot-config/whatsapp/test` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `POST /api/bot-config/whatsapp-native/test` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `POST /api/bot-config/whatsapp-native/logout` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `POST /api/bot-config/whatsapp-native/reconnect` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `POST /api/bot-config/whatsapp-native/start` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `POST /api/bot-config/whatsapp-native/stop` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- **Alert rules update** (`PUT /api/alert-rules/<id>`): Sebelumnya hanya `@login_required`, sekarang memerlukan `@permission_required('customization')`. Sebelumnya any logged-in user bisa mengubah threshold alert, enable/disable rules, dan notification channels
+- **Bot config update** (`PUT /api/bot-config/<bot_type>`): Sebelumnya hanya `@login_required`, sekarang memerlukan `@permission_required('customization')`. Sebelumnya any user bisa mengubah token Telegram/WA, chat ID, API keys
+- **Alert recheck** (`POST /api/alert-rules/recheck`): Sebelumnya hanya `@login_required`, sekarang memerlukan `@permission_required('customization')`. Sebelumnya any user bisa trigger alert check dan spam notification channels
+- **Bot test endpoints** (`POST /api/bot-config/telegram/test`, `/whatsapp/test`, `/whatsapp-native/test`): Sebelumnya hanya `@login_required`, sekarang memerlukan `@permission_required('customization')`. Sebelumnya any user bisa mengirim test message ke Telegram/WA
+- **WA native manage** (`logout`, `reconnect`, `start`, `stop`): Sebelumnya hanya `@login_required`, sekarang memerlukan `@permission_required('customization')`. Sebelumnya any user bisa manage PM2 process WA gateway
 
 #### Diperbaiki — Notification Management Tanpa Permission Check (HIGH)
-- `POST /api/notifications/acknowledge-all` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `DELETE /api/notifications/<id>` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
-- `POST /api/notifications/clear` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- **Acknowledge all** (`POST /api/notifications/acknowledge-all`): Sebelumnya hanya `@login_required`, sekarang memerlukan `@permission_required('customization')`. Sebelumnya any user bisa bulk-acknowledge semua notifikasi global
+- **Delete notification** (`DELETE /api/notifications/<id>`): Sebelumnya hanya `@login_required`, sekarang memerlukan `@permission_required('customization')`. Sebelumnya any user bisa hapus notifikasi manapun
+- **Clear notifications** (`POST /api/notifications/clear`): Sebelumnya hanya `@login_required`, sekarang memerlukan `@permission_required('customization')`. Sebelumnya any user bisa clear semua read notifications
 
-#### Diperbaiki — ONU Update Field Tanpa Permission Check (MEDIUM)
-- Field `technician_id`, `latitude`, `longitude`, `odp_port_id` di endpoint `/api/onu/<id>/update` sebelumnya tidak ada permission check — sekarang memerlukan `configure_onu`
+#### Diperbaiki — ONU Update Field Permission (MEDIUM)
+- **Field `technician_id`, `latitude`, `longitude`, `odp_port_id`** di endpoint `/api/onu/<id>/update`: Sebelumnya tidak ada permission check (any logged-in user bisa ubah). Sekarang memerlukan `configure_onu`. Field lain di endpoint yang sama sudah punya granular permission check (`edit_onu_name`, `edit_onu_description`, `configure_onu`)
 
 #### Diperbaiki — Frontend Route Protection (LOW)
-- `App.tsx`: Ditambahkan `routePatterns` dengan regex matching untuk `/dashboard/settings/olts/:oltId/config` → `settings_ip_olts` (sub-route sebelumnya tidak terproteksi)
-- `Sidebar.tsx`: Alert History menu item sekarang memerlukan permission `view_dashboard` (sebelumnya tidak ada permission filter)
+- **OLT Configuration sub-route** (`/dashboard/settings/olts/:oltId/config`): Sebelumnya tidak ada di `routePermissions` di `App.tsx`. Ditambahkan `routePatterns` dengan regex matching untuk proteksi `settings_ip_olts`. Backend sudah diproteksi, tetapi frontend page bisa render tanpa permission check
+- **Alert History sidebar item**: Sebelumnya tidak ada `permission` di `Sidebar.tsx`. Ditambahkan `view_dashboard` permission filter
+
+#### Audit Summary
+- **18 permissions** didefinisikan di `AVAILABLE_PERMISSIONS` (models.py)
+- **4 default roles**: Full Access, Viewer, Limited, Technician
+- **Super admin bypass**: `User.has_permission()` cek `is_super_admin` → `all_olt` → specific perm
+- **Frontend-backend alignment**: `useHasPerm` hook dan `ProtectedRoute` mirror backend logic
+- Total **15 endpoint backend** diperbaiki, **2 item frontend** diperbaiki
 
 ---
 

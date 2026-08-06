@@ -59,13 +59,13 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Customizable column visibility dan sort order (desktop & mobile)
 - Configurable RX power color ranges dengan preview
 - Signal filter thresholds (critical/good) dengan slider
-- Role-based access control (Full Access, Viewer, Limited, Technician)
-- 18 granular permissions: `all_olt`, `add_onu`, `configure_onu`, `delete_onu`, `reboot_onu`, `reset_onu`, `clear_config_onu`, `disable_onu`, `edit_onu_name`, `edit_onu_description`, `settings_ip_olts`, `manage_templates`, `manage_users`, `manage_tr069`, `customization`, `view_dashboard`, `view_onus`, `receive_alerts`
-- Super admin bypass: `is_super_admin` dan permission `all_olt` memberikan akses penuh ke semua fitur
-- **Permission hardening**: Admin endpoints (alert rules, bot config, notification management) memerlukan permission `customization`. ONU field updates (technician, coordinates, ODP port) memerlukan `configure_onu`. Frontend route protection dengan pattern matching untuk sub-routes
+- Role-based access control dengan 18 granular permissions
+- 4 default roles: Full Access, Viewer, Limited, Technician
+- Super admin bypass: `is_super_admin` → `all_olt` → specific permission
 - Technician assignment untuk ONU
 - ONU custom columns
 - **Sidebar menu disederhanakan**: Menu ONU dari 8 ke 5 item (All ONUs, Unconfigured, Provision ONU, Pre-config ONT, Register Wizard). Route wizard tetap aktif, diakses dari halaman Unconfigured
+- **Permission enforcement**: Backend (`@permission_required` decorator + inline `has_permission()` checks) dan frontend (`ProtectedRoute` + `useHasPerm` hook + `Sidebar` filtering) selaras. Admin endpoints (alert rules, bot config, notification management) memerlukan `customization`. ONU field updates menggunakan granular permission per field (`edit_onu_name`, `edit_onu_description`, `configure_onu`)
 
 ### Centralized Guide System
 - **Panduan page** (`/dashboard/guide`): Pusat panduan penggunaan dengan search dan category filter
