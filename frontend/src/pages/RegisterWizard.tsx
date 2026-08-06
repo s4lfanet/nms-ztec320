@@ -1679,8 +1679,7 @@ export function RegisterWizard() {
             </div>
           </div>
 
-          {technicians.length > 0 && (
-            <div>
+          <div>
               <label className="label-sm mb-1.5 flex items-center gap-1.5"><Wrench size={12} /> Teknisi Lapangan</label>
               <select value={data.technicianId ?? ''} onChange={e => update('technicianId', e.target.value ? Number(e.target.value) : null)}
                 className="input-field">
@@ -1689,8 +1688,10 @@ export function RegisterWizard() {
                   <option key={t.id} value={t.id}>{t.full_name}{t.phone ? ` (${t.phone})` : ''}</option>
                 ))}
               </select>
+              {technicians.length === 0 && (
+                <p className="text-[10px] text-tx3 mt-1">Belum ada user dengan role Technician. Tambahkan di User Management.</p>
+              )}
             </div>
-          )}
         </div>
       )}
 

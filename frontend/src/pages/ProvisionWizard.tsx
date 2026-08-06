@@ -717,16 +717,17 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               <label className="text-xs text-tx3 mb-1 block">Description</label>
               <input value={data.description} onChange={e => update('description', e.target.value)} placeholder="ODP-RW03-03 | User" className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
             </div>
-            {technicians.length > 0 && (
-              <div>
+            <div>
                 <label className="text-xs text-tx3 mb-1 flex items-center gap-1"><Wrench size={11} /> Technician</label>
                 <select value={data.technicianId ?? ''} onChange={e => update('technicianId', e.target.value ? Number(e.target.value) : null)}
                   className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm">
-                  <option value="">— None —</option>
+                  <option value="">— Tidak ada teknisi —</option>
                   {technicians.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
                 </select>
+                {technicians.length === 0 && (
+                  <p className="text-[10px] text-tx3 mt-1">Belum ada user dengan role Technician. Tambahkan di User Management.</p>
+                )}
               </div>
-            )}
           </div>
         </div>
       )}
