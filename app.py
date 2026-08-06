@@ -553,7 +553,7 @@ def api_onu_live_detail(onu_id):
                     onu.onu_rx_power = live_detail['onu_rx_power']; updated = True
                 if live_detail.get('tx_power') is not None:
                     onu.tx_power = live_detail['tx_power']; updated = True
-                if live_detail.get('onu_type'):
+                if live_detail.get('onu_type') and not onu.onu_type:
                     onu.onu_type = live_detail['onu_type']; updated = True
                 # Read-back WiFi config from ONU running-config
                 wifi_entries = live_detail.get('wifi_entries', [])
@@ -762,6 +762,7 @@ def update_onu(onu_id):
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     data = request.get_json()
+    logger.info(f"[update_onu] ONU {onu_id} payload={data} by user={current_user.username}")
     olt = db.session.get(OLT, onu.olt_id) if onu.olt_id else None
     cli_cmds = []  # Collect CLI commands to send to OLT after DB save
     if 'name' in data:
@@ -847,8 +848,7 @@ def update_onu(onu_id):
                 new_port.status = 'used'
         db.session.flush()
     db.session.commit()
-
-    # Push name/description changes to OLT via Telnet CLI (ZTE)
+    logger.info(f"[update_onu] DB committed for ONU {onu_id}, fields: {list(data.keys())}")
     if cli_cmds and olt and olt.telnet_enabled and olt.cli_username:
         try:
             from snmp_collector import create_cli_collector
@@ -1407,8 +1407,8 @@ def onu_action(onu_id):
         success, msg = (True, 'OK')
         data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
         if data:
-            if data.get('name'): onu.name = data['name']
-            if data.get('description'): onu.description = data['description']
+            if data.get('name') and not onu.name: onu.name = data['name']
+            if data.get('description') and not onu.description: onu.description = data['description']
             if data.get('serial'): onu.serial_number = data['serial']
             if data.get('distance_m') is not None: onu.distance = data['distance_m']
             if data.get('rx_power') is not None: onu.rx_power = data['rx_power']
@@ -1962,6 +1962,7 @@ def onu_wan_service_edit(onu_id, svc_idx):
     if not olt or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured'})
     data = request.get_json()
+    logger.info(f"[wan-service] ONU {onu_id} svc={svc_idx} data={data} by user={current_user.username}")
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
     try:
@@ -2196,6 +2197,7 @@ def update_onu_field(onu_id):
     data = request.get_json()
     field = data.get('field')
     value = data.get('value', '').strip()
+    logger.info(f"[update-field] ONU {onu_id} field='{field}' value='{value}' by user={current_user.username}")
 
     field_perms = {
         'name': 'edit_onu_name',
@@ -2288,8 +2290,7 @@ def update_onu_field(onu_id):
     else:
         return jsonify({'success': False, 'message': f'Unknown field: {field}'})
     db.session.commit()
-
-    # Invalidate caches so frontend sees fresh data
+    logger.info(f"[update-field] DB committed: ONU {onu_id} {field}='{value}' (verified: {getattr(onu, field, 'N/A')})")
     try:
         from cache import cache_clear
         cache_clear("dashboard:*")
@@ -2711,6 +2712,7 @@ def onu_section_config(onu_id):
     raw_idx = data.get('index', 0)
     action = data.get('action', 'save')
     cfg_data = data.get('data', {})
+    logger.info(f"[section-config] ONU {onu_id} section='{section}' action='{action}' idx={raw_idx} data={cfg_data} by user={current_user.username}")
 
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
