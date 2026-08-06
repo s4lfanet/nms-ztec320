@@ -1972,6 +1972,76 @@ def onu_resync_config(onu_id):
         return jsonify({'success': False, 'message': f'Resync failed: {str(e)}'})
 
 
+@app.route('/api/onu/<int:onu_id>/replace', methods=['POST'])
+@login_required
+def onu_replace(onu_id):
+    """Replace ONU with new SN/MAC — preserves all config (service, VLAN, profiles, etc).
+    Validates vendor match, backs up config, deletes old ONU, registers new, re-applies config."""
+    onu = db.session.get(ONU, onu_id)
+    if not onu:
+        return jsonify({'success': False, 'message': 'ONU not found'}), 404
+
+    data = request.get_json()
+    new_serial = (data.get('new_serial') or '').strip().upper()
+    if not new_serial:
+        return jsonify({'success': False, 'message': 'New serial number is required'})
+
+    olt = onu.olt
+    if not olt or not olt.telnet_enabled:
+        return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+
+    if not current_user.has_permission('configure_onu'):
+        return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
+
+    old_serial = onu.serial_number or ''
+    is_epon = (onu.card or '').lower() == 'epon'
+    device_type = 'EPON' if is_epon else 'GPON'
+
+    # Vendor validation from serial prefix
+    def get_vendor(sn):
+        sn = (sn or '').upper()
+        if sn.startswith('ZTE'): return 'ZTE'
+        if sn.startswith('FHT'): return 'FiberHome'
+        if sn.startswith('HW'): return 'Huawei'
+        if sn.startswith('GPON'): return 'GPON'
+        return 'Unknown'
+
+    old_vendor = get_vendor(old_serial)
+    new_vendor = get_vendor(new_serial)
+
+    logger.info(f"[replace-onu] ONU {onu_id} ({device_type}): old SN={old_serial} ({old_vendor}) -> new SN={new_serial} ({new_vendor}) by user={current_user.username}")
+
+    if old_vendor != new_vendor and old_vendor != 'Unknown' and new_vendor != 'Unknown':
+        return jsonify({'success': False, 'message': f'Vendor mismatch: old ONU is {old_vendor} ({old_serial}), new SN is {new_vendor} ({new_serial}). ONU vendor must match.'})
+
+    from snmp_collector import create_cli_collector
+    tc = create_cli_collector(olt)
+    onu_type = onu.onu_type or 'All'
+
+    def progress_cb(step, msg):
+        logger.info(f"[replace-onu] ONU {onu_id} step={step}: {msg}")
+
+    success, msg = tc.replace_onu(
+        onu.frame, onu.slot, onu.port, onu.onu_id,
+        new_serial, old_serial=old_serial,
+        is_epon=is_epon, onu_type=onu_type,
+        progress_cb=progress_cb
+    )
+
+    logger.info(f"[replace-onu] ONU {onu_id} ({device_type}): final success={success} msg={msg}")
+
+    if success:
+        onu.serial_number = new_serial
+        onu.status = 'offline'
+        db.session.commit()
+        _auto_sync_olt(onu.olt_id)
+        _auto_write_config(onu.olt_id)
+        log_action('onu_replace', 'onu', target=onu.onu_id_str or str(onu.id),
+                   detail=f'Replaced ONU: {old_serial} -> {new_serial} — {msg}')
+
+    return jsonify({'success': success, 'message': msg})
+
+
 @app.route('/api/onu-types', methods=['GET'])
 @login_required
 def get_onu_types():
