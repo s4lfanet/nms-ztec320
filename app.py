@@ -1365,15 +1365,23 @@ def onu_action(onu_id):
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
     is_epon = (onu.card or '').lower() == 'epon'
+    device_type = 'EPON' if is_epon else 'GPON'
+    logger.info(f"[onu-action] ONU {onu_id} action='{action}' device={device_type} card='{onu.card}' by user={current_user.username}")
 
     if action == 'reboot':
         if not current_user.has_permission('reboot_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: reboot_onu'}), 403
         success, msg = tc.reset_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+        logger.info(f"[onu-action] reboot ONU {onu_id} ({device_type}): success={success} msg={msg}")
+        if success:
+            _auto_sync_olt(onu.olt_id)
     elif action == 'reset':
         if not current_user.has_permission('reboot_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: reboot_onu'}), 403
         success, msg = tc.reset_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+        logger.info(f"[onu-action] reset ONU {onu_id} ({device_type}): success={success} msg={msg}")
+        if success:
+            _auto_sync_olt(onu.olt_id)
     elif action == 'delete':
         if not current_user.has_permission('delete_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: delete_onu'}), 403
@@ -1390,6 +1398,7 @@ def onu_action(onu_id):
         if not current_user.has_permission('clear_config_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: clear_config_onu'}), 403
         success, msg = tc.clear_onu_config(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+        logger.info(f"[onu-action] clear-config ONU {onu_id} ({device_type}): success={success} msg={msg}")
         if success:
             # Clear service-related fields in DB
             onu.pppoe = ''
@@ -1401,6 +1410,7 @@ def onu_action(onu_id):
         if not current_user.has_permission('disable_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: disable_onu'}), 403
         success, msg = tc.disable_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+        logger.info(f"[onu-action] disable ONU {onu_id} ({device_type}): success={success} msg={msg}")
         if success:
             onu.status = 'offline'
             db.session.commit()
@@ -1408,11 +1418,13 @@ def onu_action(onu_id):
         if not current_user.has_permission('disable_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: disable_onu'}), 403
         success, msg = tc.enable_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+        logger.info(f"[onu-action] enable ONU {onu_id} ({device_type}): success={success} msg={msg}")
         if success:
             onu.status = 'online'
             db.session.commit()
     elif action == 'resync':
         success, msg = (True, 'OK')
+        logger.info(f"[onu-action] resync ONU {onu_id} ({device_type}): collecting from OLT...")
         data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
         if data:
             if data.get('name') and not onu.name: onu.name = data['name']
@@ -1430,12 +1442,15 @@ def onu_action(onu_id):
                 else: onu.status = state
             db.session.commit()
             success, msg = True, 'Config resynced from OLT'
+            logger.info(f"[onu-action] resync ONU {onu_id} ({device_type}): success — state={data.get('state','?')} rx={data.get('rx_power','?')}")
         else:
             success, msg = False, 'Failed to collect ONU data from OLT'
+            logger.warning(f"[onu-action] resync ONU {onu_id} ({device_type}): failed — no data from OLT")
     elif action == 'restore-factory':
         if not current_user.has_permission('reset_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: reset_onu'}), 403
-        success, msg = tc.restore_factory_onu(onu.frame, onu.slot, onu.port, onu.onu_id)
+        success, msg = tc.restore_factory_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+        logger.info(f"[onu-action] restore-factory ONU {onu_id} ({device_type}): success={success} msg={msg}")
         if success:
             # Clear service-related fields in DB — factory reset wipes all ONU config
             onu.pppoe = ''
@@ -1446,9 +1461,16 @@ def onu_action(onu_id):
     elif action == 'restore-wifi':
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
-        success, msg = tc.restore_wifi_onu(onu.frame, onu.slot, onu.port, onu.onu_id)
+        success, msg = tc.restore_wifi_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+        logger.info(f"[onu-action] restore-wifi ONU {onu_id} ({device_type}): success={success} msg={msg}")
+        if success:
+            # Clear WiFi config in DB
+            onu.wifi_config = ''
+            db.session.commit()
+            _auto_sync_olt(onu.olt_id)
     else:
         return jsonify({'success': False, 'message': f'Unknown action: {action}'})
+    logger.info(f"[onu-action] ONU {onu_id} action='{action}' ({device_type}): final success={success} msg={msg}")
     if success:
         log_action(f'onu_{action}', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'{action} on {onu.name} ({onu.serial_number}) — {msg}')
     return jsonify({'success': success, 'message': msg})
@@ -1497,6 +1519,8 @@ def onu_get_status(onu_id):
     is_epon = (onu.card or '').lower() == 'epon'
     prefix = 'epon-onu' if is_epon else 'gpon-onu'
     iface = f'{prefix}_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
+    device_type = 'EPON' if is_epon else 'GPON'
+    logger.info(f"[get-status] ONU {onu_id} ({device_type}) iface={iface} by user={current_user.username}")
     status_data = {
         'interface': {},
         'optical': {'up': {}, 'down': {}},
@@ -1581,9 +1605,9 @@ def onu_get_status(onu_id):
         except Exception as e:
             try: tn.close()
             except: pass
-        return jsonify({'success': True, 'data': status_data})
+        return jsonify({'success': True, 'status': status_data})
 
-    # GPON path (unchanged)
+    # GPON path
 
     try:
         # 1. detail-info for interface info
@@ -1888,12 +1912,15 @@ def onu_resync_config(onu_id):
         from snmp_collector import TelnetCollector, create_cli_collector
         tc = create_cli_collector(olt)
         is_epon = (onu.card or '').lower() == 'epon'
+        device_type = 'EPON' if is_epon else 'GPON'
+        logger.info(f"[resync-config] ONU {onu_id} ({device_type}) by user={current_user.username}")
         data = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
         if not data:
+            logger.warning(f"[resync-config] ONU {onu_id} ({device_type}): no data from OLT")
             return jsonify({'success': False, 'message': 'Failed to collect ONU data from OLT'})
         updated = False
-        if data.get('name'): onu.name = data['name']; updated = True
-        if data.get('description'): onu.description = data['description']; updated = True
+        if data.get('name') and not onu.name: onu.name = data['name']; updated = True
+        if data.get('description') and not onu.description: onu.description = data['description']; updated = True
         if data.get('serial'): onu.serial_number = data['serial']; updated = True
         if data.get('distance_m') is not None: onu.distance = data['distance_m']; updated = True
         if data.get('state'):
@@ -1907,28 +1934,36 @@ def onu_resync_config(onu_id):
         wifi_entries = data.get('wifi_entries', [])
         if wifi_entries:
             import json as _json_rc
-            # Preserve existing passwords from DB (ZTE doesn't expose WPA keys in read-back)
-            existing_pw = {}
+            # Preserve existing passwords and DB-only SSIDs from DB
+            # (ZTE doesn't expose WPA keys in read-back, and newly added
+            # SSIDs may not appear in OLT running-config immediately)
+            existing_ssids = {}
             if onu.wifi_config:
                 try:
                     _prev = _json_rc.loads(onu.wifi_config)
                     for s in _prev.get('ssids', []):
-                        existing_pw[int(s.get('ssid_num', 0))] = s.get('ssid_password', '')
+                        existing_ssids[int(s.get('ssid_num', 0))] = s
                 except Exception:
                     pass
             ssids = []
+            readback_nums = set()
             for w in wifi_entries:
                 num = int(w.get('wifi_num', 0))
+                readback_nums.add(num)
                 rb_pw = w.get('ssid_password', '')
                 ssids.append({
                     'ssid_num': num,
                     'ssid_name': w.get('ssid_name', ''),
                     'ssid_auth_type': w.get('ssid_auth_type', ''),
-                    'ssid_password': rb_pw if rb_pw and rb_pw != '--' else existing_pw.get(num, ''),
+                    'ssid_password': rb_pw if rb_pw and rb_pw != '--' else existing_ssids.get(num, {}).get('ssid_password', ''),
                     'wifi_mode': w.get('mode', ''),
                     'wifi_status': w.get('status', 'up'),
                     'vlan': w.get('vlan', ''),
                 })
+            # Preserve DB entries not in read-back (newly added, OLT may not have applied yet)
+            for num, s in existing_ssids.items():
+                if num not in readback_nums:
+                    ssids.append(s)
             onu.wifi_config = _json_rc.dumps({'ssids': ssids})
             updated = True
         if updated: db.session.commit()

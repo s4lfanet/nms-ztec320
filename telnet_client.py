@@ -740,11 +740,13 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
-    def restore_factory_onu(self, frame, slot, port, onu_id):
+    def restore_factory_onu(self, frame, slot, port, onu_id, is_epon=False):
         """Factory reset an ONU — clears OLT-side config (service-ports, tconts, gemports)
         AND resets ONU's internal OMCI config via 'restore factory'.
-        ONU stays registered but all service config is wiped from both sides."""
-        iface = f'gpon-onu_{frame}/{slot}/{port}:{onu_id}'
+        ONU stays registered but all service config is wiped from both sides.
+        Supports both GPON and EPON ONUs."""
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
+        iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
@@ -822,14 +824,17 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
-    def restore_wifi_onu(self, frame, slot, port, onu_id):
-        """Reset WiFi settings on an ONU via OMCI — only WiFi reset, other config stays."""
+    def restore_wifi_onu(self, frame, slot, port, onu_id, is_epon=False):
+        """Reset WiFi settings on an ONU via OMCI — only WiFi reset, other config stays.
+        Supports both GPON and EPON ONUs."""
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
+        iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
             tn.write('configure terminal\n')
             tn.read_until(b'#', timeout=5)
-            tn.write(f'pon-onu-mng gpon-onu_{frame}/{slot}/{port}:{onu_id}\n')
+            tn.write(f'pon-onu-mng {iface}\n')
             tn.read_until(b'#', timeout=5)
             tn.write('restore wifi\n')
             output = tn.read_until(b'#', timeout=15).decode('utf-8', errors='replace')

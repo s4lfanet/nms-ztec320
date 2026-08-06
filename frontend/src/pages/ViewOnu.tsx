@@ -110,7 +110,7 @@ export function ViewOnu() {
           'enable': 'Enable', 'restore-factory': 'Factory Reset', 'restore-wifi': 'WiFi Reset',
         };
         const label = labels[action] || 'Action';
-        const autoSync = ['clear-config', 'restore-factory'].includes(action);
+        const autoSync = ['clear-config', 'restore-factory', 'restore-wifi'].includes(action);
         toast.success(`${label} completed!${autoSync ? ' Auto-syncing OLT...' : ''}`);
         qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
         qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
@@ -136,6 +136,21 @@ export function ViewOnu() {
             qc.invalidateQueries({ queryKey: ['olts'] });
           }, 12000);
         }
+        // For reboot/reset: ONU takes ~15-30s to come back online, re-fetch after delay
+        if (action === 'reset' || action === 'reboot') {
+          setTimeout(() => {
+            qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
+            qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
+            qc.invalidateQueries({ queryKey: ['all-onus'] });
+            qc.invalidateQueries({ queryKey: ['dashboard'] });
+          }, 15000);
+          setTimeout(() => {
+            qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
+            qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
+            qc.invalidateQueries({ queryKey: ['all-onus'] });
+            qc.invalidateQueries({ queryKey: ['dashboard'] });
+          }, 30000);
+        }
       } else toast.error(d.message || 'Action failed');
     },
     onError: (_e, action) => { setPendingAction(null); toast.error(`${action} failed`); },
@@ -143,7 +158,11 @@ export function ViewOnu() {
 
   const getStatusMut = useMutation({
     mutationFn: async () => { setPendingAction('get-status'); return api.onuGetStatus(onuId); },
-    onSuccess: (d) => { setPendingAction(null); if (d.success && d.status) { setModal({ type: 'getStatus', data: d.status }); qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); } else toast.error('Get Status failed'); },
+    onSuccess: (d) => {
+      setPendingAction(null);
+      const status = d.status || d.data;
+      if (d.success && status) { setModal({ type: 'getStatus', data: status }); qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); } else toast.error(d.message || 'Get Status failed');
+    },
     onError: () => { setPendingAction(null); toast.error('Get Status failed'); },
   });
 
