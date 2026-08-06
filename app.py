@@ -832,12 +832,20 @@ def update_onu(onu_id):
         except (ValueError, TypeError):
             pass
     if 'technician_id' in data:
+        if not current_user.has_permission('configure_onu'):
+            return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
         onu.technician_id = data['technician_id'] or None
     if 'latitude' in data:
+        if not current_user.has_permission('configure_onu'):
+            return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
         onu.latitude = float(data['latitude']) if data['latitude'] else None
     if 'longitude' in data:
+        if not current_user.has_permission('configure_onu'):
+            return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
         onu.longitude = float(data['longitude']) if data['longitude'] else None
     if 'odp_port_id' in data:
+        if not current_user.has_permission('configure_onu'):
+            return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
         from models import FTTHODPPort
         # Unlink old ODP port if any
         if onu.odp_port:
@@ -5946,7 +5954,7 @@ def acknowledge_notification(notif_id):
 
 
 @app.route('/api/notifications/acknowledge-all', methods=['POST'])
-@login_required
+@permission_required('customization')
 def acknowledge_all_notifications():
     """Acknowledge all unread/unacknowledged notifications, optionally filtered by type."""
     notif_type = request.args.get('type', '')
@@ -5971,7 +5979,7 @@ def acknowledge_all_notifications():
 
 
 @app.route('/api/notifications/<int:notif_id>', methods=['DELETE'])
-@login_required
+@permission_required('customization')
 def delete_notification(notif_id):
     """Delete a notification."""
     notif = db.session.get(Notification, notif_id)
@@ -5983,7 +5991,7 @@ def delete_notification(notif_id):
 
 
 @app.route('/api/notifications/clear', methods=['POST'])
-@login_required
+@permission_required('customization')
 def clear_notifications():
     """Clear all read notifications."""
     q = Notification.query.filter_by(is_read=True)
@@ -6263,7 +6271,7 @@ def get_alert_rules():
 
 
 @app.route('/api/alert-rules/<int:rule_id>', methods=['PUT'])
-@login_required
+@permission_required('customization')
 def update_alert_rule(rule_id):
     """Update an alert rule."""
     rule = db.session.get(AlertRule, rule_id)
@@ -6295,7 +6303,7 @@ def get_bot_config():
 
 
 @app.route('/api/bot-config/<string:bot_type>', methods=['PUT'])
-@login_required
+@permission_required('customization')
 def update_bot_config(bot_type):
     """Update or create bot configuration."""
     config = BotConfig.query.filter_by(bot_type=bot_type).first()
@@ -6390,7 +6398,7 @@ def public_branding():
 
 
 @app.route('/api/alert-rules/recheck', methods=['POST'])
-@login_required
+@permission_required('customization')
 def recheck_alerts():
     """Manually trigger alert re-check now."""
     from alerts import _check_onus_for_tenant
@@ -6403,7 +6411,7 @@ def recheck_alerts():
 
 
 @app.route('/api/bot-config/telegram/test', methods=['POST'])
-@login_required
+@permission_required('customization')
 def test_telegram():
     """Send test message via Telegram."""
     config = BotConfig.query.filter_by(bot_type='telegram').first()
@@ -6429,7 +6437,7 @@ def test_telegram():
 
 
 @app.route('/api/bot-config/whatsapp/test', methods=['POST'])
-@login_required
+@permission_required('customization')
 def test_whatsapp():
     """Send test message via WhatsApp gateway."""
     config = BotConfig.query.filter_by(bot_type='whatsapp').first()
@@ -6523,7 +6531,7 @@ def wa_native_qr():
 
 
 @app.route('/api/bot-config/whatsapp-native/test', methods=['POST'])
-@login_required
+@permission_required('customization')
 def wa_native_test():
     """Send test message via native WA gateway."""
     gw_url = _wa_gateway_url()
@@ -6553,7 +6561,7 @@ def wa_native_test():
 
 
 @app.route('/api/bot-config/whatsapp-native/logout', methods=['POST'])
-@login_required
+@permission_required('customization')
 def wa_native_logout():
     """Logout and clear WA session."""
     gw_url = _wa_gateway_url()
@@ -6568,7 +6576,7 @@ def wa_native_logout():
 
 
 @app.route('/api/bot-config/whatsapp-native/reconnect', methods=['POST'])
-@login_required
+@permission_required('customization')
 def wa_native_reconnect():
     """Force reconnect WA gateway."""
     gw_url = _wa_gateway_url()
@@ -6628,7 +6636,7 @@ def wa_native_gateway_info():
 
 
 @app.route('/api/bot-config/whatsapp-native/start', methods=['POST'])
-@login_required
+@permission_required('customization')
 def wa_native_start():
     """Start WA gateway instance via PM2."""
     port = _wa_gateway_port()
@@ -6666,7 +6674,7 @@ def wa_native_start():
 
 
 @app.route('/api/bot-config/whatsapp-native/stop', methods=['POST'])
-@login_required
+@permission_required('customization')
 def wa_native_stop():
     """Stop WA gateway instance via PM2."""
     name = _wa_gateway_name()

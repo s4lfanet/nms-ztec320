@@ -54,7 +54,7 @@ const navItems: NavItem[] = [
       { label: 'User Management', path: '/dashboard/users', permission: 'manage_users' },
       { label: 'Alert Settings', path: '/dashboard/settings/alerts', permission: 'customization' },
       { label: 'Cloudflare Tunnel', path: '/dashboard/settings/cloudflare', permission: 'customization' },
-      { label: 'Alert History', path: '/dashboard/alerts/history' },
+      { label: 'Alert History', path: '/dashboard/alerts/history', permission: 'view_dashboard' },
     ],
   },
   { label: 'Panduan', icon: <BookOpen size={20} />, path: '/dashboard/guide' },

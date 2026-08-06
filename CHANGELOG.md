@@ -4,6 +4,39 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-08-06 — Audit & Perbaikan Permission RBAC
+
+#### Audit — Role Permission Implementation
+- Audit menyeluruh implementasi RBAC di frontend (route protection, sidebar filtering, `useHasPerm` hook) dan backend (decorator `@permission_required`, `@login_required`, inline checks)
+- 18 permission terdefinisi di `AVAILABLE_PERMISSIONS`, 4 default roles (Full Access, Viewer, Limited, Technician)
+- Super admin bypass via `is_super_admin` dan `all_olt` bekerja konsisten di frontend dan backend
+
+#### Diperbaiki — Endpoint Admin Tanpa Permission Check (HIGH)
+- `PUT /api/alert-rules/<id>` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `PUT /api/bot-config/<bot_type>` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `POST /api/alert-rules/recheck` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `POST /api/bot-config/telegram/test` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `POST /api/bot-config/whatsapp/test` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `POST /api/bot-config/whatsapp-native/test` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `POST /api/bot-config/whatsapp-native/logout` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `POST /api/bot-config/whatsapp-native/reconnect` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `POST /api/bot-config/whatsapp-native/start` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `POST /api/bot-config/whatsapp-native/stop` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+
+#### Diperbaiki — Notification Management Tanpa Permission Check (HIGH)
+- `POST /api/notifications/acknowledge-all` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `DELETE /api/notifications/<id>` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+- `POST /api/notifications/clear` — sebelumnya `@login_required` saja, sekarang `@permission_required('customization')`
+
+#### Diperbaiki — ONU Update Field Tanpa Permission Check (MEDIUM)
+- Field `technician_id`, `latitude`, `longitude`, `odp_port_id` di endpoint `/api/onu/<id>/update` sebelumnya tidak ada permission check — sekarang memerlukan `configure_onu`
+
+#### Diperbaiki — Frontend Route Protection (LOW)
+- `App.tsx`: Ditambahkan `routePatterns` dengan regex matching untuk `/dashboard/settings/olts/:oltId/config` → `settings_ip_olts` (sub-route sebelumnya tidak terproteksi)
+- `Sidebar.tsx`: Alert History menu item sekarang memerlukan permission `view_dashboard` (sebelumnya tidak ada permission filter)
+
+---
+
 ### 2026-08-06 — Penyederhanaan Menu Sidebar ONU
 
 #### Diubah — Sidebar Menu

@@ -47,7 +47,9 @@ const routePermissions: Record<string, string> = {
   '/dashboard/settings/cloudflare': 'customization',
 };
 
-const routePatterns: { pattern: RegExp; perm: string }[] = [];
+const routePatterns: { pattern: RegExp; perm: string }[] = [
+  { pattern: /^\/dashboard\/settings\/olts\/\d+\/config$/, perm: 'settings_ip_olts' },
+];
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
