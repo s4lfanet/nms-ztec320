@@ -1879,6 +1879,7 @@ class TelnetCollector:
                 self._send_command(tn, f'pon-onu-mng {onu_if}')
 
                 # Dynamic SSID config — iterate over all SSIDs in ssids_list
+                logger.info(f"[register_vendor_template] WiFi SSID config: {len(ssids_list)} SSIDs to configure")
                 for s in ssids_list:
                     ssid_name = (s.get('name') or '').replace(' ', '_')
                     if not ssid_name:
@@ -1888,6 +1889,7 @@ class TelnetCollector:
                     ssid_auth = s.get('auth', 'wpa2')
                     ssid_enabled = s.get('enabled', True)
                     ssid_hidden = s.get('hidden', False)
+                    logger.info(f"[register_vendor_template] WiFi SSID {wp}: name='{ssid_name}' auth='{ssid_auth}' pass={'***' if ssid_pass else '(empty)'} enabled={ssid_enabled} hidden={ssid_hidden}")
                     # Enable/disable WiFi radio interface
                     if ssid_enabled:
                         sc_warn(f'interface wifi {wp} state unlock')
@@ -1899,7 +1901,17 @@ class TelnetCollector:
                     sc_warn(f'ssid ctrl {wp} name {ssid_name} hide {hide_str}')
                     if ssid_auth != 'open':
                         auth_mode = {'wpa2': 'wpa2-psk', 'wpa': 'wpa-psk', 'mixed': 'wpa-wpa2-psk'}.get(ssid_auth, 'wpa2-psk')
-                        sc_warn(f'ssid auth wpa {wp} {auth_mode}')
+                        # Send auth commands — retry once if first attempt fails (ONU may still be initializing)
+                        for attempt in range(2):
+                            _, auth_err = self._send_cmd_check(tn, f'ssid auth wpa {wp} {auth_mode}', timeout=10)
+                            if auth_err:
+                                logger.warning(f"[register_vendor_template] WiFi auth mode attempt {attempt+1} FAILED: 'ssid auth wpa {wp} {auth_mode}' -> {auth_err}")
+                                if attempt == 0:
+                                    time.sleep(3)
+                                    continue
+                            else:
+                                logger.info(f"[register_vendor_template] WiFi auth mode OK: 'ssid auth wpa {wp} {auth_mode}'")
+                            break
                         sc_warn(f'ssid auth wpa {wp} encrypt aes')
                         if ssid_pass:
                             sc_warn(f'ssid auth wpa {wp} key {ssid_pass}')
@@ -1975,6 +1987,8 @@ class TelnetCollector:
                 out, err = self._send_cmd_check(tn, cmd, timeout=10)
                 if err:
                     logger.warning(f"[register_unified] WARN: '{cmd}' -> {err}")
+                else:
+                    logger.info(f"[register_unified] CMD OK: '{cmd}'")
 
             # Step 1: Enter config
             self._send_command(tn, 'end')
@@ -2222,39 +2236,60 @@ class TelnetCollector:
                 else:
                     sc('tr069-mgmt 1 untag')
 
-            # WiFi config (ZTE only — after pon-onu-mng) — dynamic SSID list
-            for s in pw_ssids:
-                ssid_name = (s.get('name') or '').replace(' ', '_')
-                if not ssid_name:
-                    continue
-                wp = s.get('port', 'wifi_0/1')
-                ssid_pass = s.get('pass', '')
-                ssid_auth = s.get('auth', 'wpa2')
-                ssid_enabled = s.get('enabled', True)
-                ssid_hidden = s.get('hidden', False)
-                # Enable/disable WiFi radio interface
-                if ssid_enabled:
-                    sc_warn(f'interface wifi {wp} state unlock')
-                else:
-                    sc_warn(f'interface wifi {wp} state lock')
-                    continue  # No need to config SSID if disabled
-                # Set SSID name + hide/show
-                hide_str = 'enable' if ssid_hidden else 'disable'
-                sc_warn(f'ssid ctrl {wp} name {ssid_name} hide {hide_str}')
-                if ssid_auth != 'open':
-                    auth_mode = {'wpa2': 'wpa2-psk', 'wpa': 'wpa-psk', 'mixed': 'wpa-wpa2-psk'}.get(ssid_auth, 'wpa2-psk')
-                    sc_warn(f'ssid auth wpa {wp} {auth_mode}')
-                    sc_warn(f'ssid auth wpa {wp} encrypt aes')
-                    if ssid_pass:
-                        sc_warn(f'ssid auth wpa {wp} key {ssid_pass}')
-                else:
-                    # Open auth: set WEP open-system (ZTE's way of truly open auth)
-                    # Also clear any previous WPA config to override stale settings
-                    sc_warn(f'ssid auth wpa {wp} no-auth')
-                    sc_warn(f'ssid auth wpa {wp} encrypt none')
-                    sc_warn(f'ssid auth wpa {wp} no-key')
-                    sc_warn(f'ssid auth wep {wp} open-system')
-                    logger.info(f'[register_unified] Open auth set for {wp}: no-auth, encrypt none, no-key, wep open-system')
+            # WiFi config (ZTE only — separate session after delay for ONU config state "success")
+            # OMCI SSID commands require ONU to have processed initial config first
+            ssid_needed = any((s.get('name') or '').strip() for s in pw_ssids)
+            if ssid_needed:
+                self._send_command(tn, 'end')
+                logger.info("[register_unified] Waiting 5s for ONU config state to reach 'success' before SSID config...")
+                time.sleep(5)
+                self._send_command(tn, 'configure terminal')
+                self._send_command(tn, f'pon-onu-mng {onu_if}')
+
+                logger.info(f"[register_unified] WiFi SSID config: {len(pw_ssids)} SSIDs to configure")
+                for s in pw_ssids:
+                    ssid_name = (s.get('name') or '').replace(' ', '_')
+                    if not ssid_name:
+                        continue
+                    wp = s.get('port', 'wifi_0/1')
+                    ssid_pass = s.get('pass', '')
+                    ssid_auth = s.get('auth', 'wpa2')
+                    ssid_enabled = s.get('enabled', True)
+                    ssid_hidden = s.get('hidden', False)
+                    logger.info(f"[register_unified] WiFi SSID {wp}: name='{ssid_name}' auth='{ssid_auth}' pass={'***' if ssid_pass else '(empty)'} enabled={ssid_enabled} hidden={ssid_hidden}")
+                    # Enable/disable WiFi radio interface
+                    if ssid_enabled:
+                        sc_warn(f'interface wifi {wp} state unlock')
+                    else:
+                        sc_warn(f'interface wifi {wp} state lock')
+                        continue  # No need to config SSID if disabled
+                    # Set SSID name + hide/show
+                    hide_str = 'enable' if ssid_hidden else 'disable'
+                    sc_warn(f'ssid ctrl {wp} name {ssid_name} hide {hide_str}')
+                    if ssid_auth != 'open':
+                        auth_mode = {'wpa2': 'wpa2-psk', 'wpa': 'wpa-psk', 'mixed': 'wpa-wpa2-psk'}.get(ssid_auth, 'wpa2-psk')
+                        # Send auth commands — retry once if first attempt fails (ONU may still be initializing)
+                        for attempt in range(2):
+                            _, auth_err = self._send_cmd_check(tn, f'ssid auth wpa {wp} {auth_mode}', timeout=10)
+                            if auth_err:
+                                logger.warning(f"[register_unified] WiFi auth mode attempt {attempt+1} FAILED: 'ssid auth wpa {wp} {auth_mode}' -> {auth_err}")
+                                if attempt == 0:
+                                    time.sleep(3)
+                                    continue
+                            else:
+                                logger.info(f"[register_unified] WiFi auth mode OK: 'ssid auth wpa {wp} {auth_mode}'")
+                            break
+                        sc_warn(f'ssid auth wpa {wp} encrypt aes')
+                        if ssid_pass:
+                            sc_warn(f'ssid auth wpa {wp} key {ssid_pass}')
+                    else:
+                        # Open auth: set WEP open-system (ZTE's way of truly open auth)
+                        # Also clear any previous WPA config to override stale settings
+                        sc_warn(f'ssid auth wpa {wp} no-auth')
+                        sc_warn(f'ssid auth wpa {wp} encrypt none')
+                        sc_warn(f'ssid auth wpa {wp} no-key')
+                        sc_warn(f'ssid auth wep {wp} open-system')
+                        logger.info(f'[register_unified] Open auth set for {wp}: no-auth, encrypt none, no-key, wep open-system')
 
             self._send_command(tn, 'end')
             tn.close()
