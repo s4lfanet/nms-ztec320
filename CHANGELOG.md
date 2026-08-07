@@ -4,6 +4,41 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-08-07 — EPON SLA Profile Management & Timezone Sync Fix
+
+#### Ditambahkan — EPON SLA Profile Management
+- **Auto-sync SLA profiles**: `auto_backup.py` dan `app.py` sekarang auto-sync SLA profiles dari OLT via `show onu-profile sla` saat fetch speed profiles
+- **API endpoints**: `POST /api/olt/<id>/sla/add` dan `POST /api/olt/<id>/sla/<id>/delete` untuk manage SLA profiles
+- **Telnet CLI**: `sla_profile` parameter ditambahkan ke `register_and_configure`, `register_unified`, dan `configure_onu_profile` di `telnet_client.py`. Mengirim `sla-profile {name} vport 1` untuk EPON ONUs
+- **ProvisionWizard.tsx**: SLA profile dropdown untuk EPON ONUs (menggantikan TCONT/Traffic profiles untuk GPON)
+- **RegisterWizard.tsx**: SLA profile dropdown untuk EPON ONUs, `sla_profile` termasuk dalam pre-register payload
+- **OltConfiguration.tsx**: SLA profile management section di Speed Profiles tab — form add (name, up/down CIR/PIR) + table list dengan delete button
+
+#### Diperbaiki — Timezone Tidak Sinkron pada Auto-Backup (HIGH)
+- **Root cause**: `auto_backup.py` line 157 menggunakan `datetime.now()` (server local = UTC) untuk time-of-day matching, tetapi user set `auto_backup_time` dalam timezone lokal (mis. "02:00" Jakarta). Backup 02:00 WIB sebenarnya trigger di 02:00 UTC = 09:00 WIB — 7 jam selisih
+- **Fix**: `auto_backup.py` sekarang menggunakan `get_system_timezone()` dari SystemConfig + `get_local_now(tz_name)` dengan `zoneinfo.ZoneInfo` untuk time-of-day matching. Log sekarang menampilkan kedua timezone: `[16:27:30 UTC / 23:27:30 Asia/Jakarta]`
+- **`helpers.py`**: Ditambahkan `get_system_timezone()` shared helper (reads SystemConfig, defaults Asia/Jakarta)
+- **`app.py`**: `/api/public/branding` sekarang include `timezone` field untuk frontend
+
+#### Ditambahkan — System Timezone Setting UI
+- **Customization.tsx**: Tab baru "Timezone" (icon jam) dengan:
+  - Dropdown 16 timezone umum (WIB, WITA, WIT, SGT, JST, UTC, dll)
+  - Live clock preview (selected timezone vs VPS UTC)
+  - Save button yang update SystemConfig + apply langsung ke frontend
+  - Info panel: cara timezone mempengaruhi auto-backup, UI, database
+- **`utils.ts`**: `formatDate()` sekarang menggunakan `timeZone` option dengan system timezone. Ditambahkan `setSystemTimezone()`/`getSystemTimezone()`
+- **`App.tsx`**: Fetch timezone dari branding API on startup, set globally
+
+#### Diperbaiki — VPS Timezone & NTP
+- VPS timezone diubah dari UTC ke `Asia/Jakarta` via `timedatectl set-timezone`
+- NTP sync diaktifkan via `chrony` (systemd-timesyncd tidak berfungsi di LXC container)
+- Clock synced: `System clock synchronized: yes`, `NTP service: active`
+
+#### Diperbaiki — Geolocation Permissions Policy
+- **`app.py`**: `Permissions-Policy` header diubah dari `geolocation=()` ke `geolocation=(self)` untuk mengizinkan LocationPicker GPS access
+
+---
+
 ### 2026-08-07 — Audit & Perbaikan Alert Settings
 
 #### Diperbaiki — OLT Health Fields Tidak Disimpan oleh Backend (HIGH)

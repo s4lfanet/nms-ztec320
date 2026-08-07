@@ -289,6 +289,10 @@ export const guides: Guide[] = [
         title: 'RX Colors',
         content: 'Konfigurasi color range untuk RX power display.\n\nSet range (min-max dBm) dan warna untuk setiap range. Preview tersedia untuk verifikasi.',
       },
+      {
+        title: 'Timezone',
+        content: 'Pilih timezone sistem yang digunakan untuk **auto-backup scheduling**, **UI display**, dan **logging**.\n\nDatabase tetap simpan timestamp dalam UTC, hanya display yang dikonversi ke timezone yang dipilih.\n\n**Penting**: Setting "At time" di OLT auto-backup config menggunakan timezone ini. Misal "02:00" dengan timezone Asia/Jakarta = backup jam 02:00 WIB.',
+      },
     ],
   },
   {
