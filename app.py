@@ -2104,6 +2104,22 @@ def onu_wan_service_edit(onu_id, svc_idx):
         status = data.get('status', 'enable')
         last_err = None
 
+        # ── EPON: only service-port applies, skip GPON OMCI commands ──
+        if is_epon:
+            tc._send_command(tn, f'interface {onu_path}', timeout=10)
+            # Remove old service-port (ignore errors — may not exist)
+            tc._send_command(tn, f'no service-port {svc_idx}', timeout=10)
+            if status == 'enable' and vlan:
+                _, err = tc._send_cmd_check(tn, f'service-port {svc_idx} vport {svc_idx} user-vlan {vlan} vlan {vlan}', timeout=10)
+                if err:
+                    last_err = err
+            tc._send_command(tn, 'end', timeout=5)
+            tn.close()
+            if last_err:
+                return jsonify({'success': False, 'message': f'CLI error: {last_err}'})
+            logger.info(f"[wan-service] EPON ONU {onu_id} svc={svc_idx} vlan={vlan} status={status} — service-port only")
+            return jsonify({'success': True, 'message': f'WAN Service {svc_idx} updated (EPON mode: service-port only)'})
+
         def sc(cmd):
             nonlocal last_err
             _, err = tc._send_cmd_check(tn, cmd, timeout=10)

@@ -1119,29 +1119,33 @@ class TelnetCollector:
                 tn.write('exit\n'); tn.close()
                 return False, f'Failed to enter interface {onu_if}: {out}'
 
-            # Set name
-            if name:
-                tn.write(f'name {name}\n')
+            # Set name and description (EPON uses 'property description $$Name$$Desc')
+            if is_epon:
+                if name or description:
+                    tn.write(f'property description $${name or ""}$${description or ""}\n')
+                    tn.read_until(b'#', timeout=5)
+            else:
+                if name:
+                    tn.write(f'name {name}\n')
+                    tn.read_until(b'#', timeout=5)
+                if description:
+                    tn.write(f'description {description}\n')
+                    tn.read_until(b'#', timeout=5)
+
+            # TCONT/GEM are GPON-only — EPON uses service-port directly
+            if not is_epon:
+                tn.write(f'tcont {tcont_id} name {service_name} profile {tcont_profile}\n')
+                out = tn.read_until(b'#', timeout=5).decode(errors='replace')
+                if '%' in out and 'error' in out.lower():
+                    # Fallback without name
+                    tn.write(f'tcont {tcont_id} profile {tcont_profile}\n')
+                    tn.read_until(b'#', timeout=5)
+
+                # GEM port
+                tn.write(f'gemport {gemport_id} tcont {tcont_id}\n')
                 tn.read_until(b'#', timeout=5)
 
-            # Set description
-            if description:
-                tn.write(f'description {description}\n')
-                tn.read_until(b'#', timeout=5)
-
-            # TCONT
-            tn.write(f'tcont {tcont_id} name {service_name} profile {tcont_profile}\n')
-            out = tn.read_until(b'#', timeout=5).decode(errors='replace')
-            if '%' in out and 'error' in out.lower():
-                # Fallback without name
-                tn.write(f'tcont {tcont_id} profile {tcont_profile}\n')
-                tn.read_until(b'#', timeout=5)
-
-            # GEM port
-            tn.write(f'gemport {gemport_id} tcont {tcont_id}\n')
-            tn.read_until(b'#', timeout=5)
-
-            # Service port
+            # Service port (applies to both GPON and EPON)
             tn.write(f'service-port {service_port} vport {vport} user-vlan {user_vlan} vlan {service_vlan}\n')
             tn.read_until(b'#', timeout=5)
 
@@ -1214,6 +1218,9 @@ class TelnetCollector:
             if is_epon:
                 # EPON ONU interface has no 'name'/'description'/'tcont'/'gemport' keywords
                 # (GPON OMCI concepts) — only 'service-port' applies directly.
+                # Name/description uses 'property description $$Name$$Description' format.
+                if name or description:
+                    self._send_cmd_check(tn, f'property description $${name or ""}$${description or ""}')
                 self._send_cmd_check(tn, f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
                 self._send_command(tn, 'end')
                 tn.close()
@@ -1299,13 +1306,16 @@ class TelnetCollector:
                 # EPON ONUs are managed via ZTE ExtOAM ('pon-onu-mng'), not GPON OMCI.
                 # Vendor OMCI templates below (tcont/gemport/wan-ip/tr069-mgmt/security-mgmt,
                 # WiFi SSID via OMCI UNI ports) do not apply to EPON and would only produce
-                # CLI errors. Provide a basic working bridge service instead.
+                # CLI errors. Set name/description via 'property description' and provide
+                # a basic working bridge service instead.
                 time.sleep(2)
                 _, err = self._send_cmd_check(tn, f'interface {onu_if}')
                 if err:
                     logger.warning(f"EPON ONU interface not ready after registration: {err}")
                     self._send_command(tn, 'end'); tn.close()
                     return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered (basic service skipped - ONU not ready)'
+                if name or description:
+                    self._send_cmd_check(tn, f'property description $${name or ""}$${description or ""}')
                 self._send_cmd_check(tn, f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
                 self._send_command(tn, 'exit')
                 self._send_command(tn, 'end')
@@ -1990,13 +2000,15 @@ class TelnetCollector:
             if is_epon:
                 # EPON ONUs are managed via ZTE ExtOAM ('pon-onu-mng'), not GPON OMCI.
                 # The service/tcont/gemport/wan-ip/pppoe/tr069-mgmt config below is
-                # GPON-only and would only produce CLI errors on EPON. Apply a basic
-                # bridge service for the first requested VLAN instead.
+                # GPON-only and would only produce CLI errors on EPON. Set name/description
+                # via 'property description' and apply a basic bridge service instead.
                 time.sleep(2)
                 _, err = self._send_cmd_check(tn, f'interface {onu_if}')
                 if err:
                     self._send_command(tn, 'end'); tn.close()
                     return True, f'ONU registered but basic service skipped (interface not ready)'
+                if name or description:
+                    self._send_cmd_check(tn, f'property description $${name or ""}$${description or ""}')
                 svc_vlan = int(services[0].get('vlan', 100)) if services else 100
                 self._send_cmd_check(tn, f'service-port 1 vport 1 user-vlan {svc_vlan} vlan {svc_vlan}')
                 self._send_command(tn, 'exit')
