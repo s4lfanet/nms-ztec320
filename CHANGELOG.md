@@ -4,6 +4,27 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-08-07 — Audit & Perbaikan Alert Settings
+
+#### Diperbaiki — OLT Health Fields Tidak Disimpan oleh Backend (HIGH)
+- **GET `/api/alert-rules`**: Response sebelumnya tidak mengembalikan 7 field OLT health (`check_olt_offline`, `check_olt_cpu`, `check_olt_memory`, `check_olt_temperature`, `olt_cpu_threshold`, `olt_memory_threshold`, `olt_temp_threshold`). Frontend form selalu menampilkan default values (80%, 60°C) alih-alih nilai yang tersimpan. Sekarang semua field dikembalikan
+- **PUT `/api/alert-rules/<id>`**: Whitelist field update sebelumnya tidak menyertakan 7 field OLT health. Saat user edit OLT health settings dan klik Save, data dikirim tapi backend silently ignored. Sekarang semua field dipersisten
+- **Migration**: Ditambahkan `migrate_schema()` entries untuk auto-add 7 kolom OLT health + `notify_whatsapp_native` ke existing database
+
+#### Diperbaiki — `visibleTabs` Mengabaikan Flag `superAdmin` (MEDIUM)
+- **AlertSettings.tsx**: `visibleTabs` sebelumnya `= allTabs` (tidak filter). Tab "WA Native" dan "Cron Job" yang ditandai `superAdmin: true` tampil untuk semua user. Sekarang difilter dengan `allTabs.filter(tab => !tab.superAdmin || isSuperAdmin)`. Non-super-admin tidak lagi melihat tab admin-only
+
+#### Diperbaiki — Notification Channel Flags Tidak Dihormati (LOW)
+- **`notify_whatsapp_native`**: Field baru ditambahkan ke `AlertRule` model, API endpoints (GET/PUT), dan frontend RuleCard form. Sebelumnya hanya ada `notify_whatsapp` (third-party gateway) tanpa toggle untuk WA Native
+- **`_send_external_alerts()`** di `alerts.py`: Sebelumnya mengirim ke semua channel yang dikonfigurasi terlepas dari flag `rule.notify_telegram`/`notify_whatsapp`. Sekarang menerima parameter `rule` dan memeriksa setiap flag sebelum mengirim:
+  - `rule.notify_telegram` → kontrol Telegram
+  - `rule.notify_whatsapp` → kontrol WhatsApp third-party
+  - `rule.notify_whatsapp_native` → kontrol WA Native
+- **`rule.notify_bell`**: In-app bell notifications sebelumnya selalu dibuat. Sekarang hanya dibuat jika `notify_bell=True`
+- **Frontend**: Toggle "WA Native" ditambahkan ke section Notification Channels di RuleCard
+
+---
+
 ### 2026-08-06 — Audit & Perbaikan Role Permission (RBAC)
 
 #### Diperbaiki — Endpoint Admin Tanpa Permission Check (HIGH)
