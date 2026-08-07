@@ -3317,6 +3317,7 @@ def provision_unified():
     use_veip = data.get('use_veip')  # None = auto-detect
     wifi_config = data.get('wifi_config')  # None = no wifi
     tr069_config = data.get('tr069_config')  # None = no tr069
+    sla_profile = data.get('sla_profile', '')  # EPON SLA profile for speed limiting
     technician_id = data.get('technician_id')
 
     if wifi_config and isinstance(wifi_config, dict):
@@ -3343,6 +3344,7 @@ def provision_unified():
         frame=frame, slot=slot, port=port, onu_id=onu_id,
         serial=serial, onu_type=onu_type, tcont_profile=tcont_profile,
         services=services, use_veip=use_veip, traffic_profile=traffic_profile,
+        sla_profile=sla_profile,
         wifi_config=wifi_config, tr069_config=tr069_config,
         name=name, description=description, is_epon=is_epon,
     )
@@ -3403,6 +3405,7 @@ def pre_register_onu():
     template = data.get('template', 'bridge')  # bridge|pppoe|fiberhome_veip|zte_full|zte_single|huawei_full|zte_multi
     extra = data.get('extra', {})  # Template-specific extra config
     traffic_profile = data.get('traffic_profile', '')
+    sla_profile = data.get('sla_profile', '') or extra.get('sla_profile', '')
     if traffic_profile and 'traffic_profile' not in extra:
         extra['traffic_profile'] = traffic_profile
 
@@ -3438,7 +3441,8 @@ def pre_register_onu():
         success, msg = tc.register_and_configure(
             frame=frame, slot=slot, port=port, onu_id=onu_id,
             onu_type=onu_type, serial=serial, vlan=vlan,
-            tcont_profile=tcont_profile, name=name, description=description, is_epon=is_epon
+            tcont_profile=tcont_profile, name=name, description=description, is_epon=is_epon,
+            sla_profile=sla_profile
         )
     else:
         success, msg = tc.register_onu(
@@ -3449,7 +3453,8 @@ def pre_register_onu():
             tc.configure_onu_profile(
                 frame=frame, slot=slot, port=port, onu_id=onu_id,
                 tcont_profile=tcont_profile, user_vlan=vlan, service_vlan=vlan,
-                name=name, description=description, is_epon=is_epon
+                name=name, description=description, is_epon=is_epon,
+                sla_profile=sla_profile
             )
 
     if success:
@@ -4700,7 +4705,57 @@ def get_olt_speed_profiles(olt_id):
 @app.route('/api/olt/<int:olt_id>/speed-profiles-full', methods=['GET'])
 @login_required
 def get_olt_speed_profiles_full(olt_id):
-    """Get full speed profiles from DB with all fields. Cached 60s."""
+    """Get full speed profiles from DB with all fields. Cached 60s.
+    Also auto-syncs EPON SLA profiles from OLT if CLI is enabled."""
+    # --- AUTO-SYNC EPON SLA PROFILES ---
+    olt = db.session.get(OLT, olt_id) if olt_id else None
+    if olt and olt.telnet_enabled and olt.cli_username:
+        try:
+            from snmp_collector import create_cli_collector
+            tc = create_cli_collector(olt)
+            tn = tc._connect()
+            if tn:
+                tc._send_command(tn, 'configure terminal', timeout=5)
+                tc._send_command(tn, 'epon', timeout=5)
+                out = tc._send_command(tn, 'show onu-profile sla', timeout=10)
+                tc._send_command(tn, 'end', timeout=5)
+                tn.close()
+
+                import re
+                if 'Profile name' in out:
+                    SpeedProfile.query.filter_by(olt_id=olt_id, profile_type='sla').delete()
+
+                    blocks = re.split(r'Profile name:\s*', out, flags=re.IGNORECASE)
+                    for block in blocks[1:]:
+                        lines = block.strip().split('\n')
+                        if not lines: continue
+
+                        name = lines[0].strip()
+                        up_cir = '0'; up_pir = '0'
+                        down_cir = '0'; down_pir = '0'
+
+                        for line in lines[1:]:
+                            line_lower = line.lower()
+                            if 'upstream' in line_lower:
+                                cm = re.search(r'cir:\s*(\d+)', line_lower)
+                                pm = re.search(r'pir:\s*(\d+)', line_lower)
+                                if cm: up_cir = cm.group(1)
+                                if pm: up_pir = pm.group(1)
+                            elif 'downstream' in line_lower:
+                                cm = re.search(r'cir:\s*(\d+)', line_lower)
+                                pm = re.search(r'pir:\s*(\d+)', line_lower)
+                                if cm: down_cir = cm.group(1)
+                                if pm: down_pir = pm.group(1)
+
+                        db.session.add(SpeedProfile(
+                            olt_id=olt_id, profile_type='sla', name=name,
+                            sir=up_cir, pir=up_pir, assured_bandwidth=down_cir, max_bandwidth=down_pir
+                        ))
+                    db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+    # --- END: AUTO-SYNC EPON SLA PROFILES ---
+
     from cache import cache_get, cache_set
     cache_key = f"olt:{olt_id}:speed-profiles-full"
     cached = cache_get(cache_key)
@@ -5110,6 +5165,113 @@ def delete_wan_ip_profile(olt_id, profile_id):
         except Exception:
             pass
     return jsonify({'success': success, 'message': msg})
+
+
+# ==================== EPON SLA PROFILE MANAGEMENT ====================
+
+@app.route('/api/olt/<int:olt_id>/sla/add', methods=['POST'])
+@permission_required('settings_ip_olts')
+def add_sla_profile(olt_id):
+    """Add a new EPON SLA profile"""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'success': False, 'message': 'Profile name is required'})
+
+    up_cir = data.get('up_cir', '0')
+    up_pir = data.get('up_pir', '1000000')
+    down_cir = data.get('down_cir', '0')
+    down_pir = data.get('down_pir', '1000000')
+
+    from snmp_collector import create_cli_collector
+    tc = create_cli_collector(olt)
+
+    try:
+        tn = tc._connect()
+        if not tn:
+            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+
+        tc._send_command(tn, 'configure terminal', timeout=10)
+        tc._send_command(tn, 'epon', timeout=10)
+        tc._send_command(tn, f'onu-profile sla {name}', timeout=10)
+
+        tc._send_command(tn, f'upstream pir {up_pir} cir {up_cir}', timeout=10)
+        tc._send_command(tn, f'downstream pir {down_pir} cir {down_cir}', timeout=10)
+
+        out = tc._send_command(tn, 'end', timeout=10)
+        tn.close()
+
+        if '%Error' in out or 'Invalid' in out or 'Incomplete' in out:
+            return jsonify({'success': False, 'message': f'Failed to create SLA profile: {out.strip()}'})
+
+        profile = SpeedProfile(
+            olt_id=olt_id,
+            profile_type='sla',
+            name=name,
+            sir=str(up_cir),
+            pir=str(up_pir),
+            assured_bandwidth=str(down_cir),
+            max_bandwidth=str(down_pir)
+        )
+        db.session.add(profile)
+        db.session.commit()
+
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:speed-profiles")
+            cache_clear(f"olt:{olt_id}:speed-profiles-full")
+        except Exception:
+            pass
+
+        return jsonify({'success': True, 'message': f'EPON SLA Profile {name} created successfully'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/olt/<int:olt_id>/sla/<int:profile_id>/delete', methods=['POST'])
+@permission_required('settings_ip_olts')
+def delete_sla_profile(olt_id, profile_id):
+    """Delete an EPON SLA profile"""
+    olt = db.session.get(OLT, olt_id)
+    profile = db.session.get(SpeedProfile, profile_id)
+    if not olt or not profile:
+        return jsonify({'success': False, 'message': 'Not found'}), 404
+
+    from snmp_collector import create_cli_collector
+    tc = create_cli_collector(olt)
+
+    try:
+        tn = tc._connect()
+        if not tn:
+            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+
+        tc._send_command(tn, 'configure terminal', timeout=10)
+        tc._send_command(tn, 'epon', timeout=10)
+        out = tc._send_command(tn, f'no onu-profile sla {profile.name}', timeout=10)
+        tc._send_command(tn, 'end', timeout=10)
+        tn.close()
+
+        if '%Error' in out or 'Invalid' in out or 'used' in out.lower():
+            return jsonify({'success': False, 'message': f'Failed to delete SLA profile (it might be in use): {out.strip()}'})
+
+        db.session.delete(profile)
+        db.session.commit()
+
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:speed-profiles")
+            cache_clear(f"olt:{olt_id}:speed-profiles-full")
+        except Exception:
+            pass
+
+        return jsonify({'success': True, 'message': f'EPON SLA Profile {profile.name} deleted successfully'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 
 # ==================== DB-BACKED ENDPOINTS FOR SPA ====================

@@ -26,6 +26,7 @@ interface WizardData {
   description: string;
   tcontProfile: string;
   trafficProfile: string;
+  slaProfile: string;
   vlan: number;
   configure: boolean;
   template: string;
@@ -389,7 +390,7 @@ export function RegisterWizard() {
   const [step, setStep] = useState(1);
   const [data, setData] = useState<WizardData>({
     oltId: 0, selectedOnus: [], onuType: 'All', namePrefix: '',
-    description: '', tcontProfile: '', trafficProfile: '', vlan: 100, configure: true,
+    description: '', tcontProfile: '', trafficProfile: '', slaProfile: '', vlan: 100, configure: true,
     template: 'bridge', extra: {}, technicianId: null,
   });
   const [scanning, setScanning] = useState(false);
@@ -397,6 +398,7 @@ export function RegisterWizard() {
   const [onuTypes, setOnuTypes] = useState<string[]>([]);
   const [tcontProfiles, setTcontProfiles] = useState<string[]>([]);
   const [trafficProfiles, setTrafficProfiles] = useState<string[]>([]);
+  const [slaProfiles, setSlaProfiles] = useState<string[]>([]);
   const [vlanList, setVlanList] = useState<Array<{ vlan_id: number; name: string }>>([]);
   const [wanIpProfiles, setWanIpProfiles] = useState<Array<{ name: string; vlan: number; ip_mode: string }>>([]);
   const [tr069Profiles, setTr069Profiles] = useState<Array<{ id: number; name: string; acs_url: string; acs_username: string; acs_password: string; vlan: number; vlan_mode: string; default_olt_id: number | null }>>([]);
@@ -425,6 +427,13 @@ export function RegisterWizard() {
       .then(r => r.json()).then(d => {
         if (d.success && d.tcont) setTcontProfiles(d.tcont);
         if (d.success && d.traffic) setTrafficProfiles(d.traffic);
+      }).catch(() => {});
+
+    fetch(`/api/olt/${data.oltId}/speed-profiles-full`, { credentials: 'include' })
+      .then(r => r.json()).then(d => {
+        if (d.success && d.speed_profiles) {
+          setSlaProfiles(d.speed_profiles.filter((p: any) => p.profile_type === 'sla').map((p: any) => p.name));
+        }
       }).catch(() => {});
 
     // Fetch VLAN list
@@ -516,6 +525,7 @@ export function RegisterWizard() {
             onu_id: onu.onu_id || (i + 1), onu_type: onuTypeToSend, serial: onu.sn,
             vlan: data.vlan, tcont_profile: data.tcontProfile,
             traffic_profile: data.trafficProfile,
+            sla_profile: data.slaProfile,
             name: data.namePrefix || '',
             description: data.description, configure: data.configure,
             template: data.template, extra: extraToSend,
@@ -742,27 +752,44 @@ export function RegisterWizard() {
               {onuTypes.length > 0 && <p className="text-xs text-tx3 mt-1">{onuTypes.length} types available from OLT</p>}
             </div>
 
-            {/* TCONT & Traffic Profile */}
-            <div className="grid grid-cols-2 gap-2 md:gap-3">
-              <div>
-                <label className="label-sm mb-1.5">TCONT Profile <span className="text-tx3">(Upload)</span></label>
-                <select value={data.tcontProfile} onChange={e => update('tcontProfile', e.target.value)}
-                  className="input-field">
-                  <option value="">Select profile...</option>
-                  {tcontProfiles.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-                {tcontProfiles.length > 0 && <p className="text-xs text-tx3 mt-1">{tcontProfiles.length} TCONT profiles</p>}
-              </div>
-              <div>
-                <label className="label-sm mb-1.5">Traffic Profile <span className="text-tx3">(Download)</span></label>
-                <select value={data.trafficProfile} onChange={e => update('trafficProfile', e.target.value)}
-                  className="input-field">
-                  <option value="">None (no DL limit)</option>
-                  {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-                {trafficProfiles.length > 0 && <p className="text-xs text-tx3 mt-1">{trafficProfiles.length} traffic profiles</p>}
-              </div>
-            </div>
+            {/* TCONT/Traffic or SLA Profile */}
+            {(() => {
+              const isEponUI = data.selectedOnus.length > 0 && (data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon === true);
+              return isEponUI ? (
+                <div className="grid grid-cols-1 gap-2 md:gap-3">
+                  <div>
+                    <label className="label-sm mb-1.5">EPON SLA Profile <span className="text-tx3">(Speed Limit)</span></label>
+                    <select value={data.slaProfile} onChange={e => update('slaProfile', e.target.value)}
+                      className="input-field">
+                      <option value="">— No SLA (Default) —</option>
+                      {slaProfiles.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                    {slaProfiles.length > 0 && <p className="text-xs text-tx3 mt-1">{slaProfiles.length} SLA profiles</p>}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 md:gap-3">
+                  <div>
+                    <label className="label-sm mb-1.5">TCONT Profile <span className="text-tx3">(Upload)</span></label>
+                    <select value={data.tcontProfile} onChange={e => update('tcontProfile', e.target.value)}
+                      className="input-field">
+                      <option value="">Select profile...</option>
+                      {tcontProfiles.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                    {tcontProfiles.length > 0 && <p className="text-xs text-tx3 mt-1">{tcontProfiles.length} TCONT profiles</p>}
+                  </div>
+                  <div>
+                    <label className="label-sm mb-1.5">Traffic Profile <span className="text-tx3">(Download)</span></label>
+                    <select value={data.trafficProfile} onChange={e => update('trafficProfile', e.target.value)}
+                      className="input-field">
+                      <option value="">None (no DL limit)</option>
+                      {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                    {trafficProfiles.length > 0 && <p className="text-xs text-tx3 mt-1">{trafficProfiles.length} traffic profiles</p>}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* VLAN */}
             <div>
