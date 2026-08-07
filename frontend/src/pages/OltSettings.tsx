@@ -1113,7 +1113,7 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
                   <input type="time" value={backupTime}
                     onChange={e => setBackupTime(e.target.value)}
                     className="px-2 py-1 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none" />
-                  <span className="text-xs text-tx3">(empty = anytime)</span>
+                  <span className="text-xs text-tx3">(empty = anytime, uses system timezone)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={saveSettings} disabled={saving}

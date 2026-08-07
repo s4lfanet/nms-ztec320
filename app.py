@@ -6601,7 +6601,10 @@ def public_branding():
     else:
         root_domain = base
         nms_prefix = ''
-    return jsonify({'nms_name': brand['nms_name'], 'base_domain': root_domain, 'nms_prefix': nms_prefix})
+    # Include system timezone for frontend date formatting
+    tz_cfg = SystemConfig.query.filter_by(key='timezone').first()
+    system_timezone = tz_cfg.value if tz_cfg and tz_cfg.value else 'Asia/Jakarta'
+    return jsonify({'nms_name': brand['nms_name'], 'base_domain': root_domain, 'nms_prefix': nms_prefix, 'timezone': system_timezone})
 
 
 # WA notification functions moved to services_wa.py

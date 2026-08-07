@@ -34,11 +34,23 @@ export function statusColor(status: string): string {
   }
 }
 
+// System timezone — fetched from branding API, defaults to Asia/Jakarta
+let _systemTimezone = 'Asia/Jakarta';
+
+export function setSystemTimezone(tz: string) {
+  if (tz) _systemTimezone = tz;
+}
+
+export function getSystemTimezone(): string {
+  return _systemTimezone;
+}
+
 export function formatDate(dateStr: string | null): string {
   if (!dateStr) return 'Never';
   return new Date(dateStr).toLocaleString('id-ID', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
+    timeZone: _systemTimezone,
   });
 }
 
