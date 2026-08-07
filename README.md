@@ -27,6 +27,7 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - TR069/ACS profile support untuk Fiberhome VEIP template
 - **EPON support**: Deteksi otomatis kartu ETG, CLI prefix `epon-olt_`/`epon-onu_`, scan uncfg EPON, script preview dinamis
 - **EPON ONU registration**: MAC address diformat dotted (`xxxx.xxxx.xxxx`) untuk CLI ZTE, ONU type `ALL-EPON` (bukan `All`), keyword `mac` (bukan `sn`), skip GPON-only template commands (tcont/gemport), apply basic bridge service via `service-port`
+- **EPON SLA Profile**: Auto-sync SLA profiles dari OLT (`show onu-profile sla`), API endpoints untuk add/delete, UI management di OLT Configuration, SLA profile selector di Provision/Register Wizard untuk EPON ONUs
 - **Replace ONU (Swap SN/MAC)**: Ganti perangkat ONU rusak dengan SN/MAC baru tanpa konfigurasi ulang manual. Backup config → delete old → register new → re-apply config. Vendor validation (ZTE/FiberHome/Huawei), retry mechanism, progress logging
 
 ### Alerting & Monitoring
@@ -61,6 +62,7 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Customizable column visibility dan sort order (desktop & mobile)
 - Configurable RX power color ranges dengan preview
 - Signal filter thresholds (critical/good) dengan slider
+- **System Timezone**: Pilih timezone sistem (Asia/Jakarta, WITA, WIT, dll) dari Customization page. Timezone digunakan untuk auto-backup scheduling, UI display, dan logging. Database tetap simpan UTC, hanya display yang dikonversi
 - Role-based access control dengan 18 granular permissions
 - 4 default roles: Full Access, Viewer, Limited, Technician
 - Super admin bypass: `is_super_admin` → `all_olt` → specific permission
