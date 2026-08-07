@@ -6265,8 +6265,13 @@ def get_alert_rules():
         'check_offline': r.check_offline, 'check_dyinggasp': r.check_dyinggasp,
         'check_los': r.check_los, 'check_rx_power': r.check_rx_power,
         'rx_threshold': r.rx_threshold, 'rx_change_threshold': r.rx_change_threshold,
+        'check_olt_offline': r.check_olt_offline, 'check_olt_cpu': r.check_olt_cpu,
+        'check_olt_memory': r.check_olt_memory, 'check_olt_temperature': r.check_olt_temperature,
+        'olt_cpu_threshold': r.olt_cpu_threshold, 'olt_memory_threshold': r.olt_memory_threshold,
+        'olt_temp_threshold': r.olt_temp_threshold,
         'notify_bell': r.notify_bell, 'notify_telegram': r.notify_telegram,
-        'notify_whatsapp': r.notify_whatsapp, 'target_roles': r.target_roles or '',
+        'notify_whatsapp': r.notify_whatsapp, 'notify_whatsapp_native': r.notify_whatsapp_native,
+        'target_roles': r.target_roles or '',
     } for r in rules]})
 
 
@@ -6280,7 +6285,11 @@ def update_alert_rule(rule_id):
     data = request.get_json() or {}
     for field in ['name', 'enabled', 'check_offline', 'check_dyinggasp', 'check_los',
                   'check_rx_power', 'rx_threshold', 'rx_change_threshold',
-                  'notify_bell', 'notify_telegram', 'notify_whatsapp', 'target_roles']:
+                  'check_olt_offline', 'check_olt_cpu', 'check_olt_memory',
+                  'check_olt_temperature', 'olt_cpu_threshold', 'olt_memory_threshold',
+                  'olt_temp_threshold',
+                  'notify_bell', 'notify_telegram', 'notify_whatsapp',
+                  'notify_whatsapp_native', 'target_roles']:
         if field in data:
             setattr(rule, field, data[field])
     db.session.commit()
@@ -6855,6 +6864,16 @@ def migrate_schema():
 
     # AlertHistory table - add first_seen_at for debounce
     add_col('alert_history', 'first_seen_at', 'DATETIME', None)
+
+    # AlertRule table - add notify_whatsapp_native + OLT health fields
+    add_col('alert_rules', 'notify_whatsapp_native', 'BOOLEAN', '0')
+    add_col('alert_rules', 'check_olt_offline', 'BOOLEAN', '1')
+    add_col('alert_rules', 'check_olt_cpu', 'BOOLEAN', '1')
+    add_col('alert_rules', 'check_olt_memory', 'BOOLEAN', '1')
+    add_col('alert_rules', 'check_olt_temperature', 'BOOLEAN', '1')
+    add_col('alert_rules', 'olt_cpu_threshold', 'FLOAT', '80.0')
+    add_col('alert_rules', 'olt_memory_threshold', 'FLOAT', '80.0')
+    add_col('alert_rules', 'olt_temp_threshold', 'FLOAT', '60.0')
 
 
 # ==================== FTTH INFRASTRUCTURE APIs ====================

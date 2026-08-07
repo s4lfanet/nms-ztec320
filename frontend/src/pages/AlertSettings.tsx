@@ -22,7 +22,7 @@ export function AlertSettings() {
     { id: 'whatsapp_native' as const, label: 'WA Native', icon: <Smartphone size={15} />, superAdmin: true },
     { id: 'cronjob' as const, label: 'Cron Job', icon: <Clock size={15} />, superAdmin: true },
   ];
-  const visibleTabs = allTabs;
+  const visibleTabs = allTabs.filter(tab => !tab.superAdmin || isSuperAdmin);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -46,8 +46,8 @@ export function AlertSettings() {
       {activeSection === 'rules' && <AlertRulesSection />}
       {activeSection === 'telegram' && <TelegramSection />}
       {activeSection === 'whatsapp' && <WhatsAppSection />}
-      {activeSection === 'whatsapp_native' && <WhatsAppNativeSection />}
-      {activeSection === 'cronjob' && <CronjobSection />}
+      {activeSection === 'whatsapp_native' && isSuperAdmin && <WhatsAppNativeSection />}
+      {activeSection === 'cronjob' && isSuperAdmin && <CronjobSection />}
     </div>
   );
 }
@@ -208,11 +208,12 @@ function RuleCard({ rule, onSave }: { rule: Record<string, unknown>; onSave: (r:
 
           <div>
             <label className="text-xs text-tx3 block mb-2">Notification Channels</label>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               {[
                 { key: 'notify_bell', label: 'In-App Bell' },
                 { key: 'notify_telegram', label: 'Telegram' },
                 { key: 'notify_whatsapp', label: 'WhatsApp' },
+                { key: 'notify_whatsapp_native', label: 'WA Native' },
               ].map(ch => (
                 <button key={ch.key} onClick={() => toggleField(ch.key)}
                   className={cn('flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-medium transition-all',

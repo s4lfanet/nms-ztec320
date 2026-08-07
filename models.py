@@ -498,6 +498,7 @@ class AlertRule(db.Model):
     notify_bell = db.Column(db.Boolean, default=True)
     notify_telegram = db.Column(db.Boolean, default=False)
     notify_whatsapp = db.Column(db.Boolean, default=False)
+    notify_whatsapp_native = db.Column(db.Boolean, default=False)
     # Target roles (empty = all)
     target_roles = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))

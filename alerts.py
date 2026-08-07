@@ -623,12 +623,15 @@ def _check_onus_for_tenant(force_send=False):
         except Exception as e:
             logger.error(f"[ALERT] Unregistered check failed for {olt.name}: {e}")
 
-    # ─── Create notifications ───
+    # ─── Create notifications (respect notify_bell flag) ───
     if notifications_to_create:
-        for notif_data in notifications_to_create:
-            notif = Notification(**notif_data)
-            db.session.add(notif)
-        logger.info(f"[ALERT] Created {len(notifications_to_create)} notifications")
+        if rule.notify_bell:
+            for notif_data in notifications_to_create:
+                notif = Notification(**notif_data)
+                db.session.add(notif)
+            logger.info(f"[ALERT] Created {len(notifications_to_create)} notifications")
+        else:
+            logger.info(f"[ALERT] Bell notifications skipped (disabled in rule): {len(notifications_to_create)} suppressed")
 
     # ─── Auto-cleanup: delete old read/resolved notifications (>7 days) ───
     try:
@@ -675,10 +678,10 @@ def _check_onus_for_tenant(force_send=False):
 
     # ─── Send external alerts ───
     if alerts_to_send:
-        _send_external_alerts(alerts_to_send)
+        _send_external_alerts(alerts_to_send, rule)
 
     if recovery_to_send:
-        _send_external_alerts(recovery_to_send)
+        _send_external_alerts(recovery_to_send, rule)
 
 
 # ─── Batch builders ───
@@ -1172,8 +1175,9 @@ def _build_unregistered_alert(olt, unregistered, now, notifications, alerts, for
 
 # ─── External alert senders ───
 
-def _send_external_alerts(alerts):
-    """Send batched alerts to Telegram, WhatsApp (third-party), and WhatsApp Native."""
+def _send_external_alerts(alerts, rule=None):
+    """Send batched alerts to Telegram, WhatsApp (third-party), and WhatsApp Native.
+    Respects rule.notify_telegram, rule.notify_whatsapp, rule.notify_whatsapp_native flags."""
     from models import BotConfig
 
     def find_config(bot_type):
@@ -1184,26 +1188,35 @@ def _send_external_alerts(alerts):
 
     logger.info(f"[ALERT] Sending external alerts: count={len(alerts)}")
 
-    telegram_config = find_config('telegram')
-    if telegram_config and telegram_config.bot_token and telegram_config.chat_id:
-        logger.info(f"[ALERT] Telegram: chat_id={telegram_config.chat_id}")
-        _send_telegram(telegram_config, alerts)
+    if rule and not rule.notify_telegram:
+        logger.info("[ALERT] Telegram: skipped (disabled in rule)")
     else:
-        logger.info("[ALERT] Telegram: skipped (no valid config)")
+        telegram_config = find_config('telegram')
+        if telegram_config and telegram_config.bot_token and telegram_config.chat_id:
+            logger.info(f"[ALERT] Telegram: chat_id={telegram_config.chat_id}")
+            _send_telegram(telegram_config, alerts)
+        else:
+            logger.info("[ALERT] Telegram: skipped (no valid config)")
 
-    whatsapp_config = find_config('whatsapp')
-    if whatsapp_config and whatsapp_config.api_url:
-        logger.info(f"[ALERT] WhatsApp: target={whatsapp_config.phone_number}, url={whatsapp_config.api_url}")
-        _send_whatsapp(whatsapp_config, alerts)
+    if rule and not rule.notify_whatsapp:
+        logger.info("[ALERT] WhatsApp: skipped (disabled in rule)")
     else:
-        logger.info("[ALERT] WhatsApp: skipped (no valid config)")
+        whatsapp_config = find_config('whatsapp')
+        if whatsapp_config and whatsapp_config.api_url:
+            logger.info(f"[ALERT] WhatsApp: target={whatsapp_config.phone_number}, url={whatsapp_config.api_url}")
+            _send_whatsapp(whatsapp_config, alerts)
+        else:
+            logger.info("[ALERT] WhatsApp: skipped (no valid config)")
 
-    native_config = find_config('whatsapp_native')
-    if native_config and native_config.api_url:
-        logger.info(f"[ALERT] WA Native: target={native_config.phone_number}, url={native_config.api_url}")
-        _send_whatsapp_native(native_config, alerts)
+    if rule and not rule.notify_whatsapp_native:
+        logger.info("[ALERT] WA Native: skipped (disabled in rule)")
     else:
-        logger.info("[ALERT] WA Native: skipped (no valid config)")
+        native_config = find_config('whatsapp_native')
+        if native_config and native_config.api_url:
+            logger.info(f"[ALERT] WA Native: target={native_config.phone_number}, url={native_config.api_url}")
+            _send_whatsapp_native(native_config, alerts)
+        else:
+            logger.info("[ALERT] WA Native: skipped (no valid config)")
 
     # Send to technicians with receive_alerts permission and phone number
     _send_technician_alerts(alerts)
