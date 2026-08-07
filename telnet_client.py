@@ -1096,11 +1096,12 @@ class TelnetCollector:
             return False, str(e)
 
     def configure_onu_profile(self, frame, slot, port, onu_id,
-                               tcont_profile='1G', tcont_id=1, gemport_id=1,
+                               tcont_profile='1G', traffic_profile='', sla_profile='',
+                               tcont_id=1, gemport_id=1,
                                user_vlan=100, service_vlan=100, service_port=1, vport=1,
                                name='', description='', is_epon=False):
         """Configure TCONT/GEM/service-port for an ONU after registration.
-        Also sets name and description if provided.
+        Also sets name, description, and EPON SLA.
         """
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
@@ -1124,6 +1125,10 @@ class TelnetCollector:
                 if name or description:
                     tn.write(f'property description $${name or ""}$${description or ""}\n')
                     tn.read_until(b'#', timeout=5)
+                # EPON: attach SLA profile for speed limiting
+                if sla_profile:
+                    tn.write(f'sla-profile {sla_profile} vport {vport}\n')
+                    tn.read_until(b'#', timeout=5)
             else:
                 if name:
                     tn.write(f'name {name}\n')
@@ -1145,6 +1150,11 @@ class TelnetCollector:
                 tn.write(f'gemport {gemport_id} tcont {tcont_id}\n')
                 tn.read_until(b'#', timeout=5)
 
+                # Traffic profile (download speed limit)
+                if traffic_profile:
+                    tn.write(f'gemport {gemport_id} traffic-limit downstream {traffic_profile}\n')
+                    tn.read_until(b'#', timeout=5)
+
             # Service port (applies to both GPON and EPON)
             tn.write(f'service-port {service_port} vport {vport} user-vlan {user_vlan} vlan {service_vlan}\n')
             tn.read_until(b'#', timeout=5)
@@ -1163,7 +1173,7 @@ class TelnetCollector:
 
     def register_and_configure(self, frame, slot, port, onu_id, onu_type='All',
                                 serial='', vlan=100, tcont_profile='1G',
-                                name='', description='', is_epon=False):
+                                name='', description='', is_epon=False, sla_profile=''):
         """Register ONU + configure profile matching oltc320 register_onu_stepbystep().
         Uses 'type All' (universal), step-by-step with error checking, 2s sleep.
         """
@@ -1221,6 +1231,8 @@ class TelnetCollector:
                 # Name/description uses 'property description $$Name$$Description' format.
                 if name or description:
                     self._send_cmd_check(tn, f'property description $${name or ""}$${description or ""}')
+                if sla_profile:
+                    self._send_cmd_check(tn, f'sla-profile {sla_profile} vport 1')
                 self._send_cmd_check(tn, f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
                 self._send_command(tn, 'end')
                 tn.close()
@@ -1938,7 +1950,7 @@ class TelnetCollector:
 
     def register_unified(self, frame, slot, port, onu_id, serial, onu_type,
                          tcont_profile, services, use_veip=None,
-                         traffic_profile='', wifi_config=None,
+                         traffic_profile='', sla_profile='', wifi_config=None,
                          tr069_config=None, name='', description='',
                          extra=None, is_epon=False):
         """Unified ONU registration — works for all vendors.
@@ -2023,6 +2035,9 @@ class TelnetCollector:
                     return True, f'ONU registered but basic service skipped (interface not ready)'
                 if name or description:
                     self._send_cmd_check(tn, f'property description $${name or ""}$${description or ""}')
+                # EPON: attach SLA profile for speed limiting
+                if sla_profile:
+                    self._send_cmd_check(tn, f'sla-profile {sla_profile} vport 1')
                 svc_vlan = int(services[0].get('vlan', 100)) if services else 100
                 self._send_cmd_check(tn, f'service-port 1 vport 1 user-vlan {svc_vlan} vlan {svc_vlan}')
                 self._send_command(tn, 'exit')

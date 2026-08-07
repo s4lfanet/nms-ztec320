@@ -74,6 +74,7 @@ interface WizardState {
   description: string;
   tcontProfile: string;
   trafficProfile: string;
+  slaProfile: string;
   useVeip: boolean | null; // null = auto-detect
   services: ServiceEntry[];
   wifi: WifiConfig;
@@ -296,6 +297,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
     description: '',
     tcontProfile: '',
     trafficProfile: '',
+    slaProfile: '',
     useVeip: null,
     services: [newService({ vlan: 100 })],
     wifi: { ssids: [], ssid1_name: '', ssid1_pass: '', ssid1_auth: 'wpa2', ssid2_name: '', ssid2_pass: '', ssid2_auth: 'wpa2' },
@@ -308,6 +310,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
   const [onuTypes, setOnuTypes] = useState<string[]>([]);
   const [tcontProfiles, setTcontProfiles] = useState<string[]>([]);
   const [trafficProfiles, setTrafficProfiles] = useState<string[]>([]);
+  const [slaProfiles, setSlaProfiles] = useState<string[]>([]);
   const [vlanList, setVlanList] = useState<Array<{ vlan_id: number; name: string }>>([]);
   const [wanIpProfiles, setWanIpProfiles] = useState<Array<{ name: string }>>([]);
   const [tr069Profiles, setTr069Profiles] = useState<Array<{ id: number; name: string; acs_url: string; acs_username: string; acs_password: string; vlan: number; vlan_mode: string }>>([]);
@@ -360,6 +363,13 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
         if (d.success && d.traffic) setTrafficProfiles(d.traffic);
         if (d.success && d.wan_ip_profiles) setWanIpProfiles(d.wan_ip_profiles);
         if (d.tcont?.length && !data.tcontProfile) setData(prev => ({ ...prev, tcontProfile: d.tcont[0] }));
+      }).catch(() => {});
+
+    fetch(`/api/olt/${data.oltId}/speed-profiles-full`, { credentials: 'include' })
+      .then(r => r.json()).then(d => {
+        if (d.success && d.speed_profiles) {
+          setSlaProfiles(d.speed_profiles.filter((p: any) => p.profile_type === 'sla').map((p: any) => p.name));
+        }
       }).catch(() => {});
     fetch(`/api/olt/${data.oltId}/vlans`, { credentials: 'include' })
       .then(r => r.json()).then(d => {
@@ -435,6 +445,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             onu_id: onu.onu_id || (i + 1), serial: onu.sn,
             onu_type: onuTypeToSend, tcont_profile: data.tcontProfile,
             traffic_profile: data.trafficProfile,
+            sla_profile: data.slaProfile,
             name: data.namePrefix || '',
             description: data.description,
             services: data.services.map(s => ({
@@ -746,23 +757,38 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           <p className="text-xs text-tx3">Tambah VLAN sesuai kebutuhan. Setiap VLAN bisa punya WAN config berbeda (Bridge/DHCP/PPPoE).</p>
 
           {/* Global Profiles */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-tx3 mb-1 block">TCONT Profile (Upload)</label>
-              <select value={data.tcontProfile} onChange={e => update('tcontProfile', e.target.value)} className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm">
-                {tcontProfiles.length > 0 ? tcontProfiles.map(p => <option key={p} value={p}>{p}</option>) : (
-                  <><option value="1G">1G</option><option value="UP-PPPOE">UP-PPPOE</option></>
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-tx3 mb-1 block">Traffic Profile (Download)</label>
-              <select value={data.trafficProfile} onChange={e => update('trafficProfile', e.target.value)} className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm">
-                <option value="">— Same as TCONT —</option>
-                {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-          </div>
+          {(() => {
+            const isEponUI = data.selectedOnus.length > 0 && (data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon === true);
+            return isEponUI ? (
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="text-xs text-tx3 mb-1 block">EPON SLA Profile (Speed Limit)</label>
+                  <select value={data.slaProfile} onChange={e => update('slaProfile', e.target.value)} className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm">
+                    <option value="">— No SLA (Default) —</option>
+                    {slaProfiles.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-tx3 mb-1 block">TCONT Profile (Upload)</label>
+                  <select value={data.tcontProfile} onChange={e => update('tcontProfile', e.target.value)} className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm">
+                    {tcontProfiles.length > 0 ? tcontProfiles.map(p => <option key={p} value={p}>{p}</option>) : (
+                      <><option value="1G">1G</option><option value="UP-PPPOE">UP-PPPOE</option></>
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-tx3 mb-1 block">Traffic Profile (Download)</label>
+                  <select value={data.trafficProfile} onChange={e => update('trafficProfile', e.target.value)} className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm">
+                    <option value="">— Same as TCONT —</option>
+                    {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* VEIP toggle */}
           <div className="flex items-center gap-3 p-3 rounded-lg bg-glass border border-brd">

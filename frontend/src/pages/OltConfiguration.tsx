@@ -1490,6 +1490,49 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
     mutationFn: async (id: number) => { await fetch(`/api/olt/${oltId}/traffic/${id}/delete`, { method: 'POST', credentials: 'include' }); },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] }); toast.success('Traffic profile deleted'); },
   });
+  // --- EPON SLA PROFILES ---
+  const [slaName, setSlaName] = useState('');
+  const [upCir, setUpCir] = useState('0');
+  const [upPir, setUpPir] = useState('1000000');
+  const [downCir, setDownCir] = useState('0');
+  const [downPir, setDownPir] = useState('1000000');
+
+  const handleAddSla = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!slaName) return toast.error('SLA Name is required');
+    try {
+      const res = await fetch(`/api/olt/${oltId}/sla/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: slaName, up_cir: upCir, up_pir: upPir, down_cir: downCir, down_pir: downPir
+        })
+      });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message);
+      toast.success('EPON SLA Profile created successfully');
+      setSlaName('');
+      qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to add SLA profile');
+    }
+  };
+
+  const handleDeleteSla = async (profileId: number) => {
+    if (!window.confirm('Are you sure you want to delete this SLA profile?')) return;
+    try {
+      const res = await fetch(`/api/olt/${oltId}/sla/${profileId}/delete`, {
+        method: 'POST', credentials: 'include'
+      });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message);
+      toast.success('EPON SLA Profile deleted successfully');
+      qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete SLA profile');
+    }
+  };
   const [showTcont, setShowTcont] = useState(false);
   const [tcontForm, setTcontForm] = useState({ name: '', type: '4', max_bandwidth: '' });
   const [showTraffic, setShowTraffic] = useState(false);
@@ -1568,6 +1611,83 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
               ))}
             </div>
           ) : <div className="text-center py-6 text-tx3 text-xs"><ArrowDown size={24} className="mx-auto mb-1 text-tx3/30" />No download profiles</div>}
+        </div>
+      </div>
+
+      {/* ================= EPON SLA PROFILES SECTION ================= */}
+      <div className="mt-8 bg-surface dark:bg-[#111C30] rounded-xl border border-border dark:border-gray-800 overflow-hidden">
+        <div className="p-4 border-b border-border dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-[#152238] fiber-beam">
+          <h3 className="font-bold text-text dark:text-gray-100 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-accent dark:bg-[#00D9C0]"></span>
+            EPON SLA Profiles
+          </h3>
+        </div>
+
+        <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1">
+            <form onSubmit={handleAddSla} className="flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Profile Name</label>
+                <input type="text" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-text dark:text-white focus:outline-none focus:ring-2 focus:ring-accent" placeholder="e.g. 50M-SLA" value={slaName} onChange={(e) => setSlaName(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Up CIR (Kbps)</label>
+                  <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-text dark:text-white focus:outline-none focus:ring-2 focus:ring-accent" value={upCir} onChange={(e) => setUpCir(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Up PIR (Kbps)</label>
+                  <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-text dark:text-white focus:outline-none focus:ring-2 focus:ring-accent" value={upPir} onChange={(e) => setUpPir(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Down CIR (Kbps)</label>
+                  <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-text dark:text-white focus:outline-none focus:ring-2 focus:ring-accent" value={downCir} onChange={(e) => setDownCir(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Down PIR (Kbps)</label>
+                  <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-text dark:text-white focus:outline-none focus:ring-2 focus:ring-accent" value={downPir} onChange={(e) => setDownPir(e.target.value)} />
+                </div>
+              </div>
+              <button type="submit" disabled={!canManage} className="mt-2 w-full bg-accent hover:bg-teal-500 text-white dark:text-gray-900 font-medium py-2 rounded-lg transition-colors text-sm disabled:opacity-50">
+                Add SLA Profile
+              </button>
+            </form>
+          </div>
+
+          <div className="lg:col-span-2 overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-gray-100 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400">
+                <tr>
+                  <th className="px-4 py-3 font-medium rounded-tl-lg">Name</th>
+                  <th className="px-4 py-3 font-medium">Upstream (CIR/PIR)</th>
+                  <th className="px-4 py-3 font-medium">Downstream (CIR/PIR)</th>
+                  <th className="px-4 py-3 font-medium text-right rounded-tr-lg">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                {profiles.filter((p: any) => p.profile_type === 'sla').length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500">No EPON SLA profiles configured.</td>
+                  </tr>
+                ) : (
+                  profiles.filter((p: any) => p.profile_type === 'sla').map((p: any) => (
+                    <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                      <td className="px-4 py-3 font-medium text-text dark:text-white">{p.name}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.sir || 0} / {p.pir || 0} Kbps</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.assured_bandwidth || 0} / {p.max_bandwidth || 0} Kbps</td>
+                      <td className="px-4 py-3 text-right">
+                        {canManage && (
+                          <button onClick={() => handleDeleteSla(Number(p.id))} className="text-red-500 hover:text-red-600 dark:hover:text-red-400 text-sm font-medium transition-colors">
+                            Delete
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
