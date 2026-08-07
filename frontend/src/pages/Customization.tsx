@@ -5,7 +5,7 @@ import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import {
   Eye, EyeOff, Monitor, Smartphone, Save, ArrowUp, ArrowDown,
-  RotateCcw, Signal, AlertTriangle, CheckCircle, AlertCircle, Palette, Plus, Trash2
+  RotateCcw, Signal, AlertTriangle, CheckCircle, AlertCircle, Palette, Plus, Trash2, Globe, Clock
 } from 'lucide-react';
 
 interface Column { id: string; column_name: string; column_key: string; visible_desktop: boolean; visible_mobile: boolean; sort_order: number; }
@@ -35,7 +35,7 @@ function getCellValue(key: string, row: typeof PREVIEW_DATA[0]) {
 
 export function Customization() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'desktop' | 'mobile' | 'signal' | 'rxcolors'>('desktop');
+  const [activeTab, setActiveTab] = useState<'desktop' | 'mobile' | 'signal' | 'rxcolors' | 'timezone'>('desktop');
   const [localColumns, setLocalColumns] = useState<Column[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -136,6 +136,11 @@ export function Customization() {
             className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
               activeTab === 'rxcolors' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
             <Palette size={16} /> RX Colors
+          </button>
+          <button onClick={() => setActiveTab('timezone')}
+            className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
+              activeTab === 'timezone' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
+            <Clock size={16} /> Timezone
           </button>
         </div>
 
@@ -312,6 +317,11 @@ export function Customization() {
         {/* RX Colors Tab */}
         {activeTab === 'rxcolors' && (
           <RxColorsTab />
+        )}
+
+        {/* Timezone Tab */}
+        {activeTab === 'timezone' && (
+          <TimezoneTab />
         )}
       </div>
     </div>
@@ -609,6 +619,133 @@ function RxColorsTab() {
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Timezone Tab ───
+
+const COMMON_TIMEZONES = [
+  { value: 'Asia/Jakarta', label: 'Asia/Jakarta (WIB, UTC+7)' },
+  { value: 'Asia/Makassar', label: 'Asia/Makassar (WITA, UTC+8)' },
+  { value: 'Asia/Jayapura', label: 'Asia/Jayapura (WIT, UTC+9)' },
+  { value: 'Asia/Singapore', label: 'Asia/Singapore (SGT, UTC+8)' },
+  { value: 'Asia/Kuala_Lumpur', label: 'Asia/Kuala_Lumpur (MYT, UTC+8)' },
+  { value: 'Asia/Bangkok', label: 'Asia/Bangkok (ICT, UTC+7)' },
+  { value: 'Asia/Manila', label: 'Asia/Manila (PHT, UTC+8)' },
+  { value: 'Asia/Tokyo', label: 'Asia/Tokyo (JST, UTC+9)' },
+  { value: 'Asia/Hong_Kong', label: 'Asia/Hong_Kong (HKT, UTC+8)' },
+  { value: 'Asia/Dubai', label: 'Asia/Dubai (GST, UTC+4)' },
+  { value: 'Europe/London', label: 'Europe/London (GMT/BST, UTC+0/+1)' },
+  { value: 'Europe/Berlin', label: 'Europe/Berlin (CET, UTC+1)' },
+  { value: 'America/New_York', label: 'America/New_York (EST, UTC-5)' },
+  { value: 'America/Los_Angeles', label: 'America/Los_Angeles (PST, UTC-8)' },
+  { value: 'Australia/Sydney', label: 'Australia/Sydney (AEDT, UTC+11)' },
+  { value: 'UTC', label: 'UTC (Coordinated Universal Time)' },
+];
+
+function TimezoneTab() {
+  const [timezone, setTimezone] = useState('Asia/Jakarta');
+  const [saving, setSaving] = useState(false);
+  const [serverTime, setServerTime] = useState('');
+  const [vpsTime, setVpsTime] = useState('');
+
+  useEffect(() => {
+    fetch('/api/system-config', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.config?.timezone) setTimezone(d.config.timezone);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Live clock preview
+  useEffect(() => {
+    const update = () => {
+      try {
+        const now = new Date();
+        setServerTime(now.toLocaleString('id-ID', { timeZone: timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', day: '2-digit', month: 'short', year: 'numeric' }));
+        setVpsTime(now.toLocaleString('id-ID', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      } catch {
+        setServerTime('Invalid timezone');
+      }
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [timezone]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/system-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ timezone }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        toast.success('Timezone saved. All times will now use ' + timezone);
+        const { setSystemTimezone } = await import('../lib/utils');
+        setSystemTimezone(timezone);
+      } else {
+        toast.error(d.message || 'Failed to save timezone');
+      }
+    } catch {
+      toast.error('Failed to save timezone');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="p-4 md:p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-2"><Clock size={16} className="text-accent" /> System Timezone</h3>
+          <p className="text-xs text-tx3 mt-1">Set timezone used for auto-backup scheduling, timestamps, and UI display.</p>
+        </div>
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all disabled:opacity-50">
+          {saving ? <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> : <Save size={14} />} Save Timezone
+        </button>
+      </div>
+
+      {/* Timezone selector */}
+      <div className="glass-card p-4 border border-brd space-y-4">
+        <div>
+          <label className="text-xs text-tx3 font-medium block mb-2">Select Timezone</label>
+          <select value={timezone} onChange={e => setTimezone(e.target.value)}
+            className="w-full h-10 px-3 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none">
+            {COMMON_TIMEZONES.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+          </select>
+        </div>
+
+        {/* Live time preview */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+          <div className="p-3 rounded-lg bg-glass/50 border border-brd/50">
+            <div className="text-xs text-tx3 mb-1 flex items-center gap-1.5"><Globe size={12} /> Selected Timezone</div>
+            <div className="text-lg font-mono font-semibold text-accent">{serverTime || '...'}</div>
+            <div className="text-xs text-tx3 mt-1">{timezone}</div>
+          </div>
+          <div className="p-3 rounded-lg bg-glass/50 border border-brd/50">
+            <div className="text-xs text-tx3 mb-1 flex items-center gap-1.5"><Clock size={12} /> VPS (UTC)</div>
+            <div className="text-lg font-mono font-semibold text-tx3">{vpsTime || '...'}</div>
+            <div className="text-xs text-tx3 mt-1">Server time</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="p-4 rounded-lg bg-accent/5 border border-accent/20">
+        <h4 className="text-xs font-semibold text-accent mb-2 flex items-center gap-1.5"><AlertCircle size={14} /> How Timezone Affects the System</h4>
+        <ul className="text-xs text-tx3 space-y-1.5 pl-4 list-disc">
+          <li><strong>Auto-Backup</strong>: The "At time" setting in OLT backup config uses this timezone. E.g. "02:00" means 02:00 in the selected timezone.</li>
+          <li><strong>UI Display</strong>: All timestamps (sync time, backup history, logs) are converted from UTC to this timezone for display.</li>
+          <li><strong>Database</strong>: All timestamps remain stored in UTC in the database for consistency. Only display is converted.</li>
+          <li><strong>VPS Time</strong>: The VPS server runs in UTC. NTP should be enabled to keep server time accurate.</li>
+        </ul>
       </div>
     </div>
   );

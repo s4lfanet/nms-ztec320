@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './stores/auth';
 import { AppShell } from './components/layout/AppShell';
 import { Login } from './pages/Login';
+import { setSystemTimezone } from './lib/utils';
 
 // Lazy-loaded dashboard pages
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -97,6 +98,10 @@ export default function App() {
     } else {
       useAuth.setState({ loading: false });
     }
+    // Fetch system timezone for consistent date formatting
+    fetch('/api/public/branding').then(r => r.json()).then(d => {
+      if (d.timezone) setSystemTimezone(d.timezone);
+    }).catch(() => {});
   }, [fetchUser]);
 
   return (

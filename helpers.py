@@ -6,14 +6,29 @@ by route blueprints to avoid code duplication.
 from functools import wraps
 from flask import request, jsonify, flash, redirect, url_for, current_app
 from flask_login import current_user, login_required
-from models import db, OLT, ActionLog
+from models import db, OLT, ActionLog, SystemConfig
 from extensions import logger
+
+
+def get_system_timezone():
+    """Get the configured system timezone from SystemConfig.
+    Defaults to 'Asia/Jakarta' if not set.
+    Used by auto_backup, API responses, and logging for consistent local time.
+    """
+    try:
+        cfg = SystemConfig.query.filter_by(key='timezone').first()
+        if cfg and cfg.value:
+            return cfg.value
+    except Exception:
+        pass
+    return 'Asia/Jakarta'
 
 
 def utc_iso(dt):
     """Serialize a datetime to ISO format with UTC suffix.
     SQLite strips timezone info, so naive datetimes need +00:00 appended
-    so the browser interprets them correctly as UTC."""
+    so the browser interprets them correctly as UTC.
+    The browser then converts to the user's local timezone for display."""
     if not dt:
         return None
     if dt.tzinfo is not None:

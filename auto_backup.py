@@ -27,6 +27,28 @@ from app import app, db
 from models import OLT, OLTConfigBackup, SystemConfig, Notification, User
 
 
+def get_system_timezone():
+    """Get configured timezone from SystemConfig, default Asia/Jakarta."""
+    try:
+        cfg = SystemConfig.query.filter_by(key='timezone').first()
+        if cfg and cfg.value:
+            return cfg.value
+    except Exception:
+        pass
+    return 'Asia/Jakarta'
+
+
+def get_local_now(tz_name):
+    """Get current time in the given timezone as a naive datetime (for comparison)."""
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(tz_name)
+        return datetime.now(tz).replace(tzinfo=None)
+    except Exception:
+        # Fallback: manual UTC+7 offset for Asia/Jakarta
+        return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=7)
+
+
 def notify_backup_failure(olt, error):
     """Create in-app notification for super admin when auto-backup fails."""
     try:
@@ -95,7 +117,9 @@ def prune_old_backups(retention_days):
 
 with app.app_context():
     now = datetime.now(timezone.utc)
-    print(f'[{now.strftime("%Y-%m-%d %H:%M:%S")}] Auto backup started')
+    tz_name = get_system_timezone()
+    local_now = get_local_now(tz_name)
+    print(f'[{now.strftime("%Y-%m-%d %H:%M:%S")} UTC / {local_now.strftime("%H:%M:%S")} {tz_name}] Auto backup started')
 
     # Find OLTs that need backup
     olts = OLT.query.filter_by(auto_backup_enabled=True, telnet_enabled=True).all()
@@ -126,20 +150,19 @@ with app.app_context():
                 print(f'  {olt.name}: Skipped (last backup {interval_val}{unit[:1]} interval not reached)')
                 continue
 
-        # Check time-of-day constraint (auto_backup_time = "HH:MM")
+        # Check time-of-day constraint (auto_backup_time = "HH:MM" in configured timezone)
         backup_time = olt.auto_backup_time or ''
         if backup_time:
             try:
                 bh, bm = map(int, backup_time.split(':'))
-                # Use server local time for time-of-day matching
-                local_now = datetime.now()
+                # Use configured system timezone for time-of-day matching
                 current_hm = local_now.hour * 60 + local_now.minute
                 target_hm = bh * 60 + bm
                 # Allow a 30-minute window (cron runs hourly, so we need some tolerance)
                 diff = abs(current_hm - target_hm)
                 if diff > 30 and diff < (1440 - 30):
                     skipped += 1
-                    print(f'  {olt.name}: Skipped (backup time {backup_time}, now {local_now.strftime("%H:%M")})')
+                    print(f'  {olt.name}: Skipped (backup time {backup_time} {tz_name}, now {local_now.strftime("%H:%M")} {tz_name})')
                     continue
             except (ValueError, IndexError):
                 pass  # Invalid time format, ignore constraint
