@@ -69,3 +69,6 @@ deploy/cloudflared*
 
 # AGENTS.md (AI assistant context, not for repo)
 AGENTS.md
+
+# Backup/reference folders
+speed/
