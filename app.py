@@ -3319,6 +3319,14 @@ def provision_unified():
     tr069_config = data.get('tr069_config')  # None = no tr069
     technician_id = data.get('technician_id')
 
+    if wifi_config and isinstance(wifi_config, dict):
+        ssids_log = wifi_config.get('ssids', [])
+        logger.info(f"[provision_unified] WiFi config received: {len(ssids_log)} SSIDs")
+        for s in ssids_log:
+            logger.info(f"[provision_unified]   SSID {s.get('port','?')}: name='{s.get('name','')}' auth='{s.get('auth','')}' pass={'***' if s.get('pass') else '(empty)'} enabled={s.get('enabled',True)}")
+    else:
+        logger.info(f"[provision_unified] No WiFi config received (wifi_config={type(wifi_config).__name__})")
+
     if not serial:
         return jsonify({'success': False, 'message': 'Serial number required'})
     if not services:
@@ -3397,6 +3405,21 @@ def pre_register_onu():
     traffic_profile = data.get('traffic_profile', '')
     if traffic_profile and 'traffic_profile' not in extra:
         extra['traffic_profile'] = traffic_profile
+
+    # Log WiFi config from extra.ssids for debugging
+    ssids_raw = extra.get('ssids', [])
+    if ssids_raw:
+        if isinstance(ssids_raw, str):
+            import json as _json_dbg
+            try: ssids_dbg = _json_dbg.loads(ssids_raw)
+            except: ssids_dbg = []
+        else:
+            ssids_dbg = ssids_raw
+        logger.info(f"[pre_register] WiFi config received: {len(ssids_dbg)} SSIDs (template={template})")
+        for s in ssids_dbg:
+            logger.info(f"[pre_register]   SSID {s.get('port','?')}: name='{s.get('name','')}' auth='{s.get('auth','')}' pass={'***' if s.get('pass') else '(empty)'} enabled={s.get('enabled',True)}")
+    else:
+        logger.info(f"[pre_register] No WiFi SSIDs in extra (template={template})")
     # Detect EPON from pon_port prefix or explicit is_epon flag
     pon_port = data.get('pon_port', '')
     is_epon = data.get('is_epon', False) or 'epon-olt' in pon_port or 'epon_olt' in pon_port
