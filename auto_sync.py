@@ -23,6 +23,7 @@ from models import (OLT, ONU, OLTSyncStatus, OLTCard, OLTPort, OLTUplink,
                     ONUVlan, ONUType, SpeedProfile, WanIpProfile, Fan,
                     Notification)
 from sync_helper import save_sync_result, check_unregistered_onus
+from sync_lock import acquire_sync_lock, release_sync_lock
 
 FULL_SYNC_INTERVAL = timedelta(hours=6)
 MAX_SYNC_WORKERS = 5
@@ -86,6 +87,12 @@ def _sync_one_olt(olt_id, use_light):
     Returns (olt_id, success: bool, message: str, onu_count: int).
     """
     with app.app_context():
+        # Acquire per-OLT sync lock
+        lock_token = acquire_sync_lock(olt_id, timeout=0)
+        if lock_token is None:
+            print(f'  OLT {olt_id}: Skipped — already syncing')
+            return olt_id, False, "Skipped — already syncing", 0
+
         try:
             olt = db.session.get(OLT, olt_id)
             if not olt:
@@ -168,6 +175,7 @@ def _sync_one_olt(olt_id, use_light):
             print(f'  EXCEPTION: {e}')
             return olt_id, False, str(e)[:200], 0
         finally:
+            release_sync_lock(olt_id, lock_token)
             db.session.remove()
 
 

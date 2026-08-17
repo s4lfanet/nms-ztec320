@@ -2,16 +2,31 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timezone
-import os, base64, hashlib
+import os, base64, hashlib, logging
 
 db = SQLAlchemy()
 
+_logger = logging.getLogger(__name__)
+
 
 def _get_fernet_key():
-    """Derive a Fernet key from SECRET_KEY for encrypting sensitive fields."""
-    secret = os.environ.get('SECRET_KEY', 'fallback-dev-key')
+    """Derive a Fernet key for encrypting sensitive fields.
+
+    Uses CREDENTIAL_ENCRYPTION_KEY if set, otherwise falls back to
+    SECRET_KEY for backward compatibility with existing encrypted data.
+    """
+    secret = os.environ.get('CREDENTIAL_ENCRYPTION_KEY', '')
+    if not secret:
+        secret = os.environ.get('SECRET_KEY', 'fallback-dev-key')
     key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
     return key
+
+
+def _get_legacy_fernet_key():
+    """Derive a Fernet key from SECRET_KEY only — used for decrypting
+    legacy data that was encrypted before CREDENTIAL_ENCRYPTION_KEY was introduced."""
+    secret = os.environ.get('SECRET_KEY', 'fallback-dev-key')
+    return base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
 
 
 def encrypt_field(value):
@@ -23,24 +38,45 @@ def encrypt_field(value):
         f = Fernet(_get_fernet_key())
         return f.encrypt(value.encode()).decode()
     except ImportError:
+        _logger.warning("cryptography package not installed — storing value in plaintext")
         return value
-    except Exception:
+    except Exception as e:
+        _logger.error(f"encrypt_field failed: {e}")
         return value
 
 
 def decrypt_field(value):
-    """Decrypt a string value. Falls back to plain text for unencrypted legacy data."""
+    """Decrypt a string value.
+
+    Tries the current key first (CREDENTIAL_ENCRYPTION_KEY or SECRET_KEY),
+    then falls back to legacy SECRET_KEY-only key for backward compatibility.
+    If both fail, the value is likely unencrypted legacy plaintext and is returned as-is
+    with a warning log.
+    """
     if not value:
         return ''
     try:
         from cryptography.fernet import Fernet
+        # Try current key
         f = Fernet(_get_fernet_key())
         return f.decrypt(value.encode()).decode()
     except ImportError:
+        _logger.warning("cryptography package not installed — returning raw value")
         return value
     except Exception:
-        # Not encrypted (legacy plain text) — return as-is
-        return value
+        pass
+    # Try legacy key (SECRET_KEY only) for backward compatibility
+    try:
+        from cryptography.fernet import Fernet
+        legacy_key = _get_legacy_fernet_key()
+        if legacy_key != _get_fernet_key():
+            f = Fernet(legacy_key)
+            return f.decrypt(value.encode()).decode()
+    except Exception:
+        pass
+    # Likely unencrypted legacy plaintext — log warning but return as-is
+    _logger.debug("decrypt_field: value could not be decrypted, treating as plaintext")
+    return value
 
 
 class Role(db.Model):
@@ -267,17 +303,43 @@ class Fan(db.Model):
 
 
 class OLTSyncStatus(db.Model):
-    """Track OLT synchronization progress"""
+    """Track OLT synchronization progress — current state of the latest sync job."""
     __tablename__ = 'olt_sync_status'
     id = db.Column(db.Integer, primary_key=True)
     olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=False)
     progress = db.Column(db.Integer, default=0)  # 0-100
-    status = db.Column(db.String(20), default='idle')  # idle, running, completed, error
+    status = db.Column(db.String(20), default='idle')  # idle, running, completed, error, skipped
     message = db.Column(db.String(256), default='')
     started_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
     onu_count = db.Column(db.Integer, default=0)
+    # Phase 3: Job lifecycle tracking
+    job_id = db.Column(db.String(36), nullable=True)  # UUID for current/last job
+    sync_type = db.Column(db.String(20), default='full')  # full, light, auto
+    triggered_by = db.Column(db.String(50), default='manual')  # manual, auto, action
+    error_detail = db.Column(db.Text, nullable=True)
+    duration_seconds = db.Column(db.Float, nullable=True)
     olt = db.relationship('OLT', backref=db.backref('sync_status', uselist=False))
+
+
+class SyncJob(db.Model):
+    """Historical record of completed sync jobs — enables audit trail and analytics."""
+    __tablename__ = 'sync_jobs'
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.String(36), unique=True, nullable=False)  # UUID
+    olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=False)
+    sync_type = db.Column(db.String(20), default='full')  # full, light, auto
+    triggered_by = db.Column(db.String(50), default='manual')  # manual, auto, action
+    status = db.Column(db.String(20), default='pending')  # pending, running, completed, error, skipped, cancelled
+    progress = db.Column(db.Integer, default=0)
+    message = db.Column(db.String(256), default='')
+    error_detail = db.Column(db.Text, nullable=True)
+    onu_count = db.Column(db.Integer, default=0)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    duration_seconds = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    olt = db.relationship('OLT', backref=db.backref('sync_jobs', lazy=True, cascade='all, delete-orphan'))
 
 
 class OLTCard(db.Model):

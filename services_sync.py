@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from models import db, OLT, OLTSyncStatus
 from extensions import logger
+from sync_lock import acquire_sync_lock, release_sync_lock
 
 MAX_SYNC_WORKERS = 5
 
@@ -24,6 +25,17 @@ def run_single_sync(app, olt_id, sync_id, light=False):
         sync = db.session.get(OLTSyncStatus, sync_id)
         if not olt or not sync:
             return
+
+        # Acquire per-OLT sync lock
+        lock_token = acquire_sync_lock(olt_id, timeout=0)
+        if lock_token is None:
+            sync.status = 'skipped'
+            sync.message = 'Sync already in progress \u2014 skipped'
+            sync.completed_at = datetime.now(timezone.utc)
+            db.session.commit()
+            logger.info(f"Sync skipped for OLT {olt_id} \u2014 already locked")
+            return
+
         try:
             def update_progress(pct, msg):
                 sync.progress = pct
@@ -89,6 +101,8 @@ def run_single_sync(app, olt_id, sync_id, light=False):
             sync.message = str(e)
             sync.completed_at = datetime.now(timezone.utc)
             db.session.commit()
+        finally:
+            release_sync_lock(olt_id, lock_token)
 
 
 def _sync_one_olt(app, olt_id):
@@ -98,6 +112,18 @@ def _sync_one_olt(app, olt_id):
     Returns (olt_id, success: bool, message: str).
     """
     with app.app_context():
+        # Acquire per-OLT sync lock
+        lock_token = acquire_sync_lock(olt_id, timeout=0)
+        if lock_token is None:
+            sync = OLTSyncStatus.query.filter_by(olt_id=olt_id).first()
+            if sync:
+                sync.status = 'skipped'
+                sync.message = 'Sync already in progress \u2014 skipped'
+                sync.completed_at = datetime.now(timezone.utc)
+                db.session.commit()
+            logger.info(f"Sync-all skipped OLT {olt_id} \u2014 already locked")
+            return olt_id, False, "Skipped \u2014 already syncing"
+
         try:
             olt = db.session.get(OLT, olt_id)
             if not olt:
@@ -171,6 +197,7 @@ def _sync_one_olt(app, olt_id):
                 pass
             return olt_id, False, str(e)[:200]
         finally:
+            release_sync_lock(olt_id, lock_token)
             db.session.remove()
 
 

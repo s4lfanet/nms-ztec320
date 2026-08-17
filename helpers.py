@@ -108,10 +108,49 @@ _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 300
 _LOGIN_LOCK_SECONDS = 900
 
+_redis_client = None
+_redis_checked = False
+
+
+def _get_redis():
+    """Get Redis client for distributed rate limiting. Returns None if unavailable."""
+    global _redis_client, _redis_checked
+    if _redis_checked:
+        return _redis_client
+    _redis_checked = True
+    try:
+        import redis as _redis_mod
+        import os
+        url = os.environ.get('REDIS_URL', '')
+        if url:
+            _redis_client = _redis_mod.from_url(url, decode_responses=True)
+            _redis_client.ping()
+    except Exception:
+        _redis_client = None
+    return _redis_client
+
 
 def check_rate_limit(ip):
-    """Check if IP is rate-limited. Returns (allowed, retry_after_seconds)."""
+    """Check if IP is rate-limited. Returns (allowed, retry_after_seconds).
+
+    Uses Redis when available for distributed rate limiting across workers.
+    Falls back to in-memory dict when Redis is unavailable.
+    """
     import time
+    r = _get_redis()
+    if r:
+        try:
+            key = f'rate_limit:login:{ip}'
+            count = r.incr(key)
+            if count == 1:
+                r.expire(key, _LOGIN_LOCK_SECONDS)
+            if count > _LOGIN_MAX_ATTEMPTS:
+                ttl = r.ttl(key)
+                return False, max(ttl, 1)
+            return True, 0
+        except Exception:
+            pass  # Fall back to in-memory
+
     now = time.time()
     attempts = _login_attempts.get(ip, [])
     attempts = [t for t in attempts if now - t < _LOGIN_WINDOW_SECONDS]
@@ -126,7 +165,21 @@ def check_rate_limit(ip):
 
 
 def record_failed_login(ip):
-    """Record a failed login attempt for rate limiting."""
+    """Record a failed login attempt for rate limiting.
+
+    Uses Redis when available, falls back to in-memory.
+    """
+    r = _get_redis()
+    if r:
+        try:
+            key = f'rate_limit:login:{ip}'
+            count = r.incr(key)
+            if count == 1:
+                r.expire(key, _LOGIN_LOCK_SECONDS)
+            return
+        except Exception:
+            pass  # Fall back to in-memory
+
     import time
     now = time.time()
     if ip not in _login_attempts:
@@ -138,4 +191,12 @@ def record_failed_login(ip):
 
 def clear_failed_logins(ip):
     """Clear failed login attempts after successful login."""
+    r = _get_redis()
+    if r:
+        try:
+            r.delete(f'rate_limit:login:{ip}')
+            return
+        except Exception:
+            pass  # Fall back to in-memory
+
     _login_attempts.pop(ip, None)

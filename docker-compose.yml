@@ -66,6 +66,8 @@ services:
       DATABASE_URL: postgresql://nms_user:${POSTGRES_PASSWORD:-nms_secret_2026}@postgres:5432/salfanet_nms
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
       HOST: "0.0.0.0"
       PORT: "5000"
       WS_PORT: "8765"

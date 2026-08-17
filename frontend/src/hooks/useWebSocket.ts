@@ -80,6 +80,19 @@ export function useWebSocket(
     return `${proto}//${host}:${wsPort}${path}`;
   }, [path, opts.baseUrl]);
 
+  const fetchToken = useCallback(async (): Promise<string | null> => {
+    try {
+      const res = await fetch('/api/ws-token', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        return data.token || null;
+      }
+    } catch {
+      // Token fetch failed — WS connection will be rejected by server
+    }
+    return null;
+  }, []);
+
   const cleanup = useCallback(() => {
     if (pingTimerRef.current) {
       clearInterval(pingTimerRef.current);
@@ -96,12 +109,18 @@ export function useWebSocket(
     }
   }, []);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!mountedRef.current) return;
 
     cleanup();
 
-    const url = getWsUrl();
+    // Fetch auth token before connecting
+    const token = await fetchToken();
+    if (!mountedRef.current || !token) return;
+
+    const baseUrl = getWsUrl();
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    const url = `${baseUrl}${separator}token=${encodeURIComponent(token)}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
@@ -155,7 +174,7 @@ export function useWebSocket(
     ws.onerror = () => {
       // onclose will fire after onerror, reconnect logic is there
     };
-  }, [getWsUrl, cleanup, opts.reconnect, opts.maxRetries, opts.pingInterval]);
+  }, [getWsUrl, cleanup, fetchToken, opts.reconnect, opts.maxRetries, opts.pingInterval]);
 
   // Connect on mount, disconnect on unmount
   useEffect(() => {

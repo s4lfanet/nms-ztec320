@@ -18,6 +18,7 @@ Usage:
 """
 import json
 import logging
+import os
 import threading
 from typing import Optional
 
@@ -27,6 +28,11 @@ logger = logging.getLogger("ws_bridge")
 
 # FastAPI WebSocket server URL (default: localhost:8765)
 _ws_base_url = "http://localhost:8765"
+
+
+def _get_internal_api_key():
+    """Get the shared secret for Flask→FastAPI internal communication."""
+    return os.environ.get('INTERNAL_API_KEY', '') or os.environ.get('SECRET_KEY', 'fallback-dev-key')
 
 
 def set_ws_url(url: str):
@@ -42,6 +48,7 @@ def _broadcast_async(channel: str, event: str, data: dict):
             resp = httpx.post(
                 f"{_ws_base_url}/broadcast",
                 json={"channel": channel, "event": event, "data": data},
+                headers={"X-Internal-Key": _get_internal_api_key()},
                 timeout=2.0,
             )
             if resp.status_code != 200:
