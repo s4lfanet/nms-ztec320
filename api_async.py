@@ -12,12 +12,32 @@ Flask continues to serve all existing routes on port 5000.
 """
 import asyncio
 import json
+import os
 import time
+import hmac
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+
+def _get_internal_api_key():
+    """Get the shared secret used for internal Flask→FastAPI communication."""
+    return os.environ.get('INTERNAL_API_KEY', '') or os.environ.get('SECRET_KEY', 'fallback-dev-key')
+
+
+def _verify_ws_token(token: Optional[str]) -> bool:
+    """Verify WebSocket auth token.
+
+    Currently uses the INTERNAL_API_KEY/SECRET_KEY as a shared secret.
+    In production behind nginx, WebSocket connections are proxied and
+    the token is passed as a query param by the frontend.
+    """
+    if not token:
+        return False
+    expected = _get_internal_api_key()
+    return hmac.compare_digest(token, expected)
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -200,12 +220,19 @@ async def health_check():
 
 
 @fastapi_app.post("/broadcast")
-async def broadcast_message(req: BroadcastRequest):
+async def broadcast_message(
+    req: BroadcastRequest,
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key"),
+):
     """Internal API — broadcast a message to a WebSocket channel.
 
     Called by Flask backend (services_sync.py, app.py) to push real-time
     updates to connected frontend clients.
+    Requires X-Internal-Key header matching INTERNAL_API_KEY or SECRET_KEY.
     """
+    expected_key = _get_internal_api_key()
+    if not x_internal_key or not hmac.compare_digest(x_internal_key, expected_key):
+        raise HTTPException(status_code=403, detail="Forbidden: invalid internal API key")
     await manager.broadcast(req.channel, {
         "event": req.event,
         "data": req.data,
@@ -218,12 +245,15 @@ async def broadcast_message(req: BroadcastRequest):
 # WebSocket endpoints
 # ---------------------------------------------------------------------------
 @fastapi_app.websocket("/ws/sync/{olt_id}")
-async def ws_sync_progress(ws: WebSocket, olt_id: int):
+async def ws_sync_progress(ws: WebSocket, olt_id: int, token: Optional[str] = Query(None)):
     """Real-time sync progress for a specific OLT.
 
-    Frontend connects: ws://host:8765/ws/sync/{olt_id}
+    Frontend connects: ws://host:8765/ws/sync/{olt_id}?token=xxx
     Server pushes: {event: "progress", data: {pct, message, status}}
     """
+    if not _verify_ws_token(token):
+        await ws.close(code=4401, reason="Unauthorized")
+        return
     channel = f"sync:{olt_id}"
     await manager.connect(ws, channel)
     try:
@@ -251,7 +281,9 @@ async def ws_onu_status(ws: WebSocket, olt_id: int, token: Optional[str] = Query
     Frontend connects: ws://host:8765/ws/onus/{olt_id}?token=xxx
     Server pushes: {event: "onu_change", data: {onu_id, field, old_val, new_val}}
     """
-    # TODO: validate token against session/auth
+    if not _verify_ws_token(token):
+        await ws.close(code=4401, reason="Unauthorized")
+        return
     channel = f"onus:{olt_id}"
     await manager.connect(ws, channel)
     try:
@@ -277,6 +309,9 @@ async def ws_dashboard(ws: WebSocket, token: Optional[str] = Query(None)):
     Frontend connects: ws://host:8765/ws/dashboard?token=xxx
     Server pushes: {event: "olt_status"|"alert"|"onu_count", data: {...}}
     """
+    if not _verify_ws_token(token):
+        await ws.close(code=4401, reason="Unauthorized")
+        return
     channel = "dashboard"
     await manager.connect(ws, channel)
     try:

@@ -1258,11 +1258,18 @@ def _auto_sync_olt(olt_id):
     Uses LIGHT sync (SNMP-only) to minimize OLT CPU load."""
     import threading
     from flask import current_app
+    from sync_lock import acquire_sync_lock, release_sync_lock
 
     app = current_app._get_current_object()
 
     def _do_sync():
         with app.app_context():
+            # Acquire per-OLT sync lock
+            lock_token = acquire_sync_lock(olt_id, timeout=0)
+            if lock_token is None:
+                logger.info(f"Auto-sync skipped for OLT {olt_id} — already syncing")
+                return
+
             try:
                 olt = db.session.get(OLT, olt_id)
                 if not olt:
@@ -1316,6 +1323,8 @@ def _auto_sync_olt(olt_id):
                         db.session.commit()
                 except:
                     pass
+            finally:
+                release_sync_lock(olt_id, lock_token)
 
     thread = threading.Thread(target=_do_sync, daemon=True)
     thread.start()
@@ -1981,7 +1990,7 @@ def onu_resync_config(onu_id):
 
 
 @app.route('/api/onu/<int:onu_id>/replace', methods=['POST'])
-@login_required
+@permission_required('configure_onu')
 def onu_replace(onu_id):
     """Replace ONU with new SN/MAC — preserves all config (service, VLAN, profiles, etc).
     Validates vendor match, backs up config, deletes old ONU, registers new, re-applies config."""
@@ -3653,6 +3662,9 @@ def sync_olt(olt_id):
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
+    from sync_lock import is_sync_locked
+    if is_sync_locked(olt.id):
+        return jsonify({'success': False, 'message': 'Sync already in progress for this OLT'}), 409
     start_single_sync(app, olt.id)
     log_action('olt_sync', 'olt', target=olt.name, detail='Manual sync triggered')
     return jsonify({'success': True, 'message': 'Synchronization started'})
@@ -3688,7 +3700,33 @@ def sync_status(olt_id):
         'onu_count': sync.onu_count,
         'started_at': utc_iso(sync.started_at),
         'completed_at': utc_iso(sync.completed_at),
+        'job_id': sync.job_id,
+        'sync_type': sync.sync_type,
+        'triggered_by': sync.triggered_by,
+        'duration_seconds': sync.duration_seconds,
+        'error_detail': sync.error_detail,
     })
+
+
+@app.route('/api/olt/<int:olt_id>/sync-history', methods=['GET'])
+@login_required
+def sync_history(olt_id):
+    """Get sync job history for an OLT."""
+    from sync_job import get_sync_history
+    jobs = get_sync_history(olt_id, limit=20)
+    return jsonify({'jobs': [{
+        'job_id': j.job_id,
+        'status': j.status,
+        'sync_type': j.sync_type,
+        'triggered_by': j.triggered_by,
+        'progress': j.progress,
+        'message': j.message,
+        'onu_count': j.onu_count,
+        'error_detail': j.error_detail,
+        'started_at': utc_iso(j.started_at),
+        'completed_at': utc_iso(j.completed_at),
+        'duration_seconds': j.duration_seconds,
+    } for j in jobs]})
 
 
 @app.route('/api/olt/<int:olt_id>/test-connection', methods=['POST'])
@@ -5629,10 +5667,13 @@ def create_olt():
 @app.route('/api/olt/<int:olt_id>', methods=['GET'])
 @login_required
 def get_olt(olt_id):
-    """Get OLT data for edit modal"""
+    """Get OLT data for edit modal.
+    Sensitive fields (SNMP community, write community) are masked unless
+    the user has settings_ip_olts permission."""
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    can_manage = current_user.has_permission('settings_ip_olts')
     return jsonify({
         'success': True,
         'id': olt.id,
@@ -5642,15 +5683,15 @@ def get_olt(olt_id):
         'model': olt.model,
         'firmware_version': olt.firmware_version or '',
         'snmp_enabled': olt.snmp_enabled,
-        'snmp_community': olt.snmp_community,
-        'snmp_community_write': olt.snmp_community_write or '',
+        'snmp_community': olt.snmp_community if can_manage else '***',
+        'snmp_community_write': olt.snmp_community_write or '' if can_manage else '',
         'snmp_port': olt.snmp_port,
         'telnet_enabled': olt.telnet_enabled,
         'telnet_port': olt.telnet_port,
         'web_port': olt.web_port or 80,
         'ssh_enabled': olt.ssh_enabled,
         'ssh_port': olt.ssh_port,
-        'cli_username': olt.cli_username,
+        'cli_username': olt.cli_username if can_manage else '',
         'cli_password': '***' if olt.cli_password else '',
         'monitoring_enabled': olt.monitoring_enabled,
         'polling_interval': olt.polling_interval,
@@ -6605,6 +6646,15 @@ def public_branding():
     tz_cfg = SystemConfig.query.filter_by(key='timezone').first()
     system_timezone = tz_cfg.value if tz_cfg and tz_cfg.value else 'Asia/Jakarta'
     return jsonify({'nms_name': brand['nms_name'], 'base_domain': root_domain, 'nms_prefix': nms_prefix, 'timezone': system_timezone})
+
+
+@app.route('/api/ws-token', methods=['GET'])
+@login_required
+def ws_token():
+    """Return WebSocket auth token for authenticated users.
+    The frontend passes this as a query param when connecting to FastAPI WS endpoints."""
+    token = os.environ.get('INTERNAL_API_KEY', '') or os.environ.get('SECRET_KEY', 'fallback-dev-key')
+    return jsonify({'token': token})
 
 
 # WA notification functions moved to services_wa.py

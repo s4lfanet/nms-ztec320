@@ -7,15 +7,22 @@ SQLAlchemy>=2.0
 Werkzeug>=3.0
 Jinja2>=3.1
 
+# === Security ===
+cryptography>=42.0
+
 # === Network ===
 pysnmp>=7.1
 
 # === Async / WebSocket ===
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
+httpx>=0.27.0
 
 # === Caching ===
 redis>=5.0
+
+# === Task Queue (optional) ===
+rq>=1.16
 
 # === Monitoring ===
 prometheus-client>=0.20.0
