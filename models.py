@@ -87,7 +87,6 @@ class Role(db.Model):
     is_system = db.Column(db.Boolean, default=False)
     permissions = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    users = db.relationship('User', backref='role', lazy=True)
 
     def get_permission_list(self):
         if not self.permissions:
@@ -127,6 +126,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('roles.id'), nullable=True)
+    role = db.relationship('Role', backref='users', lazy=True)
     is_super_admin = db.Column(db.Boolean, default=False)
     phone = db.Column(db.String(30), default='')  # phone number for WA notifications
     profile_image = db.Column(db.String(256), default='default.png')
@@ -159,8 +159,8 @@ class OLT(db.Model):
     model = db.Column(db.String(100), default='C320')
     firmware_version = db.Column(db.String(100), default='')
     snmp_enabled = db.Column(db.Boolean, default=True)
-    snmp_community = db.Column(db.String(100), default='public')
-    snmp_community_write = db.Column(db.String(100), default='')
+    _snmp_community_enc = db.Column('snmp_community', db.String(512), default='')
+    _snmp_community_write_enc = db.Column('snmp_community_write', db.String(512), default='')
     snmp_port = db.Column(db.Integer, default=161)
     telnet_enabled = db.Column(db.Boolean, default=True)
     telnet_port = db.Column(db.Integer, default=23)
@@ -202,6 +202,22 @@ class OLT(db.Model):
     @cli_password.setter
     def cli_password(self, value):
         self._cli_password_enc = encrypt_field(value)
+
+    @property
+    def snmp_community(self):
+        return decrypt_field(self._snmp_community_enc) or 'public'
+
+    @snmp_community.setter
+    def snmp_community(self, value):
+        self._snmp_community_enc = encrypt_field(value)
+
+    @property
+    def snmp_community_write(self):
+        return decrypt_field(self._snmp_community_write_enc)
+
+    @snmp_community_write.setter
+    def snmp_community_write(self, value):
+        self._snmp_community_write_enc = encrypt_field(value)
 
 
 class ONU(db.Model):

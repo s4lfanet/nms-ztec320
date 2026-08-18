@@ -18,6 +18,7 @@ In production:
 import argparse
 import asyncio
 import logging
+import signal
 import sys
 import threading
 from contextlib import asynccontextmanager
@@ -25,6 +26,28 @@ from contextlib import asynccontextmanager
 import uvicorn
 
 logger = logging.getLogger("run_server")
+
+_shutting_down = False
+
+
+def _graceful_shutdown(signum=None, frame=None):
+    """Graceful shutdown — dispose DB sessions, log, then exit."""
+    global _shutting_down
+    if _shutting_down:
+        return
+    _shutting_down = True
+    logger.info("Graceful shutdown initiated...")
+    try:
+        from app import app as flask_app
+        with flask_app.app_context():
+            from extensions import db
+            db.session.remove()
+            db.engine.dispose()
+            logger.info("Database connections closed.")
+    except Exception as e:
+        logger.warning(f"Error during shutdown cleanup: {e}")
+    logger.info("Shutdown complete.")
+    sys.exit(0)
 
 
 def run_flask(app, host: str, port: int):
@@ -83,10 +106,11 @@ def main():
     )
 
     try:
+        signal.signal(signal.SIGTERM, _graceful_shutdown)
+        signal.signal(signal.SIGINT, _graceful_shutdown)
         start_servers(flask_port=args.port, ws_port=args.ws_port, host=args.host)
     except KeyboardInterrupt:
-        logger.info("Shutting down...")
-        sys.exit(0)
+        _graceful_shutdown()
 
 
 if __name__ == "__main__":
