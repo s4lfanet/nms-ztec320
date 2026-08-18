@@ -19,26 +19,7 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      // Unregister any stale service workers from previous PWA builds
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for (var registration of registrations) {
-            registration.unregister();
-            console.log('Unregistered stale service worker:', registration.scope);
-          }
-        }).catch(function() {});
-      }
-      // Clear all caches from previous PWA builds
-      if ('caches' in window) {
-        caches.keys().then(function(names) {
-          for (var name of names) {
-            caches.delete(name);
-            console.log('Deleted cache:', name);
-          }
-        }).catch(function() {});
-      }
-    </script>
+    <script src="/src/sw-cleanup.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
