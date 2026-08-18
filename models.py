@@ -240,6 +240,13 @@ class ONU(db.Model):
     olt = db.relationship('OLT', backref=db.backref('onus', lazy=True))
     technician = db.relationship('User', foreign_keys=[technician_id], backref='assigned_onus')
 
+    __table_args__ = (
+        db.Index('ix_onus_olt_id', 'olt_id'),
+        db.Index('ix_onus_status', 'status'),
+        db.Index('ix_onus_serial_number', 'serial_number'),
+        db.Index('ix_onus_olt_status', 'olt_id', 'status'),  # composite — paling sering dipakai
+    )
+
     @property
     def onu_id_str(self):
         return f'{self.frame}/{self.slot}/{self.port}:{self.onu_id}'
@@ -321,6 +328,10 @@ class OLTSyncStatus(db.Model):
     duration_seconds = db.Column(db.Float, nullable=True)
     olt = db.relationship('OLT', backref=db.backref('sync_status', uselist=False))
 
+    __table_args__ = (
+        db.Index('ix_olt_sync_status_olt_id', 'olt_id'),
+    )
+
 
 class SyncJob(db.Model):
     """Historical record of completed sync jobs — enables audit trail and analytics."""
@@ -340,6 +351,11 @@ class SyncJob(db.Model):
     duration_seconds = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('sync_jobs', lazy=True, cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.Index('ix_sync_jobs_olt_id', 'olt_id'),
+        db.Index('ix_sync_jobs_created_at', 'created_at'),
+    )
 
 
 class OLTCard(db.Model):
@@ -447,6 +463,10 @@ class OLTPort(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('pon_ports', lazy=True, cascade='all, delete-orphan'))
 
+    __table_args__ = (
+        db.Index('ix_olt_pon_ports_olt_id', 'olt_id'),
+    )
+
 
 class ONUVlan(db.Model):
     """VLAN configuration collected from OLT"""
@@ -534,6 +554,11 @@ class Notification(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('notifications', lazy=True))
 
+    __table_args__ = (
+        db.Index('ix_notifications_olt_category', 'olt_id', 'category'),
+        db.Index('ix_notifications_unread', 'is_read', 'resolved'),  # untuk count unread aktif
+    )
+
 
 class AlertRule(db.Model):
     """Configurable alert rules for monitoring"""
@@ -577,6 +602,11 @@ class AlertHistory(db.Model):
     last_alert_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     first_seen_at = db.Column(db.DateTime, nullable=True)  # first detection time (for debounce)
 
+    __table_args__ = (
+        db.Index('ix_alert_history_onu_type', 'onu_id', 'alert_type'),  # composite — lookup per ONU+type
+        db.Index('ix_alert_history_olt_type', 'olt_id', 'alert_type'),
+    )
+
 
 class BotConfig(db.Model):
     """Bot configuration for Telegram/WhatsApp"""
@@ -584,12 +614,28 @@ class BotConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     bot_type = db.Column(db.String(20), nullable=False)  # telegram, whatsapp
     enabled = db.Column(db.Boolean, default=False)
-    bot_token = db.Column(db.String(256), default='')  # Telegram bot token
+    _bot_token_enc = db.Column('bot_token', db.String(512), default='')  # Telegram bot token (encrypted)
     chat_id = db.Column(db.String(100), default='')  # Telegram chat/group ID
     api_url = db.Column(db.String(256), default='')  # WhatsApp API URL
-    api_key = db.Column(db.String(256), default='')  # WhatsApp API key
+    _api_key_enc = db.Column('api_key', db.String(512), default='')  # WhatsApp API key (encrypted)
     phone_number = db.Column(db.String(50), default='')  # WhatsApp target number
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def bot_token(self):
+        return decrypt_field(self._bot_token_enc)
+
+    @bot_token.setter
+    def bot_token(self, value):
+        self._bot_token_enc = encrypt_field(value)
+
+    @property
+    def api_key(self):
+        return decrypt_field(self._api_key_enc)
+
+    @api_key.setter
+    def api_key(self, value):
+        self._api_key_enc = encrypt_field(value)
 
 
 class MaintenanceWindow(db.Model):
@@ -626,6 +672,11 @@ class MetricHistory(db.Model):
     value = db.Column(db.Float, nullable=True)
     recorded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('metric_history', lazy=True))
+
+    __table_args__ = (
+        db.Index('ix_metric_history_onu_type_time', 'onu_id', 'metric_type', 'recorded_at'),
+        db.Index('ix_metric_history_olt_type_time', 'olt_id', 'metric_type', 'recorded_at'),
+    )
 
 
 class TrafficLog(db.Model):
@@ -798,3 +849,9 @@ class ActionLog(db.Model):
     detail = db.Column(db.Text, default='')
     ip_address = db.Column(db.String(50), default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.Index('ix_action_logs_created_at', 'created_at'),
+        db.Index('ix_action_logs_user_id', 'user_id'),
+        db.Index('ix_action_logs_category', 'category'),
+    )
