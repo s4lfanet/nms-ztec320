@@ -8449,12 +8449,13 @@ def serve_spa(path=''):
 # Enable SQLite WAL mode for better write concurrency (C5)
 if 'sqlite' in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
     from sqlalchemy import event as sa_event
-    @sa_event.listens_for(db.engine, 'connect')
-    def _set_sqlite_wal(dbapi_conn, conn_record):
-        cursor = dbapi_conn.cursor()
-        cursor.execute('PRAGMA journal_mode=WAL')
-        cursor.execute('PRAGMA busy_timeout=30000')
-        cursor.close()
+    with app.app_context():
+        @sa_event.listens_for(db.engine, 'connect')
+        def _set_sqlite_wal(dbapi_conn, conn_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute('PRAGMA journal_mode=WAL')
+            cursor.execute('PRAGMA busy_timeout=30000')
+            cursor.close()
     logger.info('SQLite WAL mode enabled for write concurrency')
 
 # Ensure schema is migrated and tables exist when running via gunicorn
