@@ -89,29 +89,61 @@ def _get_redis():
 # ---------------------------------------------------------------------------
 # In-memory fallback cache
 # ---------------------------------------------------------------------------
+_MEMORY_MAX_ENTRIES = 1000
 _memory_cache: dict[str, tuple[Any, float]] = {}  # key -> (value, expire_at)
+_memory_access_order: dict[str, float] = {}  # key -> last_access_time (for LRU)
+
+
+def _memory_evict():
+    """Evict expired entries and enforce max entries limit via LRU."""
+    now = time.time()
+    # First pass: remove expired entries
+    expired = [k for k, (_, exp) in _memory_cache.items() if exp != 0 and now >= exp]
+    for k in expired:
+        _memory_cache.pop(k, None)
+        _memory_access_order.pop(k, None)
+    # Second pass: enforce max entries via LRU
+    while len(_memory_cache) > _MEMORY_MAX_ENTRIES:
+        # Find the least recently accessed key
+        lru_key = None
+        lru_time = None
+        for k, t in _memory_access_order.items():
+            if lru_time is None or t < lru_time:
+                lru_key = k
+                lru_time = t
+        if lru_key is None:
+            break
+        _memory_cache.pop(lru_key, None)
+        _memory_access_order.pop(lru_key, None)
 
 
 def _memory_get(key: str) -> Optional[Any]:
     if key in _memory_cache:
         value, expire_at = _memory_cache[key]
         if expire_at == 0 or time.time() < expire_at:
+            _memory_access_order[key] = time.time()
             return value
         del _memory_cache[key]
+        _memory_access_order.pop(key, None)
     return None
 
 
 def _memory_set(key: str, value: Any, ttl: int = 0):
     expire_at = 0 if ttl <= 0 else time.time() + ttl
     _memory_cache[key] = (value, expire_at)
+    _memory_access_order[key] = time.time()
+    if len(_memory_cache) > _MEMORY_MAX_ENTRIES:
+        _memory_evict()
 
 
 def _memory_delete(key: str):
     _memory_cache.pop(key, None)
+    _memory_access_order.pop(key, None)
 
 
 def _memory_clear():
     _memory_cache.clear()
+    _memory_access_order.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -164,9 +196,14 @@ def cache_clear(pattern: str = "*"):
     r = _get_redis()
     if r:
         try:
-            keys = r.keys(pattern)
-            if keys:
-                r.delete(*keys)
+            # Use SCAN instead of KEYS to avoid blocking Redis
+            cursor = 0
+            while True:
+                cursor, batch = r.scan(cursor=cursor, match=pattern, count=100)
+                if batch:
+                    r.delete(*batch)
+                if cursor == 0:
+                    break
             return
         except Exception:
             pass
@@ -176,7 +213,8 @@ def cache_clear(pattern: str = "*"):
         import fnmatch
         to_delete = [k for k in _memory_cache if fnmatch.fnmatch(k, pattern)]
         for k in to_delete:
-            del _memory_cache[k]
+            _memory_cache.pop(k, None)
+            _memory_access_order.pop(k, None)
 
 
 def cache_stats() -> dict:

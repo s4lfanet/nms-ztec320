@@ -152,6 +152,22 @@ def api_dashboard():
             return jsonify(cached)
 
     olts = OLT.query.all()
+    olt_ids = [o.id for o in olts]
+
+    # Batch-load related data to avoid N+1 queries
+    from collections import defaultdict
+    fans_by_olt = defaultdict(list)
+    for f in Fan.query.filter(Fan.olt_id.in_(olt_ids)).all():
+        fans_by_olt[f.olt_id].append(f)
+
+    cards_by_olt = defaultdict(list)
+    for c in OLTCard.query.filter(OLTCard.olt_id.in_(olt_ids)).all():
+        cards_by_olt[c.olt_id].append(c)
+
+    uplink_counts = defaultdict(int)
+    for u in OLTUplink.query.filter(OLTUplink.olt_id.in_(olt_ids)).all():
+        uplink_counts[u.olt_id] += 1
+
     total_onu = sum(o.total_onu for o in olts)
     online_onu = sum(o.online_onu for o in olts)
     los_onu = sum(o.los_onu for o in olts)
@@ -174,11 +190,11 @@ def api_dashboard():
         'dyinggasp_onu': o.dyinggasp_onu, 'offline_onu': o.offline_onu,
         'temperature': o.temperature, 'last_sync': utc_iso(o.last_sync),
         'connection_status': o.connection_status,
-        'fans': [{'number': f.fan_number, 'status': f.status, 'rpm': f.rpm, 'speed_level': f.speed_level} for f in Fan.query.filter_by(olt_id=o.id).all()],
+        'fans': [{'number': f.fan_number, 'status': f.status, 'rpm': f.rpm, 'speed_level': f.speed_level} for f in fans_by_olt.get(o.id, [])],
         'ip': o.ip_address,
         'vendor': o.vendor or 'zte',
-        'cards': [{'slot': c.slot, 'card_type': c.card_type, 'status': c.status, 'total_ports': c.total_ports, 'ports_up': c.ports_up, 'ports_down': c.ports_down} for c in OLTCard.query.filter_by(olt_id=o.id).all()],
-        'uplink_count': OLTUplink.query.filter_by(olt_id=o.id).count(),
+        'cards': [{'slot': c.slot, 'card_type': c.card_type, 'status': c.status, 'total_ports': c.total_ports, 'ports_up': c.ports_up, 'ports_down': c.ports_down} for c in cards_by_olt.get(o.id, [])],
+        'uplink_count': uplink_counts.get(o.id, 0),
         'uptime': o.uptime or 0,
         'snmp_status': o.snmp_status or 'disconnected',
         'telnet_status': o.telnet_status or 'disconnected',
@@ -7156,6 +7172,27 @@ def migrate_schema():
     ensure_index('ix_alert_history_onu_type', 'alert_history', 'onu_id', 'alert_type')
     ensure_index('ix_action_logs_user_id', 'action_logs', 'user_id')
 
+    # Encrypt plaintext SNMP community strings (S6)
+    try:
+        from models import encrypt_field
+        olts = OLT.query.all()
+        migrated = 0
+        for olt in olts:
+            raw = olt._snmp_community_enc
+            # If it's plaintext (not a Fernet token), encrypt it
+            if raw and not raw.startswith('gAAAA'):
+                olt._snmp_community_enc = encrypt_field(raw)
+                migrated += 1
+            raw_w = olt._snmp_community_write_enc
+            if raw_w and not raw_w.startswith('gAAAA'):
+                olt._snmp_community_write_enc = encrypt_field(raw_w)
+                migrated += 1
+        if migrated:
+            db.session.commit()
+            logger.info(f"  Migration: encrypted {migrated} SNMP community string(s)")
+    except Exception as e:
+        logger.debug(f"  Migration skip SNMP encrypt: {e}")
+
 
 # ==================== FTTH INFRASTRUCTURE APIs ====================
 
@@ -8408,6 +8445,17 @@ def serve_spa(path=''):
     resp.headers['Expires'] = '0'
     return resp
 
+
+# Enable SQLite WAL mode for better write concurrency (C5)
+if 'sqlite' in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
+    from sqlalchemy import event as sa_event
+    @sa_event.listens_for(db.engine, 'connect')
+    def _set_sqlite_wal(dbapi_conn, conn_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute('PRAGMA journal_mode=WAL')
+        cursor.execute('PRAGMA busy_timeout=30000')
+        cursor.close()
+    logger.info('SQLite WAL mode enabled for write concurrency')
 
 # Ensure schema is migrated and tables exist when running via gunicorn
 with app.app_context():
