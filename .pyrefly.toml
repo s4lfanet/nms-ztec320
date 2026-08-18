@@ -1,0 +1,22 @@
+﻿# Pyrefly configuration for Salfanet NMS
+# Docs: https://pyrefly.dev/configuration
+
+[project]
+# Point to local virtualenv so Pyrefly finds installed packages
+python_interpreter = "
+python_version = 
+
+[check]
+# Ignore files that Pyrefly should not analyze
+exclude = [
+  .venv/**,
+  frontend/**,
+  migrations/**,
+  __pycache__/**,
+  *.pyc,
+]
+
+[errors]
+# Downgrade missing-import from error to warning since packages are in .venv
+# These show as errors when Pyrefly cannot resolve the venv
+missing_import = 

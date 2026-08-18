@@ -334,8 +334,8 @@ def save_sync_result(olt, result, sync, light=False):
                     'olt_id': olt.id, 'onu_id': onu.id,
                     'field': 'status', 'old': _prev_status, 'new': onu.status,
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[sync_helper:{olt.id}] WebSocket status broadcast failed (non-critical): {e}")
 
         # For non-online ONUs (dyinggasp, offline, los), clear optical values
         # SNMP returns cached/last-known values for offline ONUs which is misleading
@@ -431,8 +431,8 @@ def save_sync_result(olt, result, sync, light=False):
     try:
         from cache import cache_clear
         cache_clear("dashboard:*")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[sync_helper] cache_clear dashboard failed (non-critical): {e}")
 
     return len(onus_data), stale_count
 
