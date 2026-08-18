@@ -1,9 +1,23 @@
 const BASE = '';
 
+// Global CSRF protection: inject X-Requested-With header on all state-changing requests
+const _origFetch = window.fetch.bind(window);
+window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const method = (init?.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    const headers = new Headers(init?.headers);
+    if (!headers.has('X-Requested-With')) {
+      headers.set('X-Requested-With', 'XMLHttpRequest');
+    }
+    init = { ...init, headers };
+  }
+  return _origFetch(input, init);
+};
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options.headers as Record<string, string> },
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...options.headers as Record<string, string> },
     ...options,
   });
   const data = await res.json().catch(() => ({}));

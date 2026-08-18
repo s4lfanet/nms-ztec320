@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from './components/Toast'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import './index.css'
+import './lib/api'  // Global fetch interceptor for CSRF protection
 import App from './App'
 
 // Service Worker: handled by vite-plugin-pwa (autoUpdate + skipWaiting + clientsClaim)
