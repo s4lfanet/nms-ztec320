@@ -145,8 +145,8 @@ def _sync_one_olt(olt_id, use_light):
                     from ws_bridge import ws_broadcast_sync, ws_broadcast_dashboard
                     ws_broadcast_sync(olt_id, 100, "Sync complete", "done")
                     ws_broadcast_dashboard("onu_change", {"olt_id": olt_id, "action": "sync_complete"})
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f'  [{olt_id}] WARNING: WebSocket broadcast (completion) failed: {e}')
 
                 return olt_id, True, f"OK: {onu_count} ONUs", onu_count
             else:
@@ -158,8 +158,8 @@ def _sync_one_olt(olt_id, use_light):
                 try:
                     from ws_bridge import ws_broadcast_sync
                     ws_broadcast_sync(olt_id, 0, sync.message, "error")
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f'  [{olt_id}] WARNING: WebSocket broadcast (error) failed: {e}')
                 print(f'  {olt.name}: ERROR: {result.get("message", "Unknown")}')
                 return olt_id, False, result.get('message', 'Unknown'), 0
         except Exception as e:
@@ -170,8 +170,8 @@ def _sync_one_olt(olt_id, use_light):
                     sync.message = str(e)[:200]
                     sync.completed_at = datetime.now(timezone.utc)
                     db.session.commit()
-            except Exception:
-                pass
+            except Exception as inner_e:
+                print(f'  [{olt_id}] ERROR: Failed to update sync status after exception: {inner_e}')
             print(f'  EXCEPTION: {e}')
             return olt_id, False, str(e)[:200], 0
         finally:

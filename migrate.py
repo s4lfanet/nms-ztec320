@@ -41,24 +41,6 @@ if __name__ == '__main__':
             migrate(message=message)
         else:
             COMMANDS[cmd]()
-    print(f"✅ {cmd} completed.")
+    print(f"[OK] {cmd} completed.")
 
 
-if __name__ == '__main__':
-    with app.app_context():
-        from flask_migrate import init as _init, migrate as _migrate, upgrade as _upgrade
-        import sys
-        if len(sys.argv) < 2:
-            print('Usage: py -3 migrate.py <init|migrate|upgrade|current>')
-            sys.exit(1)
-        cmd = sys.argv[1]
-        if cmd == 'init':
-            _init()
-        elif cmd == 'migrate':
-            _migrate()
-        elif cmd == 'upgrade':
-            _upgrade()
-        elif cmd == 'current':
-            _current()
-        else:
-            print(f'Unknown command: {cmd}')

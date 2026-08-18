@@ -70,7 +70,7 @@ class Config:
         "pool_recycle": 300,
     }
 
-    # SQLite-specific settings: increase busy timeout to handle concurrent writes
+    # SQLite-specific settings: increase busy timeout for concurrent writes
     if "sqlite" in SQLALCHEMY_DATABASE_URI:
         SQLALCHEMY_ENGINE_OPTIONS["connect_args"] = {
             "timeout": 30,

@@ -15,6 +15,15 @@ from app import app, db
 from models import User, Role, OLT
 
 
+@pytest.fixture(autouse=True)
+def clear_rate_limits():
+    """Clear in-memory rate limiter before each test to prevent cross-test contamination."""
+    from helpers import _login_attempts
+    _login_attempts.clear()
+    yield
+    _login_attempts.clear()
+
+
 @pytest.fixture
 def client():
     """Create a test client with in-memory database."""
@@ -25,7 +34,21 @@ def client():
 
     with app.app_context():
         db.create_all()
-        # seed_initial_data() already ran on import — admin user exists
+        # Re-seed admin user each time because db.drop_all() in teardown removes it.
+        # seed_initial_data() only runs once on first import.
+        from models import User, Role
+        if not User.query.filter_by(username='admin').first():
+            role = Role.query.filter_by(name='Full Access').first()
+            if not role:
+                role = Role(name='Full Access', description='Full admin access',
+                            permissions='all_olt', is_system=True)
+                db.session.add(role)
+                db.session.flush()
+            admin = User(username='admin', full_name='Administrator',
+                         is_super_admin=True, role_id=role.id)
+            admin.set_password('admin123')
+            db.session.add(admin)
+            db.session.commit()
 
     with app.test_client() as client:
         yield client
@@ -66,10 +89,12 @@ class TestAuthEndpoints:
 
     def test_logout(self, client):
         """Test logout endpoint."""
-        # Login first
-        client.post('/api/auth/login',
+        # Login first to establish session
+        login_resp = client.post('/api/auth/login',
             data=json.dumps({'username': 'admin', 'password': 'admin123'}),
             content_type='application/json')
+        assert login_resp.status_code == 200, f"Login failed: {login_resp.get_json()}"
+        # Logout using the same session (session cookie is retained in test client)
         resp = client.post('/api/auth/logout')
         assert resp.status_code == 200
         data = resp.get_json()

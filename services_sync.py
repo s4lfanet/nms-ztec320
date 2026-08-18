@@ -45,8 +45,8 @@ def run_single_sync(app, olt_id, sync_id, light=False):
                 try:
                     from ws_bridge import ws_broadcast_sync
                     ws_broadcast_sync(olt_id, pct, msg, "running")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[sync:{olt_id}] WebSocket broadcast (progress) failed: {e}")
 
             update_progress(5, 'Connecting to OLT...')
 
@@ -60,8 +60,8 @@ def run_single_sync(app, olt_id, sync_id, light=False):
                     update_progress(97, f'Removed {stale_count} deregistered ONUs')
                 try:
                     check_unregistered_onus(olt)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[sync:{olt_id}] check_unregistered_onus failed (non-critical): {e}")
                 # Set final completed status AFTER all post-save work is done
                 sync.progress = 100
                 sync.status = 'completed'
@@ -73,15 +73,15 @@ def run_single_sync(app, olt_id, sync_id, light=False):
                     from cache import cache_clear
                     cache_clear("dashboard:*")
                     cache_clear(f"olt:{olt_id}:*")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[sync:{olt_id}] cache_clear failed (non-critical): {e}")
                 # Push completion to WebSocket
                 try:
                     from ws_bridge import ws_broadcast_sync, ws_broadcast_dashboard
                     ws_broadcast_sync(olt_id, 100, "Sync complete", "done")
                     ws_broadcast_dashboard("onu_change", {"olt_id": olt_id, "action": "sync_complete"})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[sync:{olt_id}] WebSocket broadcast (completion) failed: {e}")
             else:
                 olt.is_online = False
                 olt.connection_status = 'error'
@@ -93,8 +93,8 @@ def run_single_sync(app, olt_id, sync_id, light=False):
                 try:
                     from ws_bridge import ws_broadcast_sync
                     ws_broadcast_sync(olt_id, 0, sync.message, "error")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[sync:{olt_id}] WebSocket broadcast (error) failed: {e}")
         except Exception as e:
             logger.error(f"Sync error: {e}")
             sync.status = 'error'
@@ -153,8 +153,8 @@ def _sync_one_olt(app, olt_id):
                 onu_count, stale_count = save_sync_result(olt, result, sync)
                 try:
                     check_unregistered_onus(olt)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[sync-all:{olt_id}] check_unregistered_onus failed (non-critical): {e}")
                 # Set final completed status
                 sync.progress = 100
                 sync.status = 'completed'
@@ -166,15 +166,15 @@ def _sync_one_olt(app, olt_id):
                     from cache import cache_clear
                     cache_clear("dashboard:*")
                     cache_clear(f"olt:{olt_id}:*")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[sync-all:{olt_id}] cache_clear failed (non-critical): {e}")
                 # Broadcast WebSocket events so frontend refreshes immediately
                 try:
                     from ws_bridge import ws_broadcast_sync, ws_broadcast_dashboard
                     ws_broadcast_sync(olt_id, 100, "Sync complete", "done")
                     ws_broadcast_dashboard("onu_change", {"olt_id": olt_id, "action": "sync_complete"})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[sync-all:{olt_id}] WebSocket broadcast (completion) failed: {e}")
                 return olt_id, True, f"OK: {onu_count} ONUs"
             else:
                 olt.is_online = False
@@ -193,12 +193,13 @@ def _sync_one_olt(app, olt_id):
                     sync.message = str(e)[:200]
                     sync.completed_at = datetime.now(timezone.utc)
                     db.session.commit()
-            except Exception:
-                pass
+            except Exception as inner_e:
+                logger.error(f"[sync-all:{olt_id}] Failed to update sync status after error: {inner_e}")
             return olt_id, False, str(e)[:200]
         finally:
             release_sync_lock(olt_id, lock_token)
             db.session.remove()
+
 
 
 def run_sync_all(app, olt_ids):
