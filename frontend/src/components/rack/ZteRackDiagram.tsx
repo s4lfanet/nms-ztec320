@@ -49,7 +49,7 @@ function PortToggleButton({ oltId, port, onClose, onRefresh }: {
         : `/api/olt/${oltId}/pon-port/${toggleId}/toggle`;
       const r = await fetch(url, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ action }),
       });
       const j = await r.json();

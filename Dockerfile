@@ -35,6 +35,10 @@ COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 # Create instance directory for SQLite (fallback)
 RUN mkdir -p /app/instance
 
+# Create non-root user and set ownership
+RUN groupadd -r salfanet && useradd -r -g salfanet -d /app -s /sbin/nologin salfanet \
+    && chown -R salfanet:salfanet /app
+
 # Expose ports
 # 5000 = Flask (HTTP API)
 # 8765 = FastAPI (WebSocket + async)
@@ -49,6 +53,9 @@ ENV WS_PORT=8765
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/public/branding')" || exit 1
+
+# Run as non-root user
+USER salfanet
 
 # Start hybrid server (Flask + FastAPI)
 CMD ["python", "run_server.py"]

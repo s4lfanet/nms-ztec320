@@ -125,6 +125,9 @@ def _run_traffic_poll_task():
     from sqlalchemy import func
     from extensions import db
 
+    # Detect DB dialect for date function compatibility
+    _is_sqlite = 'sqlite' in str(db.engine.url)
+
     # In RQ's forked process, Flask-SQLAlchemy 3.x loses the app-engine
     # mapping. We need to re-register by removing the old entry and
     # calling init_app again.
@@ -151,9 +154,12 @@ def _run_traffic_poll_task():
         # 2. Aggregate raw data older than 7 days into hourly
         try:
             raw_cutoff = datetime.now(timezone.utc) - timedelta(days=RAW_RETENTION_DAYS)
-            hours_to_agg = db.session.query(
-                func.date_trunc('hour', TrafficLog.recorded_at).label('h')
-            ).filter(
+            # Cross-DB compatible hour truncation (date_trunc for PG, strftime for SQLite)
+            if _is_sqlite:
+                hour_expr = func.strftime('%Y-%m-%d %H:00:00', TrafficLog.recorded_at).label('h')
+            else:
+                hour_expr = func.date_trunc('hour', TrafficLog.recorded_at).label('h')
+            hours_to_agg = db.session.query(hour_expr).filter(
                 TrafficLog.recorded_at < raw_cutoff
             ).distinct().all()
 

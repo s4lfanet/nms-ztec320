@@ -68,27 +68,27 @@ function NotifDropdown({
   const TypeIcon = TYPE_CONFIG[type].icon;
 
   const markReadMut = useMutation({
-    mutationFn: async (id: number) => fetch(`/api/notifications/${id}/read`, { method: 'POST', credentials: 'include' }),
+    mutationFn: async (id: number) => fetch(`/api/notifications/${id}/read`, { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
   const markAllMut = useMutation({
-    mutationFn: async () => fetch(`/api/notifications/read-all?type=${type}`, { method: 'POST', credentials: 'include' }),
+    mutationFn: async () => fetch(`/api/notifications/read-all?type=${type}`, { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
   const ackMut = useMutation({
-    mutationFn: async (id: number) => fetch(`/api/notifications/${id}/acknowledge`, { method: 'POST', credentials: 'include' }),
+    mutationFn: async (id: number) => fetch(`/api/notifications/${id}/acknowledge`, { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
   const ackAllMut = useMutation({
-    mutationFn: async () => fetch(`/api/notifications/acknowledge-all?type=${type}`, { method: 'POST', credentials: 'include' }),
+    mutationFn: async () => fetch(`/api/notifications/acknowledge-all?type=${type}`, { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
   const clearReadMut = useMutation({
-    mutationFn: async () => fetch('/api/notifications/clear', { method: 'POST', credentials: 'include' }),
+    mutationFn: async () => fetch('/api/notifications/clear', { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 

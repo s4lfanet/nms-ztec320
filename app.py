@@ -59,6 +59,25 @@ def _metrics_before_request():
     g._req_start = time.time()
 
 
+@app.before_request
+def _csrf_protection():
+    """CSRF protection: reject state-changing requests without custom header.
+
+    Browsers won't send X-Requested-With on cross-site form submissions,
+    so requiring it blocks CSRF attacks. SPA fetch calls include it.
+    Login endpoint is exempted to allow initial form login.
+    """
+    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+        if not request.headers.get('X-Requested-With'):
+            _csrf_exempt = (
+                '/api/auth/login', '/login',
+                '/api/public/forgot-password',
+                '/api/public/register', '/api/public/register/pay',
+            )
+            if request.path not in _csrf_exempt:
+                return jsonify({'error': 'Missing X-Requested-With header'}), 403
+
+
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses."""
@@ -69,7 +88,7 @@ def add_security_headers(response):
     response.headers['Permissions-Policy'] = 'geolocation=(self), microphone=(), camera=()'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com https://unpkg.com; "
+        "script-src 'self' https://static.cloudflareinsights.com https://unpkg.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
         "font-src 'self' https://fonts.gstatic.com data:; "
         "img-src 'self' data: blob: https:; "

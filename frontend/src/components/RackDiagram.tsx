@@ -151,7 +151,7 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
       const action = isUp ? 'disable' : 'enable';
       const r = await fetch(`/api/olt/${oltId}/pon-port/${port.portId}/toggle`, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ action }),
       });
       const j = await r.json();
@@ -298,7 +298,7 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
       const action = isEnabled ? 'disable' : 'enable';
       const r = await fetch(`/api/olt/${oltId}/uplink/${port.id}/toggle`, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ action }),
       });
       const j = await r.json();
