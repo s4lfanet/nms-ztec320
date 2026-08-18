@@ -7129,6 +7129,33 @@ def migrate_schema():
     add_col('alert_rules', 'olt_memory_threshold', 'FLOAT', '80.0')
     add_col('alert_rules', 'olt_temp_threshold', 'FLOAT', '60.0')
 
+    # Ensure critical indexes exist (db.create_all only creates indexes for new tables)
+    def ensure_index(index_name, table, *columns):
+        try:
+            existing = {idx['name'] for idx in inspector.get_indexes(table)}
+        except Exception:
+            existing = set()
+        if index_name not in existing:
+            cols = ', '.join(columns)
+            try:
+                with db.engine.connect() as conn:
+                    conn.execute(sqla_text(f'CREATE INDEX IF NOT EXISTS {index_name} ON {table} ({cols})'))
+                    conn.commit()
+                logger.info(f"  Migration: created index {index_name} on {table}({cols})")
+            except Exception as e:
+                logger.debug(f"  Migration skip index {index_name}: {e}")
+
+    ensure_index('ix_onus_olt_id', 'onus', 'olt_id')
+    ensure_index('ix_onus_status', 'onus', 'status')
+    ensure_index('ix_onus_serial_number', 'onus', 'serial_number')
+    ensure_index('ix_onus_olt_status', 'onus', 'olt_id', 'status')
+    ensure_index('ix_olt_sync_status_olt_id', 'olt_sync_status', 'olt_id')
+    ensure_index('ix_sync_jobs_olt_id', 'sync_jobs', 'olt_id')
+    ensure_index('ix_sync_jobs_created_at', 'sync_jobs', 'created_at')
+    ensure_index('ix_notifications_unread', 'notifications', 'is_read', 'resolved')
+    ensure_index('ix_alert_history_onu_type', 'alert_history', 'onu_id', 'alert_type')
+    ensure_index('ix_action_logs_user_id', 'action_logs', 'user_id')
+
 
 # ==================== FTTH INFRASTRUCTURE APIs ====================
 
