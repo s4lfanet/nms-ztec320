@@ -6624,7 +6624,7 @@ def update_bot_config(bot_type):
 @login_required
 def get_system_config():
     """Get system configuration (timezone, alert interval, etc)."""
-    _SENSITIVE_KEYS = {'duitku_api_key', 'duitku_merchant_code', 'bot_token', 'wa_api_key'}
+    _SENSITIVE_KEYS = {'bot_token', 'wa_api_key'}
     is_admin = current_user.is_super_admin
     configs = SystemConfig.query.all()
     result = {}
@@ -6644,14 +6644,6 @@ def get_system_config():
         result['base_url'] = 'https://salfanet.id'
     if 'admin_service_phone' not in result:
         result['admin_service_phone'] = '6285121111220'
-    if 'duitku_merchant_code' not in result:
-        result['duitku_merchant_code'] = ''
-    if 'duitku_api_key' not in result:
-        result['duitku_api_key'] = ''
-    if 'duitku_callback_url' not in result:
-        result['duitku_callback_url'] = ''
-    if 'duitku_environment' not in result:
-        result['duitku_environment'] = 'sandbox'
     return jsonify({'success': True, 'config': result})
 
 

@@ -431,7 +431,6 @@ export interface RenewalData {
     max_olts: number;
     duration_days: number;
   }>;
-  duitku_configured: boolean;
 }
 
 export interface FanInfo {

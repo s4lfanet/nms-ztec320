@@ -19,6 +19,7 @@ import hashlib
 import logging
 from typing import Optional, Tuple
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -146,9 +147,9 @@ def _authorize_ws_user(user_id: int, required_permission: str,
     """
     try:
         from app import app as flask_app
-        from models import User, OLT
+        from models import User, OLT, db
         with flask_app.app_context():
-            user = User.query.get(user_id)
+            user = db.session.get(User, user_id)
             if user is None:
                 return False, "User not found"
             # UserMixin.is_active — False if user is disabled/deactivated
@@ -159,101 +160,13 @@ def _authorize_ws_user(user_id: int, required_permission: str,
                 return False, "Insufficient permissions"
             # OLT access control: verify OLT exists (Phase 4+5)
             if olt_id is not None:
-                olt = OLT.query.get(olt_id)
+                olt = db.session.get(OLT, olt_id)
                 if olt is None:
                     return False, "OLT not found"
             return True, "OK"
     except Exception as e:
         logger.error(f"WS authorization error for user_id={user_id}: {e}")
         return False, "Authorization error"
-
-# ---------------------------------------------------------------------------
-# FastAPI app
-# ---------------------------------------------------------------------------
-fastapi_app = FastAPI(
-    title="Salfanet NMS — Complete API Documentation",
-    description="""**Salfanet NMS** — OLT Management System for FTTH networks.
-
-## For External Developers
-
-If you're building your own frontend or integrating with Salfanet NMS, use this API reference.
-
-### Authentication Flow
-```
-1. POST /api/auth/login  →  {username, password}  →  Set-Cookie: session
-2. All subsequent requests use the session cookie automatically
-3. POST /api/auth/logout  →  Clear session
-```
-
-### Important Notes
-- **Base URL**: `http://your-server:5000/api/...`
-- **Session cookie**: auto-sent by browser
-- **CORS**: Restricted to explicit trusted origins. Configure via `CORS_ALLOWED_ORIGINS` (comma-separated), `NEXTAUTH_URL`, or `BASE_URL` env vars. Production must use explicit origins (e.g., `https://nms.example.com`). Wildcard `*` is never allowed.
-- **Pagination**: `/api/all-onus?page=1&page_size=50&search=&sort_by=name&sort_dir=asc`
-- **Error format**: `{\"error\": \"message\"}` with appropriate HTTP status code
-
-### Public Endpoints (No Auth Required)
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/public/branding` | NMS brand name, base_url |
-
-### WebSocket (Real-time)
-```
-ws://{host}:8765/ws/sync/{olt_id}    → Sync progress
-ws://{host}:8765/ws/onus/{olt_id}    → ONU status changes
-ws://{host}:8765/ws/dashboard        → Dashboard events
-```
-Message format: `{\"event\": \"name\", \"data\": {...}, \"ts\": 1234567890.123}`
-
-### OpenAPI Spec Download
-- **JSON**: `GET /openapi.json`
-- **ReDoc**: `GET /redoc` (clean reference)
-- **Swagger**: `GET /docs` (interactive)
-
----
-## Endpoint Categories
-| Tag | Description |
-|-----|-------------|
-| **WebSocket** | Real-time sync, ONU status, dashboard events |
-| **Auth** | Login, logout, session management |
-| **Dashboard** | Summary stats, live traffic |
-| **OLT Management** | CRUD, sync, connection test |
-| **ONU Management** | CRUD, actions, live detail, migration |
-| **ONU Registration** | Scan, pre-register new ONUs |
-| **Uplink Ports** | Enable/disable, config, VLAN trunk, IP SVI |
-| **PON Ports** | Stats, enable/disable, edit |
-| **VLANs** | Rename, delete |
-| **ONU Types** | Add, delete |
-| **Speed Profiles** | TCONT + Traffic profiles |
-| **WAN IP Profiles** | WAN IP provisioning |
-| **FTTH Infrastructure** | OTB → ODC → ODP hierarchy |
-| **Templates** | ONU provisioning templates |
-| **TR069** | ACS profiles |
-| **Users** | RBAC user management |
-| **Customization** | Columns, signal filter, RX colors |
-| **Notifications** | Alert notifications |
-| **Alerts** | Alert rules |
-| **Public** | No-auth endpoints (branding) |
-| **WhatsApp Bot** | WA native gateway config |
-
-## Base URLs
-- **Flask API**: `http://host:5000/api/...`
-- **FastAPI (this docs)**: `http://host:8765/docs`
-- **WebSocket**: `ws://host:8765/ws/...`
-""",
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-)
-
-fastapi_app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_get_allowed_origins(),
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Internal-Key"],
-)
-
 
 # ---------------------------------------------------------------------------
 # Connection manager — tracks active WebSocket clients
@@ -363,10 +276,100 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-@fastapi_app.on_event("startup")
-async def _start_ws_heartbeat():
-    """Start server-side WebSocket heartbeat on FastAPI startup."""
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """FastAPI lifespan — start WebSocket heartbeat on startup."""
     await manager.start_heartbeat()
+    yield
+
+
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
+fastapi_app = FastAPI(
+    lifespan=_lifespan,
+    title="Salfanet NMS — Complete API Documentation",
+    description="""**Salfanet NMS** — OLT Management System for FTTH networks.
+
+## For External Developers
+
+If you're building your own frontend or integrating with Salfanet NMS, use this API reference.
+
+### Authentication Flow
+```
+1. POST /api/auth/login  →  {username, password}  →  Set-Cookie: session
+2. All subsequent requests use the session cookie automatically
+3. POST /api/auth/logout  →  Clear session
+```
+
+### Important Notes
+- **Base URL**: `http://your-server:5000/api/...`
+- **Session cookie**: auto-sent by browser
+- **CORS**: Restricted to explicit trusted origins. Configure via `CORS_ALLOWED_ORIGINS` (comma-separated), `NEXTAUTH_URL`, or `BASE_URL` env vars. Production must use explicit origins (e.g., `https://nms.example.com`). Wildcard `*` is never allowed.
+- **Pagination**: `/api/all-onus?page=1&page_size=50&search=&sort_by=name&sort_dir=asc`
+- **Error format**: `{\"error\": \"message\"}` with appropriate HTTP status code
+
+### Public Endpoints (No Auth Required)
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/public/branding` | NMS brand name, base_url |
+
+### WebSocket (Real-time)
+```
+ws://{host}:8765/ws/sync/{olt_id}    → Sync progress
+ws://{host}:8765/ws/onus/{olt_id}    → ONU status changes
+ws://{host}:8765/ws/dashboard        → Dashboard events
+```
+Message format: `{\"event\": \"name\", \"data\": {...}, \"ts\": 1234567890.123}`
+
+### OpenAPI Spec Download
+- **JSON**: `GET /openapi.json`
+- **ReDoc**: `GET /redoc` (clean reference)
+- **Swagger**: `GET /docs` (interactive)
+
+---
+## Endpoint Categories
+| Tag | Description |
+|-----|-------------|
+| **WebSocket** | Real-time sync, ONU status, dashboard events |
+| **Auth** | Login, logout, session management |
+| **Dashboard** | Summary stats, live traffic |
+| **OLT Management** | CRUD, sync, connection test |
+| **ONU Management** | CRUD, actions, live detail, migration |
+| **ONU Registration** | Scan, pre-register new ONUs |
+| **Uplink Ports** | Enable/disable, config, VLAN trunk, IP SVI |
+| **PON Ports** | Stats, enable/disable, edit |
+| **VLANs** | Rename, delete |
+| **ONU Types** | Add, delete |
+| **Speed Profiles** | TCONT + Traffic profiles |
+| **WAN IP Profiles** | WAN IP provisioning |
+| **FTTH Infrastructure** | OTB → ODC → ODP hierarchy |
+| **Templates** | ONU provisioning templates |
+| **TR069** | ACS profiles |
+| **Users** | RBAC user management |
+| **Customization** | Columns, signal filter, RX colors |
+| **Notifications** | Alert notifications |
+| **Alerts** | Alert rules |
+| **Public** | No-auth endpoints (branding) |
+| **WhatsApp Bot** | WA native gateway config |
+
+## Base URLs
+- **Flask API**: `http://host:5000/api/...`
+- **FastAPI (this docs)**: `http://host:8765/docs`
+- **WebSocket**: `ws://host:8765/ws/...`
+""",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+fastapi_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_get_allowed_origins(),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Internal-Key"],
+)
 
 
 # ---------------------------------------------------------------------------
