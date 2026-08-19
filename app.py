@@ -6720,16 +6720,27 @@ def backup_database():
                 os.remove(backup_path)
             return jsonify({'success': False, 'message': f'SQLite backup failed: {e}'}), 500
     elif 'postgresql' in db_uri:
-        # Use pg_dump
+        # Use pg_dump — pass connection params via env vars, NOT command line,
+        # to avoid exposing credentials in process list (ps aux).
         backup_filename = f'nms_db_backup_{timestamp}.sql.gz'
         tmp = tempfile.NamedTemporaryFile(suffix='.sql.gz', delete=False, dir=tempfile.gettempdir())
         backup_path = tmp.name
         tmp.close()
         os.chmod(backup_path, 0o600)
         try:
+            # Parse URI to extract components without exposing on CLI
+            from urllib.parse import urlparse
+            parsed = urlparse(db_uri)
+            pg_env = os.environ.copy()
+            pg_env['PGHOST'] = parsed.hostname or 'localhost'
+            pg_env['PGPORT'] = str(parsed.port or 5432)
+            pg_env['PGUSER'] = parsed.username or ''
+            pg_env['PGPASSWORD'] = parsed.password or ''
+            pg_env['PGDATABASE'] = parsed.path.lstrip('/') or ''
             with open(backup_path, 'wb') as f:
                 proc = subprocess.Popen(
-                    ['pg_dump', db_uri], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                    ['pg_dump', '--no-password'], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    env=pg_env
                 )
                 gzip_proc = subprocess.Popen(['gzip'], stdin=proc.stdout, stdout=f, stderr=subprocess.PIPE)
                 proc.stdout.close()
@@ -6752,12 +6763,16 @@ def backup_database():
     backup_size = os.path.getsize(backup_path)
 
     # Optional remote upload via SCP
+    # Uses known_hosts verification (no StrictHostKeyChecking=no).
+    # Admin must pre-populate known_hosts via: ssh-keyscan -H <backup-host> >> ~/.ssh/known_hosts
     remote_target = os.environ.get('BACKUP_REMOTE_SCP_TARGET', '')
     scp_key = os.environ.get('BACKUP_REMOTE_SCP_KEY', os.path.expanduser('~/.ssh/id_rsa'))
     remote_uploaded = False
     remote_error = ''
     if remote_target:
-        scp_cmd = ['scp', '-i', scp_key, '-o', 'StrictHostKeyChecking=no',
+        scp_cmd = ['scp', '-i', scp_key,
+                   '-o', 'BatchMode=yes',
+                   '-o', 'ConnectTimeout=30',
                    backup_path, remote_target]
         try:
             result = subprocess.run(scp_cmd, capture_output=True, timeout=120)
@@ -6821,12 +6836,29 @@ def restore_database():
         # Verify uploaded backup integrity
         chk = sqlite3.connect(upload_path)
         result = chk.execute('PRAGMA integrity_check').fetchone()
-        chk.close()
         if result[0] != 'ok':
+            chk.close()
             os.remove(upload_path)
             return jsonify({'success': False, 'message': f'Uploaded file integrity check failed: {result[0]}'}), 400
 
+        # Schema compatibility check: backup must have all tables in current DB
         db_path = db_uri.replace('sqlite:///', '')
+        cur = chk.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        backup_tables = {row[0] for row in cur.fetchall()}
+        chk.close()
+
+        cur_db = sqlite3.connect(db_path)
+        cur = cur_db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        current_tables = {row[0] for row in cur.fetchall()}
+        cur_db.close()
+
+        missing_tables = current_tables - backup_tables
+        if missing_tables:
+            os.remove(upload_path)
+            return jsonify({
+                'success': False,
+                'message': f'Schema mismatch: backup is missing tables: {sorted(missing_tables)[:10]}'
+            }), 400
 
         # Safety: backup current DB before overwrite
         pre_restore_backup = db_path + f'.pre_restore_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
