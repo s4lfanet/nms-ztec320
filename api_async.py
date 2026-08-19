@@ -359,8 +359,9 @@ Message format: `{\"event\": \"name\", \"data\": {...}, \"ts\": 1234567890.123}`
 - **WebSocket**: `ws://host:8765/ws/...`
 """,
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if os.environ.get("FLASK_ENV") != "production" else None,
+    redoc_url="/redoc" if os.environ.get("FLASK_ENV") != "production" else None,
+    openapi_url="/openapi.json" if os.environ.get("FLASK_ENV") != "production" else None,
 )
 
 fastapi_app.add_middleware(
