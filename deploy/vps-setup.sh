@@ -57,8 +57,9 @@ if [ -d "${SCRIPT_DIR}/frontend/dist" ]; then
 else
     echo "  Frontend not built. Building now..."
     cd "${APP_DIR}/frontend"
-    npm install --no-audit --no-fund
-    npm run build
+    corepack enable pnpm 2>/dev/null || npm install -g pnpm 2>/dev/null || true
+    pnpm install --no-frozen-lockfile
+    pnpm build
     cd "${APP_DIR}"
 fi
 

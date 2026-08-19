@@ -5,7 +5,11 @@ git config --global --add safe.directory /opt/salfanet-nms
 echo "=== Pull ==="
 git pull origin main
 echo "=== Build frontend ==="
-cd frontend && npm run build && cd ..
+cd frontend
+corepack enable pnpm 2>/dev/null || true
+pnpm install --no-frozen-lockfile 2>&1 | tail -3
+pnpm build 2>&1 | tail -5
+cd ..
 echo "=== Restart ==="
 systemctl restart salfanet-nms
 sleep 5

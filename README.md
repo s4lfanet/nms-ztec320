@@ -118,7 +118,7 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ```text
 ├── app.py                 # Flask routes, API, sync orchestration (~7300 lines)
 ├── models.py              # SQLAlchemy models (OLT, ONU, Alert, FTTH, Users, etc.)
-├── config.py              # Environment-based configuration
+├── sync_lock.py            # Distributed sync lock (prevent concurrent syncs)
 ├── snmp_core.py           # SNMP core collector (pysnmp 7.x Slim API)
 ├── snmp_collector.py      # Compatibility shim (re-exports snmp_core + telnet_client)
 ├── telnet_client.py       # ZTE CLI collector & provisioning (~4330 lines)
@@ -128,7 +128,6 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ├── cache.py               # Redis caching layer (in-memory fallback for dev)
 ├── auto_sync.py           # Cron-based auto-sync
 ├── auto_backup.py         # Automatic OLT config backup
-├── task_queue.py          # Background task queue (traffic aggregation)
 ├── traffic_poller.py      # Traffic polling via Telnet CLI
 ├── ws_bridge.py           # WebSocket bridge for real-time events
 ├── api_async.py           # FastAPI app (WebSocket + Swagger docs)
@@ -138,7 +137,6 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ├── helpers.py             # Shared helpers (permissions, rate limiting, logging)
 ├── logging_config.py      # Structured logging (JSON for prod, human-readable for dev)
 ├── run_server.py          # Hybrid server launcher (Flask + FastAPI)
-├── migrate.py             # Flask-Migrate CLI wrapper
 ├── olt_adapters/          # ZTE adapter package
 │   ├── __init__.py        # Auto-registers ZTE adapter
 │   ├── base.py            # BaseOLTAdapter abstract class
