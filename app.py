@@ -1429,6 +1429,202 @@ def migrate_cross_olt():
     })
 
 
+@app.route('/api/olt/copy-config', methods=['POST'])
+@permission_required('settings_ip_olts')
+def copy_olt_config():
+    """Copy OLT configuration (VLANs, ONU types, speed profiles, WAN IP profiles)
+    from source OLT to target OLT via CLI, and duplicate DB records.
+
+    Body: { source_olt_id: int, target_olt_id: int }
+    Returns: { success, copied: { vlans, onu_types, speed_profiles, wan_ip_profiles }, errors: [...] }
+    """
+    data = request.get_json()
+    source_olt_id = int(data.get('source_olt_id', 0))
+    target_olt_id = int(data.get('target_olt_id', 0))
+
+    if not source_olt_id or not target_olt_id:
+        return jsonify({'success': False, 'message': 'Missing source_olt_id or target_olt_id'}), 400
+    if source_olt_id == target_olt_id:
+        return jsonify({'success': False, 'message': 'Source and target OLT must be different'}), 400
+
+    source_olt = db.session.get(OLT, source_olt_id)
+    target_olt = db.session.get(OLT, target_olt_id)
+    if not source_olt:
+        return jsonify({'success': False, 'message': 'Source OLT not found'}), 404
+    if not target_olt:
+        return jsonify({'success': False, 'message': 'Target OLT not found'}), 404
+    if not target_olt.cli_username:
+        return jsonify({'success': False, 'message': 'Target OLT not configured for CLI access'}), 400
+
+    from snmp_collector import create_cli_collector
+    dst_tc = create_cli_collector(target_olt)
+
+    errors = []
+    copied = {'vlans': 0, 'onu_types': 0, 'speed_profiles': 0, 'wan_ip_profiles': 0}
+
+    # Gather source config from DB
+    source_vlans = ONUVlan.query.filter_by(olt_id=source_olt_id).all()
+    source_onu_types = ONUType.query.filter_by(olt_id=source_olt_id).all()
+    source_speed_profiles = SpeedProfile.query.filter_by(olt_id=source_olt_id).all()
+    source_wan_ip_profiles = WanIpProfile.query.filter_by(olt_id=source_olt_id).all()
+
+    # Existing target config (to skip duplicates)
+    existing_vlans = {(v.vlan_id, v.vlan_name) for v in ONUVlan.query.filter_by(olt_id=target_olt_id).all()}
+    existing_onu_types = {t.type_name for t in ONUType.query.filter_by(olt_id=target_olt_id).all()}
+    existing_speed = {(p.profile_type, p.name) for p in SpeedProfile.query.filter_by(olt_id=target_olt_id).all()}
+    existing_wan_ip = {p.name for p in WanIpProfile.query.filter_by(olt_id=target_olt_id).all()}
+
+    tn = dst_tc._connect()
+    if not tn:
+        return jsonify({'success': False, 'message': 'Cannot connect to target OLT via Telnet'}), 500
+
+    try:
+        # --- 1. Copy VLANs ---
+        if source_vlans:
+            dst_tc._send_command(tn, 'end', timeout=5)
+            dst_tc._send_command(tn, 'configure terminal', timeout=5)
+            dst_tc._send_command(tn, 'vlan database', timeout=5)
+            for v in source_vlans:
+                key = (v.vlan_id, v.vlan_name)
+                if key in existing_vlans:
+                    continue
+                try:
+                    dst_tc._send_command(tn, f'vlan {v.vlan_id}', timeout=5)
+                    if v.vlan_name:
+                        dst_tc._send_command(tn, f'vlan {v.vlan_id} name {v.vlan_name}', timeout=5)
+                    # Duplicate DB record
+                    new_vlan = ONUVlan(
+                        olt_id=target_olt_id, vlan_id=v.vlan_id, vlan_name=v.vlan_name,
+                        vlan_type=v.vlan_type, onu_profiles=v.onu_profiles,
+                        tagged_ports=v.tagged_ports, untagged_ports=v.untagged_ports,
+                    )
+                    db.session.add(new_vlan)
+                    copied['vlans'] += 1
+                    existing_vlans.add(key)
+                except Exception as e:
+                    errors.append(f'VLAN {v.vlan_id}: {str(e)[:100]}')
+            dst_tc._send_command(tn, 'exit', timeout=5)  # exit vlan database
+
+        # --- 2. Copy ONU Types ---
+        if source_onu_types:
+            dst_tc._send_command(tn, 'end', timeout=5)
+            dst_tc._send_command(tn, 'configure terminal', timeout=5)
+            dst_tc._send_command(tn, 'pon', timeout=5)
+            for t in source_onu_types:
+                if t.type_name in existing_onu_types:
+                    continue
+                try:
+                    cmd = f'onu-type {t.type_name} {t.pon_type or "gpon"}'
+                    if t.description:
+                        cmd += f' description "{t.description}"'
+                    dst_tc._send_command(tn, cmd, timeout=5)
+                    # Duplicate DB record
+                    new_type = ONUType(
+                        olt_id=target_olt_id, type_name=t.type_name, pon_type=t.pon_type,
+                        description=t.description, max_tcont=t.max_tcont, max_gem=t.max_gem,
+                        max_switch=t.max_switch, max_flow=t.max_flow, max_ip_host=t.max_ip_host,
+                        max_veip=t.max_veip, interfaces=t.interfaces,
+                    )
+                    db.session.add(new_type)
+                    copied['onu_types'] += 1
+                    existing_onu_types.add(t.type_name)
+                except Exception as e:
+                    errors.append(f'ONU Type {t.type_name}: {str(e)[:100]}')
+            dst_tc._send_command(tn, 'exit', timeout=5)  # exit pon
+
+        # --- 3. Copy Speed Profiles (TCONT + Traffic) ---
+        if source_speed_profiles:
+            dst_tc._send_command(tn, 'end', timeout=5)
+            dst_tc._send_command(tn, 'configure terminal', timeout=5)
+            dst_tc._send_command(tn, 'gpon', timeout=5)
+            for p in source_speed_profiles:
+                key = (p.profile_type, p.name)
+                if key in existing_speed:
+                    continue
+                try:
+                    if p.profile_type == 'tcont':
+                        cmd = f'profile tcont {p.name}'
+                        if p.type_val:
+                            cmd += f' type {p.type_val}'
+                        if p.max_bandwidth and p.max_bandwidth != '0':
+                            cmd += f' maximum {p.max_bandwidth}'
+                        dst_tc._send_command(tn, cmd, timeout=5)
+                    elif p.profile_type == 'traffic':
+                        cmd = f'profile traffic {p.name}'
+                        if p.sir:
+                            cmd += f' sir {p.sir}'
+                        if p.pir:
+                            cmd += f' pir {p.pir}'
+                        dst_tc._send_command(tn, cmd, timeout=5)
+                    # Duplicate DB record
+                    new_sp = SpeedProfile(
+                        olt_id=target_olt_id, profile_type=p.profile_type, name=p.name,
+                        type_val=p.type_val, fixed_bandwidth=p.fixed_bandwidth,
+                        assured_bandwidth=p.assured_bandwidth, max_bandwidth=p.max_bandwidth,
+                        sir=p.sir, pir=p.pir,
+                    )
+                    db.session.add(new_sp)
+                    copied['speed_profiles'] += 1
+                    existing_speed.add(key)
+                except Exception as e:
+                    errors.append(f'Speed Profile {p.name}: {str(e)[:100]}')
+            dst_tc._send_command(tn, 'exit', timeout=5)  # exit gpon
+
+        # --- 4. Copy WAN IP Profiles ---
+        if source_wan_ip_profiles:
+            dst_tc._send_command(tn, 'end', timeout=5)
+            dst_tc._send_command(tn, 'configure terminal', timeout=5)
+            dst_tc._send_command(tn, 'gpon', timeout=5)
+            for w in source_wan_ip_profiles:
+                if w.name in existing_wan_ip:
+                    continue
+                try:
+                    cmd = f'profile wan-ip {w.name}'
+                    if w.ip_address:
+                        cmd += f' ipaddress {w.ip_address}'
+                    if w.netmask:
+                        cmd += f' netmask {w.netmask}'
+                    if w.gateway:
+                        cmd += f' gateway {w.gateway}'
+                    dst_tc._send_command(tn, cmd, timeout=5)
+                    # Duplicate DB record
+                    new_wip = WanIpProfile(
+                        olt_id=target_olt_id, name=w.name, ip_address=w.ip_address,
+                        netmask=w.netmask, gateway=w.gateway, dns1=w.dns1, dns2=w.dns2,
+                    )
+                    db.session.add(new_wip)
+                    copied['wan_ip_profiles'] += 1
+                    existing_wan_ip.add(w.name)
+                except Exception as e:
+                    errors.append(f'WAN IP Profile {w.name}: {str(e)[:100]}')
+            dst_tc._send_command(tn, 'exit', timeout=5)  # exit gpon
+
+        # Save config to target OLT
+        dst_tc._send_command(tn, 'end', timeout=5)
+        dst_tc._send_command(tn, 'write', timeout=15)
+
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        errors.append(f'General error: {str(e)[:200]}')
+    finally:
+        try:
+            tn.close()
+        except Exception:
+            pass
+
+    log_action('copy_olt_config', 'system',
+               detail=f'{source_olt.name} → {target_olt.name}: VLANs={copied["vlans"]}, ONU Types={copied["onu_types"]}, Speed Profiles={copied["speed_profiles"]}, WAN IP={copied["wan_ip_profiles"]}')
+
+    total_copied = sum(copied.values())
+    return jsonify({
+        'success': total_copied > 0 or len(errors) == 0,
+        'copied': copied,
+        'errors': errors,
+        'message': f'Copied {total_copied} config items' + (f' ({len(errors)} errors)' if errors else ''),
+    })
+
+
 @app.route('/api/onu/<int:onu_id>/delete', methods=['POST'])
 @permission_required('delete_onu')
 def delete_onu(onu_id):

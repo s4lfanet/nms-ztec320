@@ -701,6 +701,8 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
   const [targetPon, setTargetPon] = useState('');
   const [onuIdMode, setOnuIdMode] = useState<'auto' | 'manual'>('auto');
   const [onuIdValue, setOnuIdValue] = useState('1');
+  const [copyConfig, setCopyConfig] = useState(true);
+  const [configResult, setConfigResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchingStruct, setFetchingStruct] = useState(true);
   const [fetchingOnus, setFetchingOnus] = useState(false);
@@ -776,6 +778,28 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
     if (!ok) return;
     setLoading(true);
     setProgress({ done: 0, total: ids.length, results: [] });
+    setConfigResult(null);
+
+    // Step 1: Optionally copy OLT config first
+    if (copyConfig) {
+      try {
+        const cfgRes = await fetch('/api/olt/copy-config', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ source_olt_id: sourceOltId, target_olt_id: Number(targetOltId) }),
+        });
+        const cfgData = await cfgRes.json();
+        if (cfgData.success) {
+          const c = cfgData.copied || {};
+          setConfigResult(`Config copied: ${c.vlans || 0} VLANs, ${c.onu_types || 0} ONU Types, ${c.speed_profiles || 0} Speed Profiles, ${c.wan_ip_profiles || 0} WAN IP Profiles` + (cfgData.errors?.length ? ` (${cfgData.errors.length} errors)` : ''));
+        } else {
+          setConfigResult(`Config copy failed: ${cfgData.message || 'unknown error'}`);
+        }
+      } catch {
+        setConfigResult('Config copy failed: network error');
+      }
+    }
+
+    // Step 2: Migrate ONUs
     try {
       const res = await fetch('/api/olt/migrate-cross-olt', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
@@ -933,12 +957,29 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
                       )}
 
                       {targetPon && (
+                        <label className="flex items-center gap-2 text-sm cursor-pointer p-3 rounded-lg bg-accent/10 border border-accent/20">
+                          <input type="checkbox" checked={copyConfig} onChange={e => setCopyConfig(e.target.checked)} className="w-4 h-4 rounded accent-accent" />
+                          <div>
+                            <div className="font-medium">Copy OLT Config to Target</div>
+                            <div className="text-xs text-tx3">VLANs, ONU Types, Speed Profiles (TCONT/Traffic), WAN IP Profiles — applied via CLI before ONU migration</div>
+                          </div>
+                        </label>
+                      )}
+
+                      {configResult && (
+                        <div className={cn('p-3 rounded-lg text-xs', configResult.startsWith('Config copy failed') ? 'bg-danger/10 border border-danger/20 text-danger' : 'bg-success/10 border border-success/20 text-success')}>
+                          {configResult}
+                        </div>
+                      )}
+
+                      {targetPon && (
                         <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 text-xs">
                           <div className="font-semibold text-warning mb-1">Cross-OLT Migration Summary:</div>
                           <div>From: <strong>{sourceOltName}</strong> — gpon-olt_1/{sourceCard}/{sourcePon}</div>
                           <div>To: <strong>{targetOlt?.name}</strong> — gpon-olt_1/{targetCard}/{targetPon}</div>
                           <div>ONUs: <strong>{selectedIds.size}</strong></div>
-                          <div className="text-tx3 mt-1">Each ONU will be deregistered from the source OLT and re-registered on the target OLT. Name and description will be re-applied.</div>
+                          <div>Copy Config: <strong>{copyConfig ? 'Yes' : 'No'}</strong></div>
+                          <div className="text-tx3 mt-1">Each ONU will be deregistered from the source OLT and re-registered on the target OLT. Name and description will be re-applied.{copyConfig && ' OLT config (VLANs, profiles, ONU types) will be copied first.'}</div>
                         </div>
                       )}
 
