@@ -7028,7 +7028,20 @@ def seed_initial_data():
     except Exception as e:
         logger.debug(f"technician_id column check: {e}")
 
-    if Role.query.first():
+    # Data loss safeguard: if onu_custom_columns has data but roles is empty,
+    # the DB was previously populated but tables were emptied. Refuse to re-seed
+    # to avoid masking data loss and alerting the admin.
+    existing_roles = Role.query.first()
+    if not existing_roles:
+        custom_cols = ONUCustomColumn.query.first()
+        if custom_cols:
+            logger.critical(
+                "DATA LOSS DETECTED: onu_custom_columns has data but roles table is empty. "
+                "Refusing to re-seed. Restore from backup before continuing."
+            )
+            return
+
+    if existing_roles:
         # Migrate existing admin to super_admin if not already
         admin = User.query.filter_by(username='admin').first()
         if admin and not admin.is_super_admin:
@@ -8490,11 +8503,15 @@ if 'sqlite' in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
             cursor.close()
     logger.info('SQLite WAL mode enabled for write concurrency')
 
-# Ensure schema is migrated and tables exist when running via gunicorn
-with app.app_context():
-    migrate_schema()
-    db.create_all()
-    seed_initial_data()
+# Ensure schema is migrated and tables exist — ONLY in the server process.
+# Cron scripts (auto_sync.py, traffic_poller.py, auto_backup.py) import app.py
+# but must NOT run schema init, as concurrent db.create_all() on SQLite WAL
+# can cause schema lock conflicts and data loss.
+if os.environ.get('NMS_SERVER_PROCESS') == '1' or __name__ == '__main__':
+    with app.app_context():
+        migrate_schema()
+        db.create_all()
+        seed_initial_data()
 
 
 # _get_nms_branding moved to services_wa.py
