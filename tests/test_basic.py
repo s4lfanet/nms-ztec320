@@ -240,11 +240,17 @@ class TestSecurityPhase1:
         # Create a Viewer user without settings_ip_olts
         with app.app_context():
             from models import Role, User, db
-            viewer_role = Role(name='Viewer', permissions='')
-            db.session.add(viewer_role)
-            viewer = User(username='viewer', full_name='Viewer', role=viewer_role)
-            viewer.set_password('viewer123')
-            db.session.add(viewer)
+            # Use get_or_create to avoid UNIQUE constraint conflicts
+            viewer_role = Role.query.filter_by(name='Viewer').first()
+            if not viewer_role:
+                viewer_role = Role(name='Viewer', permissions='')
+                db.session.add(viewer_role)
+                db.session.flush()
+            viewer = User.query.filter_by(username='viewer').first()
+            if not viewer:
+                viewer = User(username='viewer', full_name='Viewer', role=viewer_role)
+                viewer.set_password('viewer123')
+                db.session.add(viewer)
             db.session.commit()
 
         # Logout admin, login as viewer
@@ -343,11 +349,17 @@ class TestRBAC:
         """Create a viewer user with no permissions."""
         with app.app_context():
             from models import Role, User, db
-            viewer_role = Role(name='ViewerTest', permissions='')
-            db.session.add(viewer_role)
-            viewer = User(username='viewertest', full_name='Viewer', role=viewer_role)
-            viewer.set_password('viewer123')
-            db.session.add(viewer)
+            # Use get_or_create to avoid UNIQUE constraint conflicts
+            viewer_role = Role.query.filter_by(name='ViewerTest').first()
+            if not viewer_role:
+                viewer_role = Role(name='ViewerTest', permissions='')
+                db.session.add(viewer_role)
+                db.session.flush()
+            viewer = User.query.filter_by(username='viewertest').first()
+            if not viewer:
+                viewer = User(username='viewertest', full_name='Viewer', role=viewer_role)
+                viewer.set_password('viewer123')
+                db.session.add(viewer)
             db.session.commit()
 
     def _login_viewer(self, client):
