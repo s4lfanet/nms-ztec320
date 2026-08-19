@@ -16,43 +16,93 @@ import os
 import time
 import hmac
 import hashlib
-from typing import Optional
+from typing import Optional, Tuple
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 
-def _get_internal_api_key():
-    """Get the shared secret used for internal Flask→FastAPI communication."""
-    return os.environ.get('INTERNAL_API_KEY', '') or os.environ.get('SECRET_KEY', 'fallback-dev-key')
+# ---------------------------------------------------------------------------
+# Internal API key — no SECRET_KEY fallback (P1: eliminate key reuse)
+# ---------------------------------------------------------------------------
+_INTERNAL_KEY = os.environ.get('INTERNAL_API_KEY', '')
+if not _INTERNAL_KEY:
+    # Generate a random per-process key if not configured.
+    # This means Flask→FastAPI broadcast will work within the same process
+    # (run_server.py sets INTERNAL_API_KEY explicitly), but if not set,
+    # the key is random and broadcast from external processes will fail.
+    import secrets as _secrets
+    _INTERNAL_KEY = _secrets.token_hex(32)
 
 
-def _verify_ws_token(token: Optional[str]) -> bool:
+def _get_internal_api_key() -> str:
+    """Get the shared secret for internal Flask→FastAPI communication.
+
+    No SECRET_KEY fallback — INTERNAL_API_KEY must be set explicitly.
+    In run_server.py, this is set before app import so both Flask and
+    FastAPI share the same key.
+    """
+    return _INTERNAL_KEY
+
+
+# ---------------------------------------------------------------------------
+# Allowed CORS origins (P1: restrict from wildcard)
+# ---------------------------------------------------------------------------
+def _get_allowed_origins() -> list[str]:
+    """Build allowed CORS origins from environment."""
+    origins: list[str] = []
+    # Explicit config
+    cors_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+    if cors_env:
+        origins.extend(o.strip() for o in cors_env.split(',') if o.strip())
+    # Auto-derive from known domains
+    base_url = os.environ.get('NEXTAUTH_URL', '') or os.environ.get('BASE_URL', '')
+    if base_url:
+        origins.append(base_url.rstrip('/'))
+    # Always allow localhost for dev
+    origins.extend([
+        'http://localhost:3000',
+        'http://localhost:5000',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:5000',
+    ])
+    return list(dict.fromkeys(origins))  # dedupe preserving order
+
+
+# ---------------------------------------------------------------------------
+# WebSocket token verification with user identity + permissions (P0)
+# ---------------------------------------------------------------------------
+def _verify_ws_token(token: Optional[str]) -> Tuple[bool, Optional[int]]:
     """Verify ephemeral HMAC-signed WebSocket auth token.
 
     Token format: {user_id}.{expiry}.{hmac_signature}
     Verifies signature and checks expiry (60s TTL).
     Does NOT expose SECRET_KEY to the frontend.
+
+    Returns (is_valid, user_id) tuple.
     """
     if not token:
-        return False
+        return False, None
     parts = token.split('.')
     if len(parts) != 3:
-        return False
+        return False, None
     user_id_str, expiry_str, sig = parts
     try:
+        user_id = int(user_id_str)
         expiry = int(expiry_str)
     except ValueError:
-        return False
+        return False, None
     # Check token hasn't expired
     if time.time() > expiry:
-        return False
+        return False, None
     # Verify HMAC signature
     secret = _get_internal_api_key()
     payload = f"{user_id_str}.{expiry_str}"
     expected_sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(sig, expected_sig)
+    if hmac.compare_digest(sig, expected_sig):
+        return True, user_id
+    return False, None
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -135,10 +185,10 @@ Message format: `{\"event\": \"name\", \"data\": {...}, \"ts\": 1234567890.123}`
 
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_get_allowed_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Internal-Key"],
 )
 
 
@@ -146,31 +196,86 @@ fastapi_app.add_middleware(
 # Connection manager — tracks active WebSocket clients
 # ---------------------------------------------------------------------------
 class ConnectionManager:
-    """Manages WebSocket connections grouped by channel."""
+    """Manages WebSocket connections grouped by channel.
+
+    Tracks user_id per connection for permission-based access control.
+    Implements server-side heartbeat to detect and clean up idle connections.
+    """
+
+    # Heartbeat: send ping every 30s, close after 3 missed pongs (90s idle)
+    HEARTBEAT_INTERVAL = 30.0
+    HEARTBEAT_TIMEOUT = 90.0
 
     def __init__(self):
-        # channel → set of (websocket, connected_at)
-        self._channels: dict[str, set[WebSocket]] = {}
+        # channel → set of (websocket, user_id, connected_at, last_pong)
+        self._channels: dict[str, dict[WebSocket, dict]] = {}
         self._lock = asyncio.Lock()
+        self._heartbeat_task: Optional[asyncio.Task] = None
 
-    async def connect(self, ws: WebSocket, channel: str):
+    async def start_heartbeat(self):
+        """Start the background heartbeat task (called once on startup)."""
+        if self._heartbeat_task is None or self._heartbeat_task.done():
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    async def _heartbeat_loop(self):
+        """Periodically ping all connections and close idle ones."""
+        while True:
+            await asyncio.sleep(self.HEARTBEAT_INTERVAL)
+            now = time.time()
+            dead: list[tuple[WebSocket, str]] = []
+            async with self._lock:
+                for channel, conns in self._channels.items():
+                    for ws, meta in list(conns.items()):
+                        idle = now - meta.get('last_pong', meta.get('connected_at', now))
+                        if idle > self.HEARTBEAT_TIMEOUT:
+                            dead.append((ws, channel))
+                        else:
+                            # Send server-side ping
+                            try:
+                                await ws.send_json({"event": "server_ping", "ts": now})
+                            except Exception:
+                                dead.append((ws, channel))
+            # Close dead connections outside the lock
+            for ws, channel in dead:
+                try:
+                    await ws.close(code=4408, reason="Idle timeout")
+                except Exception:
+                    pass
+                async with self._lock:
+                    if channel in self._channels:
+                        self._channels[channel].pop(ws, None)
+                        if not self._channels[channel]:
+                            del self._channels[channel]
+
+    async def connect(self, ws: WebSocket, channel: str, user_id: int):
         await ws.accept()
+        now = time.time()
         async with self._lock:
             if channel not in self._channels:
-                self._channels[channel] = set()
-            self._channels[channel].add(ws)
+                self._channels[channel] = {}
+            self._channels[channel][ws] = {
+                'user_id': user_id,
+                'connected_at': now,
+                'last_pong': now,
+            }
+
+    async def pong(self, ws: WebSocket, channel: str):
+        """Update last_pong timestamp for a connection."""
+        async with self._lock:
+            if channel in self._channels and ws in self._channels[channel]:
+                self._channels[channel][ws]['last_pong'] = time.time()
 
     async def disconnect(self, ws: WebSocket, channel: str):
         async with self._lock:
             if channel in self._channels:
-                self._channels[channel].discard(ws)
+                self._channels[channel].pop(ws, None)
                 if not self._channels[channel]:
                     del self._channels[channel]
 
     async def broadcast(self, channel: str, data: dict):
         """Send JSON data to all clients in a channel."""
         async with self._lock:
-            clients = list(self._channels.get(channel, set()))
+            clients = list(self._channels.get(channel, {}).keys())
         dead = []
         for ws in clients:
             try:
@@ -181,16 +286,24 @@ class ConnectionManager:
             async with self._lock:
                 for ws in dead:
                     if channel in self._channels:
-                        self._channels[channel].discard(ws)
+                        self._channels[channel].pop(ws, None)
+                        if not self._channels[channel]:
+                            del self._channels[channel]
 
     def client_count(self, channel: str) -> int:
-        return len(self._channels.get(channel, set()))
+        return len(self._channels.get(channel, {}))
 
     def total_clients(self) -> int:
         return sum(len(v) for v in self._channels.values())
 
 
 manager = ConnectionManager()
+
+
+@fastapi_app.on_event("startup")
+async def _start_ws_heartbeat():
+    """Start server-side WebSocket heartbeat on FastAPI startup."""
+    await manager.start_heartbeat()
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +357,7 @@ async def broadcast_message(
 
     Called by Flask backend (services_sync.py, app.py) to push real-time
     updates to connected frontend clients.
-    Requires X-Internal-Key header matching INTERNAL_API_KEY or SECRET_KEY.
+    Requires X-Internal-Key header matching INTERNAL_API_KEY (no SECRET_KEY fallback).
     Restricted to localhost requests only.
     """
     # Restrict to localhost (Flask runs in same process)
@@ -265,6 +378,31 @@ async def broadcast_message(
 # ---------------------------------------------------------------------------
 # WebSocket endpoints
 # ---------------------------------------------------------------------------
+async def _ws_loop(ws: WebSocket, channel: str, user_id: int, ack_data: dict):
+    """Common WebSocket message loop with heartbeat support.
+
+    Handles client messages: 'ping' → pong, 'pong' → update last_pong timestamp.
+    All other messages are ignored.
+    """
+    await manager.connect(ws, channel, user_id)
+    try:
+        await ws.send_json({
+            "event": "connected",
+            "data": ack_data,
+            "ts": time.time(),
+        })
+        while True:
+            data = await ws.receive_text()
+            if data == "ping":
+                await ws.send_json({"event": "pong", "ts": time.time()})
+            elif data == "pong":
+                await manager.pong(ws, channel)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await manager.disconnect(ws, channel)
+
+
 @fastapi_app.websocket("/ws/sync/{olt_id}")
 async def ws_sync_progress(ws: WebSocket, olt_id: int, token: Optional[str] = Query(None)):
     """Real-time sync progress for a specific OLT.
@@ -272,27 +410,12 @@ async def ws_sync_progress(ws: WebSocket, olt_id: int, token: Optional[str] = Qu
     Frontend connects: ws://host:8765/ws/sync/{olt_id}?token=xxx
     Server pushes: {event: "progress", data: {pct, message, status}}
     """
-    if not _verify_ws_token(token):
+    valid, user_id = _verify_ws_token(token)
+    if not valid or user_id is None:
         await ws.close(code=4401, reason="Unauthorized")
         return
     channel = f"sync:{olt_id}"
-    await manager.connect(ws, channel)
-    try:
-        # Send initial connection ack
-        await ws.send_json({
-            "event": "connected",
-            "data": {"olt_id": olt_id, "message": "Connected to sync progress stream"},
-            "ts": time.time(),
-        })
-        # Keep connection alive — listen for client messages (ping/close)
-        while True:
-            data = await ws.receive_text()
-            if data == "ping":
-                await ws.send_json({"event": "pong", "ts": time.time()})
-    except WebSocketDisconnect:
-        pass
-    finally:
-        await manager.disconnect(ws, channel)
+    await _ws_loop(ws, channel, user_id, {"olt_id": olt_id, "message": "Connected to sync progress stream"})
 
 
 @fastapi_app.websocket("/ws/onus/{olt_id}")
@@ -302,25 +425,12 @@ async def ws_onu_status(ws: WebSocket, olt_id: int, token: Optional[str] = Query
     Frontend connects: ws://host:8765/ws/onus/{olt_id}?token=xxx
     Server pushes: {event: "onu_change", data: {onu_id, field, old_val, new_val}}
     """
-    if not _verify_ws_token(token):
+    valid, user_id = _verify_ws_token(token)
+    if not valid or user_id is None:
         await ws.close(code=4401, reason="Unauthorized")
         return
     channel = f"onus:{olt_id}"
-    await manager.connect(ws, channel)
-    try:
-        await ws.send_json({
-            "event": "connected",
-            "data": {"olt_id": olt_id, "message": "Connected to ONU status stream"},
-            "ts": time.time(),
-        })
-        while True:
-            data = await ws.receive_text()
-            if data == "ping":
-                await ws.send_json({"event": "pong", "ts": time.time()})
-    except WebSocketDisconnect:
-        pass
-    finally:
-        await manager.disconnect(ws, channel)
+    await _ws_loop(ws, channel, user_id, {"olt_id": olt_id, "message": "Connected to ONU status stream"})
 
 
 @fastapi_app.websocket("/ws/dashboard")
@@ -330,25 +440,12 @@ async def ws_dashboard(ws: WebSocket, token: Optional[str] = Query(None)):
     Frontend connects: ws://host:8765/ws/dashboard?token=xxx
     Server pushes: {event: "olt_status"|"alert"|"onu_count", data: {...}}
     """
-    if not _verify_ws_token(token):
+    valid, user_id = _verify_ws_token(token)
+    if not valid or user_id is None:
         await ws.close(code=4401, reason="Unauthorized")
         return
     channel = "dashboard"
-    await manager.connect(ws, channel)
-    try:
-        await ws.send_json({
-            "event": "connected",
-            "data": {"message": "Connected to dashboard stream"},
-            "ts": time.time(),
-        })
-        while True:
-            data = await ws.receive_text()
-            if data == "ping":
-                await ws.send_json({"event": "pong", "ts": time.time()})
-    except WebSocketDisconnect:
-        pass
-    finally:
-        await manager.disconnect(ws, channel)
+    await _ws_loop(ws, channel, user_id, {"message": "Connected to dashboard stream"})
 
 
 # ---------------------------------------------------------------------------

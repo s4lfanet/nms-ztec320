@@ -142,6 +142,13 @@ export function useWebSocket(
       if (!mountedRef.current) return;
       try {
         const msg = JSON.parse(event.data) as WSMessage;
+        if (msg.event === 'server_ping') {
+          // Respond to server-side heartbeat ping
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send('pong');
+          }
+          return;
+        }
         if (msg.event !== 'pong') {
           setLastMessage(msg);
         }

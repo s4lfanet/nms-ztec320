@@ -29,6 +29,17 @@ from contextlib import asynccontextmanager
 # have this env var, preventing concurrent db.create_all() on SQLite WAL.
 os.environ.setdefault('NMS_SERVER_PROCESS', '1')
 
+# Set INTERNAL_API_KEY for Flask→FastAPI communication.
+# If not explicitly set, derive from SECRET_KEY so both processes share the same key.
+# This must be set BEFORE importing app.py or api_async.py so they pick it up.
+if not os.environ.get('INTERNAL_API_KEY'):
+    _sk = os.environ.get('SECRET_KEY', '')
+    if _sk:
+        os.environ['INTERNAL_API_KEY'] = _sk
+    else:
+        import secrets as _secrets
+        os.environ['INTERNAL_API_KEY'] = _secrets.token_hex(32)
+
 import uvicorn
 
 logger = logging.getLogger("run_server")

@@ -431,6 +431,82 @@ class TestWebSocketTokenSecurity:
         assert token1 != token2, 'Ephemeral tokens should differ across requests'
 
 
+class TestWebSocketAuthHardening:
+    """Regression tests for WebSocket auth + internal key hardening (P0/P1)."""
+
+    def test_verify_ws_token_returns_user_id(self):
+        """_verify_ws_token should return (True, user_id) for valid token."""
+        import os, time, hmac, hashlib
+        os.environ['INTERNAL_API_KEY'] = 'test-key-for-unit-test'
+        from api_async import _verify_ws_token
+        user_id = 42
+        expiry = int(time.time()) + 60
+        payload = f"{user_id}.{expiry}"
+        secret = os.environ['INTERNAL_API_KEY']
+        sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        token = f"{payload}.{sig}"
+        valid, returned_uid = _verify_ws_token(token)
+        assert valid is True
+        assert returned_uid == 42
+
+    def test_verify_ws_token_rejects_expired(self):
+        """Expired tokens should be rejected."""
+        import os, time, hmac, hashlib
+        os.environ['INTERNAL_API_KEY'] = 'test-key-for-unit-test'
+        from api_async import _verify_ws_token
+        user_id = 1
+        expiry = int(time.time()) - 10  # Expired 10s ago
+        payload = f"{user_id}.{expiry}"
+        secret = os.environ['INTERNAL_API_KEY']
+        sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        token = f"{payload}.{sig}"
+        valid, returned_uid = _verify_ws_token(token)
+        assert valid is False
+        assert returned_uid is None
+
+    def test_verify_ws_token_rejects_wrong_key(self):
+        """Token signed with wrong key should be rejected."""
+        import os, time, hmac, hashlib
+        os.environ['INTERNAL_API_KEY'] = 'correct-key'
+        from api_async import _verify_ws_token
+        user_id = 1
+        expiry = int(time.time()) + 60
+        payload = f"{user_id}.{expiry}"
+        sig = hmac.new(b'wrong-key', payload.encode(), hashlib.sha256).hexdigest()
+        token = f"{payload}.{sig}"
+        valid, returned_uid = _verify_ws_token(token)
+        assert valid is False
+
+    def test_internal_key_no_secret_key_fallback(self):
+        """_get_internal_api_key must not fall back to SECRET_KEY."""
+        import os
+        # Ensure INTERNAL_API_KEY is set (from previous test)
+        os.environ['INTERNAL_API_KEY'] = 'test-key-for-unit-test'
+        os.environ['SECRET_KEY'] = 'should-not-be-used'
+        from api_async import _get_internal_api_key
+        key = _get_internal_api_key()
+        assert key == 'test-key-for-unit-test'
+        assert key != 'should-not-be-used'
+
+    def test_cors_not_wildcard(self):
+        """CORS allowed_origins must not include '*'."""
+        from api_async import _get_allowed_origins
+        origins = _get_allowed_origins()
+        assert '*' not in origins, "CORS must not allow wildcard origins"
+        # Should include localhost for dev
+        assert any('localhost' in o for o in origins), "Should allow localhost for dev"
+
+    def test_ws_token_rejects_no_token(self):
+        """_verify_ws_token should reject None/empty tokens."""
+        from api_async import _verify_ws_token
+        valid, uid = _verify_ws_token(None)
+        assert valid is False
+        assert uid is None
+        valid, uid = _verify_ws_token('')
+        assert valid is False
+        assert uid is None
+
+
 class TestCredentialExposure:
     """Regression tests for credential exposure to frontend (P0-c)."""
 
