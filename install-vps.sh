@@ -84,8 +84,9 @@ fi
 # ── 4. Build frontend ──
 echo "[4/9] Building frontend..."
 cd frontend
-npm install --no-audit --no-fund 2>/dev/null
-npm run build 2>/dev/null
+corepack enable pnpm 2>/dev/null || npm install -g pnpm 2>/dev/null || true
+pnpm install --no-frozen-lockfile 2>/dev/null
+pnpm build 2>/dev/null
 cd ..
 
 # ── 5. Configuration ──

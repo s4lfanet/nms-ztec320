@@ -40,14 +40,13 @@ instance/
 *.db
 *.sqlite3
 *.db-journal
+*.db-wal
+*.db-shm
 
 # Environment & secrets
 .env
 .env.*
 !.env.example
-
-# Docker
-.docker/
 
 # OS files
 .DS_Store
@@ -64,11 +63,5 @@ frontend/coverage/
 *.zip
 *.tar.gz
 
-# Cloudflare (removed SaaS)
-deploy/cloudflared*
-
 # AGENTS.md (AI assistant context, not for repo)
 AGENTS.md
-
-# Backup/reference folders
-speed/
