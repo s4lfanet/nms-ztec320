@@ -188,7 +188,7 @@ If you're building your own frontend or integrating with Salfanet NMS, use this 
 ### Important Notes
 - **Base URL**: `http://your-server:5000/api/...`
 - **Session cookie**: auto-sent by browser
-- **CORS**: All origins allowed for API endpoints
+- **CORS**: Restricted to explicit trusted origins. Configure via `CORS_ALLOWED_ORIGINS` (comma-separated), `NEXTAUTH_URL`, or `BASE_URL` env vars. Production must use explicit origins (e.g., `https://nms.example.com`). Wildcard `*` is never allowed.
 - **Pagination**: `/api/all-onus?page=1&page_size=50&search=&sort_by=name&sort_dir=asc`
 - **Error format**: `{\"error\": \"message\"}` with appropriate HTTP status code
 
