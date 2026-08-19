@@ -428,6 +428,11 @@ def register_flask_api_docs(app: FastAPI):
     def onu_migrate_batch(olt_id: int):
         pass
 
+    @app.post("/api/olt/migrate-cross-olt", tags=["ONU Management"], summary="Cross-OLT ONU migration",
+              description="Migrate ONUs from one OLT to another OLT. Deregisters from source OLT, registers on target OLT.")
+    def onu_migrate_cross_olt():
+        pass
+
     @app.post("/api/onu/{onu_id}/section-config", tags=["ONU Management"], summary="Update ONU section config",
               description="Update specific ONU config section (interface or pon-onu-mng) via Telnet.")
     def onu_section_config(onu_id: int):

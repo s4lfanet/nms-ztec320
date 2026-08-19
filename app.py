@@ -1267,6 +1267,168 @@ def migrate_onu_batch(olt_id):
     })
 
 
+@app.route('/api/olt/migrate-cross-olt', methods=['POST'])
+@permission_required('configure_onu')
+def migrate_cross_olt():
+    """Migrate ONUs from one OLT to another OLT.
+
+    Body: {
+        source_olt_id: int,
+        target_olt_id: int,
+        onu_ids: [int],       # ONU ids from source OLT
+        card: int,            # target card
+        pon: int,             # target PON port
+        onu_id_mode: 'auto' | 'manual',
+        onu_id_value: int     # starting ONU ID for manual mode
+    }
+    Returns: { success, migrated, failed, total, details: [...] }
+    """
+    data = request.get_json()
+    source_olt_id = int(data.get('source_olt_id', 0))
+    target_olt_id = int(data.get('target_olt_id', 0))
+    onu_ids = data.get('onu_ids', [])
+    new_card = int(data.get('card', 0))
+    new_pon = int(data.get('pon', 0))
+    onu_id_mode = data.get('onu_id_mode', 'auto')
+
+    if not source_olt_id or not target_olt_id:
+        return jsonify({'success': False, 'message': 'Missing source_olt_id or target_olt_id'}), 400
+    if source_olt_id == target_olt_id:
+        return jsonify({'success': False, 'message': 'Source and target OLT must be different. Use same-OLT migration instead.'}), 400
+    if not onu_ids or not new_card or not new_pon:
+        return jsonify({'success': False, 'message': 'Missing onu_ids, card, or pon'}), 400
+
+    source_olt = db.session.get(OLT, source_olt_id)
+    target_olt = db.session.get(OLT, target_olt_id)
+    if not source_olt:
+        return jsonify({'success': False, 'message': 'Source OLT not found'}), 404
+    if not target_olt:
+        return jsonify({'success': False, 'message': 'Target OLT not found'}), 404
+    if not target_olt.cli_username:
+        return jsonify({'success': False, 'message': 'Target OLT not configured for CLI access'}), 400
+    if not source_olt.cli_username:
+        return jsonify({'success': False, 'message': 'Source OLT not configured for CLI access'}), 400
+
+    from snmp_collector import TelnetCollector, create_cli_collector
+    src_tc = create_cli_collector(source_olt)
+    dst_tc = create_cli_collector(target_olt)
+
+    # Pre-calculate used ONU IDs on target PON (for auto mode)
+    used_ids = {o.onu_id for o in ONU.query.filter_by(
+        olt_id=target_olt_id, frame=1, slot=new_card, port=new_pon
+    ).all()}
+
+    results = []
+    migrated = 0
+    failed = 0
+
+    for oid in onu_ids:
+        onu = db.session.get(ONU, oid)
+        if not onu:
+            results.append({'id': oid, 'success': False, 'message': 'ONU not found'})
+            failed += 1
+            continue
+        if onu.olt_id != source_olt_id:
+            results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': False, 'message': 'ONU does not belong to source OLT'})
+            failed += 1
+            continue
+
+        serial = onu.serial_number or ''
+        onu_type = onu.onu_type or 'ZTE-F609'
+        onu_name = onu.name or ''
+        onu_desc = onu.description or ''
+
+        if not serial:
+            results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': False, 'message': 'No serial number'})
+            failed += 1
+            continue
+
+        # Calculate new ONU ID on target OLT
+        if onu_id_mode == 'auto':
+            new_oid = next((i for i in range(1, 129) if i not in used_ids), None)
+            if new_oid is None:
+                results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': False, 'message': 'No available ONU IDs on target PON'})
+                failed += 1
+                continue
+        else:
+            try:
+                new_oid = int(data.get('onu_id_value', onu.onu_id))
+            except (TypeError, ValueError):
+                results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': False, 'message': 'Invalid ONU ID'})
+                failed += 1
+                continue
+            if not (1 <= new_oid <= 128):
+                results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': False, 'message': 'ONU ID must be 1-128'})
+                failed += 1
+                continue
+            if new_oid in used_ids:
+                results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': False, 'message': f'ONU ID {new_oid} already used on target PON'})
+                failed += 1
+                continue
+
+        old_frame, old_slot, old_port, old_id = onu.frame, onu.slot, onu.port, onu.onu_id
+        is_epon = (onu.card or '').lower() == 'epon'
+        target_frame = 1  # target OLT frame
+
+        # Step 1: Deregister from source OLT
+        ok1, msg1 = src_tc.deregister_onu(old_frame, old_slot, old_port, old_id, is_epon=is_epon)
+        if not ok1:
+            results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': False, 'message': f'Deregister from source OLT failed: {msg1}'})
+            failed += 1
+            continue
+
+        # Step 2: Register on target OLT
+        ok2, msg2 = dst_tc.register_onu(target_frame, new_card, new_pon, new_oid, onu_type, serial, is_epon=is_epon)
+        if not ok2:
+            # Rollback: re-register on source OLT
+            try:
+                src_tc.register_onu(old_frame, old_slot, old_port, old_id, onu_type, serial, is_epon=is_epon)
+            except Exception:
+                pass
+            results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': False, 'message': f'Register on target OLT failed: {msg2}'})
+            failed += 1
+            continue
+
+        # Step 3: Re-apply name and description on target OLT
+        if onu_name or onu_desc:
+            try:
+                dst_tc.configure_onu_profile(target_frame, new_card, new_pon, new_oid,
+                                             name=onu_name, description=onu_desc, is_epon=is_epon)
+            except Exception:
+                pass
+
+        # Step 4: Update DB — move ONU to target OLT
+        onu.olt_id = target_olt_id
+        onu.frame = target_frame
+        onu.slot = new_card
+        onu.port = new_pon
+        onu.onu_id = new_oid
+        onu.status = 'offline'
+        onu.rx_power = None
+        onu.tx_power = None
+        onu.onu_rx_power = None
+        onu.distance = None
+        onu.last_dereg_reason = ''
+        db.session.commit()
+
+        used_ids.add(new_oid)
+        migrated += 1
+        new_str = f'{target_frame}/{new_card}/{new_pon}:{new_oid}'
+        results.append({'id': oid, 'onu_id_str': onu.onu_id_str, 'success': True,
+                        'message': f'Migrated to {target_olt.name} {new_str}', 'new_onu_id_str': new_str})
+
+    log_action('migrate_cross_olt', 'system',
+               detail=f'Source OLT {source_olt.name} → Target OLT {target_olt.name}: {migrated} migrated, {failed} failed')
+
+    return jsonify({
+        'success': migrated > 0,
+        'migrated': migrated,
+        'failed': failed,
+        'total': len(onu_ids),
+        'details': results,
+    })
+
+
 @app.route('/api/onu/<int:onu_id>/delete', methods=['POST'])
 @permission_required('delete_onu')
 def delete_onu(onu_id):
