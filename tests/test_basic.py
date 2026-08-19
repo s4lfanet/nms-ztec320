@@ -48,10 +48,9 @@ def client():
     # and use db.metadata.create_all/drop_all with the test engine for schema.
     from sqlalchemy import create_engine
     _test_engine = create_engine('sqlite:///:memory:', echo=False)
-    db.session.configure(bind=_test_engine)
-    db._test_engine = _test_engine
-
     with app.app_context():
+        db.session.configure(bind=_test_engine)
+        db._test_engine = _test_engine
         db.metadata.create_all(_test_engine)
         # Re-seed admin user each time because db.drop_all() in teardown removes it.
         # seed_initial_data() only runs once on first import.
@@ -73,11 +72,10 @@ def client():
         yield client
 
     # Drop all tables from the in-memory engine (NOT production)
-    db.metadata.drop_all(_test_engine)
-
-    # Restore production session binding
-    db.session.remove()
-    db.session.configure(bind=db.engine)
+    with app.app_context():
+        db.metadata.drop_all(_test_engine)
+        db.session.remove()
+        db.session.configure(bind=db.engine)
     delattr(db, '_test_engine')
 
 
@@ -636,13 +634,13 @@ class TestSyncJob:
         """
         from sqlalchemy import create_engine
         _test_engine = create_engine('sqlite:///:memory:', echo=False)
-        db.session.configure(bind=_test_engine)
         with app.app_context():
+            db.session.configure(bind=_test_engine)
             db.metadata.create_all(_test_engine)
             yield
             db.metadata.drop_all(_test_engine)
-        db.session.remove()
-        db.session.configure(bind=db.engine)
+            db.session.remove()
+            db.session.configure(bind=db.engine)
 
     def test_start_and_complete_job(self):
         """SyncJob can be started and completed."""
