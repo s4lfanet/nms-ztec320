@@ -42,7 +42,7 @@ def client():
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False
     app.config['SESSION_COOKIE_DOMAIN'] = None
-    _tmpdb = tempfile.NamedTemporaryFile(suffix='.db', delete=False, dir='/tmp')
+    _tmpdb = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
     _tmpdb.close()
     _test_engine = _create_engine(f'sqlite:///{_tmpdb.name}')
 
@@ -647,7 +647,7 @@ class TestSyncJob:
         """Set up isolated temp DB for tests that use app.app_context() directly."""
         import tempfile, os
         from sqlalchemy import create_engine as _create_engine
-        _tmpdb = tempfile.NamedTemporaryFile(suffix='.db', delete=False, dir='/tmp')
+        _tmpdb = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
         _tmpdb.close()
         _test_engine = _create_engine(f'sqlite:///{_tmpdb.name}')
         with app.app_context():
@@ -825,7 +825,73 @@ class TestDatabaseBackup:
         assert resp.status_code == 200
         restore_data = resp.get_json()
         assert restore_data['success'] is True
+        assert restore_data['integrity_check'] == 'ok'
         assert 'pre_restore_backup' in restore_data
+
+        # Clean up
+        os.remove(tmp_backup.name)
+
+    def test_backup_restore_data_equivalence(self, client):
+        """Verify row counts match across all tables after backup→restore."""
+        import sqlite3
+        import tempfile
+        from config import Config
+        from models import db as _db
+
+        # Login as admin and add test data
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+
+        # Insert a test ONU and OLT to have data to verify
+        with app.app_context():
+            olt = OLT(name='EquivalenceTest', ip_address='10.99.99.99')
+            _db.session.add(olt)
+            _db.session.commit()
+            olt_id = olt.id
+
+        # Get row counts for all tables before backup
+        db_uri = Config.SQLALCHEMY_DATABASE_URI
+        db_path = db_uri.replace('sqlite:///', '')
+
+        def get_row_counts(path):
+            conn = sqlite3.connect(path)
+            tables = [r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()]
+            counts = {}
+            for t in tables:
+                counts[t] = conn.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
+            conn.close()
+            return counts
+
+        before_counts = get_row_counts(db_path)
+
+        # Create a backup file
+        tmp_backup = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        tmp_backup.close()
+        src = sqlite3.connect(db_path)
+        dst = sqlite3.connect(tmp_backup.name)
+        src.backup(dst)
+        dst.close()
+        src.close()
+
+        # Verify backup has same row counts
+        backup_counts = get_row_counts(tmp_backup.name)
+        assert before_counts == backup_counts, f"Backup row counts mismatch: {before_counts} vs {backup_counts}"
+
+        # Restore via API
+        with open(tmp_backup.name, 'rb') as f:
+            resp = client.post('/api/system/restore-db',
+                data={'backup_file': (f, 'equiv_test.db')},
+                content_type='multipart/form-data',
+                headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['integrity_check'] == 'ok'
+
+        # Verify row counts after restore
+        after_counts = get_row_counts(db_path)
+        assert before_counts == after_counts, f"Post-restore row counts mismatch: {before_counts} vs {after_counts}"
 
         # Clean up
         os.remove(tmp_backup.name)
