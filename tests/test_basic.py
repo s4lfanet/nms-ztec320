@@ -41,6 +41,9 @@ def client():
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     app.config['WTF_CSRF_ENABLED'] = False
     app.config['SESSION_COOKIE_DOMAIN'] = None
+    # Must remove existing SQLAlchemy registration before re-init with new URI.
+    # Without this, db.init_app raises 'already registered' error.
+    app.extensions.pop('sqlalchemy', None)
     db.init_app(app)  # Reconfigure engine with in-memory URI
 
     with app.app_context():
@@ -69,6 +72,7 @@ def client():
 
     # Restore production URI and re-init so subsequent imports get the real DB
     app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
+    app.extensions.pop('sqlalchemy', None)
     db.init_app(app)
 
 
@@ -626,6 +630,7 @@ class TestSyncJob:
         Must dispose production engine first to avoid wiping production DB.
         """
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        app.extensions.pop('sqlalchemy', None)
         db.init_app(app)  # Reconfigure engine with in-memory URI
         with app.app_context():
             db.create_all()
@@ -633,6 +638,7 @@ class TestSyncJob:
             db.drop_all()
         # Restore production URI
         app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
+        app.extensions.pop('sqlalchemy', None)
         db.init_app(app)
 
     def test_start_and_complete_job(self):
