@@ -55,7 +55,7 @@ function MiniTrafficChart({ points, portName }: { points: TrafficPoint[]; portNa
         <Tooltip
           contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 11 }}
           labelStyle={{ color: 'var(--text-2)' }}
-          labelFormatter={l => new Date(l).toLocaleString()}
+          labelFormatter={l => new Date(Number(l)).toLocaleString()}
           formatter={(v, name) => [fmtMbps(Number(v) || 0), name === 'dl' ? 'Download' : 'Upload']}
         />
         <Area type="monotone" dataKey="dl" stroke="var(--color-danger)" fill={`url(#dlGradCard-${gid})`} strokeWidth={1.5} dot={false} />
