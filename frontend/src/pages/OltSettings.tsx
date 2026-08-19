@@ -11,7 +11,7 @@ import {
   Server, Plus, RefreshCw, Settings, Trash2, Edit3,
   Thermometer, Clock, CheckCircle, XCircle, Loader2,
   Activity, Network, Terminal, X, Save, Download, ArrowRightLeft, CheckSquare, Square, Package,
-  History, ToggleLeft, ToggleRight, HardDriveDownload,
+  History, ToggleLeft, ToggleRight, HardDriveDownload, Globe,
 } from 'lucide-react';
 
 export function OltSettings() {
@@ -27,6 +27,7 @@ export function OltSettings() {
   const [syncMessage, setSyncMessage] = useState('');
   const [syncingAll, setSyncingAll] = useState(false);
   const [migrateOlt, setMigrateOlt] = useState<{ oltId: number; oltName: string } | null>(null);
+  const [crossMigrateOlt, setCrossMigrateOlt] = useState<{ oltId: number; oltName: string } | null>(null);
   const [writingId, setWritingId] = useState<number | null>(null);
   const [discoveringId, setDiscoveringId] = useState<number | null>(null);
   const [backupOlt, setBackupOlt] = useState<{ id: number; name: string } | null>(null);
@@ -341,7 +342,8 @@ export function OltSettings() {
                       {canManage && <ActionBtn icon={<Download size={14} />} title="Export" onClick={() => exportConfig(olt.id)} />}
                       {canManage && <ActionBtn icon={<History size={14} />} title="Backup" onClick={() => setBackupOlt({ id: olt.id, name: olt.name })} />}
                       {canManage && <ActionBtn icon={<Server size={14} />} title="Discover" onClick={() => discoverSlotsMutation.mutate(olt.id)} loading={discoveringId === olt.id} />}
-                      {canManage && <ActionBtn icon={<ArrowRightLeft size={14} />} title="Migrate" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
+                      {canManage && <ActionBtn icon={<ArrowRightLeft size={14} />} title="Migrate PON" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
+                      {canManage && <ActionBtn icon={<Globe size={14} />} title="Cross-OLT Migrate" onClick={() => setCrossMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
                       {canManage && <ActionBtn icon={<Trash2 size={14} />} title="Delete" danger onClick={() => deleteMutation.mutate(olt.id)} />}
                       {!canManage && <span className="text-xs text-tx3 px-2">View only</span>}
                     </div>
@@ -403,7 +405,8 @@ export function OltSettings() {
                 {canManage && <ActionBtn icon={<Download size={16} />} title="Export" onClick={() => exportConfig(olt.id)} />}
                 {canManage && <ActionBtn icon={<History size={16} />} title="Backup" onClick={() => setBackupOlt({ id: olt.id, name: olt.name })} />}
                 {canManage && <ActionBtn icon={<Server size={16} />} title="Discover" onClick={() => discoverSlotsMutation.mutate(olt.id)} loading={discoveringId === olt.id} />}
-                {canManage && <ActionBtn icon={<ArrowRightLeft size={16} />} title="Migrate" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
+                {canManage && <ActionBtn icon={<ArrowRightLeft size={16} />} title="Migrate PON" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
+                {canManage && <ActionBtn icon={<Globe size={16} />} title="Cross-OLT Migrate" onClick={() => setCrossMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
                 {canManage && <ActionBtn icon={<Trash2 size={16} />} title="Delete" danger onClick={() => deleteMutation.mutate(olt.id)} />}
                 {!canManage && <span className="text-xs text-tx3 px-2">View only</span>}
               </div>
@@ -429,6 +432,10 @@ export function OltSettings() {
       {/* Migrate ONU Modal */}
       {migrateOlt && <MigrateOnuModal oltId={migrateOlt.oltId} oltName={migrateOlt.oltName} onClose={() => setMigrateOlt(null)}
         onSuccess={() => { setMigrateOlt(null); qc.invalidateQueries({ queryKey: ['olts'] }); toast.success('ONU migrated successfully!'); }} />}
+
+      {/* Cross-OLT Migrate Modal */}
+      {crossMigrateOlt && <CrossOltMigrateModal sourceOltId={crossMigrateOlt.oltId} sourceOltName={crossMigrateOlt.oltName} allOlts={olts} onClose={() => setCrossMigrateOlt(null)}
+        onSuccess={() => { setCrossMigrateOlt(null); qc.invalidateQueries({ queryKey: ['olts'] }); toast.success('Cross-OLT migration completed!'); }} />}
     </div>
   );
 }
@@ -670,6 +677,293 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
           <button onClick={onClose} className="btn-cancel">Cancel</button>
           <button onClick={doMigrate} disabled={loading || selectedIds.size === 0 || !targetPon} className="btn-primary">
             {loading ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <ArrowRightLeft size={14} className="inline mr-1" />}
+            {loading ? `Migrating ${progress?.done ?? 0}/${progress?.total ?? 0}...` : `Migrate ${selectedIds.size > 0 ? `(${selectedIds.size})` : 'ONUs'}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ Cross-OLT Migrate Modal ═══ */
+
+function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, onSuccess }: {
+  sourceOltId: number; sourceOltName: string; allOlts: OltInfo[]; onClose: () => void; onSuccess: () => void;
+}) {
+  const [sourceStructure, setSourceStructure] = useState<{ card: number; ports: number[] }[]>([]);
+  const [sourceCard, setSourceCard] = useState('');
+  const [sourcePon, setSourcePon] = useState('');
+  const [onus, setOnus] = useState<Array<{ id: number; onu_id_str: string; serial_number: string; name: string; status: string }>>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [targetOltId, setTargetOltId] = useState('');
+  const [targetStructure, setTargetStructure] = useState<{ card: number; ports: number[] }[]>([]);
+  const [targetCard, setTargetCard] = useState('');
+  const [targetPon, setTargetPon] = useState('');
+  const [onuIdMode, setOnuIdMode] = useState<'auto' | 'manual'>('auto');
+  const [onuIdValue, setOnuIdValue] = useState('1');
+  const [loading, setLoading] = useState(false);
+  const [fetchingStruct, setFetchingStruct] = useState(true);
+  const [fetchingOnus, setFetchingOnus] = useState(false);
+  const [fetchingTargetStruct, setFetchingTargetStruct] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number; results: Array<{ id: number; onu_id_str: string; success: boolean; message: string }> } | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/olt/${sourceOltId}/pon-structure`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d.structure) setSourceStructure(d.structure); setFetchingStruct(false); })
+      .catch(() => setFetchingStruct(false));
+  }, [sourceOltId]);
+
+  const sourcePorts = sourceStructure.find(s => s.card === Number(sourceCard))?.ports || [];
+  const targetPorts = targetStructure.find(s => s.card === Number(targetCard))?.ports || [];
+  const targetOlt = allOlts.find(o => o.id === Number(targetOltId));
+
+  // Fetch target OLT structure when selected
+  useEffect(() => {
+    if (!targetOltId) { setTargetStructure([]); setTargetCard(''); setTargetPon(''); return; }
+    setFetchingTargetStruct(true);
+    fetch(`/api/olt/${targetOltId}/pon-structure`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d.structure) setTargetStructure(d.structure); else setTargetStructure([]); setFetchingTargetStruct(false); })
+      .catch(() => { setTargetStructure([]); setFetchingTargetStruct(false); });
+  }, [targetOltId]);
+
+  const loadOnus = async (card: string, pon: string) => {
+    if (!card || !pon) { setOnus([]); return; }
+    setFetchingOnus(true);
+    setSelectedIds(new Set());
+    setOnus([]);
+    try {
+      const portsRes = await fetch(`/api/olt/${sourceOltId}/pon-ports`, { credentials: 'include' });
+      const portsData = await portsRes.json();
+      const match = (portsData.ports || []).find((p: Record<string, unknown>) => {
+        const name = String(p.port_name || '');
+        return name.includes(`/${card}/${pon}`);
+      });
+      if (match) {
+        const pid = Number(match.id);
+        const onuRes = await fetch(`/api/olt/${sourceOltId}/pon-port/${pid}/onus`, { credentials: 'include' });
+        const onuData = await onuRes.json();
+        if (onuData.onus) setOnus(onuData.onus);
+      }
+    } catch { /* ignore */ }
+    setFetchingOnus(false);
+  };
+
+  const toggleOnu = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === onus.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(onus.map(o => o.id)));
+  };
+
+  const doMigrate = async () => {
+    if (selectedIds.size === 0 || !targetOltId || !targetCard || !targetPon) {
+      toast.error('Select ONUs, target OLT, and target PON'); return;
+    }
+    const ids = Array.from(selectedIds);
+    const ok = await confirm({
+      title: 'Cross-OLT Migration',
+      message: `Migrate ${ids.length} ONU${ids.length > 1 ? 's' : ''} from ${sourceOltName} to ${targetOlt?.name || 'target OLT'} (${targetCard}/${targetPon})?\n\nThis will deregister each ONU from the source OLT and re-register on the target OLT. ONU data (name, description) will be preserved.`,
+      confirmLabel: 'Migrate All', variant: 'warning',
+    });
+    if (!ok) return;
+    setLoading(true);
+    setProgress({ done: 0, total: ids.length, results: [] });
+    try {
+      const res = await fetch('/api/olt/migrate-cross-olt', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({
+          source_olt_id: sourceOltId,
+          target_olt_id: Number(targetOltId),
+          onu_ids: ids,
+          card: Number(targetCard),
+          pon: Number(targetPon),
+          onu_id_mode: onuIdMode,
+          onu_id_value: Number(onuIdValue),
+        }),
+      });
+      const d = await res.json();
+      if (d.details) {
+        setProgress({ done: d.migrated + d.failed, total: d.total, results: d.details });
+      }
+      if (d.success) {
+        toast.success(`${d.migrated} ONU${d.migrated !== 1 ? 's' : ''} migrated to ${targetOlt?.name}${d.failed > 0 ? `, ${d.failed} failed` : ''}`);
+        onSuccess();
+      } else {
+        toast.error(d.message || `Migration failed: ${d.failed} of ${d.total} failed`);
+      }
+    } catch { toast.error('Migration failed'); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="modal-overlay" onClick={onClose} />
+      <div className="relative glass-card w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
+        <div className="modal-header">
+          <h2 className="text-sm font-semibold flex items-center gap-2"><Globe size={16} /> Cross-OLT Migration — {sourceOltName}</h2>
+          <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
+        </div>
+        <div className="p-3 md:p-5 overflow-y-auto space-y-4 flex-1">
+          {fetchingStruct ? (
+            <div className="flex items-center justify-center py-8"><Loader2 size={20} className="animate-spin text-accent" /></div>
+          ) : sourceStructure.length === 0 ? (
+            <div className="text-center py-8 text-tx3 text-sm">No PON ports found on source OLT. Sync first.</div>
+          ) : (
+            <>
+              {/* Step 1: Select source PON */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-sm mb-2">1. Source Card</label>
+                  <select value={sourceCard} onChange={e => { setSourceCard(e.target.value); setSourcePon(''); setOnus([]); setSelectedIds(new Set()); }} className="input-field">
+                    <option value="">-- Select --</option>
+                    {sourceStructure.map(s => <option key={s.card} value={s.card}>Card {s.card}</option>)}
+                  </select>
+                </div>
+                {sourceCard && (
+                  <div>
+                    <label className="label-sm mb-2">Source PON</label>
+                    <select value={sourcePon} onChange={e => { setSourcePon(e.target.value); loadOnus(sourceCard, e.target.value); }} className="input-field">
+                      <option value="">-- Select --</option>
+                      {sourcePorts.map(p => <option key={p} value={p}>PON {p}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Step 2: ONU list from source PON */}
+              {sourcePon && (
+                <div>
+                  {fetchingOnus ? (
+                    <div className="flex items-center justify-center py-4"><Loader2 size={16} className="animate-spin text-accent" /></div>
+                  ) : onus.length === 0 ? (
+                    <div className="text-center py-4 text-tx3 text-xs">No ONUs on this PON port.</div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="label-sm">2. ONUs on {sourceCard}/{sourcePon} ({selectedIds.size} selected)</label>
+                        <button onClick={toggleAll} className="text-xs text-accent hover:text-accent-hover flex items-center gap-1">
+                          {selectedIds.size === onus.length ? <CheckSquare size={13} /> : <Square size={13} />}
+                          {selectedIds.size === onus.length ? 'Unselect All' : 'Select All'}
+                        </button>
+                      </div>
+                      <div className="max-h-40 overflow-y-auto rounded-lg border border-brd">
+                        {onus.map(o => (
+                          <div key={o.id} onClick={() => toggleOnu(o.id)}
+                            className={cn('flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-brd/30 transition-colors',
+                              selectedIds.has(o.id) ? 'bg-accent/10' : 'hover:bg-glass/50')}>
+                            {selectedIds.has(o.id) ? <CheckSquare size={14} className="text-accent flex-shrink-0" /> : <Square size={14} className="text-tx3 flex-shrink-0" />}
+                            <div className="flex-1 min-w-0 text-xs">
+                              <span className="font-mono font-medium">{o.onu_id_str}</span>
+                              <span className="text-tx3 ml-2">{o.name || 'unnamed'}</span>
+                            </div>
+                            <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0',
+                              o.status === 'online' ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{o.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Step 3: Select target OLT */}
+              {selectedIds.size > 0 && (
+                <>
+                  <div>
+                    <label className="label-sm mb-2">3. Target OLT</label>
+                    <select value={targetOltId} onChange={e => { setTargetOltId(e.target.value); setTargetCard(''); setTargetPon(''); }} className="input-field">
+                      <option value="">-- Select Target OLT --</option>
+                      {allOlts.filter(o => o.id !== sourceOltId).map(o => (
+                        <option key={o.id} value={o.id}>{o.name} ({o.ip_address})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Step 4: Select target PON on target OLT */}
+                  {targetOltId && (
+                    <>
+                      {fetchingTargetStruct ? (
+                        <div className="flex items-center justify-center py-4"><Loader2 size={16} className="animate-spin text-accent" /></div>
+                      ) : targetStructure.length === 0 ? (
+                        <div className="text-center py-4 text-tx3 text-xs">No PON ports found on target OLT. Sync target OLT first.</div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="label-sm mb-2">4. Target Card</label>
+                            <select value={targetCard} onChange={e => { setTargetCard(e.target.value); setTargetPon(''); }} className="input-field">
+                              <option value="">-- Select --</option>
+                              {targetStructure.map(s => <option key={s.card} value={s.card}>Card {s.card}</option>)}
+                            </select>
+                          </div>
+                          {targetCard && (
+                            <div>
+                              <label className="label-sm mb-2">Target PON</label>
+                              <select value={targetPon} onChange={e => setTargetPon(e.target.value)} className="input-field">
+                                <option value="">-- Select --</option>
+                                {targetPorts.map(p => <option key={p} value={p}>PON {p}</option>)}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {targetPon && (
+                        <div>
+                          <label className="label-sm mb-2">5. ONU ID on target PON</label>
+                          <div className="flex gap-5">
+                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input type="radio" name="crossMigOnuIdMode" checked={onuIdMode === 'auto'} onChange={() => setOnuIdMode('auto')} /> Automatic
+                            </label>
+                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input type="radio" name="crossMigOnuIdMode" checked={onuIdMode === 'manual'} onChange={() => setOnuIdMode('manual')} /> Manually
+                            </label>
+                          </div>
+                          {onuIdMode === 'manual' && (
+                            <input type="number" min={1} max={128} value={onuIdValue} onChange={e => setOnuIdValue(e.target.value)} className="input-field mt-2" placeholder="ONU ID (1–128)" />
+                          )}
+                        </div>
+                      )}
+
+                      {targetPon && (
+                        <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 text-xs">
+                          <div className="font-semibold text-warning mb-1">Cross-OLT Migration Summary:</div>
+                          <div>From: <strong>{sourceOltName}</strong> — gpon-olt_1/{sourceCard}/{sourcePon}</div>
+                          <div>To: <strong>{targetOlt?.name}</strong> — gpon-olt_1/{targetCard}/{targetPon}</div>
+                          <div>ONUs: <strong>{selectedIds.size}</strong></div>
+                          <div className="text-tx3 mt-1">Each ONU will be deregistered from the source OLT and re-registered on the target OLT. Name and description will be re-applied.</div>
+                        </div>
+                      )}
+
+                      {progress && progress.results.length > 0 && (
+                        <div className="p-3 rounded-lg bg-glass border border-brd text-xs space-y-1 max-h-40 overflow-y-auto">
+                          <div className="font-semibold mb-1">Results ({progress.done}/{progress.total}):</div>
+                          {progress.results.map((r, i) => (
+                            <div key={i} className={cn('flex items-start gap-2', r.success ? 'text-success' : 'text-danger')}>
+                              <span className="flex-shrink-0">{r.success ? '✓' : '✗'}</span>
+                              <span className="flex-1">{r.onu_id_str}: {r.message}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn-cancel">Cancel</button>
+          <button onClick={doMigrate} disabled={loading || selectedIds.size === 0 || !targetPon} className="btn-primary">
+            {loading ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <Globe size={14} className="inline mr-1" />}
             {loading ? `Migrating ${progress?.done ?? 0}/${progress?.total ?? 0}...` : `Migrate ${selectedIds.size > 0 ? `(${selectedIds.size})` : 'ONUs'}`}
           </button>
         </div>
