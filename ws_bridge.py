@@ -31,8 +31,13 @@ _ws_base_url = "http://localhost:8765"
 
 
 def _get_internal_api_key():
-    """Get the shared secret for Flask→FastAPI internal communication."""
-    return os.environ.get('INTERNAL_API_KEY', '') or os.environ.get('SECRET_KEY', 'fallback-dev-key')
+    """Get the shared secret for Flask→FastAPI internal communication.
+
+    No SECRET_KEY fallback — INTERNAL_API_KEY must be set explicitly.
+    In run_server.py, this is set before app import so both Flask and
+    FastAPI share the same key.
+    """
+    return os.environ.get('INTERNAL_API_KEY', '')
 
 
 def set_ws_url(url: str):

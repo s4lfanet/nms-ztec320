@@ -6697,7 +6697,11 @@ def ws_token():
     Token format: {user_id}.{expiry}.{hmac_signature}
     The WebSocket server verifies the signature and expiry — no SECRET_KEY exposed.
     """
-    secret = os.environ.get('INTERNAL_API_KEY', '') or os.environ.get('SECRET_KEY', 'fallback-dev-key')
+    secret = os.environ.get('INTERNAL_API_KEY', '')
+    if not secret:
+        logger.warning('INTERNAL_API_KEY not set — WebSocket tokens will use random per-process key')
+        import secrets as _secrets
+        secret = _secrets.token_hex(32)
     expiry = int(time.time()) + 60  # 60-second TTL
     payload = f"{current_user.id}.{expiry}"
     sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
