@@ -25,12 +25,9 @@ def save_sync_result(olt, result, sync, light=False):
     olt.uptime = sys_info.get('uptime', 0)
     olt.is_online = True
     olt.connection_status = 'connected'
-    # Update individual SNMP/Telnet status from sync result
-    olt.snmp_status = 'connected' if sys_info.get('description') else 'disconnected'
-    onus_data = result.get('onus', [])
-    # Telnet status: check if ONU data has telnet-sourced fields (vlan, profiles)
-    has_telnet_data = any(o.get('vlan_id') or o.get('tcont_profile') or o.get('traffic_profile') for o in onus_data)
-    olt.telnet_status = 'connected' if has_telnet_data else 'disconnected'
+    # Update individual SNMP/Telnet status from sync result flags
+    olt.snmp_status = 'connected' if result.get('snmp_ok') else 'disconnected'
+    olt.telnet_status = 'connected' if result.get('telnet_ok') else 'disconnected'
     desc = sys_info.get('description', '')
     if desc:
         ver_match = re.search(r'Version\s+([\w.]+)', desc)

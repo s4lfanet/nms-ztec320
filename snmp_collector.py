@@ -58,7 +58,7 @@ def poll_olt(olt, progress_cb=None, light=False):
         if progress_cb: progress_cb(pct, msg)
         logger.info(f"  [{pct}%] {msg}")
 
-    result = {'system': {}, 'onus': [], 'chassis': {}, 'success': False, 'errors': []}
+    result = {'system': {}, 'onus': [], 'chassis': {}, 'success': False, 'errors': [], 'telnet_ok': False, 'snmp_ok': False}
 
     # Detect model
     model = (olt.model or 'C320').upper()
@@ -112,12 +112,14 @@ def poll_olt(olt, progress_cb=None, light=False):
                     epon_onus = tc_epon._collect_epon_onus_fast(olt.ip_address, olt.cli_username, olt.cli_password, port)
                     if epon_onus:
                         onus.extend(epon_onus)
+                        result['telnet_ok'] = True
                         report(70, f'Light sync: +{len(epon_onus)} EPON ONUs via Telnet')
                 except Exception as e:
                     logger.debug(f"EPON light collection: {e}")
 
             result['onus'] = onus
             result['success'] = True
+            result['snmp_ok'] = True
             report(90, f'Light sync: {len(onus)} ONUs collected')
         except Exception as e:
             result['errors'].append(f'SNMP light: {str(e)}')
@@ -133,6 +135,7 @@ def poll_olt(olt, progress_cb=None, light=False):
             report(5, 'Connecting SNMP...')
             collector = SNMPCollector(olt.ip_address, olt.snmp_community, olt.snmp_port)
             result['system'] = collector.collect_system_info()
+            result['snmp_ok'] = True
             report(10, f'SNMP connected: {result["system"].get("description", "")[:50]}')
             if is_c300:
                 snmp_signal = collector.collect_onus_c300()
@@ -156,6 +159,7 @@ def poll_olt(olt, progress_cb=None, light=False):
             # Get chassis info
             chassis = tc.collect_chassis_info()
             result['chassis'] = chassis
+            result['telnet_ok'] = True
             report(35, f'CLI: temp={chassis.get("temperature")}C, fans={len(chassis.get("fans", []))}')
 
             # Get ALL ONU data from Telnet as primary source
