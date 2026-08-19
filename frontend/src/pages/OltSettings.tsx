@@ -327,9 +327,9 @@ export function OltSettings() {
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1.5">
                       <ConnectionBadge icon={<Terminal size={11} />} label="Telnet"
-                        connected={olt.connection_status === 'connected'} />
+                        connected={olt.telnet_status === 'connected'} />
                       <ConnectionBadge icon={<Network size={11} />} label="SNMP"
-                        connected={olt.connection_status === 'connected'} />
+                        connected={olt.snmp_status === 'connected'} />
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -381,8 +381,8 @@ export function OltSettings() {
                 <span className="flex items-center gap-1"><Clock size={11} /> {formatDate(olt.last_sync)}</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <ConnectionBadge icon={<Terminal size={11} />} label="Telnet" connected={olt.connection_status === 'connected'} />
-                <ConnectionBadge icon={<Network size={11} />} label="SNMP" connected={olt.connection_status === 'connected'} />
+                <ConnectionBadge icon={<Terminal size={11} />} label="Telnet" connected={olt.telnet_status === 'connected'} />
+                <ConnectionBadge icon={<Network size={11} />} label="SNMP" connected={olt.snmp_status === 'connected'} />
               </div>
               {syncingId === olt.id && (
                 <div className="space-y-1">

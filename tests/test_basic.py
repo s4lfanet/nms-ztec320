@@ -58,7 +58,7 @@ def client():
         # Dispose old (production) engine and clear cache so Flask-SQLAlchemy
         # creates a new engine with the temp file URI on next access.
         db.engine.dispose()
-        db._engines.pop(app, None)
+        db.engines.pop(app, None)
         # Now db.engine will create a new engine pointing to the temp file
         db.create_all()
         from models import User, Role
@@ -82,7 +82,7 @@ def client():
     with app.app_context():
         db.drop_all()
         db.engine.dispose()
-        db._engines.pop(app, None)
+        db.engines.pop(app, None)
 
     # Restore production config
     app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
@@ -651,12 +651,12 @@ class TestSyncJob:
         app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
         with app.app_context():
             db.engine.dispose()
-            db._engines.pop(app, None)
+            db.engines.pop(app, None)
             db.create_all()
             yield
             db.drop_all()
             db.engine.dispose()
-            db._engines.pop(app, None)
+            db.engines.pop(app, None)
         app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
         app.config.pop('SQLALCHEMY_ENGINE_OPTIONS', None)
         try:
