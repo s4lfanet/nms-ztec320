@@ -110,9 +110,9 @@ def poll_olt(olt, progress_cb=None, light=False):
                     port = olt.telnet_port or 23
                     tc_epon = TelnetCollector(olt.ip_address, olt.cli_username, olt.cli_password, port)
                     epon_onus = tc_epon._collect_epon_onus_fast(olt.ip_address, olt.cli_username, olt.cli_password, port)
+                    result['telnet_ok'] = True
                     if epon_onus:
                         onus.extend(epon_onus)
-                        result['telnet_ok'] = True
                         report(70, f'Light sync: +{len(epon_onus)} EPON ONUs via Telnet')
                 except Exception as e:
                     logger.debug(f"EPON light collection: {e}")
