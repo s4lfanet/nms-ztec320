@@ -887,9 +887,14 @@ class TestDatabaseBackup:
         assert resp.status_code == 200
         assert resp.get_json()['integrity_check'] == 'ok'
 
-        # Verify row counts after restore
+        # Verify row counts after restore (exclude action_logs which gets a new
+        # entry from the restore operation itself via log_action)
         after_counts = get_row_counts(db_path)
-        assert before_counts == after_counts, f"Post-restore row counts mismatch: {before_counts} vs {after_counts}"
+        for table in before_counts:
+            if table == 'action_logs':
+                continue
+            assert before_counts[table] == after_counts[table], \
+                f"Table {table}: {before_counts[table]} vs {after_counts[table]}"
 
         # Clean up
         os.remove(tmp_backup.name)
