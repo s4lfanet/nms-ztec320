@@ -6668,6 +6668,100 @@ def update_system_config():
     return jsonify({'success': True})
 
 
+# ==================== DATABASE BACKUP API ====================
+
+@app.route('/api/system/backup-db', methods=['POST'])
+@super_admin_required
+def backup_database():
+    """Create a database backup and optionally upload to remote storage.
+
+    For SQLite: uses sqlite3.backup() API (safe online backup).
+    For PostgreSQL: uses pg_dump if available, else copies via SQL.
+
+    Optional env vars for remote upload:
+    - BACKUP_REMOTE_SCP_TARGET: e.g. "user@backup-server:/path/to/backups/"
+    - BACKUP_REMOTE_SCP_KEY: SSH key path (default: ~/.ssh/id_rsa)
+    """
+    import tempfile, subprocess, shutil
+    from config import Config
+
+    db_uri = Config.SQLALCHEMY_DATABASE_URI
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    if 'sqlite' in db_uri:
+        # Extract file path from URI
+        db_path = db_uri.replace('sqlite:///', '')
+        if not os.path.exists(db_path):
+            return jsonify({'success': False, 'message': f'Database file not found: {db_path}'}), 500
+        # Safe online backup using sqlite3
+        import sqlite3
+        backup_filename = f'nms_db_backup_{timestamp}.db'
+        backup_path = os.path.join(tempfile.gettempdir(), backup_filename)
+        try:
+            src = sqlite3.connect(db_path)
+            dst = sqlite3.connect(backup_path)
+            src.backup(dst)
+            dst.close()
+            src.close()
+        except Exception as e:
+            return jsonify({'success': False, 'message': f'SQLite backup failed: {e}'}), 500
+    elif 'postgresql' in db_uri:
+        # Use pg_dump
+        backup_filename = f'nms_db_backup_{timestamp}.sql.gz'
+        backup_path = os.path.join(tempfile.gettempdir(), backup_filename)
+        try:
+            with open(backup_path, 'wb') as f:
+                proc = subprocess.Popen(
+                    ['pg_dump', db_uri], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                gzip_proc = subprocess.Popen(['gzip'], stdin=proc.stdout, stdout=f, stderr=subprocess.PIPE)
+                proc.stdout.close()
+                proc_err = proc.stderr.read().decode()
+                gzip_proc.wait()
+                if proc.wait() != 0:
+                    return jsonify({'success': False, 'message': f'pg_dump failed: {proc_err}'}), 500
+        except FileNotFoundError:
+            return jsonify({'success': False, 'message': 'pg_dump not installed on server'}), 500
+        except Exception as e:
+            return jsonify({'success': False, 'message': f'PostgreSQL backup failed: {e}'}), 500
+    else:
+        return jsonify({'success': False, 'message': 'Unsupported database type'}), 400
+
+    backup_size = os.path.getsize(backup_path)
+
+    # Optional remote upload via SCP
+    remote_target = os.environ.get('BACKUP_REMOTE_SCP_TARGET', '')
+    scp_key = os.environ.get('BACKUP_REMOTE_SCP_KEY', os.path.expanduser('~/.ssh/id_rsa'))
+    remote_uploaded = False
+    remote_error = ''
+    if remote_target:
+        scp_cmd = ['scp', '-i', scp_key, '-o', 'StrictHostKeyChecking=no',
+                   backup_path, remote_target]
+        try:
+            result = subprocess.run(scp_cmd, capture_output=True, timeout=120)
+            if result.returncode == 0:
+                remote_uploaded = True
+            else:
+                remote_error = result.stderr.decode()[:300]
+        except Exception as e:
+            remote_error = str(e)[:300]
+
+    # Clean up temp file
+    try:
+        os.remove(backup_path)
+    except Exception:
+        pass
+
+    log_action('backup_database', 'system', detail=f'DB backup {backup_filename} ({backup_size} bytes)')
+    return jsonify({
+        'success': True,
+        'filename': backup_filename,
+        'size_bytes': backup_size,
+        'remote_uploaded': remote_uploaded,
+        'remote_error': remote_error,
+    })
+
+
 # ==================== PUBLIC API (no auth — branding) ====================
 
 @app.route('/api/public/branding', methods=['GET'])

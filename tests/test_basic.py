@@ -724,5 +724,78 @@ class TestSyncJob:
             assert history[0].status == 'completed'
 
 
+class TestDatabaseBackup:
+    """Test database backup endpoint."""
+
+    def test_backup_db_requires_super_admin(self, client):
+        """Non-super-admin cannot trigger database backup."""
+        # Login as viewer
+        from models import Role, User, db
+        with app.app_context():
+            viewer_role = Role(name='BackupTest', permissions='')
+            db.session.add(viewer_role)
+            viewer = User(username='backuptest', full_name='Backup', role=viewer_role)
+            viewer.set_password('test123')
+            db.session.add(viewer)
+            db.session.commit()
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'backuptest', 'password': 'test123'}),
+            content_type='application/json')
+        resp = client.post('/api/system/backup-db',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 403
+
+    def test_backup_db_creates_backup(self, client):
+        """Super admin can create a database backup."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        resp = client.post('/api/system/backup-db',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['success'] is True
+        assert data['size_bytes'] > 0
+        assert 'filename' in data
+
+
+class TestFastAPIDocsSecurity:
+    """Test FastAPI docs are disabled in production."""
+
+    def test_docs_disabled_in_production(self):
+        """FastAPI docs_url should be None when FLASK_ENV=production."""
+        orig = os.environ.get('FLASK_ENV', '')
+        os.environ['FLASK_ENV'] = 'production'
+        try:
+            # Re-import to pick up env change
+            import importlib
+            import api_async
+            importlib.reload(api_async)
+            assert api_async.fastapi_app.docs_url is None
+            assert api_async.fastapi_app.redoc_url is None
+            assert api_async.fastapi_app.openapi_url is None
+        finally:
+            if orig:
+                os.environ['FLASK_ENV'] = orig
+            else:
+                os.environ.pop('FLASK_ENV', None)
+
+    def test_docs_enabled_in_development(self):
+        """FastAPI docs_url should be /docs when FLASK_ENV=development."""
+        orig = os.environ.get('FLASK_ENV', '')
+        os.environ['FLASK_ENV'] = 'development'
+        try:
+            import importlib
+            import api_async
+            importlib.reload(api_async)
+            assert api_async.fastapi_app.docs_url == '/docs'
+            assert api_async.fastapi_app.redoc_url == '/redoc'
+        finally:
+            if orig:
+                os.environ['FLASK_ENV'] = orig
+            else:
+                os.environ.pop('FLASK_ENV', None)
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
