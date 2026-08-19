@@ -790,7 +790,6 @@ class TestDatabaseBackup:
         import io
         import sqlite3
         import tempfile
-        from config import Config
 
         # Login as admin
         client.post('/api/auth/login',
@@ -806,7 +805,7 @@ class TestDatabaseBackup:
 
         # Manually create a valid SQLite backup file to upload for restore test
         # (we can't download the API backup since it's deleted after creation)
-        db_uri = Config.SQLALCHEMY_DATABASE_URI
+        db_uri = str(db.engine.url)
         db_path = db_uri.replace('sqlite:///', '')
         tmp_backup = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
         tmp_backup.close()
@@ -835,7 +834,6 @@ class TestDatabaseBackup:
         """Verify row counts match across all tables after backup→restore."""
         import sqlite3
         import tempfile
-        from config import Config
         from models import db as _db
 
         # Login as admin and add test data
@@ -851,7 +849,7 @@ class TestDatabaseBackup:
             olt_id = olt.id
 
         # Get row counts for all tables before backup
-        db_uri = Config.SQLALCHEMY_DATABASE_URI
+        db_uri = str(db.engine.url)
         db_path = db_uri.replace('sqlite:///', '')
 
         def get_row_counts(path):

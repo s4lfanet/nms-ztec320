@@ -6684,15 +6684,21 @@ def backup_database():
     - BACKUP_REMOTE_SCP_KEY: SSH key path (default: ~/.ssh/id_rsa)
     """
     import tempfile, subprocess
-    from config import Config
 
-    db_uri = Config.SQLALCHEMY_DATABASE_URI
+    db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
     if 'sqlite' in db_uri:
         # Extract file path from URI
         db_path = db_uri.replace('sqlite:///', '')
-        if not os.path.exists(db_path):
+        if db_path == ':memory:' or not os.path.exists(db_path):
+            # Fallback: try to get path from the actual engine URL
+            try:
+                engine_url = str(db.engine.url)
+                db_path = engine_url.replace('sqlite:///', '')
+            except Exception:
+                pass
+        if db_path == ':memory:' or not os.path.exists(db_path):
             return jsonify({'success': False, 'message': f'Database file not found: {db_path}'}), 500
         # Safe online backup using sqlite3
         import sqlite3
@@ -6810,9 +6816,8 @@ def restore_database():
     Only works for SQLite databases.
     """
     import tempfile
-    from config import Config
 
-    db_uri = Config.SQLALCHEMY_DATABASE_URI
+    db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
     if 'sqlite' not in db_uri:
         return jsonify({'success': False, 'message': 'Restore only supported for SQLite databases'}), 400
 
@@ -6843,6 +6848,14 @@ def restore_database():
 
         # Schema compatibility check: backup must have all tables in current DB
         db_path = db_uri.replace('sqlite:///', '')
+        if db_path == ':memory:' or not os.path.exists(db_path):
+            try:
+                db_path = str(db.engine.url).replace('sqlite:///', '')
+            except Exception:
+                pass
+        if db_path == ':memory:' or not os.path.exists(db_path):
+            os.remove(upload_path)
+            return jsonify({'success': False, 'message': 'Cannot resolve database file path for restore'}), 500
         cur = chk.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         backup_tables = {row[0] for row in cur.fetchall()}
         chk.close()
