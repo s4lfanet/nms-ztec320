@@ -29,36 +29,32 @@ def clear_rate_limits():
 
 @pytest.fixture
 def client():
-    """Create a test client with isolated in-memory database.
+    """Create a test client with isolated temp database.
 
-    CRITICAL: Flask-SQLAlchemy caches engines in db._engines keyed by app.
-    Just changing app.config['SQLALCHEMY_DATABASE_URI'] does nothing — the
-    cached engine still points to the production DB. We must:
+    CRITICAL: Flask-SQLAlchemy 3.x caches engines in db.engines keyed by
+    bind name (None for default), NOT by app. Just changing
+    app.config['SQLALCHEMY_DATABASE_URI'] does nothing — the cached engine
+    still points to production. We must:
     1. Change the config URI
     2. Dispose the old engine
-    3. Clear the engine cache (db._engines.pop(app))
-    4. Use StaticPool so :memory: is shared across connections
-    Otherwise db.create_all()/db.drop_all() and all queries hit production.
+    3. Clear ALL cached engines (db.engines.clear())
+    Otherwise db.create_all()/db.drop_all() hit the production DB.
     """
     import tempfile, os
-    from sqlalchemy.pool import StaticPool
 
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False
     app.config['SESSION_COOKIE_DOMAIN'] = None
-    # Use a temp file SQLite DB — :memory: doesn't share across connections
-    # without StaticPool, and Flask-SQLAlchemy's scoped session creates new
-    # connections per app context.
     _tmpdb = tempfile.NamedTemporaryFile(suffix='.db', delete=False, dir='/tmp')
     _tmpdb.close()
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{_tmpdb.name}'
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
 
     with app.app_context():
-        # Dispose old (production) engine and clear cache so Flask-SQLAlchemy
-        # creates a new engine with the temp file URI on next access.
+        # Dispose old (production) engine and clear ALL cached engines.
+        # FSA 3.x keys engines by bind name (None), not by app.
         db.engine.dispose()
-        db.engines.pop(app, None)
+        db.engines.clear()
         # Now db.engine will create a new engine pointing to the temp file
         db.create_all()
         from models import User, Role
@@ -82,7 +78,7 @@ def client():
     with app.app_context():
         db.drop_all()
         db.engine.dispose()
-        db.engines.pop(app, None)
+        db.engines.clear()
 
     # Restore production config
     app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
@@ -651,12 +647,12 @@ class TestSyncJob:
         app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
         with app.app_context():
             db.engine.dispose()
-            db.engines.pop(app, None)
+            db.engines.clear()
             db.create_all()
             yield
             db.drop_all()
             db.engine.dispose()
-            db.engines.pop(app, None)
+            db.engines.clear()
         app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
         app.config.pop('SQLALCHEMY_ENGINE_OPTIONS', None)
         try:
