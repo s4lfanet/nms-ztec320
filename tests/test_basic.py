@@ -830,6 +830,30 @@ class TestDatabaseBackup:
         # Clean up
         os.remove(tmp_backup.name)
 
+    def test_restore_rejects_schema_mismatch(self, client):
+        """Restore with a backup missing tables should return 400."""
+        import sqlite3
+        import tempfile
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        # Create an empty SQLite file (no tables = schema mismatch)
+        tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        tmp.close()
+        conn = sqlite3.connect(tmp.name)
+        conn.execute('CREATE TABLE _dummy (id INTEGER)')
+        conn.commit()
+        conn.close()
+        with open(tmp.name, 'rb') as f:
+            resp = client.post('/api/system/restore-db',
+                data={'backup_file': (f, 'empty_backup.db')},
+                content_type='multipart/form-data',
+                headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert 'Schema mismatch' in data['message']
+        os.remove(tmp.name)
+
 
 class TestFastAPIDocsSecurity:
     """Test FastAPI docs are disabled in production."""
