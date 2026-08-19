@@ -6701,7 +6701,13 @@ def ws_token():
     """
     secret = os.environ.get('INTERNAL_API_KEY', '')
     if not secret:
-        logger.warning('INTERNAL_API_KEY not set — WebSocket tokens will use random per-process key')
+        _is_production = os.environ.get('FLASK_ENV', 'development') == 'production'
+        if _is_production:
+            raise RuntimeError(
+                "INTERNAL_API_KEY must be explicitly configured in production. "
+                "Set it in your .env file or environment variables."
+            )
+        logger.warning('INTERNAL_API_KEY not set — using ephemeral key for development')
         import secrets as _secrets
         secret = _secrets.token_hex(32)
     expiry = int(time.time()) + 60  # 60-second TTL
