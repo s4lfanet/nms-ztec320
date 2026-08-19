@@ -520,7 +520,16 @@ class TestWebSocketAuthHardening:
     def test_cors_not_wildcard(self):
         """CORS allowed_origins must not include '*'."""
         from api_async import _get_allowed_origins
-        origins = _get_allowed_origins()
+        # Force development mode for this test so localhost is included
+        orig_env = os.environ.get('FLASK_ENV', '')
+        os.environ['FLASK_ENV'] = 'development'
+        try:
+            origins = _get_allowed_origins()
+        finally:
+            if orig_env:
+                os.environ['FLASK_ENV'] = orig_env
+            else:
+                os.environ.pop('FLASK_ENV', None)
         assert '*' not in origins, "CORS must not allow wildcard origins"
         # Should include localhost for dev
         assert any('localhost' in o for o in origins), "Should allow localhost for dev"
