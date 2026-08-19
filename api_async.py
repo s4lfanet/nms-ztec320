@@ -16,11 +16,14 @@ import os
 import time
 import hmac
 import hashlib
+import logging
 from typing import Optional, Tuple
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+logger = logging.getLogger("api_async")
 
 
 # ---------------------------------------------------------------------------
@@ -99,13 +102,49 @@ def _verify_ws_token(token: Optional[str]) -> Tuple[bool, Optional[int]]:
     # Check token hasn't expired
     if time.time() > expiry:
         return False, None
-    # Verify HMAC signature
+    # Verify HMAC signature using constant-time comparison
     secret = _get_internal_api_key()
     payload = f"{user_id_str}.{expiry_str}"
     expected_sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
     if hmac.compare_digest(sig, expected_sig):
         return True, user_id
     return False, None
+
+
+# ---------------------------------------------------------------------------
+# WebSocket authorization — verify user exists, is active, has permission (P3)
+# ---------------------------------------------------------------------------
+# Close codes for WebSocket authorization failures (consistent across all endpoints)
+WS_CLOSE_UNAUTHORIZED = 4401   # Authentication failed (invalid/expired token)
+WS_CLOSE_FORBIDDEN = 4403      # Authorization failed (user inactive/no permission)
+
+def _authorize_ws_user(user_id: int, required_permission: str) -> Tuple[bool, str]:
+    """Authorize a WebSocket user after token verification.
+
+    Checks:
+    1. User exists in database
+    2. User is active (not disabled/banned)
+    3. User has the required permission
+
+    Returns (authorized: bool, reason: str).
+    """
+    try:
+        from app import app as flask_app
+        from models import User
+        with flask_app.app_context():
+            user = User.query.get(user_id)
+            if user is None:
+                return False, "User not found"
+            # UserMixin.is_active — False if user is disabled/deactivated
+            if not user.is_active:
+                return False, "User inactive"
+            # Permission check
+            if not user.has_permission(required_permission):
+                return False, "Insufficient permissions"
+            return True, "OK"
+    except Exception as e:
+        logger.error(f"WS authorization error for user_id={user_id}: {e}")
+        return False, "Authorization error"
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -415,7 +454,11 @@ async def ws_sync_progress(ws: WebSocket, olt_id: int, token: Optional[str] = Qu
     """
     valid, user_id = _verify_ws_token(token)
     if not valid or user_id is None:
-        await ws.close(code=4401, reason="Unauthorized")
+        await ws.close(code=WS_CLOSE_UNAUTHORIZED, reason="Unauthorized")
+        return
+    authorized, reason = _authorize_ws_user(user_id, 'settings_ip_olts')
+    if not authorized:
+        await ws.close(code=WS_CLOSE_FORBIDDEN, reason=f"Forbidden: {reason}")
         return
     channel = f"sync:{olt_id}"
     await _ws_loop(ws, channel, user_id, {"olt_id": olt_id, "message": "Connected to sync progress stream"})
@@ -430,7 +473,11 @@ async def ws_onu_status(ws: WebSocket, olt_id: int, token: Optional[str] = Query
     """
     valid, user_id = _verify_ws_token(token)
     if not valid or user_id is None:
-        await ws.close(code=4401, reason="Unauthorized")
+        await ws.close(code=WS_CLOSE_UNAUTHORIZED, reason="Unauthorized")
+        return
+    authorized, reason = _authorize_ws_user(user_id, 'view_onus')
+    if not authorized:
+        await ws.close(code=WS_CLOSE_FORBIDDEN, reason=f"Forbidden: {reason}")
         return
     channel = f"onus:{olt_id}"
     await _ws_loop(ws, channel, user_id, {"olt_id": olt_id, "message": "Connected to ONU status stream"})
@@ -445,7 +492,11 @@ async def ws_dashboard(ws: WebSocket, token: Optional[str] = Query(None)):
     """
     valid, user_id = _verify_ws_token(token)
     if not valid or user_id is None:
-        await ws.close(code=4401, reason="Unauthorized")
+        await ws.close(code=WS_CLOSE_UNAUTHORIZED, reason="Unauthorized")
+        return
+    authorized, reason = _authorize_ws_user(user_id, 'view_dashboard')
+    if not authorized:
+        await ws.close(code=WS_CLOSE_FORBIDDEN, reason=f"Forbidden: {reason}")
         return
     channel = "dashboard"
     await _ws_loop(ws, channel, user_id, {"message": "Connected to dashboard stream"})
