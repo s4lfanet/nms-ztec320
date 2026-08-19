@@ -85,6 +85,8 @@ def run_single_sync(app, olt_id, sync_id, light=False):
             else:
                 olt.is_online = False
                 olt.connection_status = 'error'
+                olt.snmp_status = 'disconnected'
+                olt.telnet_status = 'disconnected'
                 sync.status = 'error'
                 sync.message = f'Sync failed: {"; ".join(result["errors"])}'
                 sync.completed_at = datetime.now(timezone.utc)
@@ -179,6 +181,8 @@ def _sync_one_olt(app, olt_id):
             else:
                 olt.is_online = False
                 olt.connection_status = 'error'
+                olt.snmp_status = 'disconnected'
+                olt.telnet_status = 'disconnected'
                 sync.status = 'error'
                 sync.message = result.get('message', 'Sync failed')
                 sync.completed_at = datetime.now(timezone.utc)

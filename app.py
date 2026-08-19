@@ -1346,6 +1346,8 @@ def _auto_sync_olt(olt_id):
                 else:
                     olt.is_online = False
                     olt.connection_status = 'error'
+                    olt.snmp_status = 'disconnected'
+                    olt.telnet_status = 'disconnected'
                     sync.status = 'error'
                     sync.message = result.get('error', result.get('message', 'Auto-sync failed'))
                     sync.completed_at = datetime.now(timezone.utc)
