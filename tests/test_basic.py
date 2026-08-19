@@ -14,6 +14,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import app, db
 from models import User, Role, OLT
 
+# Save original production DB URI so we can restore it after tests
+_orig_db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///instance/nms.db')
+
 
 @pytest.fixture(autouse=True)
 def clear_rate_limits():
@@ -30,18 +33,15 @@ def client():
 
     CRITICAL: SQLAlchemy engines are created at app import time pointing to the
     production DB. Simply changing app.config['SQLALCHEMY_DATABASE_URI'] does NOT
-    reconfigure the existing engine. We must dispose the old engine and let
-    SQLAlchemy create a new one with the in-memory URI. Otherwise db.drop_all()
-    would wipe the production database file.
+    reconfigure the existing engine. We must call db.init_app(app) AFTER changing
+    the config so Flask-SQLAlchemy creates a new engine pointing to :memory:.
+    Otherwise db.drop_all() would wipe the production database file.
     """
     app.config['TESTING'] = True
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     app.config['WTF_CSRF_ENABLED'] = False
     app.config['SESSION_COOKIE_DOMAIN'] = None
-
-    # Dispose the production engine so SQLAlchemy creates a new in-memory one
-    with app.app_context():
-        db.engine.dispose()
+    db.init_app(app)  # Reconfigure engine with in-memory URI
 
     with app.app_context():
         db.create_all()
@@ -66,7 +66,10 @@ def client():
 
     with app.app_context():
         db.drop_all()
-        db.engine.dispose()  # Release in-memory engine
+
+    # Restore production URI and re-init so subsequent imports get the real DB
+    app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
+    db.init_app(app)
 
 
 class TestAuthEndpoints:
@@ -623,12 +626,14 @@ class TestSyncJob:
         Must dispose production engine first to avoid wiping production DB.
         """
         app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        db.init_app(app)  # Reconfigure engine with in-memory URI
         with app.app_context():
-            db.engine.dispose()
             db.create_all()
             yield
             db.drop_all()
-            db.engine.dispose()  # Release in-memory engine
+        # Restore production URI
+        app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
+        db.init_app(app)
 
     def test_start_and_complete_job(self):
         """SyncJob can be started and completed."""
