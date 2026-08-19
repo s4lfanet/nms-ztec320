@@ -43,6 +43,13 @@ jobs:
           tail -80 /tmp/test_output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: /tmp/test_output.txt
+
       - name: Test summary
         if: always()
         run: |
