@@ -67,12 +67,20 @@ def _get_allowed_origins() -> list[str]:
     if base_url:
         origins.append(base_url.rstrip('/'))
     # Always allow localhost for dev
-    origins.extend([
-        'http://localhost:3000',
-        'http://localhost:5000',
-        'http://127.0.0.1:3000',
-        'http://127.0.0.1:5000',
-    ])
+    # In production, do not include localhost origins
+    _is_prod = os.environ.get('FLASK_ENV', 'development') == 'production'
+    if not _is_prod:
+        origins.extend([
+            'http://localhost:3000',
+            'http://localhost:5000',
+            'http://127.0.0.1:3000',
+            'http://127.0.0.1:5000',
+        ])
+    # Safety: never allow wildcard with allow_credentials=True
+    origins = [o for o in origins if o and o != '*']
+    if not origins:
+        # Last resort: only allow same-origin (empty list = no CORS headers)
+        logger.warning('No CORS origins configured — WebSocket CORS will be restrictive')
     return list(dict.fromkeys(origins))  # dedupe preserving order
 
 
@@ -118,19 +126,27 @@ def _verify_ws_token(token: Optional[str]) -> Tuple[bool, Optional[int]]:
 WS_CLOSE_UNAUTHORIZED = 4401   # Authentication failed (invalid/expired token)
 WS_CLOSE_FORBIDDEN = 4403      # Authorization failed (user inactive/no permission)
 
-def _authorize_ws_user(user_id: int, required_permission: str) -> Tuple[bool, str]:
+def _authorize_ws_user(user_id: int, required_permission: str,
+                        olt_id: Optional[int] = None) -> Tuple[bool, str]:
     """Authorize a WebSocket user after token verification.
 
-    Checks:
+    Checks (Phase 3+4+5):
     1. User exists in database
     2. User is active (not disabled/banned)
-    3. User has the required permission
+    3. User has the required permission (RBAC — same mechanism as Flask routes)
+    4. If olt_id provided: OLT must exist in database
+
+    Access control uses the existing RBAC mechanism:
+    - User.has_permission() checks role permissions
+    - 'all_olt' permission grants access to all OLTs
+    - No per-OLT assignment exists in this system — permission check IS the OLT access control
+    - This is consistent with Flask routes that use @permission_required('settings_ip_olts')
 
     Returns (authorized: bool, reason: str).
     """
     try:
         from app import app as flask_app
-        from models import User
+        from models import User, OLT
         with flask_app.app_context():
             user = User.query.get(user_id)
             if user is None:
@@ -138,9 +154,14 @@ def _authorize_ws_user(user_id: int, required_permission: str) -> Tuple[bool, st
             # UserMixin.is_active — False if user is disabled/deactivated
             if not user.is_active:
                 return False, "User inactive"
-            # Permission check
+            # Permission check (RBAC — reuses existing has_permission mechanism)
             if not user.has_permission(required_permission):
                 return False, "Insufficient permissions"
+            # OLT access control: verify OLT exists (Phase 4+5)
+            if olt_id is not None:
+                olt = OLT.query.get(olt_id)
+                if olt is None:
+                    return False, "OLT not found"
             return True, "OK"
     except Exception as e:
         logger.error(f"WS authorization error for user_id={user_id}: {e}")
@@ -456,7 +477,7 @@ async def ws_sync_progress(ws: WebSocket, olt_id: int, token: Optional[str] = Qu
     if not valid or user_id is None:
         await ws.close(code=WS_CLOSE_UNAUTHORIZED, reason="Unauthorized")
         return
-    authorized, reason = _authorize_ws_user(user_id, 'settings_ip_olts')
+    authorized, reason = _authorize_ws_user(user_id, 'settings_ip_olts', olt_id=olt_id)
     if not authorized:
         await ws.close(code=WS_CLOSE_FORBIDDEN, reason=f"Forbidden: {reason}")
         return
@@ -475,7 +496,7 @@ async def ws_onu_status(ws: WebSocket, olt_id: int, token: Optional[str] = Query
     if not valid or user_id is None:
         await ws.close(code=WS_CLOSE_UNAUTHORIZED, reason="Unauthorized")
         return
-    authorized, reason = _authorize_ws_user(user_id, 'view_onus')
+    authorized, reason = _authorize_ws_user(user_id, 'view_onus', olt_id=olt_id)
     if not authorized:
         await ws.close(code=WS_CLOSE_FORBIDDEN, reason=f"Forbidden: {reason}")
         return
