@@ -37,18 +37,11 @@ jobs:
       - name: Run tests
         run: |
           set -o pipefail
-          python -m pytest tests/ -v --tb=long 2>&1 | tee /tmp/test_output.txt
-          echo "## Test Output (last 80 lines)" >> $GITHUB_STEP_SUMMARY
+          python -m pytest tests/ -v --tb=short 2>&1 | tee /tmp/test_output.txt
+          echo "## Test Output (last 50 lines)" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -80 /tmp/test_output.txt >> $GITHUB_STEP_SUMMARY
+          tail -50 /tmp/test_output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload test output
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-output
-          path: /tmp/test_output.txt
 
       - name: Test summary
         if: always()
