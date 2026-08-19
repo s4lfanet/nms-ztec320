@@ -35,7 +35,7 @@ def setup_db():
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False
     app.config['SESSION_COOKIE_DOMAIN'] = None
-    _tmpdb = tempfile.NamedTemporaryFile(suffix='.db', delete=False, dir='/tmp')
+    _tmpdb = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
     _tmpdb.close()
     _test_engine = _create_engine(f'sqlite:///{_tmpdb.name}')
 

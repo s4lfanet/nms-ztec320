@@ -6876,6 +6876,31 @@ def restore_database():
         # Overwrite DB file
         shutil.copy2(upload_path, db_path)
 
+        # Post-restore verification: check the restored DB
+        post_chk = sqlite3.connect(db_path)
+        post_result = post_chk.execute('PRAGMA integrity_check').fetchone()
+        post_chk.close()
+
+        if post_result[0] != 'ok':
+            # Auto-rollback: restore the pre-restore backup
+            try:
+                shutil.copy2(pre_restore_backup, db_path)
+                log_action('restore_database', 'system',
+                           detail=f'Restore FAILED verification, rolled back to {os.path.basename(pre_restore_backup)}')
+                return jsonify({
+                    'success': False,
+                    'message': f'Restored DB failed integrity check, auto-rolled back to pre-restore backup',
+                    'rolled_back': True,
+                    'pre_restore_backup': os.path.basename(pre_restore_backup),
+                }), 500
+            except Exception as rollback_err:
+                return jsonify({
+                    'success': False,
+                    'message': f'Restore failed verification AND rollback failed: {rollback_err}. Pre-restore backup at: {os.path.basename(pre_restore_backup)}',
+                    'rolled_back': False,
+                    'pre_restore_backup': os.path.basename(pre_restore_backup),
+                }), 500
+
         log_action('restore_database', 'system',
                    detail=f'Restored from {upload.filename}, pre-restore backup: {os.path.basename(pre_restore_backup)}')
 
@@ -6883,6 +6908,7 @@ def restore_database():
             'success': True,
             'message': f'Database restored from {upload.filename}',
             'pre_restore_backup': os.path.basename(pre_restore_backup),
+            'integrity_check': 'ok',
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Restore failed: {e}'}), 500
