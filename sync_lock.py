@@ -94,7 +94,7 @@ def acquire_sync_lock(olt_id: int, timeout: float = 0.1) -> Optional[str]:
             _local_locks[olt_id] = threading.Lock()
         lock = _local_locks[olt_id]
 
-    acquired = lock.acquire(timeout=timeout if timeout > 0 else -1)
+    acquired = lock.acquire(timeout=timeout if timeout > 0 else 0)
     if acquired:
         with _local_meta_lock:
             _local_lock_holders[olt_id] = token

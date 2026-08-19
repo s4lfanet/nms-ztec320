@@ -11,6 +11,7 @@ import os
 import json
 import time
 import hashlib
+import hmac
 
 
 from sqlalchemy import or_
@@ -5719,7 +5720,7 @@ def get_olt(olt_id):
         'firmware_version': olt.firmware_version or '',
         'snmp_enabled': olt.snmp_enabled,
         'snmp_community': olt.snmp_community if can_manage else '***',
-        'snmp_community_write': olt.snmp_community_write or '' if can_manage else '',
+        'snmp_community_write': olt.snmp_community_write if can_manage else '',
         'snmp_port': olt.snmp_port,
         'telnet_enabled': olt.telnet_enabled,
         'telnet_port': olt.telnet_port,
@@ -5744,7 +5745,7 @@ def update_olt(olt_id):
     if not olt:
         return jsonify({'success': False}), 404
     data = request.get_json()
-    for field in ['name', 'ip_address', 'model', 'vendor', 'snmp_community', 'snmp_community_write', 'snmp_port',
+    for field in ['name', 'ip_address', 'model', 'vendor', 'snmp_port',
                   'telnet_enabled', 'telnet_port', 'web_port', 'ssh_enabled', 'ssh_port',
                   'cli_username', 'polling_interval', 'monitoring_enabled']:
         if field in data:
@@ -5752,6 +5753,11 @@ def update_olt(olt_id):
     # Only update password if a real value is provided (not masked placeholder)
     if 'cli_password' in data and data['cli_password'] and not data['cli_password'].startswith('***'):
         olt.cli_password = data['cli_password']
+    # Only update SNMP communities if a real value is provided (not masked placeholder)
+    if 'snmp_community' in data and data['snmp_community'] and not data['snmp_community'].startswith('***'):
+        olt.snmp_community = data['snmp_community']
+    if 'snmp_community_write' in data and data['snmp_community_write'] and not data['snmp_community_write'].startswith('***'):
+        olt.snmp_community_write = data['snmp_community_write']
     db.session.commit()
     log_action('olt_update', 'olt', target=olt.name, detail=f'Updated OLT {olt.name} — fields: {list(data.keys())}')
     return jsonify({'success': True, 'id': olt.id})
@@ -6686,9 +6692,16 @@ def public_branding():
 @app.route('/api/ws-token', methods=['GET'])
 @login_required
 def ws_token():
-    """Return WebSocket auth token for authenticated users.
-    The frontend passes this as a query param when connecting to FastAPI WS endpoints."""
-    token = os.environ.get('INTERNAL_API_KEY', '') or os.environ.get('SECRET_KEY', 'fallback-dev-key')
+    """Return ephemeral HMAC-signed WebSocket auth token for authenticated users.
+
+    Token format: {user_id}.{expiry}.{hmac_signature}
+    The WebSocket server verifies the signature and expiry — no SECRET_KEY exposed.
+    """
+    secret = os.environ.get('INTERNAL_API_KEY', '') or os.environ.get('SECRET_KEY', 'fallback-dev-key')
+    expiry = int(time.time()) + 60  # 60-second TTL
+    payload = f"{current_user.id}.{expiry}"
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    token = f"{payload}.{sig}"
     return jsonify({'token': token})
 
 

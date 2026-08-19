@@ -97,7 +97,10 @@ def complete_sync_job(job: SyncJob, success: bool, onu_count: int = 0,
     now = datetime.now(timezone.utc)
     duration = None
     if job.started_at:
-        duration = (now - job.started_at).total_seconds()
+        started = job.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        duration = (now - started).total_seconds()
 
     job.status = 'completed' if success else 'error'
     job.progress = 100 if success else job.progress

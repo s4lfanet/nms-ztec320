@@ -15,6 +15,7 @@ import json
 import os
 import time
 import hmac
+import hashlib
 from typing import Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Header
@@ -28,16 +29,30 @@ def _get_internal_api_key():
 
 
 def _verify_ws_token(token: Optional[str]) -> bool:
-    """Verify WebSocket auth token.
+    """Verify ephemeral HMAC-signed WebSocket auth token.
 
-    Currently uses the INTERNAL_API_KEY/SECRET_KEY as a shared secret.
-    In production behind nginx, WebSocket connections are proxied and
-    the token is passed as a query param by the frontend.
+    Token format: {user_id}.{expiry}.{hmac_signature}
+    Verifies signature and checks expiry (60s TTL).
+    Does NOT expose SECRET_KEY to the frontend.
     """
     if not token:
         return False
-    expected = _get_internal_api_key()
-    return hmac.compare_digest(token, expected)
+    parts = token.split('.')
+    if len(parts) != 3:
+        return False
+    user_id_str, expiry_str, sig = parts
+    try:
+        expiry = int(expiry_str)
+    except ValueError:
+        return False
+    # Check token hasn't expired
+    if time.time() > expiry:
+        return False
+    # Verify HMAC signature
+    secret = _get_internal_api_key()
+    payload = f"{user_id_str}.{expiry_str}"
+    expected_sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sig, expected_sig)
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -223,13 +238,19 @@ async def health_check():
 async def broadcast_message(
     req: BroadcastRequest,
     x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key"),
+    request_client_host: Optional[str] = Header(None, alias="X-Forwarded-For"),
 ):
     """Internal API — broadcast a message to a WebSocket channel.
 
     Called by Flask backend (services_sync.py, app.py) to push real-time
     updates to connected frontend clients.
     Requires X-Internal-Key header matching INTERNAL_API_KEY or SECRET_KEY.
+    Restricted to localhost requests only.
     """
+    # Restrict to localhost (Flask runs in same process)
+    client_host = request_client_host or ''
+    if client_host not in ('', '127.0.0.1', '::1', 'localhost'):
+        raise HTTPException(status_code=403, detail="Forbidden: broadcast only allowed from localhost")
     expected_key = _get_internal_api_key()
     if not x_internal_key or not hmac.compare_digest(x_internal_key, expected_key):
         raise HTTPException(status_code=403, detail="Forbidden: invalid internal API key")

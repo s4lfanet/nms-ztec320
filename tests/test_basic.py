@@ -95,7 +95,8 @@ class TestAuthEndpoints:
             content_type='application/json')
         assert login_resp.status_code == 200, f"Login failed: {login_resp.get_json()}"
         # Logout using the same session (session cookie is retained in test client)
-        resp = client.post('/api/auth/logout')
+        resp = client.post('/api/auth/logout',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
         assert resp.status_code == 200
         data = resp.get_json()
         assert data['success'] is True
@@ -204,7 +205,8 @@ class TestSecurityPhase1:
         # Create an OLT
         resp = client.post('/api/olt',
             data=json.dumps({'name': 'Test OLT', 'ip_address': '192.168.1.1', 'snmp_community': 'private'}),
-            content_type='application/json')
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
         assert resp.status_code == 200
         olt_id = resp.get_json()['id']
 
@@ -224,7 +226,8 @@ class TestSecurityPhase1:
             db.session.commit()
 
         # Logout admin, login as viewer
-        client.post('/api/auth/logout')
+        client.post('/api/auth/logout',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
         client.post('/api/auth/login',
             data=json.dumps({'username': 'viewer', 'password': 'viewer123'}),
             content_type='application/json')
@@ -263,6 +266,225 @@ class TestSecurityPhase1:
         data = resp.get_json()
         assert 'token' in data
         assert len(data['token']) > 0
+
+
+class TestCSRFProtection:
+    """Regression tests for CSRF protection (S9)."""
+
+    def test_post_without_x_requested_with_rejected(self, client):
+        """POST without X-Requested-With header should be 403."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        resp = client.post('/api/olt/sync-all',
+            data=json.dumps({}),
+            content_type='application/json')
+        assert resp.status_code == 403
+
+    def test_post_with_x_requested_with_allowed(self, client):
+        """POST with X-Requested-With header should pass CSRF check."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        resp = client.post('/api/olt/sync-all',
+            data=json.dumps({}),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        # Should not be 403 (may be 200 or 500 depending on OLTs)
+        assert resp.status_code != 403
+
+    def test_login_exempt_from_csrf(self, client):
+        """Login endpoint should work without X-Requested-With."""
+        resp = client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        assert resp.status_code == 200
+
+    def test_get_not_affected_by_csrf(self, client):
+        """GET requests should not require X-Requested-With."""
+        resp = client.get('/api/public/branding')
+        assert resp.status_code == 200
+
+    def test_delete_without_x_requested_with_rejected(self, client):
+        """DELETE without X-Requested-With should be 403."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        resp = client.delete('/api/olt/999')
+        assert resp.status_code == 403
+
+
+class TestRBAC:
+    """Regression tests for Role-Based Access Control."""
+
+    def _create_viewer(self):
+        """Create a viewer user with no permissions."""
+        with app.app_context():
+            from models import Role, User, db
+            viewer_role = Role(name='ViewerTest', permissions='')
+            db.session.add(viewer_role)
+            viewer = User(username='viewertest', full_name='Viewer', role=viewer_role)
+            viewer.set_password('viewer123')
+            db.session.add(viewer)
+            db.session.commit()
+
+    def _login_viewer(self, client):
+        self._create_viewer()
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'viewertest', 'password': 'viewer123'}),
+            content_type='application/json')
+
+    def test_viewer_cannot_delete_olt(self, client):
+        """Viewer without settings_ip_olts cannot delete OLT."""
+        self._login_viewer(client)
+        resp = client.delete('/api/olt/1',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 403
+
+    def test_viewer_cannot_create_olt(self, client):
+        """Viewer without settings_ip_olts cannot create OLT."""
+        self._login_viewer(client)
+        resp = client.post('/api/olt',
+            data=json.dumps({'name': 'Test', 'ip_address': '1.2.3.4'}),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 403
+
+    def test_viewer_cannot_manage_users(self, client):
+        """Viewer without manage_users cannot access user management."""
+        self._login_viewer(client)
+        resp = client.get('/api/users')
+        assert resp.status_code == 403
+
+    def test_viewer_cannot_update_bot_config(self, client):
+        """Viewer without customization cannot update bot config."""
+        self._login_viewer(client)
+        resp = client.put('/api/bot-config/telegram',
+            data=json.dumps({'enabled': True}),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 403
+
+    def test_admin_can_access_all(self, client):
+        """Admin with all_olt can access protected endpoints."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        resp = client.get('/api/users')
+        assert resp.status_code == 200
+
+
+class TestWebSocketTokenSecurity:
+    """Regression tests for WebSocket token security (P0-a)."""
+
+    def test_ws_token_does_not_leak_secret_key(self, client):
+        """ws-token endpoint must not return the raw SECRET_KEY."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        resp = client.get('/api/ws-token')
+        data = resp.get_json()
+        token = data['token']
+        # Token should be in format: user_id.expiry.signature (3 parts)
+        parts = token.split('.')
+        assert len(parts) == 3, f"Token should have 3 parts, got {len(parts)}"
+        # Token should NOT be the SECRET_KEY
+        secret = os.environ.get('SECRET_KEY', '')
+        assert token != secret, "ws-token must not return raw SECRET_KEY"
+
+    def test_ws_token_has_expiry(self, client):
+        """ws-token should contain a valid expiry timestamp."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        resp = client.get('/api/ws-token')
+        data = resp.get_json()
+        parts = data['token'].split('.')
+        assert len(parts) == 3
+        # Second part should be a future timestamp
+        expiry = int(parts[1])
+        import time as _time
+        assert expiry > _time.time(), "Token expiry should be in the future"
+        assert expiry <= _time.time() + 120, "Token TTL should be <= 120s"
+
+    def test_ws_token_user_id_matches(self, client):
+        """ws-token should contain the authenticated user's ID."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        resp = client.get('/api/ws-token')
+        data = resp.get_json()
+        parts = data['token'].split('.')
+        # First part should be user ID (admin = 1)
+        assert parts[0] == '1', f"Expected user_id=1, got {parts[0]}"
+
+    def test_ws_token_changes_each_request(self, client):
+        """Each ws-token request should produce a different token (ephemeral)."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        import time as _time
+        token1 = client.get('/api/ws-token').get_json()['token']
+        _time.sleep(1.1)  # Ensure different expiry timestamp
+        token2 = client.get('/api/ws-token').get_json()['token']
+        # Tokens should differ (different expiry timestamps)
+        assert token1 != token2, 'Ephemeral tokens should differ across requests'
+
+
+class TestCredentialExposure:
+    """Regression tests for credential exposure to frontend (P0-c)."""
+
+    def test_olt_get_masks_cli_password(self, client):
+        """GET /api/olt/<id> should never return actual CLI password."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        # Create OLT with CLI password
+        resp = client.post('/api/olt',
+            data=json.dumps({'name': 'Cred Test', 'ip_address': '10.0.0.99',
+                             'cli_password': 'supersecret'}),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        olt_id = resp.get_json()['id']
+        resp = client.get(f'/api/olt/{olt_id}')
+        data = resp.get_json()
+        # CLI password should be masked or empty, never the real value
+        assert data['cli_password'] != 'supersecret'
+        assert data['cli_password'] in ('***', '')
+
+    def test_bot_config_masks_token(self, client):
+        """GET /api/bot-config should truncate bot tokens."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        resp = client.get('/api/bot-config')
+        if resp.get_json().get('configs'):
+            for cfg in resp.get_json()['configs']:
+                if cfg.get('bot_token'):
+                    # Should contain '...' (truncated)
+                    assert '...' in cfg['bot_token'], "Bot token should be truncated"
+
+    def test_olt_update_skips_masked_snmp(self, client):
+        """PUT /api/olt/<id> should not overwrite SNMP community with '***'."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        # Create OLT
+        resp = client.post('/api/olt',
+            data=json.dumps({'name': 'Mask Test', 'ip_address': '10.0.0.98',
+                             'snmp_community': 'original'}),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        olt_id = resp.get_json()['id']
+        # Update with masked value
+        client.put(f'/api/olt/{olt_id}',
+            data=json.dumps({'snmp_community': '***'}),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        # Verify original value preserved
+        resp = client.get(f'/api/olt/{olt_id}')
+        data = resp.get_json()
+        assert data['snmp_community'] == 'original', "Masked SNMP community should not overwrite real value"
 
 
 class TestSyncLock:
@@ -306,6 +528,15 @@ class TestSyncLock:
 class TestSyncJob:
     """Tests for sync job lifecycle (Phase 3)."""
 
+    @pytest.fixture(autouse=True)
+    def _setup_db(self):
+        """Set up in-memory DB for tests that use app.app_context() directly."""
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        with app.app_context():
+            db.create_all()
+            yield
+            db.drop_all()
+
     def test_start_and_complete_job(self):
         """SyncJob can be started and completed."""
         with app.app_context():
@@ -334,9 +565,6 @@ class TestSyncJob:
             assert sync.job_id == job.job_id
             assert sync.sync_type == 'full'
 
-            db.session.delete(olt)
-            db.session.commit()
-
     def test_skip_job(self):
         """Skip job creates a SyncJob with status='skipped'."""
         with app.app_context():
@@ -349,9 +577,6 @@ class TestSyncJob:
             job = skip_sync_job(olt.id, sync_type='auto', triggered_by='auto')
             assert job.status == 'skipped'
             assert job.duration_seconds == 0
-
-            db.session.delete(olt)
-            db.session.commit()
 
     def test_sync_history(self):
         """get_sync_history returns recent jobs."""
@@ -368,9 +593,6 @@ class TestSyncJob:
             history = get_sync_history(olt.id, limit=10)
             assert len(history) >= 1
             assert history[0].status == 'completed'
-
-            db.session.delete(olt)
-            db.session.commit()
 
 
 if __name__ == '__main__':
