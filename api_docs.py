@@ -433,6 +433,11 @@ def register_flask_api_docs(app: FastAPI):
     def onu_migrate_cross_olt():
         pass
 
+    @app.post("/api/olt/copy-config", tags=["OLT Management"], summary="Copy OLT configuration",
+              description="Copy VLANs, ONU types, speed profiles, and WAN IP profiles from source OLT to target OLT via CLI.")
+    def olt_copy_config():
+        pass
+
     @app.post("/api/onu/{onu_id}/section-config", tags=["ONU Management"], summary="Update ONU section config",
               description="Update specific ONU config section (interface or pon-onu-mng) via Telnet.")
     def onu_section_config(onu_id: int):
