@@ -38,16 +38,21 @@ def client():
     Otherwise db.drop_all() would wipe the production database file.
     """
     app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     app.config['WTF_CSRF_ENABLED'] = False
     app.config['SESSION_COOKIE_DOMAIN'] = None
-    # Must remove existing SQLAlchemy registration before re-init with new URI.
-    # Without this, db.init_app raises 'already registered' error.
-    app.extensions.pop('sqlalchemy', None)
-    db.init_app(app)  # Reconfigure engine with in-memory URI
+    # Use a separate in-memory SQLite engine for tests.
+    # Can't just change app.config['SQLALCHEMY_DATABASE_URI'] — Flask-SQLAlchemy
+    # caches the engine at init_app time and won't pick up config changes.
+    # Can't call db.init_app(app) again — Flask raises 'already registered'.
+    # So we bind a new in-memory engine directly to db.session for queries,
+    # and use db.metadata.create_all/drop_all with the test engine for schema.
+    from sqlalchemy import create_engine
+    _test_engine = create_engine('sqlite:///:memory:', echo=False)
+    db.session.configure(bind=_test_engine)
+    db._test_engine = _test_engine
 
     with app.app_context():
-        db.create_all()
+        db.metadata.create_all(_test_engine)
         # Re-seed admin user each time because db.drop_all() in teardown removes it.
         # seed_initial_data() only runs once on first import.
         from models import User, Role
@@ -67,13 +72,13 @@ def client():
     with app.test_client() as client:
         yield client
 
-    with app.app_context():
-        db.drop_all()
+    # Drop all tables from the in-memory engine (NOT production)
+    db.metadata.drop_all(_test_engine)
 
-    # Restore production URI and re-init so subsequent imports get the real DB
-    app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
-    app.extensions.pop('sqlalchemy', None)
-    db.init_app(app)
+    # Restore production session binding
+    db.session.remove()
+    db.session.configure(bind=db.engine)
+    delattr(db, '_test_engine')
 
 
 class TestAuthEndpoints:
@@ -629,17 +634,15 @@ class TestSyncJob:
 
         Must dispose production engine first to avoid wiping production DB.
         """
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-        app.extensions.pop('sqlalchemy', None)
-        db.init_app(app)  # Reconfigure engine with in-memory URI
+        from sqlalchemy import create_engine
+        _test_engine = create_engine('sqlite:///:memory:', echo=False)
+        db.session.configure(bind=_test_engine)
         with app.app_context():
-            db.create_all()
+            db.metadata.create_all(_test_engine)
             yield
-            db.drop_all()
-        # Restore production URI
-        app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
-        app.extensions.pop('sqlalchemy', None)
-        db.init_app(app)
+            db.metadata.drop_all(_test_engine)
+        db.session.remove()
+        db.session.configure(bind=db.engine)
 
     def test_start_and_complete_job(self):
         """SyncJob can be started and completed."""
