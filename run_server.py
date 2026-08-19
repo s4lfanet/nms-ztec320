@@ -18,10 +18,16 @@ In production:
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 import threading
 from contextlib import asynccontextmanager
+
+# Mark this as the server process so app.py runs schema init (migrate_schema +
+# db.create_all + seed_initial_data). Cron scripts that import app.py won't
+# have this env var, preventing concurrent db.create_all() on SQLite WAL.
+os.environ.setdefault('NMS_SERVER_PROCESS', '1')
 
 import uvicorn
 
