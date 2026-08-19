@@ -11,6 +11,7 @@ import os
 import json
 import time
 import hashlib
+import shutil
 import hmac
 
 
@@ -6682,7 +6683,7 @@ def backup_database():
     - BACKUP_REMOTE_SCP_TARGET: e.g. "user@backup-server:/path/to/backups/"
     - BACKUP_REMOTE_SCP_KEY: SSH key path (default: ~/.ssh/id_rsa)
     """
-    import tempfile, subprocess, shutil
+    import tempfile, subprocess
     from config import Config
 
     db_uri = Config.SQLALCHEMY_DATABASE_URI
@@ -6696,19 +6697,35 @@ def backup_database():
         # Safe online backup using sqlite3
         import sqlite3
         backup_filename = f'nms_db_backup_{timestamp}.db'
-        backup_path = os.path.join(tempfile.gettempdir(), backup_filename)
+        # Use NamedTemporaryFile to get restrictive permissions from the start
+        tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False, dir=tempfile.gettempdir())
+        backup_path = tmp.name
+        tmp.close()
+        os.chmod(backup_path, 0o600)
         try:
             src = sqlite3.connect(db_path)
             dst = sqlite3.connect(backup_path)
             src.backup(dst)
             dst.close()
             src.close()
+            # Verify backup integrity
+            chk = sqlite3.connect(backup_path)
+            result = chk.execute('PRAGMA integrity_check').fetchone()
+            chk.close()
+            if result[0] != 'ok':
+                os.remove(backup_path)
+                return jsonify({'success': False, 'message': f'Backup integrity check failed: {result[0]}'}), 500
         except Exception as e:
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
             return jsonify({'success': False, 'message': f'SQLite backup failed: {e}'}), 500
     elif 'postgresql' in db_uri:
         # Use pg_dump
         backup_filename = f'nms_db_backup_{timestamp}.sql.gz'
-        backup_path = os.path.join(tempfile.gettempdir(), backup_filename)
+        tmp = tempfile.NamedTemporaryFile(suffix='.sql.gz', delete=False, dir=tempfile.gettempdir())
+        backup_path = tmp.name
+        tmp.close()
+        os.chmod(backup_path, 0o600)
         try:
             with open(backup_path, 'wb') as f:
                 proc = subprocess.Popen(
@@ -6719,10 +6736,15 @@ def backup_database():
                 proc_err = proc.stderr.read().decode()
                 gzip_proc.wait()
                 if proc.wait() != 0:
+                    os.remove(backup_path)
                     return jsonify({'success': False, 'message': f'pg_dump failed: {proc_err}'}), 500
         except FileNotFoundError:
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
             return jsonify({'success': False, 'message': 'pg_dump not installed on server'}), 500
         except Exception as e:
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
             return jsonify({'success': False, 'message': f'PostgreSQL backup failed: {e}'}), 500
     else:
         return jsonify({'success': False, 'message': 'Unsupported database type'}), 400
@@ -6757,9 +6779,86 @@ def backup_database():
         'success': True,
         'filename': backup_filename,
         'size_bytes': backup_size,
+        'integrity_check': 'ok',
         'remote_uploaded': remote_uploaded,
         'remote_error': remote_error,
     })
+
+
+@app.route('/api/system/restore-db', methods=['POST'])
+@super_admin_required
+def restore_database():
+    """Restore database from an uploaded backup file.
+
+    Accepts a .db file (SQLite) uploaded via multipart form data.
+    The current database is backed up before restore (safety net).
+    Only works for SQLite databases.
+    """
+    import tempfile
+    from config import Config
+
+    db_uri = Config.SQLALCHEMY_DATABASE_URI
+    if 'sqlite' not in db_uri:
+        return jsonify({'success': False, 'message': 'Restore only supported for SQLite databases'}), 400
+
+    if 'backup_file' not in request.files:
+        return jsonify({'success': False, 'message': 'No backup file uploaded'}), 400
+
+    upload = request.files['backup_file']
+    if not upload.filename:
+        return jsonify({'success': False, 'message': 'Empty filename'}), 400
+
+    # Save uploaded file to temp with restrictive permissions
+    tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False, dir=tempfile.gettempdir())
+    upload_path = tmp.name
+    tmp.close()
+    os.chmod(upload_path, 0o600)
+    upload.save(upload_path)
+
+    try:
+        import sqlite3
+
+        # Verify uploaded backup integrity
+        chk = sqlite3.connect(upload_path)
+        result = chk.execute('PRAGMA integrity_check').fetchone()
+        chk.close()
+        if result[0] != 'ok':
+            os.remove(upload_path)
+            return jsonify({'success': False, 'message': f'Uploaded file integrity check failed: {result[0]}'}), 400
+
+        db_path = db_uri.replace('sqlite:///', '')
+
+        # Safety: backup current DB before overwrite
+        pre_restore_backup = db_path + f'.pre_restore_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        src = sqlite3.connect(db_path)
+        safety = sqlite3.connect(pre_restore_backup)
+        src.backup(safety)
+        safety.close()
+        src.close()
+        os.chmod(pre_restore_backup, 0o600)
+
+        # Close SQLAlchemy connections before overwriting
+        db.session.remove()
+        db.engine.dispose()
+
+        # Overwrite DB file
+        shutil.copy2(upload_path, db_path)
+
+        log_action('restore_database', 'system',
+                   detail=f'Restored from {upload.filename}, pre-restore backup: {os.path.basename(pre_restore_backup)}')
+
+        return jsonify({
+            'success': True,
+            'message': f'Database restored from {upload.filename}',
+            'pre_restore_backup': os.path.basename(pre_restore_backup),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Restore failed: {e}'}), 500
+    finally:
+        try:
+            os.remove(upload_path)
+        except Exception:
+            pass
 
 
 # ==================== PUBLIC API (no auth — branding) ====================

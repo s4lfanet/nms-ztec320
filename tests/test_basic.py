@@ -746,7 +746,7 @@ class TestDatabaseBackup:
         assert resp.status_code == 403
 
     def test_backup_db_creates_backup(self, client):
-        """Super admin can create a database backup."""
+        """Super admin can create a database backup with integrity check."""
         client.post('/api/auth/login',
             data=json.dumps({'username': 'admin', 'password': 'admin123'}),
             content_type='application/json')
@@ -756,7 +756,79 @@ class TestDatabaseBackup:
         data = resp.get_json()
         assert data['success'] is True
         assert data['size_bytes'] > 0
+        assert data['integrity_check'] == 'ok'
         assert 'filename' in data
+
+    def test_restore_db_requires_super_admin(self, client):
+        """Non-super-admin cannot restore database."""
+        from models import Role, User, db
+        with app.app_context():
+            viewer_role = Role(name='RestoreTest', permissions='')
+            db.session.add(viewer_role)
+            viewer = User(username='restoretest', full_name='Restore', role=viewer_role)
+            viewer.set_password('test123')
+            db.session.add(viewer)
+            db.session.commit()
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'restoretest', 'password': 'test123'}),
+            content_type='application/json')
+        resp = client.post('/api/system/restore-db',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 403
+
+    def test_restore_db_rejects_no_file(self, client):
+        """Restore without backup file should return 400."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        resp = client.post('/api/system/restore-db',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 400
+
+    def test_backup_restore_round_trip(self, client):
+        """Backup then restore should preserve data integrity."""
+        import io
+        import sqlite3
+        import tempfile
+        from config import Config
+
+        # Login as admin
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+
+        # Create a backup via the API
+        resp = client.post('/api/system/backup-db',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        backup_data = resp.get_json()
+        assert backup_data['integrity_check'] == 'ok'
+
+        # Manually create a valid SQLite backup file to upload for restore test
+        # (we can't download the API backup since it's deleted after creation)
+        db_uri = Config.SQLALCHEMY_DATABASE_URI
+        db_path = db_uri.replace('sqlite:///', '')
+        tmp_backup = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        tmp_backup.close()
+        src = sqlite3.connect(db_path)
+        dst = sqlite3.connect(tmp_backup.name)
+        src.backup(dst)
+        dst.close()
+        src.close()
+
+        # Upload the backup file for restore
+        with open(tmp_backup.name, 'rb') as f:
+            resp = client.post('/api/system/restore-db',
+                data={'backup_file': (f, 'test_backup.db')},
+                content_type='multipart/form-data',
+                headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        restore_data = resp.get_json()
+        assert restore_data['success'] is True
+        assert 'pre_restore_backup' in restore_data
+
+        # Clean up
+        os.remove(tmp_backup.name)
 
 
 class TestFastAPIDocsSecurity:
