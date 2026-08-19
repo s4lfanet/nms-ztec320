@@ -28,10 +28,13 @@ from pydantic import BaseModel
 # ---------------------------------------------------------------------------
 _INTERNAL_KEY = os.environ.get('INTERNAL_API_KEY', '')
 if not _INTERNAL_KEY:
-    # Generate a random per-process key if not configured.
-    # This means Flask→FastAPI broadcast will work within the same process
-    # (run_server.py sets INTERNAL_API_KEY explicitly), but if not set,
-    # the key is random and broadcast from external processes will fail.
+    _is_production = os.environ.get('FLASK_ENV', 'development') == 'production'
+    if _is_production:
+        raise RuntimeError(
+            "INTERNAL_API_KEY must be explicitly configured in production. "
+            "Set it in your .env file or environment variables."
+        )
+    # Development only: generate ephemeral key for local testing
     import secrets as _secrets
     _INTERNAL_KEY = _secrets.token_hex(32)
 
