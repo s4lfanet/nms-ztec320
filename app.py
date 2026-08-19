@@ -6624,10 +6624,15 @@ def update_bot_config(bot_type):
 @login_required
 def get_system_config():
     """Get system configuration (timezone, alert interval, etc)."""
+    _SENSITIVE_KEYS = {'duitku_api_key', 'duitku_merchant_code', 'bot_token', 'wa_api_key'}
+    is_admin = current_user.is_super_admin
     configs = SystemConfig.query.all()
     result = {}
     for c in configs:
-        result[c.key] = c.value
+        if c.key in _SENSITIVE_KEYS and not is_admin:
+            result[c.key] = '***' if c.value else ''
+        else:
+            result[c.key] = c.value
     # Defaults
     if 'timezone' not in result:
         result['timezone'] = 'Asia/Jakarta'
