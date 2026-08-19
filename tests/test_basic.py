@@ -29,31 +29,38 @@ def clear_rate_limits():
 
 @pytest.fixture
 def client():
-    """Create a test client with in-memory database.
+    """Create a test client with isolated in-memory database.
 
-    CRITICAL: SQLAlchemy engines are created at app import time pointing to the
-    production DB. Simply changing app.config['SQLALCHEMY_DATABASE_URI'] does NOT
-    reconfigure the existing engine. We must call db.init_app(app) AFTER changing
-    the config so Flask-SQLAlchemy creates a new engine pointing to :memory:.
-    Otherwise db.drop_all() would wipe the production database file.
+    CRITICAL: Flask-SQLAlchemy caches engines in db._engines keyed by app.
+    Just changing app.config['SQLALCHEMY_DATABASE_URI'] does nothing — the
+    cached engine still points to the production DB. We must:
+    1. Change the config URI
+    2. Dispose the old engine
+    3. Clear the engine cache (db._engines.pop(app))
+    4. Use StaticPool so :memory: is shared across connections
+    Otherwise db.create_all()/db.drop_all() and all queries hit production.
     """
+    import tempfile, os
+    from sqlalchemy.pool import StaticPool
+
     app.config['TESTING'] = True
     app.config['WTF_CSRF_ENABLED'] = False
     app.config['SESSION_COOKIE_DOMAIN'] = None
-    # Use a separate in-memory SQLite engine for tests.
-    # Can't just change app.config['SQLALCHEMY_DATABASE_URI'] — Flask-SQLAlchemy
-    # caches the engine at init_app time and won't pick up config changes.
-    # Can't call db.init_app(app) again — Flask raises 'already registered'.
-    # So we bind a new in-memory engine directly to db.session for queries,
-    # and use db.metadata.create_all/drop_all with the test engine for schema.
-    from sqlalchemy import create_engine
-    _test_engine = create_engine('sqlite:///:memory:', echo=False)
+    # Use a temp file SQLite DB — :memory: doesn't share across connections
+    # without StaticPool, and Flask-SQLAlchemy's scoped session creates new
+    # connections per app context.
+    _tmpdb = tempfile.NamedTemporaryFile(suffix='.db', delete=False, dir='/tmp')
+    _tmpdb.close()
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{_tmpdb.name}'
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
+
     with app.app_context():
-        db.session.configure(bind=_test_engine)
-        db._test_engine = _test_engine
-        db.metadata.create_all(_test_engine)
-        # Re-seed admin user each time because db.drop_all() in teardown removes it.
-        # seed_initial_data() only runs once on first import.
+        # Dispose old (production) engine and clear cache so Flask-SQLAlchemy
+        # creates a new engine with the temp file URI on next access.
+        db.engine.dispose()
+        db._engines.pop(app, None)
+        # Now db.engine will create a new engine pointing to the temp file
+        db.create_all()
         from models import User, Role
         if not User.query.filter_by(username='admin').first():
             role = Role.query.filter_by(name='Full Access').first()
@@ -71,12 +78,20 @@ def client():
     with app.test_client() as client:
         yield client
 
-    # Drop all tables from the in-memory engine (NOT production)
+    # Drop all tables from the temp DB (NOT production)
     with app.app_context():
-        db.metadata.drop_all(_test_engine)
-        db.session.remove()
-        db.session.configure(bind=db.engine)
-    delattr(db, '_test_engine')
+        db.drop_all()
+        db.engine.dispose()
+        db._engines.pop(app, None)
+
+    # Restore production config
+    app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
+    app.config.pop('SQLALCHEMY_ENGINE_OPTIONS', None)
+    # Clean up temp file
+    try:
+        os.unlink(_tmpdb.name)
+    except OSError:
+        pass
 
 
 class TestAuthEndpoints:
@@ -240,17 +255,11 @@ class TestSecurityPhase1:
         # Create a Viewer user without settings_ip_olts
         with app.app_context():
             from models import Role, User, db
-            # Use get_or_create to avoid UNIQUE constraint conflicts
-            viewer_role = Role.query.filter_by(name='Viewer').first()
-            if not viewer_role:
-                viewer_role = Role(name='Viewer', permissions='')
-                db.session.add(viewer_role)
-                db.session.flush()
-            viewer = User.query.filter_by(username='viewer').first()
-            if not viewer:
-                viewer = User(username='viewer', full_name='Viewer', role=viewer_role)
-                viewer.set_password('viewer123')
-                db.session.add(viewer)
+            viewer_role = Role(name='Viewer', permissions='')
+            db.session.add(viewer_role)
+            viewer = User(username='viewer', full_name='Viewer', role=viewer_role)
+            viewer.set_password('viewer123')
+            db.session.add(viewer)
             db.session.commit()
 
         # Logout admin, login as viewer
@@ -349,17 +358,11 @@ class TestRBAC:
         """Create a viewer user with no permissions."""
         with app.app_context():
             from models import Role, User, db
-            # Use get_or_create to avoid UNIQUE constraint conflicts
-            viewer_role = Role.query.filter_by(name='ViewerTest').first()
-            if not viewer_role:
-                viewer_role = Role(name='ViewerTest', permissions='')
-                db.session.add(viewer_role)
-                db.session.flush()
-            viewer = User.query.filter_by(username='viewertest').first()
-            if not viewer:
-                viewer = User(username='viewertest', full_name='Viewer', role=viewer_role)
-                viewer.set_password('viewer123')
-                db.session.add(viewer)
+            viewer_role = Role(name='ViewerTest', permissions='')
+            db.session.add(viewer_role)
+            viewer = User(username='viewertest', full_name='Viewer', role=viewer_role)
+            viewer.set_password('viewer123')
+            db.session.add(viewer)
             db.session.commit()
 
     def _login_viewer(self, client):
@@ -640,19 +643,26 @@ class TestSyncJob:
 
     @pytest.fixture(autouse=True)
     def _setup_db(self):
-        """Set up in-memory DB for tests that use app.app_context() directly.
-
-        Must dispose production engine first to avoid wiping production DB.
-        """
-        from sqlalchemy import create_engine
-        _test_engine = create_engine('sqlite:///:memory:', echo=False)
+        """Set up isolated temp DB for tests that use app.app_context() directly."""
+        import tempfile, os
+        _tmpdb = tempfile.NamedTemporaryFile(suffix='.db', delete=False, dir='/tmp')
+        _tmpdb.close()
+        app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{_tmpdb.name}'
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
         with app.app_context():
-            db.session.configure(bind=_test_engine)
-            db.metadata.create_all(_test_engine)
+            db.engine.dispose()
+            db._engines.pop(app, None)
+            db.create_all()
             yield
-            db.metadata.drop_all(_test_engine)
-            db.session.remove()
-            db.session.configure(bind=db.engine)
+            db.drop_all()
+            db.engine.dispose()
+            db._engines.pop(app, None)
+        app.config['SQLALCHEMY_DATABASE_URI'] = _orig_db_uri
+        app.config.pop('SQLALCHEMY_ENGINE_OPTIONS', None)
+        try:
+            os.unlink(_tmpdb.name)
+        except OSError:
+            pass
 
     def test_start_and_complete_job(self):
         """SyncJob can be started and completed."""
