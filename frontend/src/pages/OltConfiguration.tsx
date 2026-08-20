@@ -8,10 +8,12 @@ import { confirm } from '../components/ConfirmDialog';
 import {
   Server, Activity, HardDrive, Network, Globe, Gauge, Settings,
   CheckCircle, XCircle, ChevronDown, ChevronRight, RefreshCw,
-  Edit3, Trash2, Pause, Play, Wifi, Plus, ArrowUp, ArrowDown, Filter
+  Edit3, Trash2, Pause, Play, Wifi, Plus, ArrowUp, ArrowDown, Filter,
+  Save, Terminal, Check, X, Loader2,
 } from 'lucide-react';
 import { RackDiagramRouter } from '../components/rack/RackDiagramRouter';
 import { useHasPerm } from '../hooks/useHasPerm';
+import { api } from '../lib/api';
 
 const TABS = [
   { id: 'uplinks', label: 'Uplinks', icon: <Network size={15} /> },
@@ -110,7 +112,7 @@ export function OltConfiguration() {
           {activeTab === 'onu-types' && <OnuTypesTab oltId={id} canManage={canManage} />}
           {activeTab === 'wan-ip' && <WanIpTab oltId={id} canManage={canManage} />}
           {activeTab === 'speed' && <SpeedProfilesTab oltId={id} canManage={canManage} />}
-          {activeTab === 'system' && <SystemTab olt={olt} />}
+          {activeTab === 'system' && <SystemTab olt={olt} oltId={id} canManage={canManage} />}
         </div>
       </div>
     </div>
@@ -1696,9 +1698,61 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
 
 // ═══ SYSTEM TAB ═══
 
-function SystemTab({ olt }: { olt: Record<string, unknown> }) {
+function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; oltId: number; canManage: boolean }) {
   const fans = (olt as Record<string, unknown>).fans as Array<Record<string, unknown>> || [];
   const cards = (olt as Record<string, unknown>).cards as Array<Record<string, unknown>> || [];
+
+  // Device config state
+  const [sysForm, setSysForm] = useState({
+    snmp_community_ro: '',
+    snmp_community_rw: '',
+    admin_username: '',
+    admin_password: '',
+  });
+  const [sysSaving, setSysSaving] = useState(false);
+  const [showSysLog, setShowSysLog] = useState(false);
+  const [sysLog, setSysLog] = useState('');
+
+  // Fetch OLT credentials when editing
+  useEffect(() => {
+    api.getOlt(oltId).then(d => {
+      if (d.success) {
+        setSysForm({
+          snmp_community_ro: d.snmp_community || 'public',
+          snmp_community_rw: d.snmp_community_write || '',
+          admin_username: d.cli_username || '',
+          admin_password: '',
+        });
+      }
+    }).catch(() => {});
+  }, [oltId]);
+
+  const applySystemConfig = async () => {
+    setSysSaving(true);
+    setShowSysLog(false);
+    try {
+      const res = await fetch(`/api/olt/${oltId}/system-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          snmp_community_ro: sysForm.snmp_community_ro,
+          snmp_community_rw: sysForm.snmp_community_rw,
+          admin_username: sysForm.admin_username,
+          admin_password: sysForm.admin_password,
+        }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        toast.success(d.message || 'System configuration applied');
+        if (d.log) { setSysLog(d.log); setShowSysLog(true); }
+      } else {
+        toast.error(d.message || 'Failed to apply configuration');
+        if (d.log) { setSysLog(d.log); setShowSysLog(true); }
+      }
+    } catch { toast.error('Network error'); }
+    setSysSaving(false);
+  };
 
   const formatUptime = (seconds: unknown): string => {
     if (!seconds) return 'N/A';
@@ -1818,6 +1872,73 @@ function SystemTab({ olt }: { olt: Record<string, unknown> }) {
           </>
         ) : <div className="text-center py-6 text-tx3 text-xs">No card data available. Run Sync.</div>}
       </div>
+
+      {/* Device Configuration — SNMP & Admin User */}
+      {canManage && (
+        <div className="rounded-xl bg-glass p-3 md:p-4 space-y-4">
+          <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-2">
+            <Settings size={14} /> Device Configuration
+          </h6>
+
+          {/* SNMP Community */}
+          <div className="p-3 rounded-lg bg-glass/50 border border-brd space-y-3">
+            <div className="flex items-center gap-2">
+              <Network size={16} className="text-accent" />
+              <span className="text-sm font-semibold">SNMP Community</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label-sm mb-1">Community (Read-Only)</label>
+                <input type="text" value={sysForm.snmp_community_ro} onChange={e => setSysForm({ ...sysForm, snmp_community_ro: e.target.value })} className="input-field" placeholder="public" />
+              </div>
+              <div>
+                <label className="label-sm mb-1">Community (Read-Write)</label>
+                <input type="text" value={sysForm.snmp_community_rw} onChange={e => setSysForm({ ...sysForm, snmp_community_rw: e.target.value })} className="input-field" placeholder="optional" />
+              </div>
+            </div>
+            <p className="text-xs text-tx3">Sets the SNMP community strings on the OLT device. Read-only is used for polling, read-write for configuration.</p>
+          </div>
+
+          {/* Admin User */}
+          <div className="p-3 rounded-lg bg-glass/50 border border-brd space-y-3">
+            <div className="flex items-center gap-2">
+              <Terminal size={16} className="text-accent" />
+              <span className="text-sm font-semibold">Administrator User</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label-sm mb-1">Username</label>
+                <input type="text" value={sysForm.admin_username} onChange={e => setSysForm({ ...sysForm, admin_username: e.target.value })} className="input-field" placeholder="admin" />
+              </div>
+              <div>
+                <label className="label-sm mb-1">Password</label>
+                <input type="password" value={sysForm.admin_password} onChange={e => setSysForm({ ...sysForm, admin_password: e.target.value })} className="input-field" placeholder="•••• (leave empty to keep current)" />
+              </div>
+            </div>
+            <p className="text-xs text-tx3">Sets the OLT CLI administrator account (privilege level 15). NMS credentials will also be updated to match.</p>
+          </div>
+
+          {/* CLI Log Output */}
+          {showSysLog && sysLog && (
+            <div className="p-3 rounded-lg bg-black/80 border border-brd max-h-48 overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-tx3 font-mono">CLI Output</span>
+                <button onClick={() => setShowSysLog(false)} className="text-tx3 hover:text-tx1"><X size={14} /></button>
+              </div>
+              <pre className="text-[11px] text-green-400 font-mono whitespace-pre-wrap">{sysLog}</pre>
+            </div>
+          )}
+
+          {/* Apply Button */}
+          <div className="flex justify-end">
+            <button onClick={applySystemConfig} disabled={sysSaving}
+              className="btn-primary text-sm flex items-center gap-2">
+              {sysSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {sysSaving ? 'Applying...' : 'Apply to OLT'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
