@@ -1703,55 +1703,105 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
   const cards = (olt as Record<string, unknown>).cards as Array<Record<string, unknown>> || [];
 
   // Device config state
-  const [sysForm, setSysForm] = useState({
-    snmp_community_ro: '',
-    snmp_community_rw: '',
-    admin_username: '',
-    admin_password: '',
-  });
-  const [sysSaving, setSysSaving] = useState(false);
-  const [showSysLog, setShowSysLog] = useState(false);
-  const [sysLog, setSysLog] = useState('');
+  const [oltCreds, setOltCreds] = useState({ snmp_community: '', snmp_community_write: '', cli_username: '', cli_password: '' });
+  const [snmpList, setSnmpList] = useState<Array<{ community: string; access: string }>>([]);
+  const [snmpLoading, setSnmpLoading] = useState(false);
+  const [snmpAdd, setSnmpAdd] = useState({ community: '', access: 'ro' });
+  const [snmpSaving, setSnmpSaving] = useState(false);
+  const [userList, setUserList] = useState<Array<{ username: string; level: string }>>([]);
+  const [userLoading, setUserLoading] = useState(false);
+  const [userAdd, setUserAdd] = useState({ username: '', password: '', level: '15' });
+  const [userSaving, setUserSaving] = useState(false);
+  const [showCliLog, setShowCliLog] = useState(false);
+  const [cliLog, setCliLog] = useState('');
 
-  // Fetch OLT credentials when editing
-  useEffect(() => {
-    api.getOlt(oltId).then(d => {
-      if (d.success) {
-        setSysForm({
-          snmp_community_ro: d.snmp_community || 'public',
-          snmp_community_rw: d.snmp_community_write || '',
-          admin_username: d.cli_username || '',
-          admin_password: '',
+  // Fetch OLT credentials + SNMP communities + CLI users
+  const fetchSnmpUsers = async () => {
+    setSnmpLoading(true); setUserLoading(true);
+    try {
+      const [credRes, snmpRes, userRes] = await Promise.all([
+        api.getOlt(oltId),
+        fetch(`/api/olt/${oltId}/snmp-communities`, { credentials: 'include' }).then(r => r.json()).catch(() => ({ success: false })),
+        fetch(`/api/olt/${oltId}/cli-users`, { credentials: 'include' }).then(r => r.json()).catch(() => ({ success: false })),
+      ]);
+      if (credRes.success) {
+        setOltCreds({
+          snmp_community: credRes.snmp_community || 'public',
+          snmp_community_write: credRes.snmp_community_write || '',
+          cli_username: credRes.cli_username || '',
+          cli_password: credRes.cli_password || '',
         });
       }
-    }).catch(() => {});
-  }, [oltId]);
+      if (snmpRes.success) setSnmpList(snmpRes.communities || []);
+      if (userRes.success) setUserList(userRes.users || []);
+    } catch { /* ignore */ }
+    setSnmpLoading(false); setUserLoading(false);
+  };
 
-  const applySystemConfig = async () => {
-    setSysSaving(true);
-    setShowSysLog(false);
+  useEffect(() => { fetchSnmpUsers(); }, [oltId]);
+
+  const addSnmp = async () => {
+    if (!snmpAdd.community.trim()) { toast.error('Community string required'); return; }
+    setSnmpSaving(true);
     try {
-      const res = await fetch(`/api/olt/${oltId}/system-config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          snmp_community_ro: sysForm.snmp_community_ro,
-          snmp_community_rw: sysForm.snmp_community_rw,
-          admin_username: sysForm.admin_username,
-          admin_password: sysForm.admin_password,
-        }),
+      const res = await fetch(`/api/olt/${oltId}/snmp-communities`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ community: snmpAdd.community.trim(), access: snmpAdd.access }),
       });
       const d = await res.json();
       if (d.success) {
-        toast.success(d.message || 'System configuration applied');
-        if (d.log) { setSysLog(d.log); setShowSysLog(true); }
-      } else {
-        toast.error(d.message || 'Failed to apply configuration');
-        if (d.log) { setSysLog(d.log); setShowSysLog(true); }
-      }
+        toast.success(d.message);
+        setSnmpAdd({ community: '', access: 'ro' });
+        fetchSnmpUsers();
+      } else { toast.error(d.message || 'Failed'); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
     } catch { toast.error('Network error'); }
-    setSysSaving(false);
+    setSnmpSaving(false);
+  };
+
+  const deleteSnmp = async (community: string) => {
+    const ok = await confirm({ title: 'Delete SNMP Community', message: `Delete community "${community}" from OLT?`, confirmLabel: 'Delete', variant: 'danger' });
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/olt/${oltId}/snmp-communities`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ community }),
+      });
+      const d = await res.json();
+      if (d.success) { toast.success(d.message); fetchSnmpUsers(); }
+      else { toast.error(d.message || 'Failed'); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
+    } catch { toast.error('Network error'); }
+  };
+
+  const addUser = async () => {
+    if (!userAdd.username.trim() || !userAdd.password.trim()) { toast.error('Username and password required'); return; }
+    setUserSaving(true);
+    try {
+      const res = await fetch(`/api/olt/${oltId}/cli-users`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ username: userAdd.username.trim(), password: userAdd.password, level: parseInt(userAdd.level) || 15 }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        toast.success(d.message);
+        setUserAdd({ username: '', password: '', level: '15' });
+        fetchSnmpUsers();
+      } else { toast.error(d.message || 'Failed'); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
+    } catch { toast.error('Network error'); }
+    setUserSaving(false);
+  };
+
+  const deleteUser = async (username: string) => {
+    const ok = await confirm({ title: 'Delete User', message: `Delete user "${username}" from OLT?`, confirmLabel: 'Delete', variant: 'danger' });
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/olt/${oltId}/cli-users`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ username }),
+      });
+      const d = await res.json();
+      if (d.success) { toast.success(d.message); fetchSnmpUsers(); }
+      else { toast.error(d.message || 'Failed'); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
+    } catch { toast.error('Network error'); }
   };
 
   const formatUptime = (seconds: unknown): string => {
@@ -1873,70 +1923,122 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
         ) : <div className="text-center py-6 text-tx3 text-xs">No card data available. Run Sync.</div>}
       </div>
 
-      {/* Device Configuration — SNMP & Admin User */}
+      {/* Device Configuration — Credentials, SNMP & Users */}
       {canManage && (
         <div className="rounded-xl bg-glass p-3 md:p-4 space-y-4">
-          <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-2">
-            <Settings size={14} /> Device Configuration
-          </h6>
+          <div className="flex items-center justify-between">
+            <h6 className="text-xs font-semibold text-tx3 uppercase flex items-center gap-2">
+              <Settings size={14} /> Device Configuration
+            </h6>
+            <button onClick={fetchSnmpUsers} disabled={snmpLoading}
+              className="text-xs text-tx3 hover:text-accent flex items-center gap-1">
+              <RefreshCw size={12} className={snmpLoading ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
 
-          {/* SNMP Community */}
+          {/* NMS Stored Credentials */}
+          <div className="p-3 rounded-lg bg-glass/50 border border-brd space-y-2">
+            <div className="text-xs font-semibold text-tx2 flex items-center gap-2"><Check size={14} className="text-success" /> NMS Stored Credentials</div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="flex justify-between"><span className="text-tx3">SNMP Read:</span><strong className="font-mono">{oltCreds.snmp_community || '-'}</strong></div>
+              <div className="flex justify-between"><span className="text-tx3">SNMP Write:</span><strong className="font-mono">{oltCreds.snmp_community_write || '-'}</strong></div>
+              <div className="flex justify-between"><span className="text-tx3">CLI User:</span><strong className="font-mono">{oltCreds.cli_username || '-'}</strong></div>
+              <div className="flex justify-between"><span className="text-tx3">CLI Pass:</span><strong className="font-mono">{oltCreds.cli_password ? '••••' : '-'}</strong></div>
+            </div>
+          </div>
+
+          {/* SNMP Communities List */}
           <div className="p-3 rounded-lg bg-glass/50 border border-brd space-y-3">
             <div className="flex items-center gap-2">
               <Network size={16} className="text-accent" />
-              <span className="text-sm font-semibold">SNMP Community</span>
+              <span className="text-sm font-semibold">SNMP Communities</span>
+              {snmpLoading && <Loader2 size={12} className="text-accent animate-spin" />}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="label-sm mb-1">Community (Read-Only)</label>
-                <input type="text" value={sysForm.snmp_community_ro} onChange={e => setSysForm({ ...sysForm, snmp_community_ro: e.target.value })} className="input-field" placeholder="public" />
+            {snmpList.length > 0 ? (
+              <div className="space-y-1.5">
+                {snmpList.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-glass/30 border border-brd">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-medium">{c.community}</span>
+                      <span className={cn('px-1.5 py-0.5 rounded-full text-[10px] font-medium', c.access === 'rw' ? 'bg-accent/15 text-accent' : 'bg-glass text-tx3')}>
+                        {c.access === 'rw' ? 'READ-WRITE' : 'READ-ONLY'}
+                      </span>
+                    </div>
+                    <button onClick={() => deleteSnmp(c.community)} className="text-danger hover:text-danger/80 p-1">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
               </div>
-              <div>
-                <label className="label-sm mb-1">Community (Read-Write)</label>
-                <input type="text" value={sysForm.snmp_community_rw} onChange={e => setSysForm({ ...sysForm, snmp_community_rw: e.target.value })} className="input-field" placeholder="optional" />
-              </div>
+            ) : (
+              <p className="text-xs text-tx3 text-center py-2">{snmpLoading ? 'Loading...' : 'No SNMP communities found. Click Refresh to fetch from OLT.'}</p>
+            )}
+            {/* Add SNMP Community */}
+            <div className="flex gap-2 pt-1 border-t border-brd">
+              <input type="text" value={snmpAdd.community} onChange={e => setSnmpAdd({ ...snmpAdd, community: e.target.value })}
+                className="input-field flex-1 text-sm" placeholder="community string" onKeyDown={e => e.key === 'Enter' && addSnmp()} />
+              <select value={snmpAdd.access} onChange={e => setSnmpAdd({ ...snmpAdd, access: e.target.value })} className="input-field w-28 text-sm">
+                <option value="ro">Read-Only</option>
+                <option value="rw">Read-Write</option>
+              </select>
+              <button onClick={addSnmp} disabled={snmpSaving}
+                className="btn-primary text-sm flex items-center gap-1 px-3">
+                {snmpSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                Add
+              </button>
             </div>
-            <p className="text-xs text-tx3">Sets the SNMP community strings on the OLT device. Read-only is used for polling, read-write for configuration.</p>
           </div>
 
-          {/* Admin User */}
+          {/* CLI Users List */}
           <div className="p-3 rounded-lg bg-glass/50 border border-brd space-y-3">
             <div className="flex items-center gap-2">
               <Terminal size={16} className="text-accent" />
-              <span className="text-sm font-semibold">Administrator User</span>
+              <span className="text-sm font-semibold">CLI Users</span>
+              {userLoading && <Loader2 size={12} className="text-accent animate-spin" />}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="label-sm mb-1">Username</label>
-                <input type="text" value={sysForm.admin_username} onChange={e => setSysForm({ ...sysForm, admin_username: e.target.value })} className="input-field" placeholder="admin" />
+            {userList.length > 0 ? (
+              <div className="space-y-1.5">
+                {userList.map((u, i) => (
+                  <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-glass/30 border border-brd">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-medium">{u.username}</span>
+                      {u.level && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-glass text-tx3">Level {u.level}</span>}
+                    </div>
+                    <button onClick={() => deleteUser(u.username)} className="text-danger hover:text-danger/80 p-1">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
               </div>
-              <div>
-                <label className="label-sm mb-1">Password</label>
-                <input type="password" value={sysForm.admin_password} onChange={e => setSysForm({ ...sysForm, admin_password: e.target.value })} className="input-field" placeholder="•••• (leave empty to keep current)" />
-              </div>
+            ) : (
+              <p className="text-xs text-tx3 text-center py-2">{userLoading ? 'Loading...' : 'No CLI users found. Click Refresh to fetch from OLT.'}</p>
+            )}
+            {/* Add CLI User */}
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_80px_auto] gap-2 pt-1 border-t border-brd">
+              <input type="text" value={userAdd.username} onChange={e => setUserAdd({ ...userAdd, username: e.target.value })}
+                className="input-field text-sm" placeholder="username" onKeyDown={e => e.key === 'Enter' && addUser()} />
+              <input type="password" value={userAdd.password} onChange={e => setUserAdd({ ...userAdd, password: e.target.value })}
+                className="input-field text-sm" placeholder="password" onKeyDown={e => e.key === 'Enter' && addUser()} />
+              <input type="number" value={userAdd.level} onChange={e => setUserAdd({ ...userAdd, level: e.target.value })}
+                className="input-field text-sm" placeholder="15" min={1} max={15} />
+              <button onClick={addUser} disabled={userSaving}
+                className="btn-primary text-sm flex items-center gap-1 px-3 justify-center">
+                {userSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                Add
+              </button>
             </div>
-            <p className="text-xs text-tx3">Sets the OLT CLI administrator account (privilege level 15). NMS credentials will also be updated to match.</p>
           </div>
 
           {/* CLI Log Output */}
-          {showSysLog && sysLog && (
+          {showCliLog && cliLog && (
             <div className="p-3 rounded-lg bg-black/80 border border-brd max-h-48 overflow-y-auto">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-tx3 font-mono">CLI Output</span>
-                <button onClick={() => setShowSysLog(false)} className="text-tx3 hover:text-tx1"><X size={14} /></button>
+                <button onClick={() => setShowCliLog(false)} className="text-tx3 hover:text-tx1"><X size={14} /></button>
               </div>
-              <pre className="text-[11px] text-green-400 font-mono whitespace-pre-wrap">{sysLog}</pre>
+              <pre className="text-[11px] text-green-400 font-mono whitespace-pre-wrap">{cliLog}</pre>
             </div>
           )}
-
-          {/* Apply Button */}
-          <div className="flex justify-end">
-            <button onClick={applySystemConfig} disabled={sysSaving}
-              className="btn-primary text-sm flex items-center gap-2">
-              {sysSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              {sysSaving ? 'Applying...' : 'Apply to OLT'}
-            </button>
-          </div>
         </div>
       )}
     </div>

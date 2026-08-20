@@ -2926,6 +2926,81 @@ def olt_system_config(olt_id):
         return jsonify({'success': False, 'message': str(e)})
 
 
+@app.route('/api/olt/<int:olt_id>/snmp-communities', methods=['GET', 'POST', 'DELETE'])
+@permission_required('settings_ip_olts')
+def olt_snmp_communities(olt_id):
+    """List, add, or delete SNMP communities on the OLT device."""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    if not olt.cli_username:
+        return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+    from snmp_collector import create_cli_collector
+    tc = create_cli_collector(olt)
+    try:
+        if request.method == 'GET':
+            communities, raw = tc.show_snmp_config()
+            return jsonify({'success': True, 'communities': communities, 'raw': raw})
+        data = request.get_json()
+        if request.method == 'POST':
+            community = (data.get('community') or '').strip()
+            access = (data.get('access') or 'ro').strip()
+            if not community:
+                return jsonify({'success': False, 'message': 'Community string required'})
+            ok, msg, log = tc.add_snmp_community(community, access)
+            if ok:
+                log_action('olt_snmp_add', 'olt', target=olt.name, detail=f'Added community {community} ({access})')
+            return jsonify({'success': ok, 'message': msg, 'log': log})
+        if request.method == 'DELETE':
+            community = (data.get('community') or '').strip()
+            if not community:
+                return jsonify({'success': False, 'message': 'Community string required'})
+            ok, msg, log = tc.delete_snmp_community(community)
+            if ok:
+                log_action('olt_snmp_delete', 'olt', target=olt.name, detail=f'Deleted community {community}')
+            return jsonify({'success': ok, 'message': msg, 'log': log})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/olt/<int:olt_id>/cli-users', methods=['GET', 'POST', 'DELETE'])
+@permission_required('settings_ip_olts')
+def olt_cli_users(olt_id):
+    """List, add, or delete CLI users on the OLT device."""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    if not olt.cli_username:
+        return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+    from snmp_collector import create_cli_collector
+    tc = create_cli_collector(olt)
+    try:
+        if request.method == 'GET':
+            users, raw = tc.show_users()
+            return jsonify({'success': True, 'users': users, 'raw': raw})
+        data = request.get_json()
+        if request.method == 'POST':
+            username = (data.get('username') or '').strip()
+            password = (data.get('password') or '').strip()
+            level = int(data.get('level', 15))
+            if not username or not password:
+                return jsonify({'success': False, 'message': 'Username and password required'})
+            ok, msg, log = tc.add_user(username, password, level)
+            if ok:
+                log_action('olt_user_add', 'olt', target=olt.name, detail=f'Saved user {username} (level {level})')
+            return jsonify({'success': ok, 'message': msg, 'log': log})
+        if request.method == 'DELETE':
+            username = (data.get('username') or '').strip()
+            if not username:
+                return jsonify({'success': False, 'message': 'Username required'})
+            ok, msg, log = tc.delete_user(username)
+            if ok:
+                log_action('olt_user_delete', 'olt', target=olt.name, detail=f'Deleted user {username}')
+            return jsonify({'success': ok, 'message': msg, 'log': log})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
 @app.route('/api/olt/<int:olt_id>/backup-config', methods=['POST'])
 @permission_required('settings_ip_olts')
 def backup_olt_config(olt_id):

@@ -5999,3 +5999,201 @@ class TelnetCollector:
             try: tn.close()
             except: pass
             return False, str(e), '\n'.join(output_lines)
+
+    def show_snmp_config(self):
+        """Fetch current SNMP community configuration from OLT via CLI.
+
+        ZTE CLI: 'show snmp' or 'show snmp community'
+        Returns list of {community, access} where access is 'ro' or 'rw'.
+        """
+        tn = self._connect()
+        if not tn:
+            return [], 'Telnet connection failed'
+        try:
+            out = self._send_command(tn, 'show snmp', timeout=10)
+            tn.close()
+            communities = []
+            for line in out.split('\n'):
+                line = line.strip()
+                # Parse lines like: "community  public  read-only" or "public  RO"
+                # ZTE format varies; try common patterns
+                lower = line.lower()
+                if 'community' in lower or 'read-only' in lower or 'read-write' in lower or ' ro' in lower or ' rw' in lower:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        # Find the community string and access type
+                        community = None
+                        access = 'ro'
+                        for p in parts:
+                            pl = p.lower()
+                            if pl in ('ro', 'read-only', 'read'):
+                                access = 'ro'
+                            elif pl in ('rw', 'read-write', 'write'):
+                                access = 'rw'
+                            elif pl not in ('community', 'snmp', 'server', 'access', 'type') and not pl.startswith('-'):
+                                community = p
+                        if community and community not in ('community', 'snmp'):
+                            communities.append({'community': community, 'access': access})
+            # Deduplicate
+            seen = set()
+            result = []
+            for c in communities:
+                key = (c['community'], c['access'])
+                if key not in seen:
+                    seen.add(key)
+                    result.append(c)
+            return result, out
+        except Exception as e:
+            logger.error(f"show_snmp_config error: {e}")
+            try: tn.close()
+            except: pass
+            return [], str(e)
+
+    def add_snmp_community(self, community, access='ro'):
+        """Add an SNMP community on the OLT.
+        access: 'ro' (read-only) or 'rw' (read-write)
+        Returns (success, message, cli_log).
+        """
+        tn = self._connect()
+        if not tn:
+            return False, 'Telnet connection failed', ''
+        log_lines = []
+        try:
+            out = self._send_command(tn, 'configure terminal')
+            log_lines.append(f'$ configure terminal\n{out}')
+            out = self._send_command(tn, f'snmp-server community {community} {access}')
+            log_lines.append(f'$ snmp-server community {community} {access}\n{out}')
+            out = self._send_command(tn, 'end')
+            log_lines.append(f'$ end\n{out}')
+            out = self._send_command(tn, 'write')
+            log_lines.append(f'$ write\n{out}')
+            tn.close()
+            full = '\n'.join(log_lines)
+            if '% ' in full and 'Error' in full:
+                return False, 'CLI error — check log', full
+            return True, f'SNMP community "{community}" ({access}) added', full
+        except Exception as e:
+            try: tn.close()
+            except: pass
+            return False, str(e), '\n'.join(log_lines)
+
+    def delete_snmp_community(self, community):
+        """Delete an SNMP community from the OLT.
+        Returns (success, message, cli_log).
+        """
+        tn = self._connect()
+        if not tn:
+            return False, 'Telnet connection failed', ''
+        log_lines = []
+        try:
+            out = self._send_command(tn, 'configure terminal')
+            log_lines.append(f'$ configure terminal\n{out}')
+            out = self._send_command(tn, f'no snmp-server community {community}')
+            log_lines.append(f'$ no snmp-server community {community}\n{out}')
+            out = self._send_command(tn, 'end')
+            log_lines.append(f'$ end\n{out}')
+            out = self._send_command(tn, 'write')
+            log_lines.append(f'$ write\n{out}')
+            tn.close()
+            full = '\n'.join(log_lines)
+            if '% ' in full and 'Error' in full:
+                return False, 'CLI error — check log', full
+            return True, f'SNMP community "{community}" deleted', full
+        except Exception as e:
+            try: tn.close()
+            except: pass
+            return False, str(e), '\n'.join(log_lines)
+
+    def show_users(self):
+        """Fetch current CLI users from OLT.
+        ZTE CLI: 'show username' or 'show users'
+        Returns list of {username, level}.
+        """
+        tn = self._connect()
+        if not tn:
+            return [], 'Telnet connection failed'
+        try:
+            out = self._send_command(tn, 'show username', timeout=10)
+            tn.close()
+            users = []
+            for line in out.split('\n'):
+                line = line.strip()
+                if not line or line.startswith('--') or line.startswith('Username') or line.startswith('User'):
+                    continue
+                parts = line.split()
+                if len(parts) >= 1:
+                    username = parts[0]
+                    level = ''
+                    for p in parts[1:]:
+                        if p.isdigit():
+                            level = p
+                            break
+                    if username.lower() not in ('username', 'user', 'name'):
+                        users.append({'username': username, 'level': level})
+            # Deduplicate
+            seen = set()
+            result = []
+            for u in users:
+                if u['username'] not in seen:
+                    seen.add(u['username'])
+                    result.append(u)
+            return result, out
+        except Exception as e:
+            logger.error(f"show_users error: {e}")
+            try: tn.close()
+            except: pass
+            return [], str(e)
+
+    def add_user(self, username, password, level=15):
+        """Add or update a CLI user on the OLT.
+        Returns (success, message, cli_log).
+        """
+        tn = self._connect()
+        if not tn:
+            return False, 'Telnet connection failed', ''
+        log_lines = []
+        try:
+            out = self._send_command(tn, 'configure terminal')
+            log_lines.append(f'$ configure terminal\n{out}')
+            out = self._send_command(tn, f'username {username} password {password} level {level}')
+            log_lines.append(f'$ username {username} password *** level {level}\n{out}')
+            out = self._send_command(tn, 'end')
+            log_lines.append(f'$ end\n{out}')
+            out = self._send_command(tn, 'write')
+            log_lines.append(f'$ write\n{out}')
+            tn.close()
+            full = '\n'.join(log_lines)
+            if '% ' in full and 'Error' in full:
+                return False, 'CLI error — check log', full
+            return True, f'User "{username}" saved (level {level})', full
+        except Exception as e:
+            try: tn.close()
+            except: pass
+            return False, str(e), '\n'.join(log_lines)
+
+    def delete_user(self, username):
+        """Delete a CLI user from the OLT.
+        Returns (success, message, cli_log).
+        """
+        tn = self._connect()
+        if not tn:
+            return False, 'Telnet connection failed', ''
+        log_lines = []
+        try:
+            out = self._send_command(tn, 'configure terminal')
+            log_lines.append(f'$ configure terminal\n{out}')
+            out = self._send_command(tn, f'no username {username}')
+            log_lines.append(f'$ no username {username}\n{out}')
+            out = self._send_command(tn, 'end')
+            log_lines.append(f'$ end\n{out}')
+            out = self._send_command(tn, 'write')
+            log_lines.append(f'$ write\n{out}')
+            tn.close()
+            full = '\n'.join(log_lines)
+            if '% ' in full and 'Error' in full:
+                return False, 'CLI error — check log', full
+            return True, f'User "{username}" deleted', full
+        except Exception as e:
+            try: tn.close()
+            except: pass
+            return False, str(e), '\n'.join(log_lines)
