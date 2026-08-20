@@ -5939,43 +5939,49 @@ def get_pon_port_onus_by_name(olt_id, port_name):
 
 # ==================== TEMPLATES ====================
 
-@app.route('/api/template', methods=['POST'])
+@app.route('/api/template', methods=['GET', 'POST'])
 @permission_required('manage_templates')
-def create_template():
+def api_template():
+    if request.method == 'GET':
+        templates = Template.query.order_by(Template.name).all()
+        return jsonify([{
+            'id': t.id, 'name': t.name, 'vendor': t.vendor, 'model': t.model,
+            'onu_type': t.onu_type, 'tcont_profile': t.tcont_profile,
+            'traffic_profile': t.traffic_profile, 'vlan': t.vlan,
+            'description': t.description, 'config': t.config or '',
+            'created_at': t.created_at.isoformat() if t.created_at else None,
+        } for t in templates])
     data = request.get_json()
     t = Template(
         name=data.get('name', ''), vendor=data.get('vendor', ''),
         model=data.get('model', ''), onu_type=data.get('onu_type', ''),
         tcont_profile=data.get('tcont_profile', ''), traffic_profile=data.get('traffic_profile', ''),
-        vlan=data.get('vlan', 100), description=data.get('description', '')
+        vlan=data.get('vlan', 100), description=data.get('description', ''),
+        config=data.get('config', ''),
     )
     db.session.add(t)
     db.session.commit()
+    log_action('create_template', 'system', detail=f'Template: {t.name}')
     return jsonify({'success': True, 'id': t.id})
 
 
-@app.route('/api/template/<int:tid>', methods=['PUT'])
+@app.route('/api/template/<int:tid>', methods=['PUT', 'DELETE'])
 @permission_required('manage_templates')
-def update_template(tid):
+def manage_template(tid):
     t = db.session.get(Template, tid)
     if not t:
         return jsonify({'success': False}), 404
+    if request.method == 'DELETE':
+        db.session.delete(t)
+        db.session.commit()
+        log_action('delete_template', 'system', detail=f'Template: {t.name}')
+        return jsonify({'success': True})
     data = request.get_json()
-    for field in ['name', 'vendor', 'model', 'onu_type', 'tcont_profile', 'traffic_profile', 'vlan', 'description']:
+    for field in ['name', 'vendor', 'model', 'onu_type', 'tcont_profile', 'traffic_profile', 'vlan', 'description', 'config']:
         if field in data:
             setattr(t, field, data[field])
     db.session.commit()
-    return jsonify({'success': True})
-
-
-@app.route('/api/template/<int:tid>', methods=['DELETE'])
-@permission_required('manage_templates')
-def delete_template(tid):
-    t = db.session.get(Template, tid)
-    if not t:
-        return jsonify({'success': False}), 404
-    db.session.delete(t)
-    db.session.commit()
+    log_action('update_template', 'system', detail=f'Template: {t.name}')
     return jsonify({'success': True})
 
 
@@ -7820,6 +7826,9 @@ def migrate_schema():
     add_col('alert_rules', 'olt_cpu_threshold', 'FLOAT', '80.0')
     add_col('alert_rules', 'olt_memory_threshold', 'FLOAT', '80.0')
     add_col('alert_rules', 'olt_temp_threshold', 'FLOAT', '60.0')
+
+    # Templates table - add config JSON column
+    add_col('templates', 'config', 'TEXT', "''")
 
     # Ensure critical indexes exist (db.create_all only creates indexes for new tables)
     def ensure_index(index_name, table, *columns):
