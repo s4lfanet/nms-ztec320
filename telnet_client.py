@@ -5928,3 +5928,74 @@ class TelnetCollector:
                     except (ValueError, IndexError): in_fan_table = False
                 elif line and not line[0].isdigit(): in_fan_table = False
         return fans
+
+    def configure_system(self, snmp_community_ro='', snmp_community_rw='',
+                         admin_username='', admin_password='',
+                         snmp_port=None):
+        """Configure SNMP community strings and administrator user on the OLT via CLI.
+
+        ZTE C320/C300 CLI commands:
+          conf t
+          snmp-server community <string> ro
+          snmp-server community <string> rw
+          no snmp-server community public   (remove default)
+          username <name> password <pass> level 15
+          end
+          write
+
+        Returns (success, message, output_log).
+        """
+        tn = self._connect()
+        if not tn:
+            return False, 'Telnet connection failed', ''
+
+        output_lines = []
+        try:
+            # Enter config mode
+            out = self._send_command(tn, 'configure terminal')
+            output_lines.append(f'$ configure terminal\n{out}')
+
+            # SNMP Community (Read-Only)
+            if snmp_community_ro:
+                # Remove old default community if setting a custom one
+                if snmp_community_ro != 'public':
+                    out = self._send_command(tn, 'no snmp-server community public')
+                    output_lines.append(f'$ no snmp-server community public\n{out}')
+                out = self._send_command(tn, f'snmp-server community {snmp_community_ro} ro')
+                output_lines.append(f'$ snmp-server community {snmp_community_ro} ro\n{out}')
+
+            # SNMP Community (Read-Write)
+            if snmp_community_rw:
+                out = self._send_command(tn, f'snmp-server community {snmp_community_rw} rw')
+                output_lines.append(f'$ snmp-server community {snmp_community_rw} rw\n{out}')
+
+            # SNMP port (ZTE uses default 161, usually not changed via CLI but via management VLAN)
+            # Skip if not specified
+
+            # Admin user
+            if admin_username and admin_password:
+                out = self._send_command(tn, f'username {admin_username} password {admin_password} level 15')
+                output_lines.append(f'$ username {admin_username} password *** level 15\n{out}')
+
+            # Exit config mode
+            out = self._send_command(tn, 'end')
+            output_lines.append(f'$ end\n{out}')
+
+            # Save config
+            out = self._send_command(tn, 'write')
+            output_lines.append(f'$ write\n{out}')
+
+            tn.close()
+
+            full_log = '\n'.join(output_lines)
+            # Check for errors in output
+            has_error = any('% ' in line and 'Error' in line for line in output_lines)
+            if has_error:
+                return False, 'CLI returned errors — check log', full_log
+            return True, 'System configuration applied successfully', full_log
+
+        except Exception as e:
+            logger.error(f"configure_system error: {e}")
+            try: tn.close()
+            except: pass
+            return False, str(e), '\n'.join(output_lines)

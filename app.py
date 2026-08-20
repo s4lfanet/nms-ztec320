@@ -2877,6 +2877,55 @@ def olt_write_config(olt_id):
         return jsonify({'success': False, 'message': str(e)})
 
 
+@app.route('/api/olt/<int:olt_id>/system-config', methods=['POST'])
+@permission_required('settings_ip_olts')
+def olt_system_config(olt_id):
+    """Configure SNMP community and admin user on the OLT device via CLI."""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    if not olt.cli_username:
+        return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+    data = request.get_json()
+    snmp_ro = (data.get('snmp_community_ro') or '').strip()
+    snmp_rw = (data.get('snmp_community_rw') or '').strip()
+    admin_user = (data.get('admin_username') or '').strip()
+    admin_pass = (data.get('admin_password') or '').strip()
+    if not snmp_ro and not snmp_rw and not admin_user:
+        return jsonify({'success': False, 'message': 'No configuration provided'})
+    from snmp_collector import create_cli_collector
+    tc = create_cli_collector(olt)
+    try:
+        ok, msg, log = tc.configure_system(
+            snmp_community_ro=snmp_ro,
+            snmp_community_rw=snmp_rw,
+            admin_username=admin_user,
+            admin_password=admin_pass,
+        )
+        if ok:
+            # Update NMS-side stored credentials to match
+            changed = []
+            if snmp_ro and snmp_ro != olt.snmp_community:
+                olt.snmp_community = snmp_ro
+                changed.append('SNMP read community')
+            if snmp_rw and snmp_rw != olt.snmp_community_write:
+                olt.snmp_community_write = snmp_rw
+                changed.append('SNMP write community')
+            if admin_user and admin_pass:
+                if admin_user != olt.cli_username:
+                    olt.cli_username = admin_user
+                    changed.append('CLI username')
+                olt.cli_password = admin_pass
+                changed.append('CLI password')
+            if changed:
+                db.session.commit()
+            log_action('olt_system_config', 'olt', target=olt.name,
+                       detail=f'Configured: {", ".join(changed) if changed else "no local changes"}')
+        return jsonify({'success': ok, 'message': msg, 'log': log})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
 @app.route('/api/olt/<int:olt_id>/backup-config', methods=['POST'])
 @permission_required('settings_ip_olts')
 def backup_olt_config(olt_id):
