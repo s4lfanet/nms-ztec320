@@ -6003,37 +6003,40 @@ class TelnetCollector:
     def show_snmp_config(self):
         """Fetch current SNMP community configuration from OLT via CLI.
 
-        ZTE CLI: 'show snmp' or 'show snmp community'
+        ZTE C320: 'show snmp community' shows lines like:
+          snmp-server community public view AllView ro
+          snmp-server community private view AllView
+        (no ro/rw suffix = default read-only)
         Returns list of {community, access} where access is 'ro' or 'rw'.
         """
         tn = self._connect()
         if not tn:
             return [], 'Telnet connection failed'
         try:
-            out = self._send_command(tn, 'show snmp', timeout=10)
+            out = self._send_command(tn, 'show running-config', timeout=20)
             tn.close()
             communities = []
             for line in out.split('\n'):
                 line = line.strip()
-                # Parse lines like: "community  public  read-only" or "public  RO"
-                # ZTE format varies; try common patterns
-                lower = line.lower()
-                if 'community' in lower or 'read-only' in lower or 'read-write' in lower or ' ro' in lower or ' rw' in lower:
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        # Find the community string and access type
-                        community = None
+                if 'snmp-server community' not in line.lower():
+                    continue
+                parts = line.split()
+                # Format: snmp-server community <name> view <view> [ro|rw]
+                try:
+                    idx = [i for i, p in enumerate(parts) if p.lower() == 'community'][0]
+                    community = parts[idx + 1] if idx + 1 < len(parts) else None
+                    if not community:
+                        continue
+                    # Determine access: look for ro/rw at end of line
+                    access = 'ro'  # default
+                    last_token = parts[-1].lower()
+                    if last_token == 'rw':
+                        access = 'rw'
+                    elif last_token == 'ro':
                         access = 'ro'
-                        for p in parts:
-                            pl = p.lower()
-                            if pl in ('ro', 'read-only', 'read'):
-                                access = 'ro'
-                            elif pl in ('rw', 'read-write', 'write'):
-                                access = 'rw'
-                            elif pl not in ('community', 'snmp', 'server', 'access', 'type') and not pl.startswith('-'):
-                                community = p
-                        if community and community not in ('community', 'snmp'):
-                            communities.append({'community': community, 'access': access})
+                    communities.append({'community': community, 'access': access})
+                except (IndexError, ValueError):
+                    continue
             # Deduplicate
             seen = set()
             result = []
@@ -6106,7 +6109,21 @@ class TelnetCollector:
 
     def show_users(self):
         """Fetch current CLI users from OLT.
-        ZTE CLI: 'show username' or 'show users'
+        ZTE C320 'show username' output format:
+          cli user global configuration
+          -----------------------------------------------------------------------
+          suspend mode: none
+
+          name     sessions  pri  OperStatus  login-begin  login-end  expire-date
+          status
+          ---------------------------------------------------------------------------
+          zte           16     1   Normal     00:00:00    23:59:59    2099-12-31 23:59:59
+          Enable
+          salfanet      16    15   Normal     00:00:00    23:59:59    2099-12-31 23:59:59
+          Enable
+
+        Each user spans two lines: data line + 'Enable' line.
+        Fields: name, sessions, pri (privilege level), OperStatus, ...
         Returns list of {username, level}.
         """
         tn = self._connect()
@@ -6116,20 +6133,32 @@ class TelnetCollector:
             out = self._send_command(tn, 'show username', timeout=10)
             tn.close()
             users = []
-            for line in out.split('\n'):
+            lines = out.split('\n')
+            # Find the separator line (---), then parse data lines after it
+            data_start = False
+            for line in lines:
                 line = line.strip()
-                if not line or line.startswith('--') or line.startswith('Username') or line.startswith('User'):
+                if line.startswith('---') and len(line) > 10:
+                    data_start = True
+                    continue
+                if not data_start:
+                    continue
+                # Skip empty lines, 'Enable' continuation lines, and 'status' header continuation
+                if not line or line == 'Enable' or line == 'status':
+                    continue
+                # Skip lines that are clearly not user data
+                if line.lower().startswith(('suspend', 'cli user', 'name ')):
                     continue
                 parts = line.split()
-                if len(parts) >= 1:
+                # User data line: name sessions pri OperStatus ...
+                # Must have at least 4 fields and 2nd field (sessions) should be a number
+                if len(parts) >= 4 and parts[1].isdigit():
                     username = parts[0]
-                    level = ''
-                    for p in parts[1:]:
-                        if p.isdigit():
-                            level = p
-                            break
-                    if username.lower() not in ('username', 'user', 'name'):
-                        users.append({'username': username, 'level': level})
+                    level = parts[2]  # pri field
+                    # Validate level is numeric
+                    if not level.isdigit():
+                        level = ''
+                    users.append({'username': username, 'level': level})
             # Deduplicate
             seen = set()
             result = []
