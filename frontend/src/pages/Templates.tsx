@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { api, type OltInfo } from '../lib/api';
 import {
   Blocks, Wifi, Radio, Server, Network, Router,
   Layers, ArrowRight, Check, Plus, Edit3, Trash2, X, Loader2
 } from 'lucide-react';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
+import { cn } from '../lib/utils';
 
 interface TemplateInfo {
   id: string;
@@ -131,14 +134,41 @@ interface DbTemplate {
 }
 
 const SERVICE_TYPES = [
-  { v: 'bridge', l: 'Bridge' },
-  { v: 'pppoe', l: 'PPPoE' },
-  { v: 'zte_single', l: 'ZTE Single' },
-  { v: 'zte_full', l: 'ZTE Dual Band' },
-  { v: 'zte_multi', l: 'ZTE Multi-Service' },
-  { v: 'huawei_full', l: 'Huawei Full' },
-  { v: 'fiberhome_veip', l: 'Fiberhome VEIP' },
+  { v: 'bridge', l: 'Bridge', desc: 'Transparent bridge mode' },
+  { v: 'pppoe', l: 'PPPoE', desc: 'PPPoE dial-up internet' },
+  { v: 'zte_single', l: 'ZTE Single', desc: 'Single SSID + VLAN' },
+  { v: 'zte_full', l: 'ZTE Dual Band', desc: 'Dual SSID, Dual VLAN, TR069' },
+  { v: 'zte_multi', l: 'ZTE Multi-Service', desc: '1-4 services, IPTV, TR069' },
+  { v: 'huawei_full', l: 'Huawei Full', desc: 'Multi VLAN, WAN DHCP' },
+  { v: 'fiberhome_veip', l: 'Fiberhome VEIP', desc: 'TR069+Internet+VoIP' },
 ];
+
+interface TemplateConfig {
+  template: string;
+  onu_type: string;
+  tcont_profile: string;
+  traffic_profile: string;
+  vlan: number;
+  extra: Record<string, string>;
+}
+
+function parseConfig(configStr: string): TemplateConfig {
+  if (!configStr) return { template: '', onu_type: '', tcont_profile: '', traffic_profile: '', vlan: 100, extra: {} };
+  try {
+    const parsed = JSON.parse(configStr);
+    return {
+      template: parsed.template || '',
+      onu_type: parsed.onu_type || '',
+      tcont_profile: parsed.tcont_profile || '',
+      traffic_profile: parsed.traffic_profile || '',
+      vlan: parsed.vlan || 100,
+      extra: parsed.extra || {},
+    };
+  } catch {
+    // Legacy: config was just the service type string
+    return { template: configStr, onu_type: '', tcont_profile: '', traffic_profile: '', vlan: 100, extra: {} };
+  }
+}
 
 export default function Templates() {
   const [selected, setSelected] = useState<string | null>(null);
@@ -149,10 +179,23 @@ export default function Templates() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    name: '', vendor: '', model: '', onu_type: '',
-    tcont_profile: '', traffic_profile: '', vlan: 100,
-    description: '', config: '',
+    name: '', vendor: '', model: '', description: '',
+    config: '' as string,
   });
+
+  // OLT data for template config
+  const { data: dashData } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard });
+  const olts: OltInfo[] = dashData?.olts || [];
+  const [selectedOltId, setSelectedOltId] = useState<number>(0);
+  const [onuTypes, setOnuTypes] = useState<string[]>([]);
+  const [tcontProfiles, setTcontProfiles] = useState<string[]>([]);
+  const [trafficProfiles, setTrafficProfiles] = useState<string[]>([]);
+  const [vlanList, setVlanList] = useState<Array<{ vlan_id: number; name: string }>>([]);
+  const [tr069Profiles, setTr069Profiles] = useState<Array<{ id: number; name: string; acs_url: string }>>([]);
+  const [fetchingOltData, setFetchingOltData] = useState(false);
+
+  // Parse config into editable state
+  const [cfg, setCfg] = useState<TemplateConfig>({ template: 'bridge', onu_type: '', tcont_profile: '', traffic_profile: '', vlan: 100, extra: {} });
 
   const fetchTemplates = useCallback(async () => {
     try {
@@ -167,27 +210,57 @@ export default function Templates() {
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
+  // Fetch OLT data when selectedOltId changes
+  useEffect(() => {
+    if (!selectedOltId) return;
+    setFetchingOltData(true);
+    setOnuTypes([]); setTcontProfiles([]); setTrafficProfiles([]); setVlanList([]);
+    Promise.all([
+      fetch(`/api/olt/${selectedOltId}/onu-types`, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/olt/${selectedOltId}/speed-profiles`, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/olt/${selectedOltId}/vlans`, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
+      fetch('/api/tr069', { credentials: 'include' }).then(r => r.json()).catch(() => []),
+    ]).then(([types, speed, vlans, tr069]) => {
+      if (types.success && types.types) setOnuTypes(types.types);
+      if (speed.success) { setTcontProfiles(speed.tcont || []); setTrafficProfiles(speed.traffic || []); }
+      if (vlans.success && vlans.vlans) setVlanList(vlans.vlans);
+      else if (vlans.vlans) setVlanList(vlans.vlans);
+      if (Array.isArray(tr069)) setTr069Profiles(tr069);
+    }).finally(() => setFetchingOltData(false));
+  }, [selectedOltId]);
+
   const openAdd = () => {
     setEditingId(null);
-    setForm({ name: '', vendor: '', model: '', onu_type: '', tcont_profile: '', traffic_profile: '', vlan: 100, description: '', config: '' });
+    setForm({ name: '', vendor: '', model: '', description: '', config: '' });
+    setSelectedOltId(0);
+    setCfg({ template: 'bridge', onu_type: '', tcont_profile: '', traffic_profile: '', vlan: 100, extra: {} });
     setShowModal(true);
   };
 
   const openEdit = (t: DbTemplate) => {
     setEditingId(t.id);
-    setForm({ name: t.name, vendor: t.vendor, model: t.model, onu_type: t.onu_type, tcont_profile: t.tcont_profile, traffic_profile: t.traffic_profile, vlan: t.vlan, description: t.description, config: t.config });
+    setForm({ name: t.name, vendor: t.vendor, model: t.model, description: t.description, config: t.config });
+    setSelectedOltId(0);
+    setCfg(parseConfig(t.config));
     setShowModal(true);
   };
 
   const doSave = async () => {
     if (!form.name.trim()) { toast.error('Name is required'); return; }
+    const configJson = JSON.stringify(cfg);
+    const payload = {
+      name: form.name, vendor: form.vendor, model: form.model,
+      onu_type: cfg.onu_type, tcont_profile: cfg.tcont_profile,
+      traffic_profile: cfg.traffic_profile, vlan: cfg.vlan,
+      description: form.description, config: configJson,
+    };
     setSaving(true);
     try {
       const url = editingId ? `/api/template/${editingId}` : '/api/template';
       const method = editingId ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' }, credentials: 'include',
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
@@ -366,9 +439,10 @@ export default function Templates() {
               <h2 className="text-base font-semibold">{editingId ? 'Edit Template' : 'Add Template'}</h2>
               <button onClick={() => setShowModal(false)} className="p-1 rounded-lg hover:bg-glass text-tx3"><X size={18} /></button>
             </div>
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Basic Info */}
               <div>
-                <label className="label-sm mb-1">Name *</label>
+                <label className="label-sm mb-1">Template Name *</label>
                 <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" placeholder="e.g. ZTE-F609 Internet Only" />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -381,38 +455,232 @@ export default function Templates() {
                   <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} className="input-field" placeholder="F609, etc." />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label-sm mb-1">ONU Type</label>
-                  <input value={form.onu_type} onChange={e => setForm({ ...form, onu_type: e.target.value })} className="input-field" placeholder="ZTE-F609, All, etc." />
-                </div>
-                <div>
-                  <label className="label-sm mb-1">VLAN</label>
-                  <input type="number" value={form.vlan} onChange={e => setForm({ ...form, vlan: Number(e.target.value) })} className="input-field" placeholder="100" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label-sm mb-1">TCONT Profile</label>
-                  <input value={form.tcont_profile} onChange={e => setForm({ ...form, tcont_profile: e.target.value })} className="input-field" placeholder="1G, 500M, etc." />
-                </div>
-                <div>
-                  <label className="label-sm mb-1">Traffic Profile</label>
-                  <input value={form.traffic_profile} onChange={e => setForm({ ...form, traffic_profile: e.target.value })} className="input-field" placeholder="100M, etc." />
-                </div>
-              </div>
               <div>
                 <label className="label-sm mb-1">Description</label>
                 <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="input-field" placeholder="Brief description" />
               </div>
+
+              <hr className="border-brd" />
+
+              {/* OLT Selector — fetch actual data */}
               <div>
-                <label className="label-sm mb-1">Service Type (for RegisterWizard)</label>
-                <select value={form.config} onChange={e => setForm({ ...form, config: e.target.value })} className="input-field">
-                  <option value="">— None (basic config only) —</option>
-                  {SERVICE_TYPES.map(s => <option key={s.v} value={s.v}>{s.l}</option>)}
+                <label className="label-sm mb-1.5">Source OLT (for actual data) <span className="text-tx3 text-xs">— optional</span></label>
+                <select value={selectedOltId} onChange={e => setSelectedOltId(Number(e.target.value))} className="input-field">
+                  <option value={0}>— Select OLT to load profiles —</option>
+                  {olts.map(o => <option key={o.id} value={o.id}>{o.name} ({o.ip_address})</option>)}
                 </select>
-                <p className="text-xs text-tx3 mt-1">Selecting a service type allows this template to be loaded in RegisterWizard to pre-fill configuration.</p>
+                {fetchingOltData && <p className="text-xs text-tx3 mt-1 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Loading OLT data...</p>}
+                {selectedOltId > 0 && !fetchingOltData && (
+                  <p className="text-xs text-tx3 mt-1">{onuTypes.length} ONU types, {tcontProfiles.length} TCONT, {trafficProfiles.length} traffic, {vlanList.length} VLANs</p>
+                )}
               </div>
+
+              {/* Service Template */}
+              <div>
+                <label className="label-sm mb-2">Service Template</label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {SERVICE_TYPES.map(t => (
+                    <button key={t.v} onClick={() => setCfg({ ...cfg, template: t.v })}
+                      className={cn(
+                        'p-2.5 rounded-xl border text-left transition-all',
+                        cfg.template === t.v ? 'border-accent bg-accent/10' : 'border-brd hover:border-accent/30 bg-glass',
+                      )}>
+                      <div className="text-xs font-medium">{t.l}</div>
+                      <div className="text-[10px] text-tx3">{t.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ONU Type */}
+              <div>
+                <label className="label-sm mb-1.5">ONU Type</label>
+                {onuTypes.length > 0 ? (
+                  <select value={cfg.onu_type} onChange={e => setCfg({ ...cfg, onu_type: e.target.value })} className="input-field">
+                    <option value="All">All (auto-detect)</option>
+                    {onuTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                ) : (
+                  <input value={cfg.onu_type} onChange={e => setCfg({ ...cfg, onu_type: e.target.value })} className="input-field" placeholder="ZTE-F609, All, etc." />
+                )}
+              </div>
+
+              {/* TCONT + Traffic Profiles */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-sm mb-1.5">TCONT Profile <span className="text-tx3 text-xs">(Upload)</span></label>
+                  {tcontProfiles.length > 0 ? (
+                    <select value={cfg.tcont_profile} onChange={e => setCfg({ ...cfg, tcont_profile: e.target.value })} className="input-field">
+                      <option value="">Select profile...</option>
+                      {tcontProfiles.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  ) : (
+                    <input value={cfg.tcont_profile} onChange={e => setCfg({ ...cfg, tcont_profile: e.target.value })} className="input-field" placeholder="1G, 500M, etc." />
+                  )}
+                </div>
+                <div>
+                  <label className="label-sm mb-1.5">Traffic Profile <span className="text-tx3 text-xs">(Download)</span></label>
+                  {trafficProfiles.length > 0 ? (
+                    <select value={cfg.traffic_profile} onChange={e => setCfg({ ...cfg, traffic_profile: e.target.value })} className="input-field">
+                      <option value="">None (no DL limit)</option>
+                      {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  ) : (
+                    <input value={cfg.traffic_profile} onChange={e => setCfg({ ...cfg, traffic_profile: e.target.value })} className="input-field" placeholder="100M, etc." />
+                  )}
+                </div>
+              </div>
+
+              {/* VLAN */}
+              <div>
+                <label className="label-sm mb-1.5">VLAN ID</label>
+                {vlanList.length > 0 ? (
+                  <select value={cfg.vlan} onChange={e => setCfg({ ...cfg, vlan: parseInt(e.target.value) || 100 })} className="input-field">
+                    <option value={100}>100 (default)</option>
+                    {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
+                  </select>
+                ) : (
+                  <input type="number" min={1} max={4094} value={cfg.vlan} onChange={e => setCfg({ ...cfg, vlan: parseInt(e.target.value) || 100 })} className="input-field" placeholder="100" />
+                )}
+              </div>
+
+              {/* Template-specific: PPPoE */}
+              {cfg.template === 'pppoe' && (
+                <div className="p-3 rounded-lg bg-glass border border-accent/20 space-y-3">
+                  <h4 className="text-sm font-semibold text-accent">PPPoE Settings</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className="label-sm mb-1">Username</label>
+                      <input type="text" value={String(cfg.extra.pppoe_user || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, pppoe_user: e.target.value } })} className="input-field" placeholder="PPPoE Username" /></div>
+                    <div><label className="label-sm mb-1">Password</label>
+                      <input type="text" value={String(cfg.extra.pppoe_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, pppoe_pass: e.target.value } })} className="input-field" placeholder="PPPoE Password" /></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Template-specific: ZTE Single */}
+              {cfg.template === 'zte_single' && (
+                <div className="p-3 rounded-lg bg-glass border border-accent/20 space-y-3">
+                  <h4 className="text-sm font-semibold text-accent">ZTE Single Band Config</h4>
+                  {/* PPPoE */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={cfg.extra.enable_pppoe === 'true'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, enable_pppoe: e.target.checked ? 'true' : '' } })} />
+                    <span className="text-sm font-medium">Enable PPPoE</span>
+                  </label>
+                  {cfg.extra.enable_pppoe === 'true' && (
+                    <div className="grid grid-cols-2 gap-3 pl-6">
+                      <input type="text" value={String(cfg.extra.pppoe_user || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, pppoe_user: e.target.value } })} className="input-field" placeholder="PPPoE Username" />
+                      <input type="text" value={String(cfg.extra.pppoe_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, pppoe_pass: e.target.value } })} className="input-field" placeholder="PPPoE Password" />
+                    </div>
+                  )}
+                  {/* SSID 2.4GHz */}
+                  <div className="space-y-2 pl-4 border-l-2 border-accent/20">
+                    <div className="text-xs font-semibold text-tx2">WiFi SSID 2.4GHz</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input type="text" value={String(cfg.extra.ssid_name || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid_name: e.target.value } })} className="input-field col-span-2" placeholder="SSID Name" />
+                      <select value={cfg.extra.ssid_auth || 'wpa2'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid_auth: e.target.value } })} className="input-field">
+                        <option value="wpa2">WPA2-PSK</option>
+                        <option value="mixed">WPA/WPA2 Mixed</option>
+                        <option value="wpa">WPA-PSK</option>
+                        <option value="open">Open</option>
+                      </select>
+                    </div>
+                    {cfg.extra.ssid_name && cfg.extra.ssid_auth !== 'open' && (
+                      <input type="text" value={String(cfg.extra.ssid_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid_pass: e.target.value } })} className="input-field" placeholder="WiFi Password (min 8 chars)" />
+                    )}
+                  </div>
+                  {/* Firewall */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={cfg.extra.enable_firewall === 'true'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, enable_firewall: e.target.checked ? 'true' : '' } })} />
+                    <span className="text-sm font-medium">Enable Firewall</span>
+                  </label>
+                  {cfg.extra.enable_firewall === 'true' && (
+                    <select value={cfg.extra.firewall_level || 'low'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, firewall_level: e.target.value } })} className="input-field">
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  )}
+                  {/* TR069 */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={cfg.extra.enable_tr069 === 'true'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, enable_tr069: e.target.checked ? 'true' : '' } })} />
+                    <span className="text-sm font-medium">Enable TR069/ACS</span>
+                  </label>
+                  {cfg.extra.enable_tr069 === 'true' && tr069Profiles.length > 0 && (
+                    <select value={cfg.extra.tr069_profile_id || ''} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, tr069_profile_id: e.target.value } })} className="input-field">
+                      <option value="">Select Profile...</option>
+                      {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Template-specific: ZTE Dual Band */}
+              {cfg.template === 'zte_full' && (
+                <div className="p-3 rounded-lg bg-glass border border-accent/20 space-y-3">
+                  <h4 className="text-sm font-semibold text-accent">ZTE Dual Band Config</h4>
+                  {/* SSID 2.4GHz */}
+                  <div className="space-y-2 pl-4 border-l-2 border-accent/20">
+                    <div className="text-xs font-semibold text-tx2">WiFi SSID 2.4GHz (wifi_0/1)</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input type="text" value={String(cfg.extra.ssid1_name || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid1_name: e.target.value } })} className="input-field col-span-2" placeholder="SSID 2.4GHz" />
+                      <select value={cfg.extra.ssid1_auth || 'wpa2'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid1_auth: e.target.value } })} className="input-field">
+                        <option value="wpa2">WPA2</option><option value="mixed">Mixed</option><option value="wpa">WPA</option><option value="open">Open</option>
+                      </select>
+                    </div>
+                    {cfg.extra.ssid1_name && cfg.extra.ssid1_auth !== 'open' && (
+                      <input type="text" value={String(cfg.extra.ssid1_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid1_pass: e.target.value } })} className="input-field" placeholder="WiFi Password 2.4GHz" />
+                    )}
+                  </div>
+                  {/* SSID 5GHz */}
+                  <div className="space-y-2 pl-4 border-l-2 border-accent/20">
+                    <div className="text-xs font-semibold text-tx2">WiFi SSID 5GHz (wifi_0/5)</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input type="text" value={String(cfg.extra.ssid2_name || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid2_name: e.target.value } })} className="input-field col-span-2" placeholder="SSID 5GHz" />
+                      <select value={cfg.extra.ssid2_auth || 'wpa2'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid2_auth: e.target.value } })} className="input-field">
+                        <option value="wpa2">WPA2</option><option value="mixed">Mixed</option><option value="wpa">WPA</option><option value="open">Open</option>
+                      </select>
+                    </div>
+                    {cfg.extra.ssid2_name && cfg.extra.ssid2_auth !== 'open' && (
+                      <input type="text" value={String(cfg.extra.ssid2_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid2_pass: e.target.value } })} className="input-field" placeholder="WiFi Password 5GHz" />
+                    )}
+                  </div>
+                  {/* TR069 */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={cfg.extra.enable_tr069 === 'true'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, enable_tr069: e.target.checked ? 'true' : '' } })} />
+                    <span className="text-sm font-medium">Enable TR069/ACS</span>
+                  </label>
+                  {cfg.extra.enable_tr069 === 'true' && tr069Profiles.length > 0 && (
+                    <select value={cfg.extra.tr069_profile_id || ''} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, tr069_profile_id: e.target.value } })} className="input-field">
+                      <option value="">Select Profile...</option>
+                      {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Template-specific: Huawei Full / Fiberhome VEIP — VLAN config */}
+              {(cfg.template === 'huawei_full' || cfg.template === 'fiberhome_veip') && (
+                <div className="p-3 rounded-lg bg-glass border border-accent/20 space-y-3">
+                  <h4 className="text-sm font-semibold text-accent">{cfg.template === 'huawei_full' ? 'Huawei Full' : 'Fiberhome VEIP'} Config</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className="label-sm mb-1">Mgmt VLAN</label>
+                      <input type="number" value={String(cfg.extra.mgmt_vlan || cfg.extra.tr069_vlan || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, mgmt_vlan: e.target.value, tr069_vlan: e.target.value } })} className="input-field" placeholder="1010" /></div>
+                    <div><label className="label-sm mb-1">Internet VLAN</label>
+                      <input type="number" value={String(cfg.extra.internet_vlan || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, internet_vlan: e.target.value } })} className="input-field" placeholder="30" /></div>
+                  </div>
+                  {cfg.template === 'fiberhome_veip' && (
+                    <div><label className="label-sm mb-1">VoIP VLAN</label>
+                      <input type="number" value={String(cfg.extra.voip_vlan || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, voip_vlan: e.target.value } })} className="input-field" placeholder="200" /></div>
+                  )}
+                  {tr069Profiles.length > 0 && (
+                    <div><label className="label-sm mb-1">TR069 Profile</label>
+                      <select value={cfg.extra.tr069_profile_id || ''} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, tr069_profile_id: e.target.value } })} className="input-field">
+                        <option value="">Select Profile...</option>
+                        {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
+                      </select></div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2 p-4 border-t border-brd">
               <button onClick={() => setShowModal(false)} className="btn-secondary text-sm">Cancel</button>

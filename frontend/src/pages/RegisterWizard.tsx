@@ -422,13 +422,19 @@ export function RegisterWizard() {
   const loadDbTemplate = (tid: number) => {
     const t = dbTemplates.find(x => x.id === tid);
     if (!t) return;
+    // Parse config JSON (new format) or fall back to legacy string
+    let cfg: { template?: string; onu_type?: string; tcont_profile?: string; traffic_profile?: string; vlan?: number; extra?: Record<string, string> } = {};
+    if (t.config) {
+      try { cfg = JSON.parse(t.config); } catch { cfg = { template: t.config }; }
+    }
     setData(prev => ({
       ...prev,
-      onuType: t.onu_type || prev.onuType,
-      tcontProfile: t.tcont_profile || prev.tcontProfile,
-      trafficProfile: t.traffic_profile || prev.trafficProfile,
-      vlan: t.vlan || prev.vlan,
-      template: t.config || prev.template,
+      onuType: cfg.onu_type || t.onu_type || prev.onuType,
+      tcontProfile: cfg.tcont_profile || t.tcont_profile || prev.tcontProfile,
+      trafficProfile: cfg.traffic_profile || t.traffic_profile || prev.trafficProfile,
+      vlan: cfg.vlan || t.vlan || prev.vlan,
+      template: cfg.template || prev.template,
+      extra: cfg.extra ? { ...prev.extra, ...cfg.extra } : prev.extra,
     }));
   };
 
