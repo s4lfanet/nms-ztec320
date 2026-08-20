@@ -433,13 +433,14 @@ export default function Templates() {
 
       {/* Add/Edit Template Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-bg border border-brd rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-brd">
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+          <div className="modal-overlay" onClick={() => setShowModal(false)} />
+          <div className="relative glass-card w-full max-w-2xl max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="px-4 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between sticky top-0 bg-surface z-10 rounded-t-2xl md:rounded-t-2xl">
               <h2 className="text-base font-semibold">{editingId ? 'Edit Template' : 'Add Template'}</h2>
               <button onClick={() => setShowModal(false)} className="p-1 rounded-lg hover:bg-glass text-tx3"><X size={18} /></button>
             </div>
-            <div className="p-4 space-y-4 max-h-[75vh] overflow-y-auto">
+            <div className="overflow-y-auto p-4 md:p-5 space-y-4">
               {/* Basic Info */}
               <div>
                 <label className="label-sm mb-1">Template Name *</label>
@@ -460,7 +461,9 @@ export default function Templates() {
                 <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="input-field" placeholder="Brief description" />
               </div>
 
-              <hr className="border-brd" />
+              <div className="pt-2">
+                <div className="text-xs font-semibold text-tx3 uppercase tracking-wider mb-3">OLT Configuration</div>
+              </div>
 
               {/* OLT Selector — fetch actual data */}
               <div>
@@ -543,6 +546,13 @@ export default function Templates() {
                   <input type="number" min={1} max={4094} value={cfg.vlan} onChange={e => setCfg({ ...cfg, vlan: parseInt(e.target.value) || 100 })} className="input-field" placeholder="100" />
                 )}
               </div>
+
+              {/* Template-specific config */}
+              {cfg.template !== 'bridge' && (
+                <div className="pt-2">
+                  <div className="text-xs font-semibold text-tx3 uppercase tracking-wider mb-3">Service Configuration</div>
+                </div>
+              )}
 
               {/* Template-specific: PPPoE */}
               {cfg.template === 'pppoe' && (
@@ -682,7 +692,7 @@ export default function Templates() {
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-2 p-4 border-t border-brd">
+            <div className="flex justify-end gap-2 p-4 border-t border-brd sticky bottom-0 bg-surface rounded-b-2xl md:rounded-b-2xl">
               <button onClick={() => setShowModal(false)} className="btn-secondary text-sm">Cancel</button>
               <button onClick={doSave} disabled={saving} className="btn-primary text-sm flex items-center gap-2">
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
