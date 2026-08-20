@@ -1974,15 +1974,15 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
               <p className="text-xs text-tx3 text-center py-2">{snmpLoading ? 'Loading...' : 'No SNMP communities found. Click Refresh to fetch from OLT.'}</p>
             )}
             {/* Add SNMP Community */}
-            <div className="flex gap-2 pt-1 border-t border-brd">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_auto] gap-2 pt-1 border-t border-brd">
               <input type="text" value={snmpAdd.community} onChange={e => setSnmpAdd({ ...snmpAdd, community: e.target.value })}
-                className="input-field flex-1 text-sm" placeholder="community string" onKeyDown={e => e.key === 'Enter' && addSnmp()} />
-              <select value={snmpAdd.access} onChange={e => setSnmpAdd({ ...snmpAdd, access: e.target.value })} className="input-field w-28 text-sm">
+                className="input-field text-sm" placeholder="community string" onKeyDown={e => e.key === 'Enter' && addSnmp()} />
+              <select value={snmpAdd.access} onChange={e => setSnmpAdd({ ...snmpAdd, access: e.target.value })} className="input-field text-sm">
                 <option value="ro">Read-Only</option>
                 <option value="rw">Read-Write</option>
               </select>
               <button onClick={addSnmp} disabled={snmpSaving}
-                className="btn-primary text-sm flex items-center gap-1 px-3">
+                className="btn-primary text-sm flex items-center gap-1 px-3 justify-center">
                 {snmpSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                 Add
               </button>
