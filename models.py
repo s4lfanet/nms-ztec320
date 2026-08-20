@@ -279,6 +279,7 @@ class Template(db.Model):
     traffic_profile = db.Column(db.String(100), default='')
     vlan = db.Column(db.Integer, default=100)
     description = db.Column(db.String(256), default='')
+    config = db.Column(db.Text, default='')  # JSON: full wizard config (template type, extra fields, ssids, etc.)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 

@@ -404,11 +404,33 @@ export function RegisterWizard() {
   const [tr069Profiles, setTr069Profiles] = useState<Array<{ id: number; name: string; acs_url: string; acs_username: string; acs_password: string; vlan: number; vlan_mode: string; default_olt_id: number | null }>>([]);
   const [registering, setRegistering] = useState(false);
   const [results, setResults] = useState<Array<{ sn: string; success: boolean; message: string }>>([]);
+  const [dbTemplates, setDbTemplates] = useState<Array<{ id: number; name: string; vendor: string; onu_type: string; tcont_profile: string; traffic_profile: string; vlan: number; config: string }>>([]);
 
   const { data: dashData } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard });
   const olts = dashData?.olts || [];
   const { data: techData } = useQuery({ queryKey: ['technicians'], queryFn: api.technicians });
   const technicians: TechnicianData[] = techData?.technicians || [];
+
+  // Fetch DB templates
+  useEffect(() => {
+    fetch('/api/template', { credentials: 'include', headers: { 'X-Requested-With': 'fetch' } })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setDbTemplates(d); })
+      .catch(() => {});
+  }, []);
+
+  const loadDbTemplate = (tid: number) => {
+    const t = dbTemplates.find(x => x.id === tid);
+    if (!t) return;
+    setData(prev => ({
+      ...prev,
+      onuType: t.onu_type || prev.onuType,
+      tcontProfile: t.tcont_profile || prev.tcontProfile,
+      trafficProfile: t.traffic_profile || prev.trafficProfile,
+      vlan: t.vlan || prev.vlan,
+      template: t.config || prev.template,
+    }));
+  };
 
   // Fetch ONU types and profiles when OLT is selected
   useEffect(() => {
@@ -712,6 +734,23 @@ export function RegisterWizard() {
         <div className="glass-card p-4 md:p-6 space-y-4 md:space-y-5">
           <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Settings size={18} /> Configuration</h2>
           <p className="text-tx2 text-xs md:text-sm">Configure registration parameters for {data.selectedOnus.length} ONU(s).</p>
+
+          {/* Load Custom Template */}
+          {dbTemplates.length > 0 && (
+            <div>
+              <label className="label-sm mb-2">Load Custom Template</label>
+              <select
+                onChange={e => { if (e.target.value) loadDbTemplate(Number(e.target.value)); }}
+                defaultValue=""
+                className="input-field"
+              >
+                <option value="">— Select template —</option>
+                {dbTemplates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}{t.config ? ` (${t.config})` : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Service Template */}
           <div>
