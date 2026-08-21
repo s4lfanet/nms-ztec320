@@ -2601,6 +2601,11 @@ def onu_wan_service_edit(onu_id, svc_idx):
         # ── Step 2: pon-onu-mng context ──────────────────────────────────────
         tc._send_command(tn, f'pon-onu-mng {onu_path}', timeout=10)
 
+        # Detect non-ZTE ONU (uses VEIP mode — single virtual port, host 1)
+        sn = (onu.serial_number or '').upper()
+        use_veip = sn and not sn.startswith('ZTEG') and not sn.startswith('ZTE')
+        wan_host = '1' if use_veip else str(svc_idx)
+
         # Clean up old ONU-side service entries — order matters on ZTE!
         # Must remove WAN service binding BEFORE pppoe/wan-ip, else "Record already exists" (63869)
         tc._send_command(tn, f'no service {service_name}', timeout=10)
@@ -2611,8 +2616,9 @@ def onu_wan_service_edit(onu_id, svc_idx):
         # Brief pause for OLT to process OMCI deletions before re-creating
         import time as _t; _t.sleep(1)
 
-        # PPPoE NAT and Wan-IP use iphost — must remove VEIP (mutually exclusive on ZTE C320)
-        if status == 'enable' and mode in ('PPPoE NAT', 'Wan-IP'):
+        # PPPoE NAT and Wan-IP use iphost on ZTE — must remove VEIP (mutually exclusive on ZTE C320)
+        # For non-ZTE (VEIP) ONUs: keep VEIP, use host 1 instead of iphost
+        if status == 'enable' and mode in ('PPPoE NAT', 'Wan-IP') and not use_veip:
             tc._send_command(tn, 'no vlan port veip_1 mode hybrid', timeout=10)
             tc._send_command(tn, 'no vlan port veip_1 vlan 1', timeout=10)
 
@@ -2624,7 +2630,10 @@ def onu_wan_service_edit(onu_id, svc_idx):
                 sc(cmd)
 
             elif mode == 'PPPoE NAT':
-                cmd = f'service {service_name} gemport {svc_idx} iphost {svc_idx}'
+                if use_veip:
+                    cmd = f'service {service_name} gemport {svc_idx}'
+                else:
+                    cmd = f'service {service_name} gemport {svc_idx} iphost {svc_idx}'
                 if vlan:
                     cmd += f' vlan {vlan}'
                 sc(cmd)
@@ -2632,11 +2641,14 @@ def onu_wan_service_edit(onu_id, svc_idx):
                 password = data.get('pppoe_password', '')
                 if username:
                     sc(f'pppoe {svc_idx} nat enable user {username} password {password}')
-                    sc(f'wan {svc_idx} service internet host {svc_idx}')
+                    sc(f'wan {svc_idx} service internet host {wan_host}')
 
             elif mode == 'Wan-IP':
-                # Wan-IP requires iphost (same as PPPoE NAT) for ONU-side IP routing
-                cmd = f'service {service_name} gemport {svc_idx} iphost {svc_idx}'
+                # Wan-IP requires iphost on ZTE; VEIP uses host 1 directly
+                if use_veip:
+                    cmd = f'service {service_name} gemport {svc_idx}'
+                else:
+                    cmd = f'service {service_name} gemport {svc_idx} iphost {svc_idx}'
                 if vlan:
                     cmd += f' vlan {vlan}'
                 sc(cmd)
@@ -2644,18 +2656,22 @@ def onu_wan_service_edit(onu_id, svc_idx):
                 vlan_profile = data.get('vlan_profile', '')
                 if wan_ip_mode == 'dhcp':
                     if vlan_profile:
-                        cmd = f'wan-ip {svc_idx} mode dhcp vlan-profile {vlan_profile} host {svc_idx}'
+                        cmd = f'wan-ip {svc_idx} mode dhcp vlan-profile {vlan_profile} host {wan_host}'
                         sc(cmd)
                     else:
-                        # vlan-profile optional on some firmware — soft-fail if not supported
-                        tc._send_command(tn, f'wan-ip {svc_idx} mode dhcp host {svc_idx}', timeout=10)
+                        tc._send_command(tn, f'wan-ip {svc_idx} mode dhcp host {wan_host}', timeout=10)
                     if data.get('ping_response'):
                         tc._send_command(tn, f'wan-ip {svc_idx} ping-response enable', timeout=10)
                     if data.get('traceroute_response'):
                         tc._send_command(tn, f'wan-ip {svc_idx} traceroute-response enable', timeout=10)
                 elif wan_ip_mode == 'pppoe':
-                    vlan_profile = vlan_profile or 'pppoe'
-                    sc(f'wan-ip {svc_idx} mode pppoe vlan-profile {vlan_profile} host {svc_idx}')
+                    username = data.get('pppoe_username', '')
+                    password = data.get('pppoe_password', '')
+                    if username and vlan_profile:
+                        sc(f'wan-ip {svc_idx} mode pppoe username {username} password {password} vlan-profile {vlan_profile} host {wan_host}')
+                    else:
+                        vlan_profile = vlan_profile or 'pppoe'
+                        sc(f'wan-ip {svc_idx} mode pppoe vlan-profile {vlan_profile} host {wan_host}')
                 elif wan_ip_mode == 'static':
                     ip = data.get('wan_ip', '')
                     mask = data.get('wan_netmask', '')
@@ -2664,7 +2680,7 @@ def onu_wan_service_edit(onu_id, svc_idx):
                     cmd = f'wan-ip {svc_idx} mode static'
                     if vlan_profile:
                         cmd += f' vlan-profile {vlan_profile}'
-                    cmd += f' host {svc_idx}'
+                    cmd += f' host {wan_host}'
                     if ip: cmd += f' ipaddress {ip}'
                     if mask: cmd += f' netmask {mask}'
                     if gw: cmd += f' gateway {gw}'
@@ -2676,6 +2692,54 @@ def onu_wan_service_edit(onu_id, svc_idx):
         if last_err:
             return jsonify({'success': False, 'message': f'CLI error: {last_err}'})
         return jsonify({'success': True, 'message': f'WAN Service {svc_idx} updated'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/onu/<int:onu_id>/wan-service/<int:svc_idx>', methods=['DELETE'])
+@permission_required('configure_onu')
+def onu_wan_service_delete(onu_id, svc_idx):
+    """Delete a WAN service configuration via Telnet.
+    Removes: service, wan-ip, pppoe, service-port, tcont, gemport for the given index."""
+    onu = db.session.get(ONU, onu_id)
+    if not onu:
+        return jsonify({'success': False, 'message': 'ONU not found'}), 404
+    olt = onu.olt
+    if not olt or not olt.cli_username:
+        return jsonify({'success': False, 'message': 'OLT not configured'})
+    logger.info(f"[wan-service-delete] ONU {onu_id} svc={svc_idx} by user={current_user.username}")
+    from snmp_collector import TelnetCollector, create_cli_collector
+    tc = create_cli_collector(olt)
+    try:
+        tn = tc._connect()
+        if not tn:
+            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+        is_epon = (onu.card or '').lower() == 'epon'
+        onu_pfx = 'epon-onu' if is_epon else 'gpon-onu'
+        onu_path = f'{onu_pfx}_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
+
+        # Step 1: interface context — remove service-port, tcont, gemport
+        tc._send_command(tn, 'configure terminal', timeout=10)
+        tc._send_command(tn, f'interface {onu_path}', timeout=10)
+        tc._send_command(tn, f'no service-port {svc_idx}', timeout=10)
+        if not is_epon:
+            tc._send_command(tn, f'no gemport {svc_idx}', timeout=10)
+            tc._send_command(tn, f'no tcont {svc_idx}', timeout=10)
+        tc._send_command(tn, 'exit', timeout=5)
+
+        # Step 2: pon-onu-mng context — remove ONU-side service entries
+        if not is_epon:
+            tc._send_command(tn, f'pon-onu-mng {onu_path}', timeout=10)
+            tc._send_command(tn, f'no service service{svc_idx}', timeout=10)
+            tc._send_command(tn, f'no service {svc_idx}', timeout=10)
+            tc._send_command(tn, f'no wan {svc_idx} service', timeout=10)
+            tc._send_command(tn, f'no wan-ip {svc_idx}', timeout=10)
+            tc._send_command(tn, f'no pppoe {svc_idx}', timeout=10)
+            tc._send_command(tn, 'end', timeout=10)
+
+        tn.close()
+        logger.info(f"[wan-service-delete] ONU {onu_id} svc={svc_idx} deleted successfully")
+        return jsonify({'success': True, 'message': f'WAN Service {svc_idx} deleted'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
