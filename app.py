@@ -1641,16 +1641,18 @@ def delete_onu(onu_id):
         tc.deregister_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
     db.session.delete(onu)
     db.session.commit()
-    # Auto-sync OLT after delete
-    _auto_sync_olt(olt_id)
+    # Auto-sync OLT after delete — full sync with delay to clean stale ONUs
+    _auto_sync_olt(olt_id, light=False, delay=3)
     log_action('onu_delete', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'Deleted {onu.name} ({onu.serial_number}) from {olt.name if olt else "unknown"}')
     return jsonify({'success': True, 'message': 'ONU deleted. Auto-syncing OLT...'})
 
 
-def _auto_sync_olt(olt_id):
+def _auto_sync_olt(olt_id, light=True, delay=0):
     """Trigger a background sync for an OLT after ONU actions (clear-config, delete, etc.).
     Non-blocking — runs in a thread so the API response is not delayed.
-    Uses LIGHT sync (SNMP-only) to minimize OLT CPU load."""
+    Uses LIGHT sync (SNMP-only) by default to minimize OLT CPU load.
+    Set light=False for full sync (needed after delete to clean stale ONUs).
+    delay: seconds to wait before starting sync (gives OLT time to process changes)."""
     import threading
     from flask import current_app
     from sync_lock import acquire_sync_lock, release_sync_lock
@@ -1658,6 +1660,8 @@ def _auto_sync_olt(olt_id):
     app = current_app._get_current_object()
 
     def _do_sync():
+        if delay > 0:
+            time.sleep(delay)
         with app.app_context():
             # Acquire per-OLT sync lock
             lock_token = acquire_sync_lock(olt_id, timeout=0)
@@ -1686,11 +1690,11 @@ def _auto_sync_olt(olt_id):
                     db.session.commit()
 
                 from snmp_collector import poll_olt
-                result = poll_olt(olt, progress_cb=update_progress, light=True)
+                result = poll_olt(olt, progress_cb=update_progress, light=light)
 
                 if result.get('success'):
                     from sync_helper import save_sync_result, check_unregistered_onus
-                    onu_count, stale_count = save_sync_result(olt, result, sync, light=True)
+                    onu_count, stale_count = save_sync_result(olt, result, sync, light=light)
                     sync.progress = 100
                     sync.status = 'completed'
                     sync.message = f'Auto-sync OK: {onu_count} ONUs'
@@ -1804,8 +1808,9 @@ def onu_action(onu_id):
         if success:
             db.session.delete(onu)
             db.session.commit()
-            # Auto-trigger OLT sync after delete
-            _auto_sync_olt(olt_id_for_sync)
+            # Auto-trigger FULL sync after delete with 3s delay — gives OLT time
+            # to process deregistration so SNMP won't re-create the ONU in DB
+            _auto_sync_olt(olt_id_for_sync, light=False, delay=3)
             # Auto-save config to startup-config
             _auto_write_config(olt_id_for_sync)
     elif action == 'clear-config':
@@ -1817,7 +1822,7 @@ def onu_action(onu_id):
             # Clear service-related fields in DB
             onu.pppoe = ''
             db.session.commit()
-            _auto_sync_olt(onu.olt_id)
+            _auto_sync_olt(onu.olt_id, delay=2)
             # Auto-save config to startup-config
             _auto_write_config(onu.olt_id)
     elif action == 'disable':
@@ -1869,7 +1874,7 @@ def onu_action(onu_id):
             # Clear service-related fields in DB — factory reset wipes all ONU config
             onu.pppoe = ''
             db.session.commit()
-            _auto_sync_olt(onu.olt_id)
+            _auto_sync_olt(onu.olt_id, delay=2)
             # Auto-save config to startup-config
             _auto_write_config(onu.olt_id)
     elif action == 'restore-wifi':
