@@ -349,11 +349,7 @@ function generateRegisterScript(d: WizardData): string {
       lines.push(`  wan-ip 2 mode dhcp vlan-profile ${vlanProfile} host 1`);
       lines.push('  wan-ip 2 ping-response enable traceroute-response enable');
     }
-    // TR069 WAN (DHCP via vlan-profile if available)
-    if (vlanProfile) {
-      lines.push(`  wan-ip 1 mode dhcp vlan-profile ${vlanProfile} host 1`);
-      lines.push('  wan-ip 1 ping-response enable traceroute-response enable');
-    }
+    // TR069 uses tr069-mgmt VLAN tagging — no separate wan-ip (would conflict on VEIP host 1)
     lines.push('  tr069-mgmt 1 state unlock');
     lines.push(`  tr069-mgmt 1 acs ${e.acs_url || 'http://192.168.54.254:7547'} validate basic username ${e.acs_user || 'acs'} password ${e.acs_pass || 'acs'}`);
     const tr069Vlan = String(vlans.find(v => (v.label || '').toLowerCase().includes('tr069'))?.vlan || vlans[0]?.vlan || '1010');

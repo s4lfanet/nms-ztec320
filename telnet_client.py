@@ -1443,9 +1443,20 @@ class TelnetCollector:
                     sc(f'wan-ip 1 mode pppoe vlan-profile {vlan_profile} host 1')
 
             elif template == 'fiberhome_veip':
-                tr069_vlan = extra.get('tr069_vlan', 1010)
-                internet_vlan = extra.get('internet_vlan', 30)
-                voip_vlan = extra.get('voip_vlan', 151)
+                # Read from vlans array if present, fall back to individual fields
+                vlans_arr = extra.get('vlans', [])
+                if isinstance(vlans_arr, str):
+                    import json as _j
+                    try: vlans_arr = _j.loads(vlans_arr)
+                    except: vlans_arr = []
+                if vlans_arr and len(vlans_arr) >= 3:
+                    tr069_vlan = str(vlans_arr[0].get('vlan', '') or 1010)
+                    internet_vlan = str(vlans_arr[1].get('vlan', '') or 30)
+                    voip_vlan = str(vlans_arr[2].get('vlan', '') or 151)
+                else:
+                    tr069_vlan = str(extra.get('tr069_vlan') or 1010)
+                    internet_vlan = str(extra.get('internet_vlan') or 30)
+                    voip_vlan = str(extra.get('voip_vlan') or 151)
                 acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
                 acs_user = extra.get('acs_user', '') or 'acs'
                 acs_pass = extra.get('acs_pass', '') or 'acs'
@@ -1512,10 +1523,8 @@ class TelnetCollector:
                     elif ip_addr and vlan_profile:
                         sc(f'wan-ip 2 mode static ip-address {ip_addr} mask {subnet} vlan-profile {vlan_profile} host 1')
                     sc('wan-ip 2 ping-response enable traceroute-response enable')
-                # TR069 WAN config (DHCP via vlan-profile, VEIP host 1)
-                if vlan_profile:
-                    sc(f'wan-ip 1 mode dhcp vlan-profile {vlan_profile} host 1')
-                    sc('wan-ip 1 ping-response enable traceroute-response enable')
+                # TR069 uses tr069-mgmt VLAN tagging — no separate wan-ip needed
+                # (wan-ip 1 on same host 1 would conflict with wan-ip 2)
                 sc('tr069-mgmt 1 state unlock')
                 sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
                 sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
