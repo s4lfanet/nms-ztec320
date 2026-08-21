@@ -1450,6 +1450,12 @@ class TelnetCollector:
                 acs_user = extra.get('acs_user', '') or 'acs'
                 acs_pass = extra.get('acs_pass', '') or 'acs'
                 traffic_profile = extra.get('traffic_profile', '')
+                # WAN config for internet service
+                wan_mode = extra.get('wan_mode', 'bridge')  # bridge|pppoe|dhcp|static
+                pppoe_user = extra.get('pppoe_user', '')
+                pppoe_pass = extra.get('pppoe_pass', '')
+                vlan_profile = extra.get('vlan_profile', '')
+                wan_ip_mode = extra.get('wan_ip_mode', '')  # PPPoE|DHCP|STATIC
                 # sn-bind enable sn
                 sc('sn-bind enable sn')
                 # TCONTs (no name — matching running-config)
@@ -1484,6 +1490,32 @@ class TelnetCollector:
                 sc(f'vlan port eth_0/3 mode tag vlan {internet_vlan}')
                 sc(f'vlan port eth_0/4 mode tag vlan {internet_vlan}')
                 sc(f'vlan port wifi_0/1 mode tag vlan {internet_vlan}')
+                # WAN config for internet service (VEIP mode — always host 1)
+                if wan_mode == 'pppoe' and pppoe_user:
+                    if vlan_profile:
+                        sc(f'wan-ip 2 mode pppoe username {pppoe_user} password {pppoe_pass} vlan-profile {vlan_profile} host 1')
+                        sc('wan-ip 2 ping-response enable traceroute-response enable')
+                    else:
+                        # No vlan-profile — use pppoe nat mode instead
+                        sc(f'pppoe 2 nat enable user {pppoe_user} password {pppoe_pass}')
+                        sc('wan 2 service internet host 1')
+                elif wan_mode == 'dhcp' or wan_ip_mode == 'DHCP':
+                    if vlan_profile:
+                        sc(f'wan-ip 2 mode dhcp vlan-profile {vlan_profile} host 1')
+                        sc('wan-ip 2 ping-response enable traceroute-response enable')
+                elif wan_ip_mode == 'STATIC':
+                    ip_addr = extra.get('ip_address', '')
+                    subnet = extra.get('subnet_mask', '')
+                    ip_prof = extra.get('ip_profile', '')
+                    if ip_prof and vlan_profile:
+                        sc(f'wan-ip 2 mode static ip-profile {ip_prof} vlan-profile {vlan_profile} host 1')
+                    elif ip_addr and vlan_profile:
+                        sc(f'wan-ip 2 mode static ip-address {ip_addr} mask {subnet} vlan-profile {vlan_profile} host 1')
+                    sc('wan-ip 2 ping-response enable traceroute-response enable')
+                # TR069 WAN config (DHCP via vlan-profile, VEIP host 1)
+                if vlan_profile:
+                    sc(f'wan-ip 1 mode dhcp vlan-profile {vlan_profile} host 1')
+                    sc('wan-ip 1 ping-response enable traceroute-response enable')
                 sc('tr069-mgmt 1 state unlock')
                 sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
                 sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
@@ -2166,10 +2198,13 @@ class TelnetCollector:
                     sc(f'service {svc_name} gemport {n}{vlan_suffix}')
 
                 # WAN config
+                # For VEIP mode, always use host 1 (VEIP is a single port)
+                # For iphost mode, use host {n} (one iphost per service)
+                wan_host = '1' if use_veip else str(n)
                 if svc_type == 'bridge':
                     pass
                 elif svc_type == 'tr069' and vlan_profile:
-                    sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
+                    sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {wan_host}')
                     sc(f'wan-ip {n} ping-response enable traceroute-response enable')
                     has_non_bridge = True
                 elif svc_type == 'iptv':
@@ -2177,25 +2212,35 @@ class TelnetCollector:
                 elif wan_mode == 'nat':
                     if username:
                         sc(f'pppoe {n} nat enable user {username} password {password}')
-                        sc(f'wan {n} service internet host {n}')
+                        sc(f'wan {n} service internet host {wan_host}')
                         has_non_bridge = True
                 elif wan_mode == 'wan':
                     if wan_ip_mode == 'PPPoE' and username:
-                        sc(f'wan-ip {n} mode pppoe username {username} password {password} vlan-profile {vlan_profile} host {n}')
-                        sc(f'wan-ip {n} ping-response enable traceroute-response enable')
-                        has_non_bridge = True
+                        if vlan_profile:
+                            sc(f'wan-ip {n} mode pppoe username {username} password {password} vlan-profile {vlan_profile} host {wan_host}')
+                            sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+                            has_non_bridge = True
+                        else:
+                            # No vlan-profile — fallback to pppoe nat mode (doesn't need vlan-profile)
+                            logger.warning(f"[register_unified] No vlan-profile for PPPoE wan-ip, falling back to pppoe nat mode")
+                            sc(f'pppoe {n} nat enable user {username} password {password}')
+                            sc(f'wan {n} service internet host {wan_host}')
+                            has_non_bridge = True
                     elif wan_ip_mode == 'DHCP':
-                        sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
-                        sc(f'wan-ip {n} ping-response enable traceroute-response enable')
-                        has_non_bridge = True
+                        if vlan_profile:
+                            sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {wan_host}')
+                            sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+                            has_non_bridge = True
+                        else:
+                            logger.warning(f"[register_unified] No vlan-profile for DHCP wan-ip — skipping wan config")
                     elif wan_ip_mode == 'STATIC':
                         ip_addr = svc.get('ip_address', '')
                         subnet = svc.get('subnet_mask', '')
                         ip_prof = svc.get('ip_profile', '')
                         if ip_prof:
-                            sc(f'wan-ip {n} mode static ip-profile {ip_prof} vlan-profile {vlan_profile} host {n}')
+                            sc(f'wan-ip {n} mode static ip-profile {ip_prof} vlan-profile {vlan_profile} host {wan_host}')
                         elif ip_addr:
-                            sc(f'wan-ip {n} mode static ip-address {ip_addr} mask {subnet} vlan-profile {vlan_profile} host {n}')
+                            sc(f'wan-ip {n} mode static ip-address {ip_addr} mask {subnet} vlan-profile {vlan_profile} host {wan_host}')
                         sc(f'wan-ip {n} ping-response enable traceroute-response enable')
                         has_non_bridge = True
 
