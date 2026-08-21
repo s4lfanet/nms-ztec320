@@ -1121,9 +1121,14 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
         </div>}
 
         {/* PPPoE NAT sub-options */}
-        {mode === 'PPPoE NAT' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-1 border-l-2 border-accent/30">
-          <div><label className="label-sm mb-1">Username</label><input type="text" value={pppoe.username} onChange={e => setPppoe(p => ({...p, username: e.target.value}))} placeholder="PPPoE Username" className="input-field" /></div>
-          <div><label className="label-sm mb-1">Password</label><input type="password" value={pppoe.password} onChange={e => setPppoe(p => ({...p, password: e.target.value}))} placeholder="PPPoE Password" className="input-field" /></div>
+        {mode === 'PPPoE NAT' && <div className="space-y-3 pl-1 border-l-2 border-accent/30">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label className="label-sm mb-1">Username</label><input type="text" value={pppoe.username} onChange={e => setPppoe(p => ({...p, username: e.target.value}))} placeholder="PPPoE Username" className="input-field" /></div>
+            <div><label className="label-sm mb-1">Password</label><input type="password" value={pppoe.password} onChange={e => setPppoe(p => ({...p, password: e.target.value}))} placeholder="PPPoE Password" className="input-field" /></div>
+          </div>
+          {useVeip && <SelectField label="Vlan Profile (required for VEIP PPPoE)" value={vlanProfile} onChange={setVlanProfile}
+            options={profiles.wan_ip_profiles.map(wp => ({ value: wp.name, label: wp.cvlan ? `${wp.cvlan} - ${wp.name}` : wp.name }))}
+            placeholder="Select Vlan Profile" />}
         </div>}
       </div>
       <div className="modal-footer"><button onClick={onClose} className="btn-cancel">Cancel</button><button onClick={save} disabled={loading} className="btn-primary">{loading ? 'Saving...' : 'Save Changes'}</button></div>

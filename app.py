@@ -2631,17 +2631,31 @@ def onu_wan_service_edit(onu_id, svc_idx):
 
             elif mode == 'PPPoE NAT':
                 if use_veip:
+                    # VEIP ONUs don't have iphost — use wan-ip pppoe mode instead of legacy pppoe command
                     cmd = f'service {service_name} gemport {svc_idx}'
+                    if vlan:
+                        cmd += f' vlan {vlan}'
+                    sc(cmd)
+                    username = data.get('pppoe_username', '')
+                    password = data.get('pppoe_password', '')
+                    vlan_profile = data.get('vlan_profile', '')
+                    if username and vlan_profile:
+                        sc(f'wan-ip {svc_idx} mode pppoe username {username} password {password} vlan-profile {vlan_profile} host {wan_host}')
+                        sc(f'wan-ip {svc_idx} ping-response enable traceroute-response enable')
+                    elif username:
+                        # No vlan-profile — try pppoe nat as fallback
+                        sc(f'pppoe {svc_idx} nat enable user {username} password {password}')
+                        sc(f'wan {svc_idx} service internet host {wan_host}')
                 else:
                     cmd = f'service {service_name} gemport {svc_idx} iphost {svc_idx}'
-                if vlan:
-                    cmd += f' vlan {vlan}'
-                sc(cmd)
-                username = data.get('pppoe_username', '')
-                password = data.get('pppoe_password', '')
-                if username:
-                    sc(f'pppoe {svc_idx} nat enable user {username} password {password}')
-                    sc(f'wan {svc_idx} service internet host {wan_host}')
+                    if vlan:
+                        cmd += f' vlan {vlan}'
+                    sc(cmd)
+                    username = data.get('pppoe_username', '')
+                    password = data.get('pppoe_password', '')
+                    if username:
+                        sc(f'pppoe {svc_idx} nat enable user {username} password {password}')
+                        sc(f'wan {svc_idx} service internet host {wan_host}')
 
             elif mode == 'Wan-IP':
                 # Wan-IP requires iphost on ZTE; VEIP uses host 1 directly
