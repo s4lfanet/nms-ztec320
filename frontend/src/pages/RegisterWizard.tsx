@@ -334,6 +334,26 @@ function generateRegisterScript(d: WizardData): string {
     lines.push(`  vlan port eth_0/3 mode tag vlan ${internetVlan}`);
     lines.push(`  vlan port eth_0/4 mode tag vlan ${internetVlan}`);
     lines.push(`  vlan port wifi_0/1 mode tag vlan ${internetVlan}`);
+    // WAN config for internet service (VEIP mode — always host 1)
+    const wanMode = e.wan_mode || 'bridge';
+    const vlanProfile = e.vlan_profile || '';
+    if (wanMode === 'pppoe' && e.pppoe_user) {
+      if (vlanProfile) {
+        lines.push(`  wan-ip 2 mode pppoe username ${e.pppoe_user} password ${e.pppoe_pass || ''} vlan-profile ${vlanProfile} host 1`);
+        lines.push('  wan-ip 2 ping-response enable traceroute-response enable');
+      } else {
+        lines.push(`  pppoe 2 nat enable user ${e.pppoe_user} password ${e.pppoe_pass || ''}`);
+        lines.push('  wan 2 service internet host 1');
+      }
+    } else if (wanMode === 'dhcp' && vlanProfile) {
+      lines.push(`  wan-ip 2 mode dhcp vlan-profile ${vlanProfile} host 1`);
+      lines.push('  wan-ip 2 ping-response enable traceroute-response enable');
+    }
+    // TR069 WAN (DHCP via vlan-profile if available)
+    if (vlanProfile) {
+      lines.push(`  wan-ip 1 mode dhcp vlan-profile ${vlanProfile} host 1`);
+      lines.push('  wan-ip 1 ping-response enable traceroute-response enable');
+    }
     lines.push('  tr069-mgmt 1 state unlock');
     lines.push(`  tr069-mgmt 1 acs ${e.acs_url || 'http://192.168.54.254:7547'} validate basic username ${e.acs_user || 'acs'} password ${e.acs_pass || 'acs'}`);
     const tr069Vlan = String(vlans.find(v => (v.label || '').toLowerCase().includes('tr069'))?.vlan || vlans[0]?.vlan || '1010');
@@ -1637,6 +1657,41 @@ export function RegisterWizard() {
           {data.template === 'fiberhome_veip' && (
             <div className="p-3 md:p-4 rounded-lg bg-glass border border-accent/20 space-y-3">
               <h4 className="text-sm font-semibold text-accent">Fiberhome VEIP (HG6145D2)</h4>
+
+              {/* WAN Mode */}
+              <div className="space-y-2">
+                <label className="label-sm">WAN Mode (Internet Service)</label>
+                <select value={data.extra.wan_mode || 'bridge'} onChange={e => update('extra', { ...data.extra, wan_mode: e.target.value })} className="input-field">
+                  <option value="bridge">Bridge (transparent — ONT manages WAN)</option>
+                  <option value="pppoe">PPPoE (OLT dials PPPoE via VEIP)</option>
+                  <option value="dhcp">DHCP (ONT gets IP via DHCP)</option>
+                </select>
+              </div>
+
+              {/* PPPoE fields */}
+              {data.extra.wan_mode === 'pppoe' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4 border-l-2 border-accent/20">
+                  <div><label className="label-sm mb-1">PPPoE Username</label>
+                    <input type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} className="input-field" placeholder="PPPoE Username" /></div>
+                  <div><label className="label-sm mb-1">PPPoE Password</label>
+                    <div className="relative">
+                      <input type={data.extra._show_pppoe_pass === 'true' ? 'text' : 'password'} value={String(data.extra.pppoe_pass || '')} onChange={e => update('extra', { ...data.extra, pppoe_pass: e.target.value })} className="input-field pr-10" placeholder="PPPoE Password" />
+                      <button type="button" onClick={() => update('extra', { ...data.extra, _show_pppoe_pass: data.extra._show_pppoe_pass === 'true' ? '' : 'true' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1">{data.extra._show_pppoe_pass === 'true' ? '🙈' : '👁'}</button>
+                    </div></div>
+                </div>
+              )}
+
+              {/* VLAN Profile (required for PPPoE/DHCP wan-ip) */}
+              {(data.extra.wan_mode === 'pppoe' || data.extra.wan_mode === 'dhcp') && (
+                <div className="pl-4 border-l-2 border-accent/20">
+                  <label className="label-sm mb-1">WAN-IP VLAN Profile <span className="text-tx3">(from OLT config)</span></label>
+                  <select value={data.extra.vlan_profile || ''} onChange={e => update('extra', { ...data.extra, vlan_profile: e.target.value })} className="input-field">
+                    <option value="">— Select Profile —</option>
+                    {wanIpProfiles.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                  </select>
+                  {wanIpProfiles.length === 0 && <p className="text-[10px] text-tx3 mt-1">No WAN-IP profiles found. Create one in OLT Config → WAN-IP tab.</p>}
+                </div>
+              )}
 
               {/* Dynamic VLAN list */}
               <div>

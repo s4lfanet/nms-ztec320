@@ -9,7 +9,7 @@ import {
   Server, Activity, HardDrive, Network, Globe, Gauge, Settings,
   CheckCircle, XCircle, ChevronDown, ChevronRight, RefreshCw,
   Edit3, Trash2, Pause, Play, Wifi, Plus, ArrowUp, ArrowDown, Filter,
-  Save, Terminal, Check, X, Loader2,
+  Terminal, Check, X, Loader2,
 } from 'lucide-react';
 import { RackDiagramRouter } from '../components/rack/RackDiagramRouter';
 import { useHasPerm } from '../hooks/useHasPerm';
