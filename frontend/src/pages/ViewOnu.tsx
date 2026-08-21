@@ -247,7 +247,23 @@ export function ViewOnu() {
   };
   const openWanEdit = (svcIdx: number) => {
     const svc = (ld.wan_services as Record<string, Record<string, string>>)?.[`service${svcIdx}`] || {};
-    setModal({ type: 'wanEdit', data: { svcIdx, svc: { ...svc } } });
+    setModal({ type: 'wanEdit', data: { svcIdx, svc: { ...svc }, serialNumber: onu.serial_number || '' } });
+  };
+  const deleteWanService = async (svcIdx: number) => {
+    const ok = await confirm({ title: `Delete Service ${svcIdx}`, message: `Delete WAN service ${svcIdx}? This will remove service-port, tcont, gemport, wan-ip, and pppoe entries.`, confirmLabel: 'Delete', variant: 'danger' });
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/onu/${onuId}/wan-service/${svcIdx}`, {
+        method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'include',
+      });
+      const d = await res.json();
+      if (d.success) {
+        toast.success(`Service ${svcIdx} deleted`);
+        qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
+        qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
+        qc.invalidateQueries({ queryKey: ['all-onus'] });
+      } else { toast.error(d.message || 'Failed to delete'); }
+    } catch { toast.error('Failed to delete'); }
   };
   const showConfig = async () => {
     setPendingAction('show-config');
@@ -482,7 +498,12 @@ export function ViewOnu() {
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={hasConfig} readOnly className="cursor-pointer" />
                   <strong className="text-sm">Service {svcIdx}</strong>
-                  {hasPerm('configure_onu') && <button onClick={() => openWanEdit(svcIdx)} className="ml-auto text-accent hover:text-accent-hover"><Edit3 size={13} /></button>}
+                  {hasPerm('configure_onu') && (
+                    <div className="ml-auto flex items-center gap-2">
+                      <button onClick={() => openWanEdit(svcIdx)} className="text-accent hover:text-accent-hover" title="Edit"><Edit3 size={13} /></button>
+                      {hasConfig && <button onClick={() => deleteWanService(svcIdx)} className="text-danger hover:text-red-400" title="Delete"><Trash2 size={13} /></button>}
+                    </div>
+                  )}
                 </div>
                 {hasConfig ? (
                   <div className="mt-3 pl-1">
@@ -652,7 +673,7 @@ export function ViewOnu() {
           </div>
         )}
         {modal.type === 'getStatus' && <GetStatusModal status={modal.data as Record<string, unknown>} onClose={() => setModal(null)} />}
-        {modal.type === 'wanEdit' && <WanEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
+        {modal.type === 'wanEdit' && <WanEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} serialNumber={(modal.data!.serialNumber as string) || ''} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
         {modal.type === 'replaceOnu' && <ReplaceOnuModal onu={onu} onClose={() => setModal(null)} onConfirm={(newSerial) => replaceMut.mutate(newSerial)} loading={replaceMut.isPending} />}
       </ModalPortal>}
     </div>
@@ -988,11 +1009,15 @@ function OnuTypeModal({ onuId, oltId, currentType, onClose, onSuccess }: { onuId
 }
 
 // ═══ WAN EDIT MODAL (matches original HTML exactly) ═══
-function WanEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Record<string, unknown>; onuId: number; oltId: number; onClose: () => void; onSuccess: () => void; }) {
+function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: { data: Record<string, unknown>; onuId: number; oltId: number; serialNumber: string; onClose: () => void; onSuccess: () => void; }) {
   const svcIdx = data.svcIdx as number;
   const svc = data.svc as Record<string, string>;
   const vlans = useOltVlans(oltId);
   const profiles = useOltProfiles(oltId);
+
+  // Detect non-ZTE (VEIP) ONU — uses host 1, no iphost
+  const sn = (serialNumber || '').toUpperCase();
+  const useVeip = sn && !sn.startsWith('ZTEG') && !sn.startsWith('ZTE');
 
   const isWanIp = (svc.mode || '').includes('Wan-IP');
   const isPppoe = (svc.mode || '').toLowerCase().includes('pppoe');
@@ -1068,7 +1093,7 @@ function WanEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Record
         </div>
 
         {/* Mode */}
-        <div><label className="label-sm mb-1">Mode</label>
+        <div><label className="label-sm mb-1">Mode {useVeip && <span className="text-[10px] text-info bg-info/10 px-1.5 py-0.5 rounded">VEIP (host 1)</span>}</label>
           <div className="flex flex-col gap-2">
             {[{v:'PPPoE NAT',l:'PPPoE NAT'},{v:'Wan-IP',l:'Wan-IP'},{v:'Bridge / ONU Webpage',l:'Bridge / ONU Webpage'}].map(m => (
               <label key={m.v} className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="wanMode" checked={mode === m.v} onChange={() => setMode(m.v)} /> {m.l}</label>
@@ -1082,6 +1107,10 @@ function WanEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Record
           <SelectField label="Vlan Profile" value={vlanProfile} onChange={setVlanProfile}
             options={profiles.wan_ip_profiles.map(wp => ({ value: wp.name, label: wp.cvlan ? `${wp.cvlan} - ${wp.name}` : wp.name }))}
             placeholder="Select Vlan Profile" />
+          {wanIpMode === 'pppoe' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label className="label-sm mb-1">PPPoE Username</label><input type="text" value={pppoe.username} onChange={e => setPppoe(p => ({...p, username: e.target.value}))} placeholder="PPPoE Username" className="input-field" /></div>
+            <div><label className="label-sm mb-1">PPPoE Password</label><input type="password" value={pppoe.password} onChange={e => setPppoe(p => ({...p, password: e.target.value}))} placeholder="PPPoE Password" className="input-field" /></div>
+          </div>}
           {wanIpMode === 'static' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="label-sm mb-1">IP Address</label><input type="text" value={staticIp.ip} onChange={e => setStaticIp(p => ({...p, ip: e.target.value}))} placeholder="e.g. 192.168.1.100" className="input-field" /></div>
             <div><label className="label-sm mb-1">Netmask</label><input type="text" value={staticIp.netmask} onChange={e => setStaticIp(p => ({...p, netmask: e.target.value}))} placeholder="e.g. 255.255.255.0" className="input-field" /></div>
