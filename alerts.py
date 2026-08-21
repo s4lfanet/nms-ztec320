@@ -587,6 +587,15 @@ def _check_onus_for_tenant(force_send=False):
             # ─── Check unconfigured ───
             if not onu.name or onu.name in ('Unnamed', ''):
                 _handle_unconfigured_alert(onu, olt, rule, now, notifications_to_create, alerts_to_send)
+            else:
+                # ONU has a name — auto-resolve any existing unconfigured notification
+                old_unconfig = Notification.query.filter_by(
+                    onu_id=onu.id, category='unconfigured', resolved=False
+                ).all()
+                for n in old_unconfig:
+                    n.resolved = True
+                    n.resolved_at = now
+                    n.is_read = True
 
     # ─── Build batched alerts from PON groups ───
     for pon_key, group in pon_groups.items():
@@ -620,6 +629,15 @@ def _check_onus_for_tenant(force_send=False):
             if unregistered:
                 _build_unregistered_alert(olt, unregistered, now,
                                           notifications_to_create, alerts_to_send, force_send)
+            else:
+                # No unregistered ONUs — auto-resolve existing unconfig notifications
+                stale = Notification.query.filter_by(
+                    olt_id=olt.id, category='unconfig', resolved=False
+                ).all()
+                for n in stale:
+                    n.resolved = True
+                    n.resolved_at = now
+                    n.is_read = True
         except Exception as e:
             logger.error(f"[ALERT] Unregistered check failed for {olt.name}: {e}")
 

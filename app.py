@@ -7012,10 +7012,18 @@ def unregistered_count():
                         category='unconfig'
                     )
                     db.session.add(n)
+            else:
+                # All ONUs registered — auto-resolve any existing unconfig notifications
+                stale = Notification.query.filter_by(
+                    olt_id=olt.id, category='unconfig', resolved=False
+                ).all()
+                for n in stale:
+                    n.resolved = True
+                    n.resolved_at = datetime.now(timezone.utc)
+                    n.is_read = True
         except:
             pass
-    if total_unreg > 0:
-        db.session.commit()
+    db.session.commit()
     # Also count offline/dyinggasp/los ONUs from DB
     base_q = ONU.query.filter(ONU.status.in_(['offline', 'dyinggasp', 'los']))
     offline_count = base_q.filter(ONU.status == 'offline').count()
