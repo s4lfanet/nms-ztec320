@@ -1095,15 +1095,15 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
         {/* Mode */}
         <div><label className="label-sm mb-1">Mode {useVeip && <span className="text-[10px] text-info bg-info/10 px-1.5 py-0.5 rounded">VEIP (host 1)</span>}</label>
           <div className="flex flex-col gap-2">
-            {[{v:'PPPoE NAT',l:'PPPoE NAT'},{v:'Wan-IP',l:'Wan-IP'},{v:'Bridge / ONU Webpage',l:'Bridge / ONU Webpage'}].map(m => (
-              <label key={m.v} className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="wanMode" checked={mode === m.v} onChange={() => setMode(m.v)} /> {m.l}</label>
+            {[{v:'PPPoE NAT',l:'PPPoE NAT',disabled:!!useVeip},{v:'Wan-IP',l:'Wan-IP'},{v:'Bridge / ONU Webpage',l:'Bridge / ONU Webpage'}].map(m => (
+              <label key={m.v} className={`flex items-center gap-2 text-sm ${m.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}><input type="radio" name="wanMode" checked={mode === m.v} onChange={() => setMode(m.v)} disabled={m.disabled} /> {m.l} {m.disabled && <span className="text-[10px] text-danger">(not supported)</span>}</label>
             ))}
           </div>
         </div>
 
         {/* Wan-IP sub-options */}
         {mode === 'Wan-IP' && <div className="space-y-3 pl-1 border-l-2 border-accent/30">
-          <SelectField label="Mode WAN-IP" value={wanIpMode} onChange={setWanIpMode} options={[{value:'dhcp',label:'DHCP'},{value:'pppoe',label:'PPPoE'},{value:'static',label:'Static'}]} />
+          <SelectField label="Mode WAN-IP" value={wanIpMode} onChange={setWanIpMode} options={useVeip ? [{value:'dhcp',label:'DHCP'},{value:'static',label:'Static'}] : [{value:'dhcp',label:'DHCP'},{value:'pppoe',label:'PPPoE'},{value:'static',label:'Static'}]} />
           <SelectField label="Vlan Profile" value={vlanProfile} onChange={setVlanProfile}
             options={profiles.wan_ip_profiles.map(wp => ({ value: wp.name, label: wp.cvlan ? `${wp.cvlan} - ${wp.name}` : wp.name }))}
             placeholder="Select Vlan Profile" />
