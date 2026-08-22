@@ -633,20 +633,21 @@ class TelnetCollector:
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
-            tn.write('configure terminal\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write(f'interface {olt_prefix}_{frame}/{slot}/{port}\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write(f'no onu {onu_id}\n')
-            output = tn.read_until(b'#', timeout=15).decode('utf-8', errors='replace')
-            logger.info(f"deregister_onu: 'no onu {onu_id}' output for {iface}: {output.strip()[:200]}")
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('exit\n'); tn.close()
-            if 'error' in output.lower() and 'ambiguous' not in output.lower():
-                return False, f'CLI error: {output.strip()[:100]}'
+            self._send_command(tn, 'enable', timeout=5)
+            self._send_command(tn, 'configure terminal', timeout=10)
+            iface_out = self._send_command(tn, f'interface {olt_prefix}_{frame}/{slot}/{port}', timeout=10)
+            if iface_out and 'error' in iface_out.lower():
+                logger.error(f"deregister_onu: interface {olt_prefix}_{frame}/{slot}/{port} failed: {iface_out[:100]}")
+                tn.close()
+                return False, f'Interface error: {iface_out.strip()[:100]}'
+            output, err = self._send_cmd_check(tn, f'no onu {onu_id}', timeout=15)
+            logger.info(f"deregister_onu: 'no onu {onu_id}' output for {iface}: err={err[:200] if err else 'none'}")
+            self._send_command(tn, 'exit', timeout=5)
+            self._send_command(tn, 'exit', timeout=5)
+            self._send_command(tn, 'exit', timeout=5)
+            tn.close()
+            if err and 'error' in err.lower() and 'ambiguous' not in err.lower():
+                return False, f'CLI error: {err.strip()[:100]}'
             return True, f'ONU {iface} deregistered successfully'
         except Exception as e:
             logger.error(f"deregister_onu failed: {e}")
@@ -713,8 +714,8 @@ class TelnetCollector:
             if not cfg or 'error' in cfg.lower():
                 return False, 'Failed to read ONU running-config'
 
-            tn.write('configure terminal\n')
-            tn.read_until(b'#', timeout=5)
+            self._send_command(tn, 'enable', timeout=5)
+            self._send_command(tn, 'configure terminal', timeout=10)
 
             # Remove service-ports from global context (NOT under interface)
             for line in cfg.split('\n'):
@@ -723,12 +724,10 @@ class TelnetCollector:
                     parts = ls.split()
                     svc_num = parts[1] if len(parts) > 1 else ''
                     if svc_num:
-                        tn.write(f'no service-port {svc_num}\n')
-                        tn.read_until(b'#', timeout=5)
+                        self._send_command(tn, f'no service-port {svc_num}', timeout=10)
 
             # Enter interface context to remove gemport/tcont
-            tn.write(f'interface {iface}\n')
-            tn.read_until(b'#', timeout=5)
+            self._send_command(tn, f'interface {iface}', timeout=10)
 
             # Remove gemports first (they depend on tcont)
             for line in cfg.split('\n'):
@@ -737,8 +736,7 @@ class TelnetCollector:
                     parts = ls.split()
                     gem_id = parts[1] if len(parts) > 1 else ''
                     if gem_id:
-                        tn.write(f'no gemport {gem_id}\n')
-                        tn.read_until(b'#', timeout=5)
+                        self._send_command(tn, f'no gemport {gem_id}', timeout=10)
 
             # Remove tconts
             for line in cfg.split('\n'):
@@ -747,15 +745,13 @@ class TelnetCollector:
                     parts = ls.split()
                     tcont_id = parts[1] if len(parts) > 1 else ''
                     if tcont_id:
-                        tn.write(f'no tcont {tcont_id}\n')
-                        tn.read_until(b'#', timeout=5)
+                        self._send_command(tn, f'no tcont {tcont_id}', timeout=10)
 
             # DO NOT send 'shutdown' — ONU must stay online and registered
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('exit\n'); tn.close()
+            self._send_command(tn, 'exit', timeout=5)
+            self._send_command(tn, 'exit', timeout=5)
+            self._send_command(tn, 'exit', timeout=5)
+            tn.close()
 
             # Count what was cleared
             svc_count = sum(1 for line in cfg.split('\n') if line.strip().startswith('service-port '))
