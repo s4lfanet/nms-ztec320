@@ -2568,6 +2568,14 @@ def onu_wan_service_edit(onu_id, svc_idx):
                         _, err2 = tc._send_cmd_check(tn, cmd, timeout=10)
                         if err2:
                             last_err = err2
+                    elif cmd.startswith('wan '):
+                        # wan N service ... — delete and retry
+                        idx = cmd.split()[1]
+                        tc._send_command(tn, f'no wan {idx} service', timeout=10)
+                        _t.sleep(0.5)
+                        _, err2 = tc._send_cmd_check(tn, cmd, timeout=10)
+                        if err2:
+                            last_err = err2
                     else:
                         last_err = err
                 else:
