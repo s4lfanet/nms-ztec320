@@ -2536,6 +2536,7 @@ def onu_wan_service_edit(onu_id, svc_idx):
             _, err = tc._send_cmd_check(tn, cmd, timeout=10)
             if err:
                 low = err.lower()
+                logger.warning(f"[wan-service] CLI cmd='{cmd[:80]}' err='{err[:120]}'")
                 # Ignore: "does not exist", ONU firmware limitation codes
                 if 'does not exist' in low or '%code 63990' in low or 'ont return error' in low:
                     logger.debug(f"Ignored CLI: {cmd[:60]} -> {err[:80]}")
@@ -2601,10 +2602,11 @@ def onu_wan_service_edit(onu_id, svc_idx):
         # ── Step 2: pon-onu-mng context ──────────────────────────────────────
         tc._send_command(tn, f'pon-onu-mng {onu_path}', timeout=10)
 
-        # Detect non-ZTE ONU (uses VEIP mode — single virtual port, host 1)
+        # Detect non-ZTE ONU (FiberHome etc) — may have VEIP mode enabled
         sn = (onu.serial_number or '').upper()
         use_veip = sn and not sn.startswith('ZTEG') and not sn.startswith('ZTE')
-        wan_host = '1' if use_veip else str(svc_idx)
+        # Always use svc_idx as host since we use iphost (VEIP removed for PPPoE/Wan-IP modes)
+        wan_host = str(svc_idx)
 
         # Clean up old ONU-side service entries — order matters on ZTE!
         # Must remove WAN service binding BEFORE pppoe/wan-ip, else "Record already exists" (63869)
@@ -2616,9 +2618,9 @@ def onu_wan_service_edit(onu_id, svc_idx):
         # Brief pause for OLT to process OMCI deletions before re-creating
         import time as _t; _t.sleep(1)
 
-        # PPPoE NAT and Wan-IP use iphost on ZTE — must remove VEIP (mutually exclusive on ZTE C320)
-        # For non-ZTE (VEIP) ONUs: keep VEIP, use host 1 instead of iphost
-        if status == 'enable' and mode in ('PPPoE NAT', 'Wan-IP') and not use_veip:
+        # PPPoE NAT and Wan-IP use iphost — must remove VEIP (mutually exclusive on ZTE C320)
+        # This applies to ALL ONUs including FiberHome VEIP — iphost and VEIP can't coexist
+        if status == 'enable' and mode in ('PPPoE NAT', 'Wan-IP'):
             tc._send_command(tn, 'no vlan port veip_1 mode hybrid', timeout=10)
             tc._send_command(tn, 'no vlan port veip_1 vlan 1', timeout=10)
 
@@ -2630,39 +2632,20 @@ def onu_wan_service_edit(onu_id, svc_idx):
                 sc(cmd)
 
             elif mode == 'PPPoE NAT':
-                if use_veip:
-                    # VEIP ONUs don't have iphost — use wan-ip pppoe mode instead of legacy pppoe command
-                    cmd = f'service {service_name} gemport {svc_idx}'
-                    if vlan:
-                        cmd += f' vlan {vlan}'
-                    sc(cmd)
-                    username = data.get('pppoe_username', '')
-                    password = data.get('pppoe_password', '')
-                    vlan_profile = data.get('vlan_profile', '')
-                    if username and vlan_profile:
-                        sc(f'wan-ip {svc_idx} mode pppoe username {username} password {password} vlan-profile {vlan_profile} host {wan_host}')
-                        sc(f'wan-ip {svc_idx} ping-response enable traceroute-response enable')
-                    elif username:
-                        # No vlan-profile — try pppoe nat as fallback
-                        sc(f'pppoe {svc_idx} nat enable user {username} password {password}')
-                        sc(f'wan {svc_idx} service internet host {wan_host}')
-                else:
-                    cmd = f'service {service_name} gemport {svc_idx} iphost {svc_idx}'
-                    if vlan:
-                        cmd += f' vlan {vlan}'
-                    sc(cmd)
-                    username = data.get('pppoe_username', '')
-                    password = data.get('pppoe_password', '')
-                    if username:
-                        sc(f'pppoe {svc_idx} nat enable user {username} password {password}')
-                        sc(f'wan {svc_idx} service internet host {wan_host}')
+                # Always use iphost (VEIP was removed above since iphost and VEIP are mutually exclusive)
+                cmd = f'service {service_name} gemport {svc_idx} iphost {svc_idx}'
+                if vlan:
+                    cmd += f' vlan {vlan}'
+                sc(cmd)
+                username = data.get('pppoe_username', '')
+                password = data.get('pppoe_password', '')
+                if username:
+                    sc(f'pppoe {svc_idx} nat enable user {username} password {password}')
+                    sc(f'wan {svc_idx} service internet host {svc_idx}')
 
             elif mode == 'Wan-IP':
-                # Wan-IP requires iphost on ZTE; VEIP uses host 1 directly
-                if use_veip:
-                    cmd = f'service {service_name} gemport {svc_idx}'
-                else:
-                    cmd = f'service {service_name} gemport {svc_idx} iphost {svc_idx}'
+                # Always use iphost (VEIP was removed above since iphost and VEIP are mutually exclusive)
+                cmd = f'service {service_name} gemport {svc_idx} iphost {svc_idx}'
                 if vlan:
                     cmd += f' vlan {vlan}'
                 sc(cmd)
