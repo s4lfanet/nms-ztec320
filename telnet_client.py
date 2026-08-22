@@ -1965,13 +1965,10 @@ class TelnetCollector:
                         if ssid_pass:
                             sc_warn(f'ssid auth wpa {wp} key {ssid_pass}')
                     else:
-                        # Open auth: set WEP open-system (ZTE's way of truly open auth)
-                        # Also clear any previous WPA config to override stale settings
-                        sc_warn(f'ssid auth wpa {wp} no-auth')
-                        sc_warn(f'ssid auth wpa {wp} encrypt none')
-                        sc_warn(f'ssid auth wpa {wp} no-key')
+                        # Open auth: clear WPA config then set WEP open-system (ZTE's way of truly open auth)
+                        sc_warn(f'no ssid auth wpa {wp}')
                         sc_warn(f'ssid auth wep {wp} open-system')
-                        logger.info(f'[register_onu_template] Open auth set for {wp}: no-auth, encrypt none, no-key, wep open-system')
+                        logger.info(f'[register_onu_template] Open auth set for {wp}: no ssid auth wpa, wep open-system')
 
             # Exit all contexts
             self._send_command(tn, 'end')
@@ -5216,9 +5213,12 @@ class TelnetCollector:
                 epon_output = self._send_command(tn, 'show epon onu uncfg', timeout=15)
                 epon_output = epon_output.replace('\x00', '').replace('\xff', '')
                 epon_output = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', epon_output)
-                logger.info(f"[epon uncfg raw] {epon_output[:500]}")
+                if 'invalid input' in epon_output.lower() or 'error 20200' in epon_output.lower():
+                    logger.debug(f"[epon uncfg] OLT has no EPON cards, skipping")
+                else:
+                    logger.info(f"[epon uncfg raw] {epon_output[:500]}")
 
-                if epon_output.strip() and 'no unconfigured' not in epon_output.lower() and 'no related' not in epon_output.lower():
+                if epon_output.strip() and 'no unconfigured' not in epon_output.lower() and 'no related' not in epon_output.lower() and 'invalid input' not in epon_output.lower() and 'error 20200' not in epon_output.lower():
                     for line in epon_output.split('\n'):
                         line = line.strip('\r').strip()
                         if not line:
