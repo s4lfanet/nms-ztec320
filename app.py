@@ -7188,30 +7188,40 @@ def update_bot_config(bot_type):
 
 # ==================== SYSTEM UPDATE API ====================
 
+# systemd services have a minimal PATH — extend it so git/pnpm/node are found
+_VPS_PATH = '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/snap/bin:' + os.environ.get('PATH', '')
+
+def _run_cmd(cmd, cwd=None, timeout=30):
+    """Run a command with extended PATH (for systemd context)."""
+    import subprocess as _sp
+    env = os.environ.copy()
+    env['PATH'] = _VPS_PATH
+    env['HOME'] = env.get('HOME', '/root')
+    return _sp.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env)
+
 @app.route('/api/system/update/check', methods=['GET'])
 @super_admin_required
 def system_update_check():
     """Check if a newer version is available on GitHub.
     Runs git fetch + compares local vs remote HEAD."""
-    import subprocess as _sp
     app_dir = os.path.dirname(os.path.abspath(__file__))
     try:
         # git fetch origin
-        _sp.run(['git', 'fetch', 'origin', 'main'], cwd=app_dir, capture_output=True, timeout=30)
+        _run_cmd(['git', 'fetch', 'origin', 'main'], cwd=app_dir, timeout=30)
         # Get local HEAD
-        local = _sp.run(['git', 'rev-parse', 'HEAD'], cwd=app_dir, capture_output=True, text=True, timeout=10)
+        local = _run_cmd(['git', 'rev-parse', 'HEAD'], cwd=app_dir, timeout=10)
         local_sha = local.stdout.strip()
         # Get remote HEAD
-        remote = _sp.run(['git', 'rev-parse', 'origin/main'], cwd=app_dir, capture_output=True, text=True, timeout=10)
+        remote = _run_cmd(['git', 'rev-parse', 'origin/main'], cwd=app_dir, timeout=10)
         remote_sha = remote.stdout.strip()
         # Get short log of incoming commits
         if local_sha != remote_sha:
-            log = _sp.run(['git', 'log', '--oneline', f'{local_sha}..{remote_sha}'], cwd=app_dir, capture_output=True, text=True, timeout=10)
+            log = _run_cmd(['git', 'log', '--oneline', f'{local_sha}..{remote_sha}'], cwd=app_dir, timeout=10)
             commits = [l for l in log.stdout.strip().split('\n') if l]
         else:
             commits = []
         # Get current branch
-        branch = _sp.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd=app_dir, capture_output=True, text=True, timeout=10)
+        branch = _run_cmd(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd=app_dir, timeout=10)
         current_branch = branch.stdout.strip()
         return jsonify({
             'success': True,
@@ -7221,10 +7231,9 @@ def system_update_check():
             'branch': current_branch,
             'commits': commits[:20],
         })
-    except _sp.TimeoutExpired:
-        return jsonify({'success': False, 'message': 'Git fetch timed out. Check network connectivity.'})
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Check failed: {str(e)[:200]}'})
+        type_name = type(e).__name__
+        return jsonify({'success': False, 'message': f'Check failed: {type_name}: {str(e)[:200]}'})
 
 
 @app.route('/api/system/update/apply', methods=['POST'])
@@ -7232,12 +7241,11 @@ def system_update_check():
 def system_update_apply():
     """Apply update from GitHub: git pull, build frontend, restart service.
     Only works on the VPS (must have git repo + node + pnpm)."""
-    import subprocess as _sp
     app_dir = os.path.dirname(os.path.abspath(__file__))
     frontend_dir = os.path.join(app_dir, 'frontend')
     try:
         # Step 1: git pull
-        pull = _sp.run(['git', 'pull', 'origin', 'main'], cwd=app_dir, capture_output=True, text=True, timeout=60)
+        pull = _run_cmd(['git', 'pull', 'origin', 'main'], cwd=app_dir, timeout=60)
         if pull.returncode != 0:
             return jsonify({'success': False, 'message': f'Git pull failed: {pull.stderr[:300]}'})
         pull_output = pull.stdout.strip()
@@ -7247,16 +7255,16 @@ def system_update_apply():
             return jsonify({'success': True, 'message': 'Already up to date. No changes needed.', 'restarted': False})
 
         # Step 2: Install frontend deps + build
-        install = _sp.run(['pnpm', 'install', '--no-frozen-lockfile'], cwd=frontend_dir, capture_output=True, text=True, timeout=120)
+        install = _run_cmd(['pnpm', 'install', '--no-frozen-lockfile'], cwd=frontend_dir, timeout=120)
         if install.returncode != 0:
             return jsonify({'success': False, 'message': f'pnpm install failed: {install.stderr[:300]}'})
 
-        build = _sp.run(['pnpm', 'build'], cwd=frontend_dir, capture_output=True, text=True, timeout=120)
+        build = _run_cmd(['pnpm', 'build'], cwd=frontend_dir, timeout=120)
         if build.returncode != 0:
             return jsonify({'success': False, 'message': f'Frontend build failed: {build.stderr[:300]}'})
 
         # Step 3: Restart service (systemd)
-        restart = _sp.run(['systemctl', 'restart', 'salfanet-nms'], capture_output=True, text=True, timeout=30)
+        restart = _run_cmd(['systemctl', 'restart', 'salfanet-nms'], timeout=30)
         if restart.returncode != 0:
             return jsonify({'success': True, 'message': f'Update applied but service restart failed: {restart.stderr[:200]}. Please restart manually.', 'restarted': False})
 
@@ -7267,10 +7275,9 @@ def system_update_apply():
             'restarted': True,
             'pull_output': pull_output[:500],
         })
-    except _sp.TimeoutExpired:
-        return jsonify({'success': False, 'message': 'Update timed out. Check VPS console.'})
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Update failed: {str(e)[:200]}'})
+        type_name = type(e).__name__
+        return jsonify({'success': False, 'message': f'Update failed: {type_name}: {str(e)[:200]}'})
 
 
 # ==================== SYSTEM CONFIG API ====================
