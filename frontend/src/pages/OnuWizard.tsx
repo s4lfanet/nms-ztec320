@@ -354,7 +354,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
   const [scanning, setScanning] = useState(false);
   const [unconfiguredOnus, setUnconfiguredOnus] = useState<UnconfiguredOnu[]>([]);
   const [selectedFromScan, setSelectedFromScan] = useState<UnconfiguredOnu[]>([]);
-  const [onuTypes, setOnuTypes] = useState<string[]>([]);
+  const [onuTypes, setOnuTypes] = useState<Array<{ type_name: string; pon_type: string }>>([]);
   const [tcontProfiles, setTcontProfiles] = useState<string[]>([]);
   const [trafficProfiles, setTrafficProfiles] = useState<string[]>([]);
   const [vlanList, setVlanList] = useState<Array<{ vlan_id: number; name: string }>>([]);
@@ -385,7 +385,14 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
     if (!olt) return;
 
     fetch(`/api/olt/${state.oltId}/onu-types`, { credentials: 'include' })
-      .then(r => r.json()).then(d => { if (d.success && d.types) setOnuTypes(d.types); }).catch(() => {});
+      .then(r => r.json()).then(d => {
+        if (d.success && d.types) {
+          const types = d.types.map((t: any) =>
+            typeof t === 'string' ? { type_name: t, pon_type: 'gpon' } : t
+          );
+          setOnuTypes(types);
+        }
+      }).catch(() => {});
     fetch(`/api/olt/${state.oltId}/speed-profiles`, { credentials: 'include' })
       .then(r => r.json()).then(d => {
         if (d.success && d.tcont) setTcontProfiles(d.tcont);
@@ -658,7 +665,13 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                   <label className="label-sm mb-1.5">ONU Type</label>
                   <select value={state.onuType} onChange={e => update('onuType', e.target.value)} className="input-field">
                     <option value="All">All (auto-detect)</option>
-                    {onuTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                    {(() => {
+                      const isEpon = state.ponPort.includes('epon') || state.isEpon === true;
+                      const filtered = isEpon
+                        ? onuTypes.filter(t => t.pon_type === 'epon')
+                        : onuTypes.filter(t => t.pon_type === 'gpon');
+                      return filtered.map(t => <option key={t.type_name} value={t.type_name}>{t.type_name}</option>);
+                    })()}
                   </select>
                 </div>
                 <div className="grid grid-cols-3 gap-2">

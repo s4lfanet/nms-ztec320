@@ -417,7 +417,7 @@ export function RegisterWizard() {
   });
   const [scanning, setScanning] = useState(false);
   const [unconfiguredOnus, setUnconfiguredOnus] = useState<UnconfiguredOnu[]>([]);
-  const [onuTypes, setOnuTypes] = useState<string[]>([]);
+  const [onuTypes, setOnuTypes] = useState<Array<{ type_name: string; pon_type: string }>>([]);
   const [tcontProfiles, setTcontProfiles] = useState<string[]>([]);
   const [trafficProfiles, setTrafficProfiles] = useState<string[]>([]);
   const [slaProfiles, setSlaProfiles] = useState<string[]>([]);
@@ -469,7 +469,13 @@ export function RegisterWizard() {
     // Fetch ONU types
     fetch(`/api/olt/${data.oltId}/onu-types`, { credentials: 'include' })
       .then(r => r.json()).then(d => {
-        if (d.success && d.types) setOnuTypes(d.types);
+        if (d.success && d.types) {
+          // Handle both new format (objects with pon_type) and old format (strings)
+          const types = d.types.map((t: any) =>
+            typeof t === 'string' ? { type_name: t, pon_type: 'gpon' } : t
+          );
+          setOnuTypes(types);
+        }
       }).catch(() => {});
 
     // Fetch speed profiles
@@ -842,9 +848,16 @@ export function RegisterWizard() {
               <select value={data.onuType} onChange={e => update('onuType', e.target.value)}
                 className="input-field">
                 <option value="All">All (auto-detect)</option>
-                {onuTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                {(() => {
+                  const isEpon = data.selectedOnus.length > 0 &&
+                    (data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon === true);
+                  const filtered = isEpon
+                    ? onuTypes.filter(t => t.pon_type === 'epon')
+                    : onuTypes.filter(t => t.pon_type === 'gpon');
+                  return filtered.map(t => <option key={t.type_name} value={t.type_name}>{t.type_name}</option>);
+                })()}
               </select>
-              {onuTypes.length > 0 && <p className="text-xs text-tx3 mt-1">{onuTypes.length} types available from OLT</p>}
+              {onuTypes.length > 0 && <p className="text-xs text-tx3 mt-1">{onuTypes.length} types available{data.selectedOnus.length > 0 ? ` (${(data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon) ? 'EPON' : 'GPON'})` : ''}</p>}
             </div>
 
             {/* TCONT/Traffic or SLA Profile */}
