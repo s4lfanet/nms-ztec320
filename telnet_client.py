@@ -633,33 +633,21 @@ class TelnetCollector:
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
-            en_out = self._send_command(tn, 'enable', timeout=5)
-            cfg_out = self._send_command(tn, 'configure terminal', timeout=10)
-            logger.info(f"deregister_onu: enable output='{en_out[:80]}' cfg output='{cfg_out[:80]}'")
-
-            if is_epon:
-                # EPON: enter interface context and use 'no onu N'
-                iface_out = self._send_command(tn, f'interface {olt_prefix}_{frame}/{slot}/{port}', timeout=10)
-                logger.info(f"deregister_onu: EPON interface output='{iface_out[:80]}'")
-                output, err = self._send_cmd_check(tn, f'no onu {onu_id}', timeout=15)
-                logger.info(f"deregister_onu: 'no onu {onu_id}' output='{output[:100]}' err={err[:200] if err else 'none'}")
+            self._send_command(tn, 'enable', timeout=5)
+            self._send_command(tn, 'configure terminal', timeout=10)
+            # Enter PON interface context
+            self._send_command(tn, f'interface {olt_prefix}_{frame}/{slot}/{port}', timeout=10)
+            output, err = self._send_cmd_check(tn, f'no onu {onu_id}', timeout=15)
+            logger.info(f"deregister_onu: 'no onu {onu_id}' for {iface}: err={err[:200] if err else 'none'}")
+            if err and 'error' in err.lower():
+                # Fallback: try 'delete gpon onu' from config context
                 self._send_command(tn, 'exit', timeout=5)
-            else:
-                # GPON: try 'interface gpon-olt_X/Y/Z' then 'no onu N'
-                iface_out = self._send_command(tn, f'interface {olt_prefix}_{frame}/{slot}/{port}', timeout=10)
-                logger.info(f"deregister_onu: GPON interface output='{iface_out[:80]}'")
-                output, err = self._send_cmd_check(tn, f'no onu {onu_id}', timeout=15)
-                logger.info(f"deregister_onu: 'no onu {onu_id}' output='{output[:100]}' err={err[:200] if err else 'none'}")
-                if err and 'error' in err.lower():
-                    # Fallback: exit to config, try 'delete gpon onu'
-                    logger.info(f"deregister_onu: 'no onu' failed, trying 'delete gpon onu' from config context")
-                    self._send_command(tn, 'exit', timeout=5)
-                    output2, err2 = self._send_cmd_check(tn, f'delete gpon onu {iface}', timeout=15)
-                    logger.info(f"deregister_onu: 'delete gpon onu {iface}' output='{output2[:100]}' err={err2[:200] if err2 else 'none'}")
-                    if not err2 or 'error' not in err2.lower():
-                        err = None
-                    else:
-                        err = err2
+                output2, err2 = self._send_cmd_check(tn, f'delete gpon onu {iface}', timeout=15)
+                logger.info(f"deregister_onu: fallback 'delete gpon onu {iface}': err={err2[:200] if err2 else 'none'}")
+                if not err2 or 'error' not in err2.lower():
+                    err = None
+                else:
+                    err = err2
             self._send_command(tn, 'exit', timeout=5)
             self._send_command(tn, 'exit', timeout=5)
             tn.close()
