@@ -1372,74 +1372,43 @@ class SNMPCollector:
         """
         pon_index = encode_pon_index(slot, port)
         suffix = f'.{pon_index}.{onu_id}'
+        sn_hex = encode_sn_to_hex(serial_number)
 
-        # Step 1: Create row in createAndWait state (5) — not yet active
-        ok, err = self.snmp_set([
-            (f'{OID_REG_ENTRY_STATUS}{suffix}', 5, 'i'),
-        ], write_community)
+        # ZTE C320 only supports createAndGo (4) — createAndWait (5) returns genErr.
+        # Use a single multi-varbind SET to atomically create + set all fields.
+        # This ensures serial & reg mode are set when the row is activated.
+
+        # Build all varbinds for atomic SET
+        varbinds = [
+            (f'{OID_REG_SERIAL}{suffix}', sn_hex, 'x'),       # Serial number
+            (f'{OID_REG_MODE}{suffix}', 1, 'i'),              # Auth mode = SN
+            (f'{OID_REG_ENTRY_STATUS}{suffix}', 4, 'i'),      # createAndGo
+        ]
+        # Add ONU type if specified
+        if onu_type and onu_type != 'All':
+            varbinds.append((f'{OID_REG_TYPE_NAME}{suffix}', onu_type, 's'))
+        # Add name if specified
+        if name:
+            varbinds.append((f'{OID_REG_NAME}{suffix}', name, 's'))
+        # Add description if specified
+        if description:
+            varbinds.append((f'{OID_REG_DESCRIPTION}{suffix}', description, 's'))
+
+        # Attempt atomic createAndGo with all fields
+        ok, err = self.snmp_set(varbinds, write_community)
         if not ok:
-            # Entry may already exist from a failed previous attempt — destroy and retry
-            logger.info(f'Create entry failed ({err}), trying cleanup and retry...')
+            # Entry may already exist — destroy and retry
+            logger.info(f'Atomic createAndGo failed ({err}), trying cleanup and retry...')
             self.snmp_set([(f'{OID_REG_ENTRY_STATUS}{suffix}', 6, 'i')], write_community)
             import time as _time
             _time.sleep(0.5)
-            ok, err = self.snmp_set([
-                (f'{OID_REG_ENTRY_STATUS}{suffix}', 5, 'i'),
-            ], write_community)
+            ok, err = self.snmp_set(varbinds, write_community)
             if not ok:
                 return False, f'Create entry failed (after cleanup retry): {err}'
 
-        # Step 2: Set serial number (required before activation)
-        sn_hex = encode_sn_to_hex(serial_number)
-        ok, err = self.snmp_set([
-            (f'{OID_REG_SERIAL}{suffix}', sn_hex, 'x'),
-        ], write_community)
-        if not ok:
-            # Cleanup: destroy the half-created entry
-            self.snmp_set([(f'{OID_REG_ENTRY_STATUS}{suffix}', 6, 'i')], write_community)
-            return False, f'Set serial failed: {err}'
-
-        # Step 3: Set ONU type (if not 'All')
-        if onu_type and onu_type != 'All':
-            ok, err = self.snmp_set([
-                (f'{OID_REG_TYPE_NAME}{suffix}', onu_type, 's'),
-            ], write_community)
-            if not ok:
-                logger.warning(f'Set type name failed: {err}')
-
-        # Step 4: Set auth mode to SN (1)
-        ok, err = self.snmp_set([
-            (f'{OID_REG_MODE}{suffix}', 1, 'i'),
-        ], write_community)
-        if not ok:
-            logger.warning(f'Set reg mode failed: {err}')
-
-        # Step 5: Set name and description (optional)
-        if name:
-            ok, err = self.snmp_set([
-                (f'{OID_REG_NAME}{suffix}', name, 's'),
-            ], write_community)
-            if not ok:
-                logger.warning(f'Set name failed: {err}')
-
-        if description:
-            ok, err = self.snmp_set([
-                (f'{OID_REG_DESCRIPTION}{suffix}', description, 's'),
-            ], write_community)
-            if not ok:
-                logger.warning(f'Set description failed: {err}')
-
-        # Step 6: Activate the row — active (1)
-        ok, err = self.snmp_set([
-            (f'{OID_REG_ENTRY_STATUS}{suffix}', 1, 'i'),
-        ], write_community)
-        if not ok:
-            logger.warning(f'Activate entry failed: {err}')
-            # Still return success since the entry exists with serial set
-
         logger.info(f'SNMP register: ONU {frame}/{slot}/{port}:{onu_id} SN={serial_number} type={onu_type}')
 
-        # Read-back verification — GET entry status to confirm registration
+        # Read-back verification
         try:
             result = self.batch_get([f'{OID_REG_ENTRY_STATUS}{suffix}'])
             status_val = result.get(f'{OID_REG_ENTRY_STATUS}{suffix}')
