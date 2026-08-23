@@ -50,7 +50,7 @@ export function SystemUpdate() {
       const r = await fetch('/api/system/update/apply', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       });
       const d = await r.json();
       setApplyResult(d);
