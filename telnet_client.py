@@ -626,7 +626,7 @@ class TelnetCollector:
             return False, str(e)
 
     def deregister_onu(self, frame, slot, port, onu_id, is_epon=False):
-        """Delete/deregister an ONU from OLT - must be in interface gpon-olt/epon-olt context"""
+        """Delete/deregister an ONU from OLT."""
         prefix = 'epon-onu' if is_epon else 'gpon-onu'
         iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
         olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
@@ -635,14 +635,16 @@ class TelnetCollector:
         try:
             self._send_command(tn, 'enable', timeout=5)
             self._send_command(tn, 'configure terminal', timeout=10)
-            iface_out = self._send_command(tn, f'interface {olt_prefix}_{frame}/{slot}/{port}', timeout=10)
-            if iface_out and 'error' in iface_out.lower():
-                logger.error(f"deregister_onu: interface {olt_prefix}_{frame}/{slot}/{port} failed: {iface_out[:100]}")
-                tn.close()
-                return False, f'Interface error: {iface_out.strip()[:100]}'
-            output, err = self._send_cmd_check(tn, f'no onu {onu_id}', timeout=15)
-            logger.info(f"deregister_onu: 'no onu {onu_id}' output for {iface}: err={err[:200] if err else 'none'}")
-            self._send_command(tn, 'exit', timeout=5)
+            if is_epon:
+                # EPON: enter interface context and use 'no onu N'
+                self._send_command(tn, f'interface {olt_prefix}_{frame}/{slot}/{port}', timeout=10)
+                output, err = self._send_cmd_check(tn, f'no onu {onu_id}', timeout=15)
+                logger.info(f"deregister_onu: 'no onu {onu_id}' output for {iface}: err={err[:200] if err else 'none'}")
+                self._send_command(tn, 'exit', timeout=5)
+            else:
+                # GPON: use 'delete gpon onu gpon-onu_X/Y/Z:N' from config context
+                output, err = self._send_cmd_check(tn, f'delete gpon onu {iface}', timeout=15)
+                logger.info(f"deregister_onu: 'delete gpon onu {iface}' output: err={err[:200] if err else 'none'}")
             self._send_command(tn, 'exit', timeout=5)
             self._send_command(tn, 'exit', timeout=5)
             tn.close()
