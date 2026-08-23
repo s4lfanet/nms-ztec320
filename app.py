@@ -2841,7 +2841,21 @@ def get_olt_onu_types(olt_id):
     else:
         db_types = ONUType.query.filter_by(olt_id=olt_id).order_by(ONUType.type_name).all()
         type_names = [t.type_name for t in db_types if t.type_name]
-        result = {'success': True, 'types': type_names, 'source': 'database'}
+        if type_names:
+            result = {'success': True, 'types': type_names, 'source': 'database'}
+        else:
+            # No Telnet, no DB — seed default ZTE ONU types so register wizard works
+            default_types = [
+                'ZTE-F601', 'ZTE-F602', 'ZTE-F607', 'ZTE-F612', 'ZTE-F620', 'ZTE-F623',
+                'ZTE-F625', 'ZTE-F626', 'ZTE-F640', 'ZTE-F641', 'ZTE-F642', 'ZTE-F643',
+                'ZTE-F645', 'ZTE-F647', 'ZTE-F648', 'ZTE-F649', 'ZTE-F650', 'ZTE-F651',
+                'ZTE-F660', 'ZTE-F667', 'ZTE-F668', 'ZTE-F669', 'ZTE-F670', 'ZTE-F672',
+                'ZTE-F820', 'ZTE-F821', 'ZTE-F822', 'ZTE-F823',
+                'ZTE-D400', 'ZTE-D402', 'ZTE-D420', 'ZTE-D421', 'ZTE-D422',
+                'ZTE-F401', 'ZTE-F420', 'ZTE-F425', 'ZTE-F429', 'ZTE-F430', 'ZTE-F435',
+                'ZTE-F500', 'ZTE-F803',
+            ]
+            result = {'success': True, 'types': default_types, 'source': 'defaults'}
     cache_set(cache_key, result, ttl=300)
     return jsonify(result)
 
