@@ -3977,32 +3977,6 @@ def provision_unified():
     # Check register mode from request — SNMP or Telnet
     use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
 
-    if use_snmp:
-        from snmp_collector import create_snmp_collector, get_write_community
-        collector = create_snmp_collector(olt)
-        wc = get_write_community(olt)
-        success, msg = collector.register_onu_snmp(
-            frame, slot, port, onu_id, serial,
-            onu_type=onu_type, name=name, description=description,
-            write_community=wc,
-        )
-        collector.close()
-        if success:
-            log_action('onu_register', 'onu', target=f'gpon-onu_{frame}/{slot}/{port}:{onu_id}',
-                       detail=f'Registered SN={serial} on {olt.name} as {onu_type} (SNMP)')
-            if technician_id:
-                onu = ONU.query.filter_by(olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id).first()
-                if onu:
-                    onu.technician_id = technician_id
-                    db.session.commit()
-        return jsonify({'success': success, 'message': msg})
-
-    if not olt.telnet_enabled or not olt.cli_username:
-        return jsonify({'success': False, 'message': 'OLT CLI access not configured'})
-
-    from snmp_collector import create_cli_collector
-    tc = create_cli_collector(olt)
-
     tcont_profile = data.get('tcont_profile', '1G')
     traffic_profile = data.get('traffic_profile', '')
     services = data.get('services', [])
@@ -4030,6 +4004,76 @@ def provision_unified():
     # ZTE EPON universal onu-type is named 'ALL-EPON', not 'All' (GPON)
     if is_epon and onu_type.strip().upper() == 'ALL':
         onu_type = 'ALL-EPON'
+
+    if use_snmp:
+        from snmp_collector import create_snmp_collector, get_write_community
+        collector = create_snmp_collector(olt)
+        wc = get_write_community(olt)
+        success, msg = collector.register_onu_snmp(
+            frame, slot, port, onu_id, serial,
+            onu_type=onu_type, name=name, description=description,
+            write_community=wc,
+        )
+        collector.close()
+        if success:
+            log_action('onu_register', 'onu', target=f'gpon-onu_{frame}/{slot}/{port}:{onu_id}',
+                       detail=f'Registered SN={serial} on {olt.name} as {onu_type} (SNMP)')
+            if technician_id:
+                onu = ONU.query.filter_by(olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id).first()
+                if onu:
+                    onu.technician_id = technician_id
+                    db.session.commit()
+
+            # G4 fix: SNMP can only do basic registration. Auto-fallback to Telnet for service config.
+            if olt.telnet_enabled and olt.cli_username and not is_epon:
+                logger.info(f"[provision_unified] SNMP registration done, falling back to Telnet for service config")
+                from snmp_collector import create_cli_collector
+                tc = create_cli_collector(olt)
+                svc_success, svc_msg = tc.register_unified(
+                    frame=frame, slot=slot, port=port, onu_id=onu_id,
+                    serial=serial, onu_type=onu_type, tcont_profile=tcont_profile,
+                    services=services, use_veip=use_veip, traffic_profile=traffic_profile,
+                    sla_profile=sla_profile,
+                    wifi_config=wifi_config, tr069_config=tr069_config,
+                    name=name, description=description, is_epon=is_epon,
+                )
+                if svc_success:
+                    msg = f'ONU registered via SNMP + services configured via Telnet'
+                else:
+                    msg = f'ONU registered via SNMP but service config failed: {svc_msg}'
+            else:
+                msg = f'ONU registered via SNMP (basic only — service config requires Telnet)'
+
+            # Save to DB
+            computed_index = frame * 100000 + slot * 10000 + port * 100 + onu_id
+            existing = ONU.query.filter_by(
+                olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id
+            ).first()
+            if not existing:
+                onu = ONU(
+                    olt_id=olt_id, frame=frame, slot=slot, port=port,
+                    onu_id=onu_id, serial_number=serial,
+                    onu_index=computed_index,
+                    name=name or 'Unnamed', description=description or '',
+                    status='offline', actual_type=onu_type, onu_type=onu_type,
+                    technician_id=technician_id or None,
+                    card='epon' if is_epon else '',
+                )
+                db.session.add(onu)
+                db.session.commit()
+
+            # Trigger background sync + auto-write config
+            _auto_sync_olt(olt_id)
+            _auto_write_config(olt_id)
+            prefix = 'epon-onu' if is_epon else 'gpon-onu'
+            log_action('onu_provision', 'onu', target=f'{prefix}_{frame}/{slot}/{port}:{onu_id}', detail=f'Provisioned SN={serial} on {olt.name} as {onu_type} (SNMP)')
+        return jsonify({'success': success, 'message': msg})
+
+    if not olt.telnet_enabled or not olt.cli_username:
+        return jsonify({'success': False, 'message': 'OLT CLI access not configured'})
+
+    from snmp_collector import create_cli_collector
+    tc = create_cli_collector(olt)
 
     success, msg = tc.register_unified(
         frame=frame, slot=slot, port=port, onu_id=onu_id,
@@ -4118,6 +4162,48 @@ def pre_register_onu():
                 if onu:
                     onu.technician_id = technician_id
                     db.session.commit()
+
+            # G5 fix: SNMP can only do basic registration. Auto-fallback to Telnet for template config.
+            if olt.telnet_enabled and olt.cli_username:
+                pon_port = data.get('pon_port', '')
+                is_epon = data.get('is_epon', False) or 'epon-olt' in pon_port or 'epon_olt' in pon_port
+                if is_epon and onu_type.strip().upper() == 'ALL':
+                    onu_type = 'ALL-EPON'
+                logger.info(f"[pre_register] SNMP registration done, falling back to Telnet for template config")
+                from snmp_collector import create_cli_collector
+                tc = create_cli_collector(olt)
+                if template and template != 'bridge':
+                    svc_success, svc_msg = tc.register_vendor_template(
+                        frame=frame, slot=slot, port=port, onu_id=onu_id,
+                        serial=serial, template=template, onu_type=onu_type,
+                        tcont_profile=tcont_profile, vlan=vlan,
+                        name=name, description=description, extra=extra, is_epon=is_epon
+                    )
+                elif configure:
+                    svc_success, svc_msg = tc.register_and_configure(
+                        frame=frame, slot=slot, port=port, onu_id=onu_id,
+                        onu_type=onu_type, serial=serial, vlan=vlan,
+                        tcont_profile=tcont_profile, name=name, description=description, is_epon=is_epon,
+                        sla_profile=sla_profile
+                    )
+                else:
+                    svc_success, svc_msg = True, ''
+                    if name or description:
+                        tc.configure_onu_profile(
+                            frame=frame, slot=slot, port=port, onu_id=onu_id,
+                            tcont_profile=tcont_profile, user_vlan=vlan, service_vlan=vlan,
+                            name=name, description=description, is_epon=is_epon,
+                            sla_profile=sla_profile
+                        )
+                if svc_success:
+                    msg = f'ONU registered via SNMP + template configured via Telnet'
+                else:
+                    msg = f'ONU registered via SNMP but template config failed: {svc_msg}'
+            else:
+                msg = f'ONU registered via SNMP (basic only — template config requires Telnet)'
+
+            # Auto-save config to startup-config
+            _auto_write_config(olt_id)
         return jsonify({'success': success, 'message': msg})
 
     # Telnet mode (original)
@@ -4323,152 +4409,6 @@ def scan_unconfigured():
         onu['matched_type'] = match_onu_type(model)
 
     return jsonify({'success': True, 'onus': unconfigured, 'registered_types': reg_types})
-
-
-# ==================== ONT PROVISIONING ====================
-
-@app.route('/api/provision/vendors', methods=['GET'])
-@login_required
-def get_provision_vendors():
-    """Get list of supported vendor templates for provisioning."""
-    from ont_provisioner import get_available_vendors
-    return jsonify({'success': True, 'vendors': get_available_vendors()})
-
-
-@app.route('/api/provision/ont', methods=['POST'])
-@permission_required('add_onu')
-def provision_ont():
-    """Provision a new ONT on OLT (cross-vendor support)."""
-    data = request.get_json() or {}
-    olt_id = data.get('olt_id')
-    olt = db.session.get(OLT, olt_id) if olt_id else None
-    if not olt:
-        return jsonify({'success': False, 'message': 'OLT not found'})
-
-    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
-
-    if use_snmp:
-        from snmp_collector import create_snmp_collector, get_write_community
-        collector = create_snmp_collector(olt)
-        wc = get_write_community(olt)
-
-        frame = data.get('frame', 1)
-        slot = data.get('slot', 1)
-        port = data.get('port', 1)
-        onu_id = data.get('onu_id', 0)
-        serial = data.get('serial_number', '')
-        onu_type = data.get('onu_type', 'All')
-        name = data.get('name', '')
-        description = data.get('description', '')
-
-        if not serial:
-            collector.close()
-            return jsonify({'success': False, 'message': 'Serial number required for SNMP registration'})
-        if not onu_id:
-            collector.close()
-            return jsonify({'success': False, 'message': 'ONU ID required for SNMP registration'})
-
-        ok, msg = collector.register_onu_snmp(
-            frame, slot, port, onu_id, serial,
-            onu_type=onu_type, name=name, description=description,
-            write_community=wc,
-        )
-        collector.close()
-
-        if ok:
-            # Save to DB
-            existing = ONU.query.filter_by(
-                olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id
-            ).first()
-            if not existing:
-                onu = ONU(
-                    olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id,
-                    serial_number=serial, name=name or 'Unnamed',
-                    description=description, status='offline',
-                    actual_type=onu_type, onu_type=onu_type,
-                    technician_id=data.get('technician_id') or None,
-                )
-                db.session.add(onu)
-                db.session.commit()
-            return jsonify({'success': True, 'message': msg, 'onu_id': onu_id})
-        return jsonify({'success': False, 'message': msg})
-
-    # Telnet mode (original)
-    if not olt.telnet_enabled or not olt.cli_username:
-        return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
-
-    from snmp_collector import TelnetCollector, create_cli_collector
-    from ont_provisioner import ProvisioningConfig, provision_ont as do_provision
-
-    tc = create_cli_collector(olt)
-
-    config = ProvisioningConfig(
-        olt_id=olt_id,
-        frame=data.get('frame', 1),
-        slot=data.get('slot', 1),
-        port=data.get('port', 1),
-        onu_id=data.get('onu_id', 0),
-        serial_number=data.get('serial_number', ''),
-        vendor=data.get('vendor', 'universal'),
-        onu_type=data.get('onu_type', 'All'),
-        name=data.get('name', ''),
-        description=data.get('description', ''),
-        tcont_profile=data.get('tcont_profile', '1G'),
-        traffic_profile=data.get('traffic_profile', ''),
-        service_vlan=data.get('service_vlan', 100),
-        wan_mode=data.get('wan_mode', 'bridge'),
-        wan_ip_profile=data.get('wan_ip_profile', ''),
-        pppoe_username=data.get('pppoe_username', ''),
-        pppoe_password=data.get('pppoe_password', ''),
-        tr069_enabled=data.get('tr069_enabled', False),
-        acs_url=data.get('acs_url', ''),
-        acs_username=data.get('acs_username', ''),
-        acs_password=data.get('acs_password', ''),
-        tr069_vlan=data.get('tr069_vlan', 0),
-        dry_run=data.get('dry_run', False),
-    )
-
-    result = do_provision(tc, config)
-
-    # If successful and not dry-run, save to DB
-    if result.success and not config.dry_run and result.onu_id:
-        existing = ONU.query.filter_by(
-            olt_id=olt_id, frame=config.frame, slot=config.slot,
-            port=config.port, onu_id=result.onu_id
-        ).first()
-        if not existing:
-            onu = ONU(
-                olt_id=olt_id,
-                frame=config.frame, slot=config.slot,
-                port=config.port, onu_id=result.onu_id,
-                serial_number=config.serial_number,
-                name=config.name or 'Unnamed',
-                description=config.description or '',
-                status='offline',
-                actual_type=config.onu_type,
-                onu_type=config.onu_type,
-                technician_id=data.get('technician_id') or None,
-            )
-            db.session.add(onu)
-            db.session.commit()
-
-    return jsonify(result.to_dict())
-
-
-@app.route('/api/provision/status/<int:olt_id>/<int:frame>/<int:slot>/<int:port>/<int:onu_id>', methods=['GET'])
-@login_required
-def check_ont_provision_status(olt_id, frame, slot, port, onu_id):
-    """Check ONT provisioning status and TR069 configuration."""
-    olt = db.session.get(OLT, olt_id)
-    if not olt:
-        return jsonify({'success': False, 'message': 'OLT not found'})
-
-    from snmp_collector import TelnetCollector, create_cli_collector
-    from ont_provisioner import check_ont_status
-
-    tc = create_cli_collector(olt)
-    status = check_ont_status(tc, frame, slot, port, onu_id)
-    return jsonify({'success': True, 'status': status})
 
 
 # ==================== OLT SYNC ====================
