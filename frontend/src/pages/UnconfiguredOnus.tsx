@@ -6,7 +6,7 @@ import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import {
   Server, Search, RefreshCw, Loader2, Radio, Plus, Copy,
-  ChevronDown, ChevronRight, Zap, AlertCircle,
+  ChevronDown, ChevronRight, Zap, AlertCircle, Wrench,
 } from 'lucide-react';
 
 interface UnconfiguredOnu {
@@ -37,6 +37,7 @@ export function UnconfiguredOnus() {
   const [results, setResults] = useState<OltScanResult[]>([]);
   const [collapsedOlt, setCollapsedOlt] = useState<Record<number, boolean>>({});
   const [scanningOltIds, setScanningOltIds] = useState<Set<number>>(new Set());
+  const [registerMode, setRegisterMode] = useState<'telnet' | 'snmp'>('telnet');
 
   const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard });
   const olts = data?.olts || [];
@@ -49,7 +50,7 @@ export function UnconfiguredOnus() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ olt_id: oltId }),
+        body: JSON.stringify({ olt_id: oltId, register_mode: registerMode }),
       });
       const d = await res.json();
       if (d.success) {
@@ -124,6 +125,7 @@ export function UnconfiguredOnus() {
       state: {
         prefillOltId: oltId,
         prefillOnu: onu,
+        prefillRegisterMode: registerMode,
       },
     });
   };
@@ -164,6 +166,23 @@ export function UnconfiguredOnus() {
             <Plus size={14} />
             <span className="hidden sm:inline">Pre-Register</span>
             <span className="sm:hidden">Manual</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Registration Mode Selector */}
+      <div className="glass-card p-3 flex items-center gap-3 flex-wrap">
+        <span className="text-xs md:text-sm font-semibold text-tx2">Scan Mode:</span>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setRegisterMode('telnet')}
+            className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition',
+              registerMode === 'telnet' ? 'border-accent bg-accent/10 text-accent' : 'border-brd text-tx3 hover:border-tx3')}>
+            <Wrench size={14} /> Telnet
+          </button>
+          <button type="button" onClick={() => setRegisterMode('snmp')}
+            className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition',
+              registerMode === 'snmp' ? 'border-accent bg-accent/10 text-accent' : 'border-brd text-tx3 hover:border-tx3')}>
+            <Radio size={14} /> SNMP
           </button>
         </div>
       </div>
