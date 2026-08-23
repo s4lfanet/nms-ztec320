@@ -1378,7 +1378,16 @@ class SNMPCollector:
             (f'{OID_REG_ENTRY_STATUS}{suffix}', 5, 'i'),
         ], write_community)
         if not ok:
-            return False, f'Create entry failed: {err}'
+            # Entry may already exist from a failed previous attempt — destroy and retry
+            logger.info(f'Create entry failed ({err}), trying cleanup and retry...')
+            self.snmp_set([(f'{OID_REG_ENTRY_STATUS}{suffix}', 6, 'i')], write_community)
+            import time as _time
+            _time.sleep(0.5)
+            ok, err = self.snmp_set([
+                (f'{OID_REG_ENTRY_STATUS}{suffix}', 5, 'i'),
+            ], write_community)
+            if not ok:
+                return False, f'Create entry failed (after cleanup retry): {err}'
 
         # Step 2: Set serial number (required before activation)
         sn_hex = encode_sn_to_hex(serial_number)
