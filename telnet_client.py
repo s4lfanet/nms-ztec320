@@ -1260,7 +1260,15 @@ class TelnetCollector:
             # Step 12: exit and end
             self._send_command(tn, 'end')
             tn.close()
-            return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered and configured'
+
+            # G7: Read-back verification
+            verify_state = self._verify_onu_registered(frame, slot, port, onu_id, is_epon)
+            if verify_state:
+                logger.info(f"[register_and_configure] Read-back OK: ONU {frame}/{slot}/{port}:{onu_id} state={verify_state}")
+                return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered and configured (state={verify_state})'
+            else:
+                logger.warning(f"[register_and_configure] Read-back: ONU {frame}/{slot}/{port}:{onu_id} not found")
+                return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered and configured — verification pending'
         except Exception as e:
             logger.error(f"register_and_configure failed: {e}")
             try: tn.close()
@@ -1980,12 +1988,47 @@ class TelnetCollector:
             tn.close()
             if last_err:
                 return False, f'CLI error: {last_err}'
-            return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered ({template})'
+
+            # G7: Read-back verification
+            verify_state = self._verify_onu_registered(frame, slot, port, onu_id, is_epon)
+            if verify_state:
+                logger.info(f"[register_vendor_template] Read-back OK: ONU {frame}/{slot}/{port}:{onu_id} state={verify_state}")
+                return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered ({template}, state={verify_state})'
+            else:
+                logger.warning(f"[register_vendor_template] Read-back: ONU {frame}/{slot}/{port}:{onu_id} not found in state table")
+                return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered ({template}) — verification pending'
         except Exception as e:
             logger.error(f"register_vendor_template failed: {e}")
             try: tn.close()
             except: pass
             return False, str(e)
+
+    def _verify_onu_registered(self, frame, slot, port, onu_id, is_epon=False):
+        """Read-back verification: check if ONU is registered by reading ONU state table.
+        Returns state string (e.g. 'ready', 'offline') if found, None if not found."""
+        olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
+        pon_if = f'{olt_prefix}_{frame}/{slot}/{port}'
+        try:
+            import time as _t
+            _t.sleep(2)  # Give OLT time to update state table
+            tn = self._connect()
+            if not tn:
+                return None
+            self._send_command(tn, 'enable', timeout=5)
+            cmd = f'show epon onu state {pon_if}' if is_epon else f'show gpon onu state {pon_if}'
+            out = self._send_command(tn, cmd, timeout=15)
+            tn.close()
+            if not out:
+                return None
+            # Parse output for ONU ID — lines like: "1  ready   ZTEG...  onu_..."
+            for line in out.split('\n'):
+                parts = line.split()
+                if len(parts) >= 2 and parts[0] == str(onu_id):
+                    return parts[1] if len(parts) > 1 else 'found'
+            return None
+        except Exception as e:
+            logger.debug(f"_verify_onu_registered: {e}")
+            return None
 
     def register_unified(self, frame, slot, port, onu_id, serial, onu_type,
                          tcont_profile, services, use_veip=None,
@@ -2362,7 +2405,15 @@ class TelnetCollector:
             tn.close()
             if last_err:
                 return False, f'CLI error: {last_err}'
-            return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered (unified, {"VEIP" if use_veip else "iphost"})'
+
+            # G7: Read-back verification — confirm ONU is registered
+            verify_state = self._verify_onu_registered(frame, slot, port, onu_id, is_epon)
+            if verify_state:
+                logger.info(f"[register_unified] Read-back OK: ONU {frame}/{slot}/{port}:{onu_id} state={verify_state}")
+                return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered (unified, {"VEIP" if use_veip else "iphost"}, state={verify_state})'
+            else:
+                logger.warning(f"[register_unified] Read-back: ONU {frame}/{slot}/{port}:{onu_id} not found in state table")
+                return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered (unified, {"VEIP" if use_veip else "iphost"}) — verification pending (ONU may still be initializing)'
         except Exception as e:
             logger.error(f"register_unified failed: {e}")
             try: tn.close()

@@ -1394,6 +1394,21 @@ class SNMPCollector:
                 logger.warning(f'Set description failed: {err}')
 
         logger.info(f'SNMP register: ONU {frame}/{slot}/{port}:{onu_id} SN={serial_number} type={onu_type}')
+
+        # G7: Read-back verification — GET entry status to confirm registration
+        try:
+            result = self.batch_get([f'{OID_REG_ENTRY_STATUS}{suffix}'])
+            status_val = result.get(f'{OID_REG_ENTRY_STATUS}{suffix}')
+            if status_val is not None:
+                status_map = {1: 'active', 2: 'notInService', 3: 'notReady', 4: 'createAndGo', 5: 'createAndWait', 6: 'destroy'}
+                state = status_map.get(int(status_val), f'unknown({status_val})')
+                logger.info(f'SNMP read-back: ONU {frame}/{slot}/{port}:{onu_id} entry status={state}')
+                return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered via SNMP with SN {serial_number} (state={state})'
+            else:
+                logger.warning(f'SNMP read-back: ONU {frame}/{slot}/{port}:{onu_id} entry not found in GET')
+        except Exception as e:
+            logger.warning(f'SNMP read-back failed: {e}')
+
         return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered via SNMP with SN {serial_number}'
 
     def deregister_onu_snmp(self, frame, slot, port, onu_id, write_community=None):
