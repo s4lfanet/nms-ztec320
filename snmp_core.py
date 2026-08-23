@@ -1353,6 +1353,10 @@ class SNMPCollector:
                            write_community=None):
         """Register a GPON ONU via SNMP SET on ZTE C320.
 
+        Uses createAndWait (5) to create the row without activating,
+        sets all required fields (serial, type, reg mode, name, description),
+        then activates with active (1).
+
         Args:
             frame: OLT frame (always 1 for C320)
             slot: OLT slot/board (1 or 2)
@@ -1369,21 +1373,24 @@ class SNMPCollector:
         pon_index = encode_pon_index(slot, port)
         suffix = f'.{pon_index}.{onu_id}'
 
-        # Step 1: Create the ONU entry (createAndGo = 4)
+        # Step 1: Create row in createAndWait state (5) — not yet active
         ok, err = self.snmp_set([
-            (f'{OID_REG_ENTRY_STATUS}{suffix}', 4, 'i'),
+            (f'{OID_REG_ENTRY_STATUS}{suffix}', 5, 'i'),
         ], write_community)
         if not ok:
             return False, f'Create entry failed: {err}'
 
-        # Step 2: Set auth mode to SN (1)
+        # Step 2: Set serial number (required before activation)
+        sn_hex = encode_sn_to_hex(serial_number)
         ok, err = self.snmp_set([
-            (f'{OID_REG_MODE}{suffix}', 1, 'i'),
+            (f'{OID_REG_SERIAL}{suffix}', sn_hex, 'x'),
         ], write_community)
         if not ok:
-            logger.warning(f'Set reg mode failed: {err}')
+            # Cleanup: destroy the half-created entry
+            self.snmp_set([(f'{OID_REG_ENTRY_STATUS}{suffix}', 6, 'i')], write_community)
+            return False, f'Set serial failed: {err}'
 
-        # Step 3: Set ONU type
+        # Step 3: Set ONU type (if not 'All')
         if onu_type and onu_type != 'All':
             ok, err = self.snmp_set([
                 (f'{OID_REG_TYPE_NAME}{suffix}', onu_type, 's'),
@@ -1391,13 +1398,12 @@ class SNMPCollector:
             if not ok:
                 logger.warning(f'Set type name failed: {err}')
 
-        # Step 4: Set serial number
-        sn_hex = encode_sn_to_hex(serial_number)
+        # Step 4: Set auth mode to SN (1)
         ok, err = self.snmp_set([
-            (f'{OID_REG_SERIAL}{suffix}', sn_hex, 'x'),
+            (f'{OID_REG_MODE}{suffix}', 1, 'i'),
         ], write_community)
         if not ok:
-            return False, f'Set serial failed: {err}'
+            logger.warning(f'Set reg mode failed: {err}')
 
         # Step 5: Set name and description (optional)
         if name:
@@ -1414,9 +1420,17 @@ class SNMPCollector:
             if not ok:
                 logger.warning(f'Set description failed: {err}')
 
+        # Step 6: Activate the row — active (1)
+        ok, err = self.snmp_set([
+            (f'{OID_REG_ENTRY_STATUS}{suffix}', 1, 'i'),
+        ], write_community)
+        if not ok:
+            logger.warning(f'Activate entry failed: {err}')
+            # Still return success since the entry exists with serial set
+
         logger.info(f'SNMP register: ONU {frame}/{slot}/{port}:{onu_id} SN={serial_number} type={onu_type}')
 
-        # G7: Read-back verification — GET entry status to confirm registration
+        # Read-back verification — GET entry status to confirm registration
         try:
             result = self.batch_get([f'{OID_REG_ENTRY_STATUS}{suffix}'])
             status_val = result.get(f'{OID_REG_ENTRY_STATUS}{suffix}')
