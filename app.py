@@ -2835,25 +2835,61 @@ def get_olt_onu_types(olt_id):
             logger.debug(f"Telnet onu-types failed: {e}")
 
     if types:
-        type_names = [t.get('type_name', '') for t in types if t.get('type_name')]
-        type_names.sort()
-        result = {'success': True, 'types': type_names, 'source': 'telnet'}
+        type_list = [{'type_name': t.get('type_name', ''), 'pon_type': t.get('pon_type', 'gpon')}
+                     for t in types if t.get('type_name')]
+        type_list.sort(key=lambda x: x['type_name'])
+        result = {'success': True, 'types': type_list, 'source': 'telnet'}
     else:
         db_types = ONUType.query.filter_by(olt_id=olt_id).order_by(ONUType.type_name).all()
-        type_names = [t.type_name for t in db_types if t.type_name]
-        if type_names:
-            result = {'success': True, 'types': type_names, 'source': 'database'}
+        if db_types:
+            type_list = [{'type_name': t.type_name, 'pon_type': t.pon_type or 'gpon'}
+                         for t in db_types if t.type_name]
+            result = {'success': True, 'types': type_list, 'source': 'database'}
         else:
             # No Telnet, no DB — seed default ZTE ONU types so register wizard works
+            # ZTE C320: ZTEG-* = GPON, ZTE-* = EPON (per ZTE CLI manual)
             default_types = [
-                'ZTE-F601', 'ZTE-F602', 'ZTE-F607', 'ZTE-F612', 'ZTE-F620', 'ZTE-F623',
-                'ZTE-F625', 'ZTE-F626', 'ZTE-F640', 'ZTE-F641', 'ZTE-F642', 'ZTE-F643',
-                'ZTE-F645', 'ZTE-F647', 'ZTE-F648', 'ZTE-F649', 'ZTE-F650', 'ZTE-F651',
-                'ZTE-F660', 'ZTE-F667', 'ZTE-F668', 'ZTE-F669', 'ZTE-F670', 'ZTE-F672',
-                'ZTE-F820', 'ZTE-F821', 'ZTE-F822', 'ZTE-F823',
-                'ZTE-D400', 'ZTE-D402', 'ZTE-D420', 'ZTE-D421', 'ZTE-D422',
-                'ZTE-F401', 'ZTE-F420', 'ZTE-F425', 'ZTE-F429', 'ZTE-F430', 'ZTE-F435',
-                'ZTE-F500', 'ZTE-F803',
+                # GPON types
+                {'type_name': 'ZTEG-F601', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F602', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F607', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F609', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F612', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F620', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F621', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F622', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F623', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F625', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F626', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F627', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F640', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F641', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F642', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F643', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F645', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F647', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F660', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F667', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F668', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F669', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F670', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F672', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F821', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-F822', 'pon_type': 'gpon'},
+                {'type_name': 'ZTEG-9806H', 'pon_type': 'gpon'},
+                # EPON types
+                {'type_name': 'ZTE-F401', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-F420', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-F425', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-F429', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-F430', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-F435', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-F500', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-F803', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-F820', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-F821', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-F822', 'pon_type': 'epon'},
+                {'type_name': 'ZTE-9806', 'pon_type': 'epon'},
             ]
             result = {'success': True, 'types': default_types, 'source': 'defaults'}
     cache_set(cache_key, result, ttl=300)

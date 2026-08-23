@@ -309,7 +309,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
 
   const [scanning, setScanning] = useState(false);
   const [unconfiguredOnus, setUnconfiguredOnus] = useState<UnconfiguredOnu[]>([]);
-  const [onuTypes, setOnuTypes] = useState<string[]>([]);
+  const [onuTypes, setOnuTypes] = useState<Array<{ type_name: string; pon_type: string }>>([]);
   const [tcontProfiles, setTcontProfiles] = useState<string[]>([]);
   const [trafficProfiles, setTrafficProfiles] = useState<string[]>([]);
   const [slaProfiles, setSlaProfiles] = useState<string[]>([]);
@@ -358,7 +358,14 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
   useEffect(() => {
     if (!data.oltId) return;
     fetch(`/api/olt/${data.oltId}/onu-types`, { credentials: 'include' })
-      .then(r => r.json()).then(d => { if (d.success && d.types) setOnuTypes(d.types); }).catch(() => {});
+      .then(r => r.json()).then(d => {
+        if (d.success && d.types) {
+          const types = d.types.map((t: any) =>
+            typeof t === 'string' ? { type_name: t, pon_type: 'gpon' } : t
+          );
+          setOnuTypes(types);
+        }
+      }).catch(() => {});
     fetch(`/api/olt/${data.oltId}/speed-profiles`, { credentials: 'include' })
       .then(r => r.json()).then(d => {
         if (d.success && d.tcont) setTcontProfiles(d.tcont);
@@ -408,8 +415,21 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
       const d = await res.json();
       if (d.success && d.onus) {
         setUnconfiguredOnus(d.onus);
-        if (d.onu_types) setOnuTypes(d.onu_types);
-        if (d.registered_types) setOnuTypes(prev => [...new Set([...prev, ...d.registered_types])]);
+        if (d.onu_types) {
+          const types = d.onu_types.map((t: any) =>
+            typeof t === 'string' ? { type_name: t, pon_type: 'gpon' } : t
+          );
+          setOnuTypes(types);
+        }
+        if (d.registered_types) {
+          const types = d.registered_types.map((t: any) =>
+            typeof t === 'string' ? { type_name: t, pon_type: 'gpon' } : t
+          );
+          setOnuTypes(prev => {
+            const seen = new Set(prev.map((t: { type_name: string; pon_type: string }) => t.type_name));
+            return [...prev, ...types.filter((t: { type_name: string; pon_type: string }) => !seen.has(t.type_name))];
+          });
+        }
         toast[d.onus.length ? 'success' : 'warning'](d.onus.length ? `Found ${d.onus.length} ONU(s)` : 'No unconfigured ONUs found');
       } else toast.error(d.message || 'Scan failed');
     } catch { toast.error('Scan failed'); }
@@ -744,7 +764,15 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               <label className="text-xs text-tx3 mb-1 block">ONU Type</label>
               {onuTypes.length > 0 ? (
                 <select value={data.onuType} onChange={e => update('onuType', e.target.value)} className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm">
-                  {onuTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                  <option value="All">All (auto-detect)</option>
+                  {(() => {
+                    const isEpon = data.selectedOnus.length > 0 &&
+                      (data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon === true);
+                    const filtered = isEpon
+                      ? onuTypes.filter(t => t.pon_type === 'epon')
+                      : onuTypes.filter(t => t.pon_type === 'gpon');
+                    return filtered.map(t => <option key={t.type_name} value={t.type_name}>{t.type_name}</option>);
+                  })()}
                 </select>
               ) : (
                 <input value={data.onuType} onChange={e => update('onuType', e.target.value)} className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
