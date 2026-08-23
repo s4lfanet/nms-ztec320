@@ -42,10 +42,12 @@ OID_REG_SERIAL = '1.3.6.1.4.1.3902.1012.3.28.1.1.5'          # Serial number (Oc
 OID_REG_ENTRY_STATUS = '1.3.6.1.4.1.3902.1012.3.28.1.1.9'    # RowStatus (4=createAndGo, 6=destroy)
 OID_REG_MODE = '1.3.6.1.4.1.3902.1012.3.28.1.1.12'           # Auth mode (1=SN, 2=loid, 3=loid+password, 4=SN+password)
 
-# Unconfigured ONU discovery (.3.2) — index: .ponIndex.onuId
-OID_UNCFG_SERIAL = '1.3.6.1.4.1.3902.1012.3.2.1.1'           # Unconfigured ONU serial (OctetString hex)
-OID_UNCFG_PASSWORD = '1.3.6.1.4.1.3902.1012.3.2.1.2'         # Unconfigured ONU password
-OID_UNCFG_VENDOR = '1.3.6.1.4.1.3902.1012.3.2.1.3'           # Unconfigured ONU vendor ID
+# Unconfigured ONU discovery — zxGponUnCfgSnOntInfoTable (.3.13.3.1) — index: .ponIndex.onuId
+OID_UNCFG_SERIAL = '1.3.6.1.4.1.3902.1012.3.13.3.1.2'       # zxGponUnCfgSnOntSN — serial (OctetString hex)
+OID_UNCFG_PASSWORD = '1.3.6.1.4.1.3902.1012.3.13.3.1.5'     # zxGponUnCfgSnOntPsw — password
+OID_UNCFG_RID = '1.3.6.1.4.1.3902.1012.3.13.3.1.3'          # zxGponUnCfgSnOntRID — register ID
+OID_UNCFG_STATE = '1.3.6.1.4.1.3902.1012.3.13.3.1.6'        # zxGponUnCfgSnOntState — state
+OID_UNCFG_MODEL = '1.3.6.1.4.1.3902.1012.3.13.3.1.10'       # ONU type/model (extended column)
 
 
 def encode_pon_index(slot, port):
@@ -1442,12 +1444,19 @@ class SNMPCollector:
         return True, f'Description set to "{description}"'
 
     def scan_unconfigured_snmp(self, write_community=None):
-        """Scan for unconfigured ONUs via SNMP walk on the unconfigured ONU table.
+        """Scan for unconfigured ONUs via SNMP walk on the zxGponUnCfgSnOntInfoTable.
 
         Returns: list of dicts with keys: pon_port, sn, model, onu_id
         """
         try:
             uncfg_raw = self._run(self._bulk_walk(OID_UNCFG_SERIAL))
+            # Also walk model OID (may not exist on all firmware versions)
+            model_raw = self._run(self._bulk_walk(OID_UNCFG_MODEL))
+            model_map = {}
+            for oid_str, val, val_str in model_raw:
+                suffix = oid_str[len(OID_UNCFG_MODEL):].lstrip('.')
+                model_map[suffix] = val_str
+
             results = []
             for oid_str, val, val_str in uncfg_raw:
                 suffix = oid_str[len(OID_UNCFG_SERIAL):].lstrip('.')
@@ -1462,10 +1471,11 @@ class SNMPCollector:
                         sn = parse_serial(val)
                         if not sn:
                             continue
+                        model = model_map.get(suffix, '')
                         results.append({
                             'pon_port': f'1/{frame}/{port}',
                             'sn': sn,
-                            'model': '',
+                            'model': model,
                             'onu_id': onu_slot,
                         })
                     except (ValueError, IndexError):
