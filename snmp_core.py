@@ -1615,6 +1615,30 @@ class SNMPCollector:
         logger.info(f'SNMP VLANs: {len(vlans)}')
         return vlans
 
+    def collect_onu_types_snmp(self):
+        """Collect ONU type names via SNMP by walking registered ONU type field.
+        ZTE C320 does not expose an ONU type table via SNMP, but each registered
+        ONU has its type name stored at OID_REG_TYPE_NAME (.28.1.1.1).
+        We extract distinct type names from all registered ONUs.
+        Returns list of {'type_name': str, 'pon_type': str}."""
+        try:
+            return self._run(self._collect_onu_types_async())
+        except Exception as e:
+            logger.error(f'SNMP ONU types collection failed: {e}')
+            return []
+
+    async def _collect_onu_types_async(self):
+        type_raw = await self._bulk_walk(OID_REG_TYPE_NAME)
+        type_names = set()
+        for oid_str, val, val_str in type_raw:
+            name = val_str.strip().strip('"')
+            if name and name != 'All':
+                type_names.add(name)
+        # Build result list — all GPON since OID_REG_TYPE_NAME is in GPON table
+        result = [{'type_name': t, 'pon_type': 'gpon'} for t in sorted(type_names)]
+        logger.info(f'SNMP ONU types: {len(result)} (from {len(type_raw)} registered ONUs)')
+        return result
+
 
 def _extract_int(raw_list, suffix, base_oid):
     """Helper: extract integer value from walk results matching the given suffix."""
