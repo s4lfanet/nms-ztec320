@@ -7186,6 +7186,93 @@ def update_bot_config(bot_type):
     return jsonify({'success': True})
 
 
+# ==================== SYSTEM UPDATE API ====================
+
+@app.route('/api/system/update/check', methods=['GET'])
+@super_admin_required
+def system_update_check():
+    """Check if a newer version is available on GitHub.
+    Runs git fetch + compares local vs remote HEAD."""
+    import subprocess as _sp
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        # git fetch origin
+        _sp.run(['git', 'fetch', 'origin', 'main'], cwd=app_dir, capture_output=True, timeout=30)
+        # Get local HEAD
+        local = _sp.run(['git', 'rev-parse', 'HEAD'], cwd=app_dir, capture_output=True, text=True, timeout=10)
+        local_sha = local.stdout.strip()
+        # Get remote HEAD
+        remote = _sp.run(['git', 'rev-parse', 'origin/main'], cwd=app_dir, capture_output=True, text=True, timeout=10)
+        remote_sha = remote.stdout.strip()
+        # Get short log of incoming commits
+        if local_sha != remote_sha:
+            log = _sp.run(['git', 'log', '--oneline', f'{local_sha}..{remote_sha}'], cwd=app_dir, capture_output=True, text=True, timeout=10)
+            commits = [l for l in log.stdout.strip().split('\n') if l]
+        else:
+            commits = []
+        # Get current branch
+        branch = _sp.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd=app_dir, capture_output=True, text=True, timeout=10)
+        current_branch = branch.stdout.strip()
+        return jsonify({
+            'success': True,
+            'up_to_date': local_sha == remote_sha,
+            'local_sha': local_sha[:8],
+            'remote_sha': remote_sha[:8],
+            'branch': current_branch,
+            'commits': commits[:20],
+        })
+    except _sp.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Git fetch timed out. Check network connectivity.'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Check failed: {str(e)[:200]}'})
+
+
+@app.route('/api/system/update/apply', methods=['POST'])
+@super_admin_required
+def system_update_apply():
+    """Apply update from GitHub: git pull, build frontend, restart service.
+    Only works on the VPS (must have git repo + node + pnpm)."""
+    import subprocess as _sp
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    frontend_dir = os.path.join(app_dir, 'frontend')
+    try:
+        # Step 1: git pull
+        pull = _sp.run(['git', 'pull', 'origin', 'main'], cwd=app_dir, capture_output=True, text=True, timeout=60)
+        if pull.returncode != 0:
+            return jsonify({'success': False, 'message': f'Git pull failed: {pull.stderr[:300]}'})
+        pull_output = pull.stdout.strip()
+
+        # Check if anything changed
+        if 'Already up to date' in pull_output or 'Already up-to-date' in pull_output:
+            return jsonify({'success': True, 'message': 'Already up to date. No changes needed.', 'restarted': False})
+
+        # Step 2: Install frontend deps + build
+        install = _sp.run(['pnpm', 'install', '--no-frozen-lockfile'], cwd=frontend_dir, capture_output=True, text=True, timeout=120)
+        if install.returncode != 0:
+            return jsonify({'success': False, 'message': f'pnpm install failed: {install.stderr[:300]}'})
+
+        build = _sp.run(['pnpm', 'build'], cwd=frontend_dir, capture_output=True, text=True, timeout=120)
+        if build.returncode != 0:
+            return jsonify({'success': False, 'message': f'Frontend build failed: {build.stderr[:300]}'})
+
+        # Step 3: Restart service (systemd)
+        restart = _sp.run(['systemctl', 'restart', 'salfanet-nms'], capture_output=True, text=True, timeout=30)
+        if restart.returncode != 0:
+            return jsonify({'success': True, 'message': f'Update applied but service restart failed: {restart.stderr[:200]}. Please restart manually.', 'restarted': False})
+
+        log_action('system_update', 'system', detail=f'Git pull + frontend build + service restart. Pull: {pull_output[:100]}')
+        return jsonify({
+            'success': True,
+            'message': 'Update applied successfully. Service restarted.',
+            'restarted': True,
+            'pull_output': pull_output[:500],
+        })
+    except _sp.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Update timed out. Check VPS console.'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Update failed: {str(e)[:200]}'})
+
+
 # ==================== SYSTEM CONFIG API ====================
 
 @app.route('/api/system-config', methods=['GET'])

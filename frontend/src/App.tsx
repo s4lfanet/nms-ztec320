@@ -29,6 +29,7 @@ const CloudflareTunnel = lazy(() => import('./pages/CloudflareTunnel').then(m =>
 const GuidePage = lazy(() => import('./pages/GuidePage').then(m => ({ default: m.GuidePage })));
 const UnconfiguredOnus = lazy(() => import('./pages/UnconfiguredOnus').then(m => ({ default: m.UnconfiguredOnus })));
 const OnuWizard = lazy(() => import('./pages/OnuWizard').then(m => ({ default: m.OnuWizard })));
+const SystemUpdate = lazy(() => import('./pages/SystemUpdate').then(m => ({ default: m.SystemUpdate })));
 
 const routePermissions: Record<string, string> = {
   '/dashboard/onus/add': 'add_onu',
@@ -156,6 +157,7 @@ export default function App() {
         <Route path="traffic" element={<Traffic />} />
         <Route path="logs" element={<ActionLogs />} />
         <Route path="guide" element={<GuidePage />} />
+        <Route path="settings/update" element={<SystemUpdate />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
