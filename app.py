@@ -7358,10 +7358,14 @@ _VPS_PATH = '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/snap/bin:' + os.envir
 
 def _run_cmd(cmd, cwd=None, timeout=30):
     """Run a command with extended PATH (for systemd context)."""
-    import subprocess as _sp
+    import subprocess as _sp, pwd
     env = os.environ.copy()
     env['PATH'] = _VPS_PATH
-    env['HOME'] = env.get('HOME', '/root')
+    # Use the actual user's home directory (systemd service may run as non-root)
+    try:
+        env['HOME'] = pwd.getpwuid(os.getuid()).pw_dir
+    except Exception:
+        env['HOME'] = env.get('HOME', '/root')
     return _sp.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env)
 
 @app.route('/api/system/update/check', methods=['GET'])
@@ -7372,7 +7376,9 @@ def system_update_check():
     app_dir = os.path.dirname(os.path.abspath(__file__))
     try:
         # git fetch origin
-        _run_cmd(['git', 'fetch', 'origin', 'main'], cwd=app_dir, timeout=30)
+        fetch = _run_cmd(['git', 'fetch', 'origin', 'main'], cwd=app_dir, timeout=30)
+        if fetch.returncode != 0:
+            return jsonify({'success': False, 'message': f'Git fetch failed: {fetch.stderr[:200]}'})
         # Get local HEAD
         local = _run_cmd(['git', 'rev-parse', 'HEAD'], cwd=app_dir, timeout=10)
         local_sha = local.stdout.strip()
