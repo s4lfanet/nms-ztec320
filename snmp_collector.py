@@ -21,6 +21,11 @@ from snmp_core import (
     decode_distance, format_uptime, parse_serial,
     detect_vendor_from_sn, detect_model_from_sn, parse_pon_index,
     SNMPCollector,
+    # SNMP registration exports
+    encode_pon_index, encode_sn_to_hex,
+    OID_REG_TYPE_NAME, OID_REG_NAME, OID_REG_DESCRIPTION,
+    OID_REG_SERIAL, OID_REG_ENTRY_STATUS, OID_REG_MODE,
+    OID_UNCFG_SERIAL, OID_UNCFG_PASSWORD, OID_UNCFG_VENDOR,
     # C300 exports
     decode_c300_run_status, decode_c300_onu_rx_power, decode_c300_olt_rx,
     parse_c300_ifindex, parse_c300_ponindex,
@@ -40,6 +45,20 @@ def create_cli_collector(olt):
         olt.ip_address, olt.cli_username, olt.cli_password, port,
         snmp_community=olt.snmp_community or 'public',
         snmp_port=olt.snmp_port or 161)
+
+
+def create_snmp_collector(olt):
+    """Factory: create SNMPCollector from OLT object.
+    Uses read community for GET, write community for SET if configured."""
+    return SNMPCollector(
+        olt.ip_address,
+        olt.snmp_community or 'public',
+        olt.snmp_port or 161)
+
+
+def get_write_community(olt):
+    """Get SNMP write community from OLT, falling back to read community."""
+    return olt.snmp_community_write or olt.snmp_community or 'private'
 
 
 # ==================== COMBINED POLL ====================
