@@ -2840,13 +2840,27 @@ def get_olt_onu_types(olt_id):
         type_list.sort(key=lambda x: x['type_name'])
         result = {'success': True, 'types': type_list, 'source': 'telnet'}
     else:
+        # Try SNMP — collect distinct type names from registered ONUs
+        try:
+            from snmp_core import SNMPCollector
+            sc = SNMPCollector(olt.ip_address, olt.snmp_community or 'public', olt.snmp_port or 161)
+            snmp_types = sc.collect_onu_types_snmp()
+            sc.close()
+            if snmp_types:
+                result = {'success': True, 'types': snmp_types, 'source': 'snmp'}
+                cache_set(cache_key, result, ttl=300)
+                return jsonify(result)
+        except Exception as e:
+            logger.debug(f"SNMP onu-types failed: {e}")
+
+        # Fallback to DB
         db_types = ONUType.query.filter_by(olt_id=olt_id).order_by(ONUType.type_name).all()
         if db_types:
             type_list = [{'type_name': t.type_name, 'pon_type': t.pon_type or 'gpon'}
                          for t in db_types if t.type_name]
             result = {'success': True, 'types': type_list, 'source': 'database'}
         else:
-            # No Telnet, no DB — seed default ZTE ONU types so register wizard works
+            # No Telnet, no SNMP, no DB — seed default ZTE ONU types
             # ZTE C320: ZTEG-* = GPON, ZTE-* = EPON (per ZTE CLI manual)
             default_types = [
                 # GPON types
