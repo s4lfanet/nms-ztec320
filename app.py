@@ -2814,7 +2814,7 @@ def onu_wan_service_delete(onu_id, svc_idx):
 @app.route('/api/olt/<int:olt_id>/onu-types', methods=['GET'])
 @login_required
 def get_olt_onu_types(olt_id):
-    """Get ONU types — try Telnet first, fallback to DB. Cached 5 min (static config)."""
+    """Get ONU types — try Telnet first (if enabled), fallback to DB. Cached 5 min."""
     from cache import cache_get, cache_set
     cache_key = f"olt:{olt_id}:onu-types"
     cached = cache_get(cache_key)
@@ -2825,12 +2825,14 @@ def get_olt_onu_types(olt_id):
         return jsonify({'success': False, 'types': []})
 
     types = []
-    try:
-        from snmp_collector import TelnetCollector, create_cli_collector
-        tc = create_cli_collector(olt)
-        types = tc.collect_onu_types()
-    except Exception as e:
-        logger.debug(f"Telnet onu-types failed: {e}")
+    # Only try Telnet if enabled with credentials
+    if olt.telnet_enabled and olt.cli_username:
+        try:
+            from snmp_collector import TelnetCollector, create_cli_collector
+            tc = create_cli_collector(olt)
+            types = tc.collect_onu_types()
+        except Exception as e:
+            logger.debug(f"Telnet onu-types failed: {e}")
 
     if types:
         type_names = [t.get('type_name', '') for t in types if t.get('type_name')]
@@ -5461,7 +5463,7 @@ def set_uplink_ip(olt_id, uplink_id):
 @app.route('/api/olt/<int:olt_id>/vlans', methods=['GET'])
 @login_required
 def get_olt_vlans(olt_id):
-    """Get VLAN list from OLT for dropdown selection. Cached 5 min (static config)."""
+    """Get VLAN list — try Telnet first, fallback to SNMP, then DB. Cached 5 min."""
     from cache import cache_get, cache_set
     cache_key = f"olt:{olt_id}:vlans"
     cached = cache_get(cache_key)
@@ -5470,10 +5472,40 @@ def get_olt_vlans(olt_id):
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'vlans': []})
-    from snmp_collector import TelnetCollector, create_cli_collector
-    tc = create_cli_collector(olt)
-    vlans = tc.collect_vlans()
-    result = {'success': True, 'vlans': vlans}
+
+    vlans = []
+    source = 'none'
+
+    # Try Telnet first (if enabled)
+    if olt.telnet_enabled and olt.cli_username:
+        try:
+            from snmp_collector import TelnetCollector, create_cli_collector
+            tc = create_cli_collector(olt)
+            vlans = tc.collect_vlans()
+            source = 'telnet'
+        except Exception as e:
+            logger.debug(f"Telnet vlans failed: {e}")
+
+    # Fallback to SNMP
+    if not vlans and olt.snmp_enabled:
+        try:
+            from snmp_core import SNMPCollector
+            collector = SNMPCollector(olt.ip_address, olt.snmp_community, olt.snmp_port)
+            snmp_vlans = collector.collect_vlans_snmp()
+            collector.close()
+            if snmp_vlans:
+                vlans = snmp_vlans
+                source = 'snmp'
+        except Exception as e:
+            logger.debug(f"SNMP vlans failed: {e}")
+
+    # Fallback to DB
+    if not vlans:
+        db_vlans = ONUVlan.query.filter_by(olt_id=olt_id).order_by(ONUVlan.vlan_id).all()
+        vlans = [{'vlan_id': v.vlan_id, 'name': v.vlan_name or ''} for v in db_vlans]
+        source = 'database'
+
+    result = {'success': True, 'vlans': vlans, 'source': source}
     cache_set(cache_key, result, ttl=300)
     return jsonify(result)
 
@@ -5481,7 +5513,7 @@ def get_olt_vlans(olt_id):
 @app.route('/api/olt/<int:olt_id>/speed-profiles', methods=['GET'])
 @login_required
 def get_olt_speed_profiles(olt_id):
-    """Get TCONT, Traffic, and WAN IP profile names from DB. Cached 60s."""
+    """Get TCONT, Traffic, and WAN IP profile names — DB first, SNMP fallback. Cached 60s."""
     from cache import cache_get, cache_set
     cache_key = f"olt:{olt_id}:speed-profiles"
     cached = cache_get(cache_key)
@@ -5495,7 +5527,30 @@ def get_olt_speed_profiles(olt_id):
         if p.dns1 and p.dns1.startswith('cvlan:'):
             cvlan = p.dns1.replace('cvlan:', '')
         wan_ip.append({'name': p.name, 'ip_address': p.ip_address or '', 'cvlan': cvlan})
-    result = {'success': True, 'tcont': tcont, 'traffic': traffic, 'wan_ip_profiles': wan_ip}
+
+    # If DB is empty, try SNMP
+    source = 'database'
+    if not tcont or not traffic:
+        olt = db.session.get(OLT, olt_id)
+        if olt and olt.snmp_enabled:
+            try:
+                from snmp_core import SNMPCollector
+                collector = SNMPCollector(olt.ip_address, olt.snmp_community, olt.snmp_port)
+                if not tcont:
+                    snmp_tcont = collector.collect_tcont_profiles_snmp()
+                    if snmp_tcont:
+                        tcont = [p['name'] for p in snmp_tcont]
+                        source = 'snmp'
+                if not traffic:
+                    snmp_traffic = collector.collect_traffic_profiles_snmp()
+                    if snmp_traffic:
+                        traffic = [p['name'] for p in snmp_traffic]
+                        source = 'snmp' if source == 'snmp' else source
+                collector.close()
+            except Exception as e:
+                logger.debug(f"SNMP speed-profiles fallback failed: {e}")
+
+    result = {'success': True, 'tcont': tcont, 'traffic': traffic, 'wan_ip_profiles': wan_ip, 'source': source}
     cache_set(cache_key, result, ttl=60)
     return jsonify(result)
 

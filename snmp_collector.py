@@ -26,6 +26,11 @@ from snmp_core import (
     OID_REG_TYPE_NAME, OID_REG_NAME, OID_REG_DESCRIPTION,
     OID_REG_SERIAL, OID_REG_ENTRY_STATUS, OID_REG_MODE,
     OID_UNCFG_SERIAL, OID_UNCFG_PASSWORD, OID_UNCFG_MODEL,
+    # SNMP profile OIDs
+    OID_BW_PROFILE_NAME, OID_BW_PROFILE_FIXED, OID_BW_PROFILE_ASSURED,
+    OID_BW_PROFILE_MAXIMUM, OID_BW_PROFILE_TYPE,
+    OID_TRAFFIC_PROFILE_NAME, OID_TRAFFIC_PROFILE_SIR, OID_TRAFFIC_PROFILE_PIR,
+    OID_DOT1Q_VLAN_STATIC_NAME,
     # C300 exports
     decode_c300_run_status, decode_c300_onu_rx_power, decode_c300_olt_rx,
     parse_c300_ifindex, parse_c300_ponindex,
@@ -301,6 +306,42 @@ def poll_olt(olt, progress_cb=None, light=False):
         except Exception as e:
             result['errors'].append(f'CLI: {str(e)}')
             logger.error(f"CLI {olt.name} failed: {e}")
+
+    # ─── SNMP-ONLY CONFIG: If no Telnet, collect config via SNMP ───
+    if not result.get('telnet_ok') and olt.snmp_enabled:
+        try:
+            report(91, 'Collecting config via SNMP (no Telnet)...')
+            snmp_col = SNMPCollector(olt.ip_address, olt.snmp_community, olt.snmp_port)
+            try:
+                vlans = snmp_col.collect_vlans_snmp()
+                if vlans:
+                    result['vlans'] = vlans
+                    logger.info(f'  SNMP: collected {len(vlans)} VLANs')
+                report(92, 'Collecting TCONT profiles via SNMP...')
+                tcont_profiles = snmp_col.collect_tcont_profiles_snmp()
+                if tcont_profiles:
+                    result['speed_profiles'] = {
+                        'tcont': [{'name': p['name'], 'type': p['type'],
+                                    'fixed_bandwidth': p['fixed'],
+                                    'assured_bandwidth': p['assured'],
+                                    'max_bandwidth': p['maximum']} for p in tcont_profiles],
+                        'traffic': [],
+                    }
+                    logger.info(f'  SNMP: collected {len(tcont_profiles)} TCONT profiles')
+                report(93, 'Collecting traffic profiles via SNMP...')
+                traffic_profiles = snmp_col.collect_traffic_profiles_snmp()
+                if traffic_profiles:
+                    if 'speed_profiles' not in result:
+                        result['speed_profiles'] = {'tcont': [], 'traffic': []}
+                    result['speed_profiles']['traffic'] = [
+                        {'name': p['name'], 'sir': p['sir'], 'pir': p['pir']} for p in traffic_profiles
+                    ]
+                    logger.info(f'  SNMP: collected {len(traffic_profiles)} traffic profiles')
+                report(95, 'SNMP config collection done')
+            finally:
+                snmp_col.close()
+        except Exception as e:
+            logger.warning(f'SNMP config collection failed: {e}')
 
     report(98, 'Poll complete')
     return result

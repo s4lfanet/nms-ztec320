@@ -49,6 +49,27 @@ OID_UNCFG_RID = '1.3.6.1.4.1.3902.1012.3.13.3.1.3'          # zxGponUnCfgSnOntRI
 OID_UNCFG_STATE = '1.3.6.1.4.1.3902.1012.3.13.3.1.6'        # zxGponUnCfgSnOntState — state
 OID_UNCFG_MODEL = '1.3.6.1.4.1.3902.1012.3.13.3.1.10'       # ONU type/model (extended column)
 
+# ==================== ZTE C320 SNMP Profile OIDs ====================
+# zxGponBandwidthProfileTable (.3.26.1) — TCONT profile (DBA bandwidth allocation)
+# Index: profile index (Type 7 composite: 0x7{shelf:4}{0:8}{profileNo:16})
+OID_BW_PROFILE_NAME = '1.3.6.1.4.1.3902.1012.3.26.1.1.2'       # zxGponBWProfileName (OctetString)
+OID_BW_PROFILE_FIXED = '1.3.6.1.4.1.3902.1012.3.26.1.1.3'      # Fixed BW (kbps)
+OID_BW_PROFILE_ASSURED = '1.3.6.1.4.1.3902.1012.3.26.1.1.4'    # Assured BW (kbps)
+OID_BW_PROFILE_MAXIMUM = '1.3.6.1.4.1.3902.1012.3.26.1.1.5'    # Maximum BW (kbps)
+OID_BW_PROFILE_TYPE = '1.3.6.1.4.1.3902.1012.3.26.1.1.6'       # TCONT type (1-5)
+
+# zxGponTrafficProfileTable (.3.26.2) — GEM port traffic profile (SIR/PIR rate)
+OID_TRAFFIC_PROFILE_NAME = '1.3.6.1.4.1.3902.1012.3.26.2.1.2'  # zxGponTrafficProfileName (OctetString)
+OID_TRAFFIC_PROFILE_SIR = '1.3.6.1.4.1.3902.1012.3.26.2.1.3'   # SIR (kbps)
+OID_TRAFFIC_PROFILE_PIR = '1.3.6.1.4.1.3902.1012.3.26.2.1.4'   # PIR (kbps)
+
+# IEEE 802.1Q VLAN — dot1qVlanStaticTable (standard MIB, supported by ZTE)
+OID_DOT1Q_VLAN_STATIC_NAME = '1.3.6.1.2.1.17.7.1.4.3.1.1'      # VLAN name (OctetString)
+OID_DOT1Q_VLAN_STATIC_EGRESS = '1.3.6.1.2.1.17.7.1.4.3.1.2'    # Egress ports (HexString)
+OID_DOT1Q_VLAN_STATIC_ROW_STATUS = '1.3.6.1.2.1.17.7.1.4.3.1.5' # RowStatus
+OID_DOT1Q_VLAN_CURRENT_EGRESS = '1.3.6.1.2.1.17.7.1.4.2.1.1'   # Current egress ports
+OID_DOT1Q_FDB_ID = '1.3.6.1.2.1.17.7.1.4.3.1.3'                # FDB ID
+
 
 def encode_pon_index(slot, port):
     """Encode ZTE C320 PON index from slot and port (both 1-indexed CLI values).
@@ -1500,3 +1521,110 @@ class SNMPCollector:
         except Exception as e:
             logger.error(f'SNMP scan unconfigured failed: {e}')
             return []
+
+    # ==================== SNMP Profile/Config Collection ====================
+
+    def collect_tcont_profiles_snmp(self):
+        """Collect TCONT (bandwidth) profile names via SNMP walk.
+        Returns list of {'name': str, 'fixed': int, 'assured': int, 'maximum': int, 'type': int}."""
+        try:
+            return self._run(self._collect_tcont_profiles_async())
+        except Exception as e:
+            logger.error(f'SNMP TCONT profile collection failed: {e}')
+            return []
+
+    async def _collect_tcont_profiles_async(self):
+        name_raw, fixed_raw, assured_raw, max_raw, type_raw = \
+            await asyncio.gather(
+                self._bulk_walk(OID_BW_PROFILE_NAME),
+                self._bulk_walk(OID_BW_PROFILE_FIXED),
+                self._bulk_walk(OID_BW_PROFILE_ASSURED),
+                self._bulk_walk(OID_BW_PROFILE_MAXIMUM),
+                self._bulk_walk(OID_BW_PROFILE_TYPE),
+            )
+        profiles = []
+        for oid_str, val, val_str in name_raw:
+            suffix = oid_str[len(OID_BW_PROFILE_NAME):]
+            name = val_str.strip().strip('"')
+            if not name:
+                continue
+            fixed = _extract_int(fixed_raw, suffix, OID_BW_PROFILE_FIXED)
+            assured = _extract_int(assured_raw, suffix, OID_BW_PROFILE_ASSURED)
+            maximum = _extract_int(max_raw, suffix, OID_BW_PROFILE_MAXIMUM)
+            ptype = _extract_int(type_raw, suffix, OID_BW_PROFILE_TYPE)
+            profiles.append({
+                'name': name, 'fixed': fixed, 'assured': assured,
+                'maximum': maximum, 'type': ptype,
+            })
+        logger.info(f'SNMP TCONT profiles: {len(profiles)}')
+        return profiles
+
+    def collect_traffic_profiles_snmp(self):
+        """Collect traffic profile names via SNMP walk.
+        Returns list of {'name': str, 'sir': int, 'pir': int}."""
+        try:
+            return self._run(self._collect_traffic_profiles_async())
+        except Exception as e:
+            logger.error(f'SNMP traffic profile collection failed: {e}')
+            return []
+
+    async def _collect_traffic_profiles_async(self):
+        name_raw, sir_raw, pir_raw = \
+            await asyncio.gather(
+                self._bulk_walk(OID_TRAFFIC_PROFILE_NAME),
+                self._bulk_walk(OID_TRAFFIC_PROFILE_SIR),
+                self._bulk_walk(OID_TRAFFIC_PROFILE_PIR),
+            )
+        profiles = []
+        for oid_str, val, val_str in name_raw:
+            suffix = oid_str[len(OID_TRAFFIC_PROFILE_NAME):]
+            name = val_str.strip().strip('"')
+            if not name:
+                continue
+            sir = _extract_int(sir_raw, suffix, OID_TRAFFIC_PROFILE_SIR)
+            pir = _extract_int(pir_raw, suffix, OID_TRAFFIC_PROFILE_PIR)
+            profiles.append({'name': name, 'sir': sir, 'pir': pir})
+        logger.info(f'SNMP traffic profiles: {len(profiles)}')
+        return profiles
+
+    def collect_vlans_snmp(self):
+        """Collect VLAN list via SNMP walk on dot1qVlanStaticTable.
+        Returns list of {'vlan_id': int, 'name': str}."""
+        try:
+            return self._run(self._collect_vlans_async())
+        except Exception as e:
+            logger.error(f'SNMP VLAN collection failed: {e}')
+            return []
+
+    async def _collect_vlans_async(self):
+        name_raw = await self._bulk_walk(OID_DOT1Q_VLAN_STATIC_NAME)
+        vlans = []
+        for oid_str, val, val_str in name_raw:
+            suffix = oid_str[len(OID_DOT1Q_VLAN_STATIC_NAME):]
+            parts = suffix.lstrip('.').split('.')
+            if not parts:
+                continue
+            try:
+                vlan_id = int(parts[-1])
+            except ValueError:
+                continue
+            if vlan_id == 1:
+                continue
+            name = val_str.strip().strip('"')
+            vlans.append({'vlan_id': vlan_id, 'name': name})
+        logger.info(f'SNMP VLANs: {len(vlans)}')
+        return vlans
+
+
+def _extract_int(raw_list, suffix, base_oid):
+    """Helper: extract integer value from walk results matching the given suffix."""
+    for oid_str, val, val_str in raw_list:
+        if oid_str[len(base_oid):] == suffix:
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                try:
+                    return int(val_str)
+                except (ValueError, TypeError):
+                    return 0
+    return 0
