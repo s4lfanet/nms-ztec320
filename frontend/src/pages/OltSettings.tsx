@@ -49,7 +49,7 @@ export function OltSettings() {
         confirmLabel: 'Delete', variant: 'danger',
       });
       if (!ok) throw new Error('cancelled');
-      const res = await fetch(`/api/olt/${id}`, { method: 'DELETE', credentials: 'include' });
+      const res = await fetch(`/api/olt/${id}`, { method: 'DELETE', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) throw new Error(data.message || `Delete failed (${res.status})`);
       return data;
@@ -1100,17 +1100,19 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
       const vendor = 'zte';
       const url = olt ? `/api/olt/${olt.id}` : '/api/olt';
       const method = olt ? 'PUT' : 'POST';
+      // If no CLI username provided, disable Telnet (SNMP-only mode)
+      const telnetEnabled = !!form.cli_username.trim();
       const savePayload: Record<string, unknown> = {
           name: form.name, ip_address: form.ip_address, model, vendor,
           snmp_community: form.snmp_community, snmp_community_write: form.snmp_community_write,
           snmp_port: parseInt(form.snmp_port),
-          telnet_enabled: true, telnet_port: parseInt(form.telnet_port),
+          telnet_enabled: telnetEnabled, telnet_port: parseInt(form.telnet_port),
           ssh_enabled: false, ssh_port: 22,
           cli_username: form.cli_username,
       };
       if (form.cli_password) savePayload.cli_password = form.cli_password;
       const res = await fetch(url, {
-        method, headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'include',
         body: JSON.stringify(savePayload),
       });
       const d = await res.json();
@@ -1233,6 +1235,9 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
               {!testing && testResult && <span className="ml-2">{testStatusBadge(testResult.telnet)}</span>}
               {!testing && !testResult && telnetStatus && <span className="ml-2">{statusBadge(telnetStatus)}</span>}
             </div>
+            {!form.cli_username.trim() && (
+              <p className="text-xs text-tx3 italic">Leave username empty for SNMP-only mode (Telnet disabled).</p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="label-sm mb-1">Username</label>
