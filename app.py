@@ -4496,7 +4496,6 @@ def test_olt_connection(olt_id):
 
     data = request.get_json() or {}
     results = {'snmp': {'ok': False, 'message': ''}, 'telnet': {'ok': False, 'message': ''}, 'web': {'ok': False, 'message': ''}}
-    both_ok = True
 
     ip = data.get('ip_address', olt.ip_address)
 
@@ -4518,13 +4517,11 @@ def test_olt_connection(olt_id):
         else:
             results['snmp'] = {'ok': False, 'message': 'No response from SNMP'}
             olt.snmp_status = 'disconnected'
-            both_ok = False
     except Exception as e:
         results['snmp'] = {'ok': False, 'message': f'SNMP Error: {str(e)[:80]}'}
         olt.snmp_status = 'disconnected'
-        both_ok = False
 
-    # Test Telnet
+    # Test Telnet (optional — skip if no credentials)
     cli_user = data.get('cli_username', olt.cli_username)
     cli_pass = data.get('cli_password', olt.cli_password)
     # If password is masked ('***'), use stored password from DB
@@ -4546,13 +4543,13 @@ def test_olt_connection(olt_id):
             else:
                 results['telnet'] = {'ok': False, 'message': 'Connection failed'}
                 olt.telnet_status = 'disconnected'
-                both_ok = False
         except Exception as e:
             results['telnet'] = {'ok': False, 'message': f'Telnet Error: {str(e)[:80]}'}
             olt.telnet_status = 'disconnected'
-            both_ok = False
     else:
-        both_ok = False
+        # No Telnet credentials — SNMP-only mode, not an error
+        results['telnet'] = {'ok': None, 'message': 'Not configured (SNMP-only)'}
+        olt.telnet_status = 'not_configured'
 
     # Test Web (HTTP Basic Auth)
     web_port = int(data.get('web_port', olt.web_port or 80))
@@ -4577,10 +4574,13 @@ def test_olt_connection(olt_id):
         except Exception as e:
             results['web'] = {'ok': False, 'message': f'Web Error: {str(e)[:80]}'}
 
-    # Update connection status
-    if both_ok:
+    # Update connection status — online if SNMP is OK (Telnet is optional)
+    if results['snmp']['ok']:
         olt.is_online = True
         olt.connection_status = 'connected'
+    else:
+        olt.is_online = False
+        olt.connection_status = 'disconnected'
     db.session.commit()
     return jsonify({'success': True, 'results': results})
 
@@ -4610,7 +4610,7 @@ def test_new_olt_connection():
     except Exception as e:
         results['snmp'] = {'ok': False, 'message': f'SNMP Error: {str(e)[:80]}'}
 
-    # Test Telnet
+    # Test Telnet (optional — skip if no credentials)
     cli_user = data.get('cli_username', '')
     cli_pass = data.get('cli_password', '')
     # Ignore masked password placeholder
@@ -4629,6 +4629,9 @@ def test_new_olt_connection():
                 results['telnet'] = {'ok': False, 'message': 'Connection failed'}
         except Exception as e:
             results['telnet'] = {'ok': False, 'message': f'Telnet Error: {str(e)[:80]}'}
+    else:
+        # No Telnet credentials — SNMP-only mode
+        results['telnet'] = {'ok': None, 'message': 'Not configured (SNMP-only)'}
 
     # Test Web (HTTP Basic Auth)
     web_port = int(data.get('web_port', 80))

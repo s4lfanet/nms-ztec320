@@ -11,7 +11,7 @@ import {
   Server, Plus, RefreshCw, Settings, Trash2, Edit3,
   Thermometer, Clock, CheckCircle, XCircle, Loader2,
   Activity, Network, Terminal, X, Save, Download, ArrowRightLeft, CheckSquare, Square, Package,
-  History, ToggleLeft, ToggleRight, HardDriveDownload, Globe,
+  History, ToggleLeft, ToggleRight, HardDriveDownload, Globe, Minus,
 } from 'lucide-react';
 
 export function OltSettings() {
@@ -1031,7 +1031,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
   });
   const [snmpStatus, setSnmpStatus] = useState<string>('');
   const [telnetStatus, setTelnetStatus] = useState<string>('');
-  const [testResult, setTestResult] = useState<{ snmp: { ok: boolean; message: string }; telnet: { ok: boolean; message: string } } | null>(null);
+  const [testResult, setTestResult] = useState<{ snmp: { ok: boolean | null; message: string }; telnet: { ok: boolean | null; message: string } } | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingOlt, setLoadingOlt] = useState(false);
@@ -1083,7 +1083,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
         if (d.results.telnet) setTelnetStatus(d.results.telnet.ok ? 'connected' : 'disconnected');
         const sOk = d.results.snmp?.ok;
         const tOk = d.results.telnet?.ok;
-        toast[sOk || tOk ? 'success' : 'error'](`SNMP: ${sOk ? 'OK' : 'Failed'} | Telnet: ${tOk ? 'OK' : 'Failed'}`);
+        toast[sOk ? 'success' : 'error'](`SNMP: ${sOk ? 'OK' : 'Failed'} | Telnet: ${tOk === null ? 'N/A' : tOk ? 'OK' : 'Failed'}`);
       } else {
         toast.error('Test failed');
       }
@@ -1131,8 +1131,8 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
           if (testD.results) {
             const sOk = testD.results.snmp?.ok;
             const tOk = testD.results.telnet?.ok;
-            toast[sOk || tOk ? 'success' : 'warning'](
-              `SNMP: ${sOk ? 'Connected' : 'Failed'} | Telnet: ${tOk ? 'Connected' : 'Failed'}`
+            toast[sOk ? 'success' : 'warning'](
+              `SNMP: ${sOk ? 'Connected' : 'Failed'} | Telnet: ${tOk === null ? 'N/A (SNMP-only)' : tOk ? 'Connected' : 'Failed'}`
             );
           }
         } catch { /* ignore */ }
@@ -1151,11 +1151,14 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
   const statusBadge = (status: string) => {
     if (status === 'connected') return <span className="text-success text-xs flex items-center gap-1"><CheckCircle size={12} /> Connected</span>;
     if (status === 'disconnected') return <span className="text-tx3 text-xs flex items-center gap-1"><XCircle size={12} /> Disconnected</span>;
+    if (status === 'not_configured') return <span className="text-tx3 text-xs flex items-center gap-1"><Minus size={12} /> N/A</span>;
     return null;
   };
 
-  const testStatusBadge = (result: { ok: boolean; message: string } | null) => {
+  const testStatusBadge = (result: { ok: boolean | null; message: string } | null) => {
     if (!result) return null;
+    if (result.ok === null)
+      return <span className="text-tx3 text-xs flex items-center gap-1"><Minus size={12} /> {result.message}</span>;
     return result.ok
       ? <span className="text-success text-xs flex items-center gap-1"><CheckCircle size={12} /> {result.message}</span>
       : <span className="text-danger text-xs flex items-center gap-1"><XCircle size={12} /> {result.message}</span>;
@@ -1226,26 +1229,26 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             </div>
           </div>
 
-          {/* Telnet Section */}
+          {/* Telnet Section (Optional) */}
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd space-y-3">
             <div className="flex items-center gap-2">
-              <Terminal size={16} className="text-accent" />
-              <span className="text-sm font-semibold">Telnet / CLI</span>
+              <Terminal size={16} className={form.cli_username.trim() ? 'text-accent' : 'text-tx3'} />
+              <span className="text-sm font-semibold">Telnet / CLI <span className="text-tx3 font-normal text-xs">(optional)</span></span>
               {testing && <Loader2 size={14} className="text-accent animate-spin ml-2" />}
               {!testing && testResult && <span className="ml-2">{testStatusBadge(testResult.telnet)}</span>}
               {!testing && !testResult && telnetStatus && <span className="ml-2">{statusBadge(telnetStatus)}</span>}
             </div>
             {!form.cli_username.trim() && (
-              <p className="text-xs text-tx3 italic">Leave username empty for SNMP-only mode (Telnet disabled).</p>
+              <p className="text-xs text-tx3 italic">Leave empty for SNMP-only mode. Fill in to enable Telnet/CLI access.</p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="label-sm mb-1">Username</label>
-                <input type="text" value={form.cli_username} onChange={e => update('cli_username', e.target.value)} placeholder="Username" className="input-field" />
+                <input type="text" value={form.cli_username} onChange={e => update('cli_username', e.target.value)} placeholder="Optional" className="input-field" />
               </div>
               <div>
                 <label className="label-sm mb-1">Password</label>
-                <input type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder={olt ? '•••• (unchanged)' : 'Password'} className="input-field" />
+                <input type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder={olt ? '•••• (unchanged)' : 'Optional'} className="input-field" />
               </div>
               <div>
                 <label className="label-sm mb-1">Telnet Port</label>
