@@ -700,7 +700,6 @@ export interface OltFullData {
   connection_status: string;
   snmp_status: string;
   telnet_status: string;
-  register_mode: string;
 }
 
 export interface TestConnectionResult {

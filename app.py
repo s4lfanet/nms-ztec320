@@ -1107,7 +1107,7 @@ def migrate_onu(onu_id):
     if not serial:
         return jsonify({'success': False, 'message': 'ONU has no serial number — cannot re-register'})
 
-    use_snmp = (olt.register_mode or 'telnet') == 'snmp' and olt.snmp_enabled
+    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
 
     if use_snmp:
         from snmp_collector import create_snmp_collector, get_write_community
@@ -1824,7 +1824,7 @@ def onu_action(onu_id):
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
 
-    use_snmp = (olt.register_mode or 'telnet') == 'snmp' and olt.snmp_enabled
+    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
 
     # SNMP mode: handle delete/deregister via SNMP SET
     if use_snmp and action == 'delete':
@@ -3963,11 +3963,6 @@ def provision_unified():
     olt = db.session.get(OLT, olt_id) if olt_id else None
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
-    if not olt.telnet_enabled or not olt.cli_username:
-        return jsonify({'success': False, 'message': 'OLT CLI access not configured'})
-
-    from snmp_collector import create_cli_collector
-    tc = create_cli_collector(olt)
 
     frame = data.get('frame', 1)
     slot = data.get('slot', 1)
@@ -3975,16 +3970,46 @@ def provision_unified():
     onu_id = data.get('onu_id', 1)
     serial = data.get('serial', '')
     onu_type = data.get('onu_type', 'All')
-    tcont_profile = data.get('tcont_profile', '1G')
-    traffic_profile = data.get('traffic_profile', '')
     name = data.get('name', '')
     description = data.get('description', '')
+    technician_id = data.get('technician_id')
+
+    # Check register mode from request — SNMP or Telnet
+    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
+
+    if use_snmp:
+        from snmp_collector import create_snmp_collector, get_write_community
+        collector = create_snmp_collector(olt)
+        wc = get_write_community(olt)
+        success, msg = collector.register_onu_snmp(
+            frame, slot, port, onu_id, serial,
+            onu_type=onu_type, name=name, description=description,
+            write_community=wc,
+        )
+        collector.close()
+        if success:
+            log_action('onu_register', 'onu', target=f'gpon-onu_{frame}/{slot}/{port}:{onu_id}',
+                       detail=f'Registered SN={serial} on {olt.name} as {onu_type} (SNMP)')
+            if technician_id:
+                onu = ONU.query.filter_by(olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id).first()
+                if onu:
+                    onu.technician_id = technician_id
+                    db.session.commit()
+        return jsonify({'success': success, 'message': msg})
+
+    if not olt.telnet_enabled or not olt.cli_username:
+        return jsonify({'success': False, 'message': 'OLT CLI access not configured'})
+
+    from snmp_collector import create_cli_collector
+    tc = create_cli_collector(olt)
+
+    tcont_profile = data.get('tcont_profile', '1G')
+    traffic_profile = data.get('traffic_profile', '')
     services = data.get('services', [])
     use_veip = data.get('use_veip')  # None = auto-detect
     wifi_config = data.get('wifi_config')  # None = no wifi
     tr069_config = data.get('tr069_config')  # None = no tr069
     sla_profile = data.get('sla_profile', '')  # EPON SLA profile for speed limiting
-    technician_id = data.get('technician_id')
 
     if wifi_config and isinstance(wifi_config, dict):
         ssids_log = wifi_config.get('ssids', [])
@@ -4054,9 +4079,6 @@ def pre_register_onu():
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
 
-    from snmp_collector import TelnetCollector, create_cli_collector
-    tc = create_cli_collector(olt)
-
     frame = data.get('frame', 1)
     slot = data.get('slot', 1)
     port = data.get('port', 1)
@@ -4074,6 +4096,33 @@ def pre_register_onu():
     sla_profile = data.get('sla_profile', '') or extra.get('sla_profile', '')
     if traffic_profile and 'traffic_profile' not in extra:
         extra['traffic_profile'] = traffic_profile
+
+    # Check register mode from request — SNMP or Telnet
+    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
+
+    if use_snmp:
+        from snmp_collector import create_snmp_collector, get_write_community
+        collector = create_snmp_collector(olt)
+        wc = get_write_community(olt)
+        success, msg = collector.register_onu_snmp(
+            frame, slot, port, onu_id, serial,
+            onu_type=onu_type, name=name, description=description,
+            write_community=wc,
+        )
+        collector.close()
+        if success:
+            log_action('onu_register', 'onu', target=f'gpon-onu_{frame}/{slot}/{port}:{onu_id}', detail=f'Registered SN={serial} on {olt.name} as {onu_type} (SNMP)')
+            technician_id = data.get('technician_id')
+            if technician_id:
+                onu = ONU.query.filter_by(olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id).first()
+                if onu:
+                    onu.technician_id = technician_id
+                    db.session.commit()
+        return jsonify({'success': success, 'message': msg})
+
+    # Telnet mode (original)
+    from snmp_collector import TelnetCollector, create_cli_collector
+    tc = create_cli_collector(olt)
 
     # Log WiFi config from extra.ssids for debugging
     ssids_raw = extra.get('ssids', [])
@@ -4147,8 +4196,7 @@ def scan_unconfigured():
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
 
-    # Check register mode — SNMP or Telnet
-    use_snmp = (olt.register_mode or 'telnet') == 'snmp' and olt.snmp_enabled
+    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
 
     if use_snmp:
         from snmp_collector import create_snmp_collector, get_write_community
@@ -4297,8 +4345,7 @@ def provision_ont():
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
 
-    # Check register mode — SNMP or Telnet
-    use_snmp = (olt.register_mode or 'telnet') == 'snmp' and olt.snmp_enabled
+    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
 
     if use_snmp:
         from snmp_collector import create_snmp_collector, get_write_community
@@ -6433,7 +6480,6 @@ def create_olt():
         cli_username=data.get('cli_username', ''),
         cli_password=data.get('cli_password', ''),
         polling_interval=data.get('polling_interval', 300),
-        register_mode=data.get('register_mode', 'telnet'),
     )
     db.session.add(olt)
     db.session.commit()
@@ -6476,7 +6522,6 @@ def get_olt(olt_id):
         'connection_status': olt.connection_status,
         'snmp_status': olt.snmp_status,
         'telnet_status': olt.telnet_status,
-        'register_mode': olt.register_mode or 'telnet',
     })
 
 
@@ -6489,7 +6534,7 @@ def update_olt(olt_id):
     data = request.get_json()
     for field in ['name', 'ip_address', 'model', 'vendor', 'snmp_port',
                   'telnet_enabled', 'telnet_port', 'web_port', 'ssh_enabled', 'ssh_port',
-                  'cli_username', 'polling_interval', 'monitoring_enabled', 'register_mode']:
+                  'cli_username', 'polling_interval', 'monitoring_enabled']:
         if field in data:
             setattr(olt, field, data[field])
     # Only update password if a real value is provided (not masked placeholder)

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, type TechnicianData } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -32,6 +32,7 @@ interface WizardData {
   template: string;
   extra: Record<string, string>;
   technicianId: number | null;
+  registerMode: 'telnet' | 'snmp';
 }
 
 const STEPS = [
@@ -403,11 +404,16 @@ function generateRegisterScript(d: WizardData): string {
 
 export function RegisterWizard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [step, setStep] = useState(1);
-  const [data, setData] = useState<WizardData>({
-    oltId: 0, selectedOnus: [], onuType: 'All', namePrefix: '',
-    description: '', tcontProfile: '', trafficProfile: '', slaProfile: '', vlan: 100, configure: true,
-    template: 'bridge', extra: {}, technicianId: null,
+  const [data, setData] = useState<WizardData>(() => {
+    const state = location.state as { prefillRegisterMode?: 'telnet' | 'snmp' } | null;
+    return {
+      oltId: 0, selectedOnus: [], onuType: 'All', namePrefix: '',
+      description: '', tcontProfile: '', trafficProfile: '', slaProfile: '', vlan: 100, configure: true,
+      template: 'bridge', extra: {}, technicianId: null,
+      registerMode: state?.prefillRegisterMode || 'telnet',
+    };
   });
   const [scanning, setScanning] = useState(false);
   const [unconfiguredOnus, setUnconfiguredOnus] = useState<UnconfiguredOnu[]>([]);
@@ -516,7 +522,7 @@ export function RegisterWizard() {
     try {
       const res = await fetch('/api/scan-unconfigured', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ olt_id: data.oltId }),
+        body: JSON.stringify({ olt_id: data.oltId, register_mode: data.registerMode }),
       });
       const d = await res.json();
       if (d.success && d.onus) {
@@ -576,6 +582,7 @@ export function RegisterWizard() {
             technician_id: data.technicianId,
             pon_port: onu.pon_port,
             is_epon: isEpon,
+            register_mode: data.registerMode,
           }),
         });
         const d = await r.json();
@@ -681,6 +688,33 @@ export function RegisterWizard() {
               </button>
             ))}
           </div>
+
+          {/* Registration Mode */}
+          {data.oltId > 0 && (
+            <div className="pt-2">
+              <label className="label-sm mb-2">Registration Mode</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => update('registerMode', 'telnet')}
+                  className={cn('flex items-center gap-2 p-2.5 rounded-lg border text-left transition',
+                    data.registerMode === 'telnet' ? 'border-accent bg-accent/10' : 'border-brd hover:border-tx3')}>
+                  <Wrench size={16} className={data.registerMode === 'telnet' ? 'text-accent' : 'text-tx3'} />
+                  <div>
+                    <div className="text-sm font-medium">Telnet / CLI</div>
+                    <div className="text-xs text-tx3">Full provisioning</div>
+                  </div>
+                </button>
+                <button type="button" onClick={() => update('registerMode', 'snmp')}
+                  className={cn('flex items-center gap-2 p-2.5 rounded-lg border text-left transition',
+                    data.registerMode === 'snmp' ? 'border-accent bg-accent/10' : 'border-brd hover:border-tx3')}>
+                  <Radio size={16} className={data.registerMode === 'snmp' ? 'text-accent' : 'text-tx3'} />
+                  <div>
+                    <div className="text-sm font-medium">SNMP</div>
+                    <div className="text-xs text-tx3">SNMP SET (write community)</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
