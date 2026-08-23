@@ -25,7 +25,7 @@ from snmp_core import (
     encode_pon_index, encode_sn_to_hex,
     OID_REG_TYPE_NAME, OID_REG_NAME, OID_REG_DESCRIPTION,
     OID_REG_SERIAL, OID_REG_ENTRY_STATUS, OID_REG_MODE,
-    OID_UNCFG_SERIAL, OID_UNCFG_PASSWORD, OID_UNCFG_VENDOR,
+    OID_UNCFG_SERIAL, OID_UNCFG_PASSWORD, OID_UNCFG_MODEL,
     # C300 exports
     decode_c300_run_status, decode_c300_onu_rx_power, decode_c300_olt_rx,
     parse_c300_ifindex, parse_c300_ponindex,
