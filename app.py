@@ -5818,13 +5818,40 @@ def add_onu_type(olt_id):
     type_name = data.get('type_name', '')
     if not type_name:
         return jsonify({'success': False, 'message': 'Type name is required'})
-    from snmp_collector import TelnetCollector, create_cli_collector
-    tc = create_cli_collector(olt)
     interfaces = data.get('interfaces', [])
     if isinstance(interfaces, str):
         interfaces = [i.strip() for i in interfaces.split(',') if i.strip()]
-    success, msg = tc.add_onu_type(
-        type_name,
+
+    # Try Telnet push to OLT if enabled, but always save to DB
+    telnet_msg = ''
+    if olt.telnet_enabled and olt.cli_username:
+        try:
+            from snmp_collector import TelnetCollector, create_cli_collector
+            tc = create_cli_collector(olt)
+            telnet_ok, telnet_msg = tc.add_onu_type(
+                type_name,
+                pon_type=data.get('pon_type', 'gpon'),
+                description=data.get('description', ''),
+                max_tcont=int(data.get('max_tcont', 8) or 8),
+                max_gem=int(data.get('max_gem', 32) or 32),
+                max_switch=int(data.get('max_switch', 8) or 8),
+                max_flow=int(data.get('max_flow', 32) or 32),
+                max_ip_host=int(data.get('max_ip_host', 5) or 5),
+                interfaces=interfaces,
+            )
+        except Exception as e:
+            telnet_ok = False
+            telnet_msg = str(e)
+    else:
+        telnet_ok = True  # No Telnet — skip, not an error
+
+    # Always save to DB
+    existing = ONUType.query.filter_by(olt_id=olt_id, type_name=type_name).first()
+    if existing:
+        return jsonify({'success': False, 'message': f'ONU type {type_name} already exists'})
+
+    otype = ONUType(
+        olt_id=olt_id, type_name=type_name,
         pon_type=data.get('pon_type', 'gpon'),
         description=data.get('description', ''),
         max_tcont=int(data.get('max_tcont', 8) or 8),
@@ -5832,31 +5859,25 @@ def add_onu_type(olt_id):
         max_switch=int(data.get('max_switch', 8) or 8),
         max_flow=int(data.get('max_flow', 32) or 32),
         max_ip_host=int(data.get('max_ip_host', 5) or 5),
-        interfaces=interfaces,
+        max_veip=int(data.get('max_veip', 0) or 0),
+        interfaces=','.join(interfaces) if interfaces else '',
     )
-    if success:
-        otype = ONUType(
-            olt_id=olt_id, type_name=type_name,
-            pon_type=data.get('pon_type', 'gpon'),
-            description=data.get('description', ''),
-            max_tcont=int(data.get('max_tcont', 8) or 8),
-            max_gem=int(data.get('max_gem', 32) or 32),
-            max_switch=int(data.get('max_switch', 8) or 8),
-            max_flow=int(data.get('max_flow', 32) or 32),
-            max_ip_host=int(data.get('max_ip_host', 5) or 5),
-            max_veip=int(data.get('max_veip', 0) or 0),
-            interfaces=','.join(interfaces) if interfaces else '',
-        )
-        db.session.add(otype)
-        db.session.commit()
-        log_action('onu_type_create', 'olt', target=olt.name, detail=f'Type {type_name}')
-        try:
-            from cache import cache_clear
-            cache_clear(f"olt:{olt_id}:onu-types")
-            cache_clear(f"olt:{olt_id}:onu-types-full")
-        except Exception:
-            pass
-    return jsonify({'success': success, 'message': msg})
+    db.session.add(otype)
+    db.session.commit()
+    log_action('onu_type_create', 'olt', target=olt.name, detail=f'Type {type_name}')
+    try:
+        from cache import cache_clear
+        cache_clear(f"olt:{olt_id}:onu-types")
+        cache_clear(f"olt:{olt_id}:onu-types-full")
+    except Exception:
+        pass
+
+    msg = 'ONU type saved'
+    if not telnet_ok:
+        msg += f' (saved to DB, Telnet push failed: {telnet_msg[:100]})'
+    elif olt.telnet_enabled:
+        msg = 'ONU type saved and pushed to OLT'
+    return jsonify({'success': True, 'message': msg})
 
 
 @app.route('/api/olt/<int:olt_id>/onu-type/<int:type_id>/delete', methods=['POST'])
