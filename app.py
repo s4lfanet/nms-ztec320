@@ -1079,8 +1079,8 @@ def migrate_onu(onu_id):
     onu_id_mode = data.get('onu_id_mode', 'auto')
 
     olt = onu.olt
-    if not olt or not olt.cli_username:
-        return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'})
 
     # Calculate new ONU ID
     if onu_id_mode == 'auto':
@@ -1106,6 +1106,50 @@ def migrate_onu(onu_id):
 
     if not serial:
         return jsonify({'success': False, 'message': 'ONU has no serial number — cannot re-register'})
+
+    use_snmp = (olt.register_mode or 'telnet') == 'snmp' and olt.snmp_enabled
+
+    if use_snmp:
+        from snmp_collector import create_snmp_collector, get_write_community
+        collector = create_snmp_collector(olt)
+        wc = get_write_community(olt)
+
+        # Step 1: Deregister from old PON
+        ok1, msg1 = collector.deregister_onu_snmp(old_frame, old_slot, old_port, old_id, write_community=wc)
+        if not ok1:
+            collector.close()
+            return jsonify({'success': False, 'message': f'Deregister failed: {msg1}'})
+
+        # Step 2: Register on new PON
+        ok2, msg2 = collector.register_onu_snmp(
+            onu.frame, new_card, new_pon, new_oid, serial,
+            onu_type=onu_type, name=onu_name, description=onu_desc,
+            write_community=wc,
+        )
+        collector.close()
+        if not ok2:
+            # Try to re-register on old PON as rollback
+            collector2 = create_snmp_collector(olt)
+            collector2.register_onu_snmp(old_frame, old_slot, old_port, old_id, serial,
+                                         onu_type=onu_type, name=onu_name, description=onu_desc,
+                                         write_community=wc)
+            collector2.close()
+            return jsonify({'success': False, 'message': f'Register on new PON failed: {msg2}. Rolled back to old PON.'})
+
+        # Step 3: Update DB
+        onu.slot = new_card
+        onu.port = new_pon
+        onu.onu_id = new_oid
+        onu.onu_id_str = f'gpon-onu_{onu.frame}/{new_card}/{new_pon}:{new_oid}'
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f'ONU migrated from {old_frame}/{old_slot}/{old_port}:{old_id} to {onu.frame}/{new_card}/{new_pon}:{new_oid} (SNMP)'
+        })
+
+    if not olt.cli_username:
+        return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
 
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
@@ -1777,7 +1821,28 @@ def onu_action(onu_id):
     action = data.get('action')
     olt = onu.olt
 
-    if not olt or not olt.telnet_enabled:
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'})
+
+    use_snmp = (olt.register_mode or 'telnet') == 'snmp' and olt.snmp_enabled
+
+    # SNMP mode: handle delete/deregister via SNMP SET
+    if use_snmp and action == 'delete':
+        if not current_user.has_permission('delete_onu'):
+            return jsonify({'success': False, 'message': 'Permission denied: delete_onu'}), 403
+        from snmp_collector import create_snmp_collector, get_write_community
+        collector = create_snmp_collector(olt)
+        wc = get_write_community(olt)
+        olt_id_for_sync = onu.olt_id
+        success, msg = collector.deregister_onu_snmp(onu.frame, onu.slot, onu.port, onu.onu_id, write_community=wc)
+        collector.close()
+        if success:
+            db.session.delete(onu)
+            db.session.commit()
+            _auto_sync_olt(olt_id_for_sync, light=False, delay=3)
+        return jsonify({'success': success, 'message': msg})
+
+    if not olt.telnet_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
 
     from snmp_collector import TelnetCollector, create_cli_collector
@@ -4082,6 +4147,68 @@ def scan_unconfigured():
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
 
+    # Check register mode — SNMP or Telnet
+    use_snmp = (olt.register_mode or 'telnet') == 'snmp' and olt.snmp_enabled
+
+    if use_snmp:
+        from snmp_collector import create_snmp_collector, get_write_community
+        collector = create_snmp_collector(olt)
+        unconfigured = collector.scan_unconfigured_snmp()
+        collector.close()
+
+        # Get registered ONU types from DB for matching
+        reg_types = [t.type_name for t in ONUType.query.filter_by(olt_id=olt_id).all() if t.type_name]
+
+        def match_onu_type(model):
+            if not model or not reg_types:
+                return ''
+            ml = model.upper()
+            for rt in reg_types:
+                if rt.upper() == ml:
+                    return rt
+            for rt in reg_types:
+                if ml.startswith(rt.upper()):
+                    return rt
+            for rt in reg_types:
+                if rt.upper() in ml:
+                    return rt
+            base = re.split(r'[V.]\d', ml)[0]
+            if base and base != ml:
+                for rt in reg_types:
+                    if rt.upper() == base or base.startswith(rt.upper()):
+                        return rt
+            if 'ALL' in [rt.upper() for rt in reg_types]:
+                return 'All'
+            return ''
+
+        # Enrich with next available onu_id per port
+        port_onu_ids = {}
+        for onu in unconfigured:
+            if 'onu_id' not in onu or not onu['onu_id']:
+                pon_port = onu.get('pon_port', '')
+                if pon_port not in port_onu_ids:
+                    parts = pon_port.split('/')
+                    if len(parts) == 3:
+                        try:
+                            # Use DB to find used IDs
+                            used = {o.onu_id for o in ONU.query.filter_by(
+                                olt_id=olt_id, frame=int(parts[0]), slot=int(parts[1]), port=int(parts[2])
+                            ).all()}
+                            next_id = 1
+                            while next_id in used:
+                                next_id += 1
+                            port_onu_ids[pon_port] = next_id
+                        except Exception:
+                            port_onu_ids[pon_port] = 1
+                    else:
+                        port_onu_ids[pon_port] = 1
+            onu['onu_id'] = port_onu_ids.get(onu.get('pon_port', ''), onu.get('onu_id', 1))
+            port_onu_ids[onu.get('pon_port', '')] = onu['onu_id'] + 1
+            onu['matched_type'] = match_onu_type(onu.get('model', ''))
+
+        return jsonify({'success': True, 'onus': unconfigured, 'registered_types': reg_types})
+
+    # Telnet mode (original)
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
     unconfigured = tc.collect_unregistered_onus()
@@ -4169,6 +4296,57 @@ def provision_ont():
     olt = db.session.get(OLT, olt_id) if olt_id else None
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
+
+    # Check register mode — SNMP or Telnet
+    use_snmp = (olt.register_mode or 'telnet') == 'snmp' and olt.snmp_enabled
+
+    if use_snmp:
+        from snmp_collector import create_snmp_collector, get_write_community
+        collector = create_snmp_collector(olt)
+        wc = get_write_community(olt)
+
+        frame = data.get('frame', 1)
+        slot = data.get('slot', 1)
+        port = data.get('port', 1)
+        onu_id = data.get('onu_id', 0)
+        serial = data.get('serial_number', '')
+        onu_type = data.get('onu_type', 'All')
+        name = data.get('name', '')
+        description = data.get('description', '')
+
+        if not serial:
+            collector.close()
+            return jsonify({'success': False, 'message': 'Serial number required for SNMP registration'})
+        if not onu_id:
+            collector.close()
+            return jsonify({'success': False, 'message': 'ONU ID required for SNMP registration'})
+
+        ok, msg = collector.register_onu_snmp(
+            frame, slot, port, onu_id, serial,
+            onu_type=onu_type, name=name, description=description,
+            write_community=wc,
+        )
+        collector.close()
+
+        if ok:
+            # Save to DB
+            existing = ONU.query.filter_by(
+                olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id
+            ).first()
+            if not existing:
+                onu = ONU(
+                    olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id,
+                    serial_number=serial, name=name or 'Unnamed',
+                    description=description, status='offline',
+                    actual_type=onu_type, onu_type=onu_type,
+                    technician_id=data.get('technician_id') or None,
+                )
+                db.session.add(onu)
+                db.session.commit()
+            return jsonify({'success': True, 'message': msg, 'onu_id': onu_id})
+        return jsonify({'success': False, 'message': msg})
+
+    # Telnet mode (original)
     if not olt.telnet_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
 
@@ -6255,6 +6433,7 @@ def create_olt():
         cli_username=data.get('cli_username', ''),
         cli_password=data.get('cli_password', ''),
         polling_interval=data.get('polling_interval', 300),
+        register_mode=data.get('register_mode', 'telnet'),
     )
     db.session.add(olt)
     db.session.commit()
@@ -6297,6 +6476,7 @@ def get_olt(olt_id):
         'connection_status': olt.connection_status,
         'snmp_status': olt.snmp_status,
         'telnet_status': olt.telnet_status,
+        'register_mode': olt.register_mode or 'telnet',
     })
 
 
@@ -6309,7 +6489,7 @@ def update_olt(olt_id):
     data = request.get_json()
     for field in ['name', 'ip_address', 'model', 'vendor', 'snmp_port',
                   'telnet_enabled', 'telnet_port', 'web_port', 'ssh_enabled', 'ssh_port',
-                  'cli_username', 'polling_interval', 'monitoring_enabled']:
+                  'cli_username', 'polling_interval', 'monitoring_enabled', 'register_mode']:
         if field in data:
             setattr(olt, field, data[field])
     # Only update password if a real value is provided (not masked placeholder)
@@ -8053,6 +8233,7 @@ def migrate_schema():
     add_col('olts', 'telnet_status', 'VARCHAR(20)', "'disconnected'")
     add_col('olts', 'firmware_version', 'VARCHAR(100)', "''")
     add_col('olts', 'last_full_sync', 'DATETIME', None)
+    add_col('olts', 'register_mode', 'VARCHAR(10)', "'telnet'")
 
     # ONU table - add new columns if missing
     add_col('onus', 'actual_type', 'VARCHAR(100)', "''")

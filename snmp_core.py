@@ -33,6 +33,49 @@ BOARD1_BASE = 268500992
 BOARD2_BASE = 268509184
 PON_INCREMENT = 256
 
+# ==================== ZTE C320 SNMP Registration OIDs ====================
+# zxGponOntDevMgmtTable (.3.28.1.1) — index: .ponIndex.onuId
+OID_REG_TYPE_NAME = '1.3.6.1.4.1.3902.1012.3.28.1.1.1'       # ONU type/profile (OctetString)
+OID_REG_NAME = '1.3.6.1.4.1.3902.1012.3.28.1.1.2'            # ONU name (OctetString)
+OID_REG_DESCRIPTION = '1.3.6.1.4.1.3902.1012.3.28.1.1.3'     # ONU description (OctetString)
+OID_REG_SERIAL = '1.3.6.1.4.1.3902.1012.3.28.1.1.5'          # Serial number (OctetString hex)
+OID_REG_ENTRY_STATUS = '1.3.6.1.4.1.3902.1012.3.28.1.1.9'    # RowStatus (4=createAndGo, 6=destroy)
+OID_REG_MODE = '1.3.6.1.4.1.3902.1012.3.28.1.1.12'           # Auth mode (1=SN, 2=loid, 3=loid+password, 4=SN+password)
+
+# Unconfigured ONU discovery (.3.2) — index: .ponIndex.onuId
+OID_UNCFG_SERIAL = '1.3.6.1.4.1.3902.1012.3.2.1.1'           # Unconfigured ONU serial (OctetString hex)
+OID_UNCFG_PASSWORD = '1.3.6.1.4.1.3902.1012.3.2.1.2'         # Unconfigured ONU password
+OID_UNCFG_VENDOR = '1.3.6.1.4.1.3902.1012.3.2.1.3'           # Unconfigured ONU vendor ID
+
+
+def encode_pon_index(slot, port):
+    """Encode ZTE C320 PON index from slot and port (both 1-indexed CLI values).
+    Reverse of parse_pon_index."""
+    if slot >= 2:
+        return BOARD2_BASE + port * PON_INCREMENT
+    return BOARD1_BASE + port * PON_INCREMENT
+
+
+def encode_sn_to_hex(serial_number):
+    """Encode ZTE GPON serial number to hex OctetString for SNMP SET.
+    GPON SN is 8 bytes: 4-byte vendor ID + 4-byte serial.
+    e.g. 'ZTEGC40DF35B' -> bytes b'\\x5a\\x54\\x45\\x47\\xc4\\x0d\\xf3\\x5b'
+    """
+    sn = serial_number.strip().upper()
+    # Already hex with 0x prefix
+    if sn.startswith('0X'):
+        hex_str = sn[2:]
+        if len(hex_str) == 16:
+            return bytes.fromhex(hex_str)
+    # Standard GPON SN: 4 chars vendor + 8 hex chars
+    if len(sn) == 12:
+        vendor = sn[:4].encode('ascii')
+        serial = bytes.fromhex(sn[4:])
+        return vendor + serial
+    # Fallback: pad/truncate to 8 bytes
+    raw = sn.encode('ascii', errors='replace')
+    return raw[:8].ljust(8, b'\\x00')
+
 # ==================== ZTE C300 SNMP OIDs ====================
 # C300 uses different OID trees than C320:
 # - Tree .3902.1082 — ONU data (index: ifIndex.onuId)
@@ -1226,3 +1269,209 @@ class SNMPCollector:
 
         logger.info(f"  C300 SNMP signal map: {len(snmp_signal)} by SN")
         return {'by_sn': snmp_signal, 'rx_list': [], 'tx_list': []}
+
+    # ==================== SNMP SET (Registration) ====================
+
+    async def _snmp_set_async(self, oid_value_pairs, write_community=None):
+        """SNMP SET one or more OID-value pairs.
+        Args:
+            oid_value_pairs: list of (oid_str, value, type_hint) tuples
+                type_hint: 'i' (Integer), 's' (OctetString), 'x' (hex OctetString)
+            write_community: write community string (falls back to read community)
+        Returns: (success: bool, error_msg: str or None)
+        """
+        from pysnmp.hlapi.v1arch.asyncio import Slim, ObjectType, ObjectIdentity
+        from pysnmp.proto import rfc1902
+
+        community = write_community or self.community
+        slim = Slim(1)
+        try:
+            obj_types = []
+            for oid, value, vtype in oid_value_pairs:
+                if vtype == 'i':
+                    obj = ObjectType(ObjectIdentity(oid), rfc1902.Integer(int(value)))
+                elif vtype == 's':
+                    obj = ObjectType(ObjectIdentity(oid), rfc1902.OctetString(str(value)))
+                elif vtype == 'x':
+                    obj = ObjectType(ObjectIdentity(oid), rfc1902.OctetString(value))
+                else:
+                    obj = ObjectType(ObjectIdentity(oid), value)
+                obj_types.append(obj)
+
+            ei, es, eidx, vb = await slim.set(
+                community, self.ip, self.port,
+                *obj_types, timeout=10, retries=3
+            )
+            if ei:
+                return False, f'SNMP SET error: {ei}'
+            if es:
+                idx_info = eidx and vb[int(eidx) - 1][0] or '?'
+                return False, f'SNMP SET error: {es} at {idx_info}'
+            return True, None
+        except Exception as e:
+            return False, f'SNMP SET exception: {e}'
+        finally:
+            slim.close()
+
+    def snmp_set(self, oid_value_pairs, write_community=None):
+        """Synchronous wrapper for SNMP SET.
+        Args:
+            oid_value_pairs: list of (oid_str, value, type_hint) tuples
+            write_community: write community string
+        Returns: (success: bool, error_msg: str or None)
+        """
+        try:
+            return self._run(self._snmp_set_async(oid_value_pairs, write_community))
+        except Exception as e:
+            return False, f'SNMP SET failed: {e}'
+
+    def register_onu_snmp(self, frame, slot, port, onu_id, serial_number,
+                           onu_type='All', name='', description='',
+                           write_community=None):
+        """Register a GPON ONU via SNMP SET on ZTE C320.
+
+        Args:
+            frame: OLT frame (always 1 for C320)
+            slot: OLT slot/board (1 or 2)
+            port: PON port (1-indexed)
+            onu_id: ONU ID on this PON port (1-indexed)
+            serial_number: GPON serial number (e.g. 'ZTEGC40DF35B')
+            onu_type: ONU type name registered on OLT (e.g. 'ZTE-F609')
+            name: ONU name (optional)
+            description: ONU description (optional)
+            write_community: SNMP write community string
+
+        Returns: (success: bool, message: str)
+        """
+        pon_index = encode_pon_index(slot, port)
+        suffix = f'.{pon_index}.{onu_id}'
+
+        # Step 1: Create the ONU entry (createAndGo = 4)
+        ok, err = self.snmp_set([
+            (f'{OID_REG_ENTRY_STATUS}{suffix}', 4, 'i'),
+        ], write_community)
+        if not ok:
+            return False, f'Create entry failed: {err}'
+
+        # Step 2: Set auth mode to SN (1)
+        ok, err = self.snmp_set([
+            (f'{OID_REG_MODE}{suffix}', 1, 'i'),
+        ], write_community)
+        if not ok:
+            logger.warning(f'Set reg mode failed: {err}')
+
+        # Step 3: Set ONU type
+        if onu_type and onu_type != 'All':
+            ok, err = self.snmp_set([
+                (f'{OID_REG_TYPE_NAME}{suffix}', onu_type, 's'),
+            ], write_community)
+            if not ok:
+                logger.warning(f'Set type name failed: {err}')
+
+        # Step 4: Set serial number
+        sn_hex = encode_sn_to_hex(serial_number)
+        ok, err = self.snmp_set([
+            (f'{OID_REG_SERIAL}{suffix}', sn_hex, 'x'),
+        ], write_community)
+        if not ok:
+            return False, f'Set serial failed: {err}'
+
+        # Step 5: Set name and description (optional)
+        if name:
+            ok, err = self.snmp_set([
+                (f'{OID_REG_NAME}{suffix}', name, 's'),
+            ], write_community)
+            if not ok:
+                logger.warning(f'Set name failed: {err}')
+
+        if description:
+            ok, err = self.snmp_set([
+                (f'{OID_REG_DESCRIPTION}{suffix}', description, 's'),
+            ], write_community)
+            if not ok:
+                logger.warning(f'Set description failed: {err}')
+
+        logger.info(f'SNMP register: ONU {frame}/{slot}/{port}:{onu_id} SN={serial_number} type={onu_type}')
+        return True, f'ONU {frame}/{slot}/{port}:{onu_id} registered via SNMP with SN {serial_number}'
+
+    def deregister_onu_snmp(self, frame, slot, port, onu_id, write_community=None):
+        """Deregister a GPON ONU via SNMP SET (destroy = 6).
+
+        Returns: (success: bool, message: str)
+        """
+        pon_index = encode_pon_index(slot, port)
+        suffix = f'.{pon_index}.{onu_id}'
+
+        ok, err = self.snmp_set([
+            (f'{OID_REG_ENTRY_STATUS}{suffix}', 6, 'i'),
+        ], write_community)
+        if not ok:
+            return False, f'Deregister failed: {err}'
+
+        logger.info(f'SNMP deregister: ONU {frame}/{slot}/{port}:{onu_id}')
+        return True, f'ONU {frame}/{slot}/{port}:{onu_id} deregistered via SNMP'
+
+    def set_onu_name_snmp(self, frame, slot, port, onu_id, name, write_community=None):
+        """Set ONU name via SNMP SET.
+
+        Returns: (success: bool, message: str)
+        """
+        pon_index = encode_pon_index(slot, port)
+        suffix = f'.{pon_index}.{onu_id}'
+
+        ok, err = self.snmp_set([
+            (f'{OID_REG_NAME}{suffix}', name, 's'),
+        ], write_community)
+        if not ok:
+            return False, f'Set name failed: {err}'
+        return True, f'Name set to "{name}"'
+
+    def set_onu_description_snmp(self, frame, slot, port, onu_id, description, write_community=None):
+        """Set ONU description via SNMP SET.
+
+        Returns: (success: bool, message: str)
+        """
+        pon_index = encode_pon_index(slot, port)
+        suffix = f'.{pon_index}.{onu_id}'
+
+        ok, err = self.snmp_set([
+            (f'{OID_REG_DESCRIPTION}{suffix}', description, 's'),
+        ], write_community)
+        if not ok:
+            return False, f'Set description failed: {err}'
+        return True, f'Description set to "{description}"'
+
+    def scan_unconfigured_snmp(self, write_community=None):
+        """Scan for unconfigured ONUs via SNMP walk on the unconfigured ONU table.
+
+        Returns: list of dicts with keys: pon_port, sn, model, onu_id
+        """
+        try:
+            uncfg_raw = self._run(self._bulk_walk(OID_UNCFG_SERIAL))
+            results = []
+            for oid_str, val, val_str in uncfg_raw:
+                suffix = oid_str[len(OID_UNCFG_SERIAL):].lstrip('.')
+                parts = suffix.split('.')
+                if len(parts) >= 2:
+                    try:
+                        pon_index = int(parts[0])
+                        onu_slot = int(parts[1])
+                        frame, port = parse_pon_index(pon_index)
+                        if frame == 0:
+                            continue
+                        sn = parse_serial(val)
+                        if not sn:
+                            continue
+                        results.append({
+                            'pon_port': f'1/{frame}/{port}',
+                            'sn': sn,
+                            'model': '',
+                            'onu_id': onu_slot,
+                        })
+                    except (ValueError, IndexError):
+                        pass
+            logger.info(f'SNMP scan unconfigured: found {len(results)} ONUs')
+            return results
+        except Exception as e:
+            logger.error(f'SNMP scan unconfigured failed: {e}')
+            return []

@@ -1028,6 +1028,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
     cli_username: '',
     cli_password: '',
     telnet_port: '23',
+    register_mode: 'telnet',
   });
   const [snmpStatus, setSnmpStatus] = useState<string>('');
   const [telnetStatus, setTelnetStatus] = useState<string>('');
@@ -1053,6 +1054,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             cli_username: d.cli_username || '',
             cli_password: '',
             telnet_port: String(d.telnet_port || 23),
+            register_mode: d.register_mode || 'telnet',
           });
           setSnmpStatus(d.snmp_status || '');
           setTelnetStatus(d.telnet_status || '');
@@ -1107,6 +1109,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
           telnet_enabled: true, telnet_port: parseInt(form.telnet_port),
           ssh_enabled: false, ssh_port: 22,
           cli_username: form.cli_username,
+          register_mode: form.register_mode,
       };
       if (form.cli_password) savePayload.cli_password = form.cli_password;
       const res = await fetch(url, {
@@ -1246,6 +1249,31 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
                 <label className="label-sm mb-1">Telnet Port</label>
                 <input type="number" value={form.telnet_port} onChange={e => update('telnet_port', e.target.value)} className="input-field" />
               </div>
+            </div>
+          </div>
+
+          {/* Registration Mode */}
+          <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold">ONU Registration Mode</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition ${form.register_mode === 'telnet' ? 'border-accent bg-accent/10' : 'border-brd hover:border-tx3'}`}>
+                <input type="radio" name="register_mode" value="telnet" checked={form.register_mode === 'telnet'} onChange={e => update('register_mode', e.target.value)} className="sr-only" />
+                <Terminal size={16} className={form.register_mode === 'telnet' ? 'text-accent' : 'text-tx3'} />
+                <div>
+                  <div className="text-sm font-medium">Telnet / CLI</div>
+                  <div className="text-xs text-tx3">Full provisioning via CLI commands</div>
+                </div>
+              </label>
+              <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition ${form.register_mode === 'snmp' ? 'border-accent bg-accent/10' : 'border-brd hover:border-tx3'}`}>
+                <input type="radio" name="register_mode" value="snmp" checked={form.register_mode === 'snmp'} onChange={e => update('register_mode', e.target.value)} className="sr-only" />
+                <Network size={16} className={form.register_mode === 'snmp' ? 'text-accent' : 'text-tx3'} />
+                <div>
+                  <div className="text-sm font-medium">SNMP</div>
+                  <div className="text-xs text-tx3">Register/deregister via SNMP SET (requires write community)</div>
+                </div>
+              </label>
             </div>
           </div>
 

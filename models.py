@@ -191,6 +191,7 @@ class OLT(db.Model):
     connection_status = db.Column(db.String(20), default='disconnected')
     snmp_status = db.Column(db.String(20), default='disconnected')
     telnet_status = db.Column(db.String(20), default='disconnected')
+    register_mode = db.Column(db.String(10), default='telnet')  # 'telnet' or 'snmp'
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
