@@ -174,6 +174,43 @@ def poll_olt(olt, progress_cb=None, light=False):
             if collector: collector.close()
 
     # Step 2: CLI (Telnet for both C300 and C320) - PRIMARY source for ALL ONU data
+    # If Telnet not enabled, fall back to SNMP-only ONU collection (like light sync)
+    if not (olt.telnet_enabled or olt.ssh_enabled):
+        if olt.snmp_enabled and result.get('snmp_ok'):
+            try:
+                report(30, 'No Telnet — collecting ONUs via SNMP...')
+                snmp_col = SNMPCollector(olt.ip_address, olt.snmp_community, olt.snmp_port)
+                if is_c300:
+                    snmp_sig = snmp_col.collect_onus_c300()
+                    onus = []
+                    for sn, sig in snmp_sig.get('by_sn', {}).items():
+                        _status = decode_oper_state(sig.get('oper_state', 0))
+                        _rx = sig.get('rx_power')
+                        _onu_rx = sig.get('onu_rx_power')
+                        if _status == 'online' and _rx is None and _onu_rx is None:
+                            _status = 'dyinggasp'
+                        onus.append({
+                            'serial_number': sn, 'status': _status,
+                            'oper_state': sig.get('oper_state', 0),
+                            'rx_power': _rx, 'onu_rx_power': _onu_rx,
+                            'tx_power': sig.get('tx_power'),
+                            'distance': sig.get('distance'),
+                            'actual_type': sig.get('actual_type', ''),
+                            'name': '', 'description': '',
+                            'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 0, 'onu_index': 0,
+                            'reg_status': 0, 'last_dereg_reason': '', 'pppoe': '',
+                        })
+                else:
+                    onus = snmp_col.collect_onus_light()
+                snmp_col.close()
+                result['onus'] = onus
+                result['success'] = True
+                report(75, f'SNMP: found {len(onus)} ONUs (no Telnet)')
+            except Exception as e:
+                result['errors'].append(f'SNMP ONUs: {str(e)}')
+                logger.error(f"SNMP ONU collection {olt.name} failed: {e}")
+        report(90, 'SNMP-only sync: ONU data collected')
+
     if olt.telnet_enabled or olt.ssh_enabled:
         try:
             port = olt.telnet_port or 23
