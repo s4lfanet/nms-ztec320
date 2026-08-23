@@ -666,7 +666,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                   <select value={state.onuType} onChange={e => update('onuType', e.target.value)} className="input-field">
                     <option value="All">All (auto-detect)</option>
                     {(() => {
-                      const isEpon = state.ponPort.includes('epon') || state.isEpon === true;
+                      const isEpon = state.isEpon === true;
                       const filtered = isEpon
                         ? onuTypes.filter(t => t.pon_type === 'epon')
                         : onuTypes.filter(t => t.pon_type === 'gpon');
