@@ -12,6 +12,7 @@ cryptography>=42.0
 
 # === Network ===
 pysnmp>=7.1
+paramiko>=3.0,<4.0
 
 # === Async / WebSocket ===
 fastapi>=0.115.0
