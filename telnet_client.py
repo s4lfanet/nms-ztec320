@@ -152,6 +152,120 @@ class SimpleTelnet:
         return bytes(result)
 
 
+class SimpleSSH:
+    """SSH client wrapper with same interface as SimpleTelnet.
+    Uses paramiko with legacy algorithm support for ZTE OLTs (ZTE_SSH.1.0).
+    Provides: connect(), read_until(), write(), close(), recv_ready()."""
+    
+    # Legacy algorithms needed for ZTE OLT SSH (ZTE_SSH.1.0)
+    # Only patch once — multiple patches are harmless but wasteful
+    _patched = False
+    
+    @classmethod
+    def _patch_legacy_algorithms(cls):
+        if cls._patched:
+            return
+        import paramiko
+        # ZTE OLT offers ssh-rsa, ssh-dss host keys; group14-sha256 kex
+        # Paramiko 3.5+ removed ssh-rsa from preferred lists
+        paramiko.Transport._preferred_keys = (
+            'ssh-rsa', 'ssh-dss',
+            'ssh-ed25519',
+            'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521',
+            'rsa-sha2-512', 'rsa-sha2-256',
+        )
+        paramiko.Transport._preferred_pubkeys = paramiko.Transport._preferred_keys
+        # Prioritize group14-sha256 (ZTE supports it) over group16-sha512
+        # which causes session drop during kex negotiation with ZTE_SSH.1.0
+        paramiko.Transport._preferred_kex = (
+            'diffie-hellman-group14-sha256',
+            'diffie-hellman-group16-sha512',
+            'diffie-hellman-group-exchange-sha256',
+            'ecdh-sha2-nistp256',
+            'ecdh-sha2-nistp384',
+            'ecdh-sha2-nistp521',
+        )
+        cls._patched = True
+    
+    def __init__(self, host, port=22, timeout=15):
+        self.host = host
+        self.port = int(port)
+        self.timeout = timeout
+        self.client = None
+        self.shell = None
+        self.buffer = b''
+    
+    def connect(self):
+        try:
+            import paramiko
+            import time as _time
+            self._patch_legacy_algorithms()
+            self.client = paramiko.SSHClient()
+            self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.client.connect(
+                self.host, port=self.port,
+                username=self._username, password=self._password,
+                timeout=self.timeout, look_for_keys=False, allow_agent=False
+            )
+            self.shell = self.client.invoke_shell()
+            _time.sleep(1)  # Wait for shell to initialize (ZTE sends banner)
+            return True
+        except Exception as e:
+            logger.error(f"SSH connect {self.host}:{self.port} failed: {e}")
+            return False
+    
+    def set_credentials(self, username, password):
+        self._username = username
+        self._password = password
+    
+    def recv_ready(self):
+        return self.shell.recv_ready() if self.shell else False
+    
+    def read_until(self, expected, timeout=None):
+        if isinstance(expected, str):
+            expected = expected.encode()
+        timeout = timeout or self.timeout
+        import time as _time
+        end_time = _time.monotonic() + timeout
+        while _time.monotonic() < end_time:
+            if expected in self.buffer:
+                idx = self.buffer.index(expected)
+                result = self.buffer[:idx + len(expected)]
+                self.buffer = self.buffer[idx + len(expected):]
+                return result
+            if self.shell and self.shell.recv_ready():
+                data = self.shell.recv(4096)
+                if not data:
+                    break
+                self.buffer += data
+            else:
+                _time.sleep(0.05)
+        result = self.buffer
+        self.buffer = b''
+        return result
+    
+    def write(self, data):
+        if isinstance(data, str):
+            data = data.encode()
+        # SSH uses \n (LF), not \r\n (CR+LF) like Telnet
+        if data.endswith(b'\r\n'):
+            data = data[:-2] + b'\n'
+        try:
+            self.shell.send(data)
+        except Exception as e:
+            logger.error(f"SSH write failed: {e}")
+    
+    def close(self):
+        try:
+            if self.shell: self.shell.close()
+        except: pass
+        try:
+            if self.client: self.client.close()
+        except: pass
+        self.shell = None
+        self.client = None
+
+
 class TelnetCollector:
     """CLI Collector for ZTE OLT (C300/C320 via Telnet).
     Same CLI commands work on both models."""
@@ -166,7 +280,47 @@ class TelnetCollector:
         self.snmp_port = int(snmp_port) if snmp_port else 161
 
     def _connect(self):
+        if self.use_ssh:
+            return self._connect_ssh()
         return self._connect_telnet()
+
+    def _connect_ssh(self):
+        ssh = SimpleSSH(self.ip, self.port, timeout=15)
+        ssh.set_credentials(self.username, self.password)
+        if not ssh.connect(): return None
+        try:
+            # SSH shell opens directly at CLI prompt (no Username/Password prompt)
+            # Read until we get '#' or '>' prompt
+            login_resp = ssh.read_until(b'#', timeout=15)
+            login_text = login_resp.decode('utf-8', errors='replace')
+
+            # Check for login failure
+            if 'Error' in login_text or 'incorrect' in login_text.lower():
+                logger.warning(f"SSH login {self.ip} failed: {login_text.strip()[:100]}")
+                ssh.close()
+                return None
+
+            # Some OLTs use '>' instead of '#' for user mode
+            if b'#' not in login_resp and b'>' not in login_resp:
+                extra = ssh.read_until(b'>', timeout=5)
+                login_text += extra.decode('utf-8', errors='replace')
+                if b'>' not in extra and b'#' not in extra:
+                    logger.warning(f"SSH {self.ip}: no prompt after login: {login_text.strip()[:100]}")
+                    ssh.close()
+                    return None
+
+            # Try terminal length 0 (ZTE/Cisco style)
+            try:
+                ssh.write('terminal length 0\n')
+                ssh.read_until(b'#', timeout=3)
+            except Exception:
+                pass
+            return ssh
+        except Exception as e:
+            logger.error(f"SSH login {self.ip} failed: {e}")
+            try: ssh.close()
+            except: pass
+            return None
 
     def _connect_telnet(self):
         tn = SimpleTelnet(self.ip, self.port, timeout=15)

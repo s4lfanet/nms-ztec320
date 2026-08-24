@@ -4573,7 +4573,7 @@ def test_olt_connection(olt_id):
         results['snmp'] = {'ok': False, 'message': f'SNMP Error: {str(e)[:80]}'}
         olt.snmp_status = 'disconnected'
 
-    # Test Telnet (optional — skip if no credentials)
+    # Test CLI (SSH or Telnet — SSH takes priority if enabled)
     cli_user = data.get('cli_username', olt.cli_username)
     cli_pass = data.get('cli_password', olt.cli_password)
     # If password is masked ('***'), use stored password from DB
@@ -4581,25 +4581,32 @@ def test_olt_connection(olt_id):
         cli_pass = olt.cli_password
     if cli_user and cli_pass:
         try:
-            from snmp_collector import TelnetCollector, create_cli_collector
+            from snmp_collector import TelnetCollector
+            use_ssh = data.get('ssh_enabled', olt.ssh_enabled)
+            if use_ssh:
+                cli_port = int(data.get('ssh_port', olt.ssh_port or 22))
+                cli_label = 'SSH'
+            else:
+                cli_port = int(data.get('telnet_port', olt.telnet_port or 23))
+                cli_label = 'Telnet'
             tc = TelnetCollector(
-                ip, cli_user, cli_pass,
-                int(data.get('telnet_port', olt.telnet_port))
+                ip, cli_user, cli_pass, cli_port,
+                use_ssh=use_ssh
             )
             tn = tc._connect()
             if tn:
                 tn.write('exit\n')
                 tn.close()
-                results['telnet'] = {'ok': True, 'message': 'Connected'}
+                results['telnet'] = {'ok': True, 'message': f'{cli_label} Connected'}
                 olt.telnet_status = 'connected'
             else:
-                results['telnet'] = {'ok': False, 'message': 'Connection failed'}
+                results['telnet'] = {'ok': False, 'message': f'{cli_label} connection failed'}
                 olt.telnet_status = 'disconnected'
         except Exception as e:
-            results['telnet'] = {'ok': False, 'message': f'Telnet Error: {str(e)[:80]}'}
+            results['telnet'] = {'ok': False, 'message': f'CLI Error: {str(e)[:80]}'}
             olt.telnet_status = 'disconnected'
     else:
-        # No Telnet credentials — SNMP-only mode, not an error
+        # No CLI credentials — SNMP-only mode, not an error
         results['telnet'] = {'ok': None, 'message': 'Not configured (SNMP-only)'}
         olt.telnet_status = 'not_configured'
 
@@ -4662,7 +4669,7 @@ def test_new_olt_connection():
     except Exception as e:
         results['snmp'] = {'ok': False, 'message': f'SNMP Error: {str(e)[:80]}'}
 
-    # Test Telnet (optional — skip if no credentials)
+    # Test CLI (SSH or Telnet — SSH takes priority if enabled)
     cli_user = data.get('cli_username', '')
     cli_pass = data.get('cli_password', '')
     # Ignore masked password placeholder
@@ -4670,19 +4677,26 @@ def test_new_olt_connection():
         cli_pass = ''
     if cli_user and cli_pass:
         try:
-            from snmp_collector import TelnetCollector, create_cli_collector
-            tc = TelnetCollector(ip, cli_user, cli_pass, int(data.get('telnet_port', 23)))
+            from snmp_collector import TelnetCollector
+            use_ssh = data.get('ssh_enabled', False)
+            if use_ssh:
+                cli_port = int(data.get('ssh_port', 22))
+                cli_label = 'SSH'
+            else:
+                cli_port = int(data.get('telnet_port', 23))
+                cli_label = 'Telnet'
+            tc = TelnetCollector(ip, cli_user, cli_pass, cli_port, use_ssh=use_ssh)
             tn = tc._connect()
             if tn:
                 tn.write('exit\n')
                 tn.close()
-                results['telnet'] = {'ok': True, 'message': 'Connected'}
+                results['telnet'] = {'ok': True, 'message': f'{cli_label} Connected'}
             else:
-                results['telnet'] = {'ok': False, 'message': 'Connection failed'}
+                results['telnet'] = {'ok': False, 'message': f'{cli_label} connection failed'}
         except Exception as e:
-            results['telnet'] = {'ok': False, 'message': f'Telnet Error: {str(e)[:80]}'}
+            results['telnet'] = {'ok': False, 'message': f'CLI Error: {str(e)[:80]}'}
     else:
-        # No Telnet credentials — SNMP-only mode
+        # No CLI credentials — SNMP-only mode
         results['telnet'] = {'ok': None, 'message': 'Not configured (SNMP-only)'}
 
     # Test Web (HTTP Basic Auth)
