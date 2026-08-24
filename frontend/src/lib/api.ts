@@ -495,6 +495,7 @@ export interface OltInfo {
   connection_status: string;
   snmp_status?: string;
   telnet_status?: string;
+  ssh_enabled?: boolean;
   uptime?: number;
   serial_number?: string;
   polling_interval?: number;
