@@ -40,6 +40,25 @@ export function OltSettings() {
   const olts = data?.olts || [];
   const subInfo = data?.subscription;
 
+  // Check sync status on mount — detect already-running syncs (e.g. from auto-sync or another session)
+  useEffect(() => {
+    if (!olts.length) return;
+    (async () => {
+      for (const olt of olts) {
+        try {
+          const s = await api.syncStatus(olt.id);
+          if (s.status === 'running') {
+            setSyncingId(olt.id);
+            setSyncProgress(s.progress || 0);
+            setSyncMessage(s.message || 'Syncing...');
+            break;
+          }
+        } catch { /* ignore */ }
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const olt = olts.find(o => o.id === id);
@@ -119,7 +138,7 @@ export function OltSettings() {
       setSyncingId(oltId); setSyncProgress(0); setSyncMessage('Starting sync...');
       toast.success('Sync started!');
     },
-    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error('Sync failed'); },
+    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error('Sync failed: ' + e.message); },
   });
 
   // Poll sync status
