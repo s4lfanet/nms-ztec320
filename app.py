@@ -7793,7 +7793,12 @@ def restore_database():
     """
     import tempfile
 
-    db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    # Always use the actual engine URL (handles test fixtures that replace
+    # db.engines[None] but don't update app.config)
+    try:
+        db_uri = str(db.engine.url)
+    except Exception:
+        db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
     if 'sqlite' not in db_uri:
         return jsonify({'success': False, 'message': 'Restore only supported for SQLite databases'}), 400
 
@@ -7824,11 +7829,6 @@ def restore_database():
 
         # Schema compatibility check: backup must have all tables in current DB
         db_path = db_uri.replace('sqlite:///', '')
-        if db_path == ':memory:' or not os.path.exists(db_path):
-            try:
-                db_path = str(db.engine.url).replace('sqlite:///', '')
-            except Exception:
-                pass
         if db_path == ':memory:' or not os.path.exists(db_path):
             os.remove(upload_path)
             return jsonify({'success': False, 'message': 'Cannot resolve database file path for restore'}), 500
