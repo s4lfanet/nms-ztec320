@@ -49,7 +49,7 @@ export function AuthLayout({ children, brandName }: AuthLayoutProps) {
           <div className="space-y-3">
             {[
               { icon: Activity, title: 'Real-time Monitoring', desc: 'Status ONU, RX power, traffic — live update' },
-              { icon: Radio, title: 'ZTE OLT Support', desc: 'ZTE C320, C300, C600, C650 — SNMP + Telnet' },
+              { icon: Radio, title: 'ZTE OLT Support', desc: 'ZTE C320, C300, C600, C650 — SNMP + SSH/Telnet' },
               { icon: Server, title: 'OLT Provisioning', desc: 'Register, configure, manage ONUs via CLI/SNMP' },
               { icon: ShieldCheck, title: 'Secure & Isolated', desc: 'Multi-tenant dengan isolasi data per subdomain' },
             ].map((f, i) => (
