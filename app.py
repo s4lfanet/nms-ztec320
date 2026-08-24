@@ -572,8 +572,8 @@ def api_onu_live_detail(onu_id):
     live_detail = None
     history = []
 
-    if olt and olt.cli_username:
-        # ZTE: Telnet-based live detail
+    if olt and olt.cli_enabled and olt.cli_username:
+        # ZTE: CLI-based live detail (SSH or Telnet)
         from snmp_collector import TelnetCollector, create_cli_collector
         try:
             tc = create_cli_collector(olt)
@@ -948,7 +948,7 @@ def discover_olt_slots(olt_id):
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
-    if not olt.cli_username:
+    if not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
     try:
         from snmp_collector import create_cli_collector
@@ -1148,7 +1148,7 @@ def migrate_onu(onu_id):
             'message': f'ONU migrated from {old_frame}/{old_slot}/{old_port}:{old_id} to {onu.frame}/{new_card}/{new_pon}:{new_oid} (SNMP)'
         })
 
-    if not olt.cli_username:
+    if not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
 
     from snmp_collector import TelnetCollector, create_cli_collector
@@ -1208,7 +1208,7 @@ def migrate_onu_batch(olt_id):
     if not onu_ids or not new_card or not new_pon:
         return jsonify({'success': False, 'message': 'Missing onu_ids, card, or pon'})
 
-    if not olt.cli_username:
+    if not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
 
     from snmp_collector import TelnetCollector, create_cli_collector
@@ -1348,9 +1348,9 @@ def migrate_cross_olt():
         return jsonify({'success': False, 'message': 'Source OLT not found'}), 404
     if not target_olt:
         return jsonify({'success': False, 'message': 'Target OLT not found'}), 404
-    if not target_olt.cli_username:
+    if not target_olt.cli_enabled or not target_olt.cli_username:
         return jsonify({'success': False, 'message': 'Target OLT not configured for CLI access'}), 400
-    if not source_olt.cli_username:
+    if not source_olt.cli_enabled or not source_olt.cli_username:
         return jsonify({'success': False, 'message': 'Source OLT not configured for CLI access'}), 400
 
     from snmp_collector import TelnetCollector, create_cli_collector
@@ -1497,7 +1497,7 @@ def copy_olt_config():
         return jsonify({'success': False, 'message': 'Source OLT not found'}), 404
     if not target_olt:
         return jsonify({'success': False, 'message': 'Target OLT not found'}), 404
-    if not target_olt.cli_username:
+    if not target_olt.cli_enabled or not target_olt.cli_username:
         return jsonify({'success': False, 'message': 'Target OLT not configured for CLI access'}), 400
 
     from snmp_collector import create_cli_collector
@@ -1788,7 +1788,7 @@ def _auto_write_config(olt_id):
         with app.app_context():
             try:
                 olt = db.session.get(OLT, olt_id)
-                if not olt or not olt.cli_username:
+                if not olt or not olt.cli_enabled or not olt.cli_username:
                     return
                 from snmp_collector import create_cli_collector
                 tc = create_cli_collector(olt)
@@ -2362,7 +2362,7 @@ def onu_save_config(onu_id):
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
-    if not olt or not olt.cli_username:
+    if not olt or not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
@@ -2556,7 +2556,7 @@ def onu_wan_service_edit(onu_id, svc_idx):
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
-    if not olt or not olt.cli_username:
+    if not olt or not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured'})
     data = request.get_json()
     logger.info(f"[wan-service] ONU {onu_id} svc={svc_idx} data={data} by user={current_user.username}")
@@ -2772,7 +2772,7 @@ def onu_wan_service_delete(onu_id, svc_idx):
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
-    if not olt or not olt.cli_username:
+    if not olt or not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured'})
     logger.info(f"[wan-service-delete] ONU {onu_id} svc={svc_idx} by user={current_user.username}")
     from snmp_collector import TelnetCollector, create_cli_collector
@@ -3061,7 +3061,7 @@ def olt_write_config(olt_id):
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
-    if not olt.cli_username:
+    if not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
@@ -3086,7 +3086,7 @@ def olt_system_config(olt_id):
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
-    if not olt.cli_username:
+    if not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
     data = request.get_json()
     snmp_ro = (data.get('snmp_community_ro') or '').strip()
@@ -3135,7 +3135,7 @@ def olt_snmp_communities(olt_id):
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
-    if not olt.cli_username:
+    if not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
     from snmp_collector import create_cli_collector
     tc = create_cli_collector(olt)
@@ -3172,7 +3172,7 @@ def olt_cli_users(olt_id):
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
-    if not olt.cli_username:
+    if not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
     from snmp_collector import create_cli_collector
     tc = create_cli_collector(olt)
@@ -3210,7 +3210,7 @@ def backup_olt_config(olt_id):
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
-    if not olt.cli_username:
+    if not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
@@ -3266,7 +3266,7 @@ def backup_olt_config_to_db(olt_id):
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
-    if not olt.cli_username:
+    if not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
     from snmp_collector import create_cli_collector
     tc = create_cli_collector(olt)
@@ -3563,7 +3563,7 @@ def onu_section_config(onu_id):
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
-    if not olt or not olt.cli_username:
+    if not olt or not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
     # Every command below is ZTE C320 pon-onu-mng syntax. Running it against
     # another vendor produces confusing CLI syntax errors, so refuse up front.
@@ -4814,7 +4814,7 @@ def uplinks_live_traffic(olt_id):
     """Real-time traffic rates for all uplink ports via Telnet (called every 3s by frontend)."""
     import time as _time
     olt = db.session.get(OLT, olt_id)
-    if not olt or not olt.cli_username:
+    if not olt or not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI'})
     uplinks = OLTUplink.query.filter_by(olt_id=olt_id).order_by(OLTUplink.port_number).all()
     if not uplinks:

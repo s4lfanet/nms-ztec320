@@ -42,7 +42,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Sync All',
-        content: 'Tombol **Sync All** di header untuk sync semua OLT sekaligus. Progress sync ditampilkan real-time per OLT.\n\nSync mengumpulkan data ONU via SNMP (light) atau SNMP+Telnet (full). Auto-refresh setiap 30 detik.',
+        content: 'Tombol **Sync All** di header untuk sync semua OLT sekaligus. Progress sync ditampilkan real-time per OLT.\n\nSync mengumpulkan data ONU via SNMP (light) atau SNMP+CLI (full). Auto-refresh setiap 30 detik.',
       },
     ],
     tips: [
@@ -148,7 +148,7 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Select OLT',
-        content: 'Pilih OLT target dari dropdown. Hanya OLT dengan Telnet enabled yang tersedia.\n\nSistem akan cek koneksi Telnet ke OLT sebelum lanjut.',
+        content: 'Pilih OLT target dari dropdown. Hanya OLT dengan CLI enabled (SSH/Telnet) yang tersedia.\n\nSistem akan cek koneksi CLI ke OLT sebelum lanjut.',
       },
       {
         title: 'Scan ONUs',
@@ -173,7 +173,7 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Tambah OLT',
-        content: 'Klik **Add OLT** untuk menambah OLT baru. Isi: name, IP address, vendor (ZTE/Huawei/Fiberhome), SNMP community, Telnet credentials.\n\nTest koneksi SNMP dan Telnet sebelum save.',
+        content: 'Klik **Add OLT** untuk menambah OLT baru. Isi: name, IP address, vendor (ZTE/Huawei/Fiberhome), SNMP community, CLI credentials (SSH/Telnet).\n\nTest koneksi SNMP dan CLI sebelum save.',
       },
       {
         title: 'Edit & Delete OLT',
@@ -181,12 +181,12 @@ export const guides: Guide[] = [
       },
       {
         title: 'Sync OLT',
-        content: 'Klik **Sync** pada kartu OLT untuk collect data ONU via SNMP/Telnet. Progress ditampilkan real-time.\n\nSync All untuk sync semua OLT sekaligus.',
+        content: 'Klik **Sync** pada kartu OLT untuk collect data ONU via SNMP/CLI. Progress ditampilkan real-time.\n\nSync All untuk sync semua OLT sekaligus.',
       },
     ],
     tips: [
       'SNMP community default: public (read-only). Set write community untuk config via SNMP.',
-      'Telnet credentials diperlukan untuk ONU provisioning dan live detail',
+      'CLI credentials (SSH/Telnet) diperlukan untuk ONU provisioning dan live detail',
       'Pastikan OLT reachable dari server NMS (cek firewall)',
     ],
   },

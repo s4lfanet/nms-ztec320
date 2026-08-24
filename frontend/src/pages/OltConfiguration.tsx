@@ -1840,7 +1840,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
         <div className="rounded-xl bg-glass p-3 md:p-4">
           <h6 className="text-xs font-semibold text-tx3 uppercase mb-3">Connection Status</h6>
           <div className="space-y-3">
-            {([['SNMP', olt.snmp_status], ['Telnet', olt.telnet_status], ['Overall', olt.connection_status]] as [string, unknown][]).map(([k, v]) => {
+            {([['SNMP', olt.snmp_status], ['CLI', olt.telnet_status], ['Overall', olt.connection_status]] as [string, unknown][]).map(([k, v]) => {
               const isConnected = String(v || '').toLowerCase() === 'connected';
               return (
                 <div key={k} className="flex items-center justify-between">
