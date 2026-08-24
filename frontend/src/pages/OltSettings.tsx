@@ -1028,6 +1028,8 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
     cli_username: '',
     cli_password: '',
     telnet_port: '23',
+    ssh_enabled: false,
+    ssh_port: '22',
   });
   const [snmpStatus, setSnmpStatus] = useState<string>('');
   const [telnetStatus, setTelnetStatus] = useState<string>('');
@@ -1053,6 +1055,8 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             cli_username: d.cli_username || '',
             cli_password: '',
             telnet_port: String(d.telnet_port || 23),
+            ssh_enabled: d.ssh_enabled || false,
+            ssh_port: String(d.ssh_port || 22),
           });
           setSnmpStatus(d.snmp_status || '');
           setTelnetStatus(d.telnet_status || '');
@@ -1072,6 +1076,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
         ip_address: form.ip_address, snmp_community: form.snmp_community,
         snmp_port: parseInt(form.snmp_port), cli_username: form.cli_username,
         telnet_port: parseInt(form.telnet_port),
+        ssh_enabled: form.ssh_enabled, ssh_port: parseInt(form.ssh_port),
         ...(form.snmp_community_write ? { snmp_community_write: form.snmp_community_write } : {}),
       };
       // Only send password if user typed a new one; for existing OLT with empty field, backend uses stored password
@@ -1100,14 +1105,14 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
       const vendor = 'zte';
       const url = olt ? `/api/olt/${olt.id}` : '/api/olt';
       const method = olt ? 'PUT' : 'POST';
-      // If no CLI username provided, disable Telnet (SNMP-only mode)
-      const telnetEnabled = !!form.cli_username.trim();
+      // If no CLI username provided, disable CLI (SNMP-only mode)
+      const cliEnabled = !!form.cli_username.trim();
       const savePayload: Record<string, unknown> = {
           name: form.name, ip_address: form.ip_address, model, vendor,
           snmp_community: form.snmp_community, snmp_community_write: form.snmp_community_write,
           snmp_port: parseInt(form.snmp_port),
-          telnet_enabled: telnetEnabled, telnet_port: parseInt(form.telnet_port),
-          ssh_enabled: false, ssh_port: 22,
+          telnet_enabled: cliEnabled && !form.ssh_enabled, telnet_port: parseInt(form.telnet_port),
+          ssh_enabled: cliEnabled && form.ssh_enabled, ssh_port: parseInt(form.ssh_port),
           cli_username: form.cli_username,
       };
       if (form.cli_password) savePayload.cli_password = form.cli_password;
@@ -1124,6 +1129,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             ip_address: form.ip_address, snmp_community: form.snmp_community,
             snmp_port: parseInt(form.snmp_port), cli_username: form.cli_username,
             telnet_port: parseInt(form.telnet_port),
+            ssh_enabled: form.ssh_enabled, ssh_port: parseInt(form.ssh_port),
             ...(form.snmp_community_write ? { snmp_community_write: form.snmp_community_write } : {}),
           };
           if (form.cli_password) testPayload.cli_password = form.cli_password;
@@ -1229,17 +1235,17 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             </div>
           </div>
 
-          {/* Telnet Section (Optional) */}
+          {/* CLI Access Section (Optional) */}
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd space-y-3">
             <div className="flex items-center gap-2">
               <Terminal size={16} className={form.cli_username.trim() ? 'text-accent' : 'text-tx3'} />
-              <span className="text-sm font-semibold">Telnet / CLI <span className="text-tx3 font-normal text-xs">(optional)</span></span>
+              <span className="text-sm font-semibold">CLI Access <span className="text-tx3 font-normal text-xs">(optional)</span></span>
               {testing && <Loader2 size={14} className="text-accent animate-spin ml-2" />}
               {!testing && testResult && <span className="ml-2">{testStatusBadge(testResult.telnet)}</span>}
               {!testing && !testResult && telnetStatus && <span className="ml-2">{statusBadge(telnetStatus)}</span>}
             </div>
             {!form.cli_username.trim() && (
-              <p className="text-xs text-tx3 italic">Leave empty for SNMP-only mode. Fill in to enable Telnet/CLI access.</p>
+              <p className="text-xs text-tx3 italic">Leave empty for SNMP-only mode. Fill in to enable CLI access.</p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
@@ -1251,8 +1257,25 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
                 <input type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder={olt ? '•••• (unchanged)' : 'Optional'} className="input-field" />
               </div>
               <div>
-                <label className="label-sm mb-1">Telnet Port</label>
-                <input type="number" value={form.telnet_port} onChange={e => update('telnet_port', e.target.value)} className="input-field" />
+                <label className="label-sm mb-1">Connection Mode</label>
+                <div className="flex gap-2 items-center">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input type="radio" checked={!form.ssh_enabled} onChange={() => setForm(prev => ({ ...prev, ssh_enabled: false }))} />
+                    Telnet
+                  </label>
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input type="radio" checked={form.ssh_enabled} onChange={() => setForm(prev => ({ ...prev, ssh_enabled: true }))} />
+                    SSH
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label-sm mb-1">{form.ssh_enabled ? 'SSH Port' : 'Telnet Port'}</label>
+                <input type="number" value={form.ssh_enabled ? form.ssh_port : form.telnet_port}
+                  onChange={e => form.ssh_enabled ? update('ssh_port', e.target.value) : update('telnet_port', e.target.value)}
+                  className="input-field" />
               </div>
             </div>
           </div>

@@ -833,7 +833,7 @@ def update_onu(onu_id):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
         onu.onu_type = data['onu_type'].strip()
         # Re-register ONU with new type on OLT (preserves existing config)
-        if olt and olt.telnet_enabled and olt.cli_username and onu.serial_number:
+        if olt and olt.cli_enabled and olt.cli_username and onu.serial_number:
             try:
                 from snmp_collector import create_cli_collector
                 tc = create_cli_collector(olt)
@@ -902,7 +902,7 @@ def update_onu(onu_id):
         db.session.flush()
     db.session.commit()
     logger.info(f"[update_onu] DB committed for ONU {onu_id}, fields: {list(data.keys())}")
-    if cli_cmds and olt and olt.telnet_enabled and olt.cli_username:
+    if cli_cmds and olt and olt.cli_enabled and olt.cli_username:
         try:
             from snmp_collector import create_cli_collector
             tc = create_cli_collector(olt)
@@ -1677,8 +1677,8 @@ def delete_onu(onu_id):
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
     olt_id = onu.olt_id
-    # Deregister from OLT via Telnet if CLI is configured
-    if olt and olt.telnet_enabled:
+    # Deregister from OLT via CLI if configured (SSH or Telnet)
+    if olt and olt.cli_enabled:
         from snmp_collector import TelnetCollector, create_cli_collector
         tc = create_cli_collector(olt)
         is_epon = (onu.card or '').lower() == 'epon'
@@ -1842,7 +1842,7 @@ def onu_action(onu_id):
             _auto_sync_olt(olt_id_for_sync, light=False, delay=3)
         return jsonify({'success': success, 'message': msg})
 
-    if not olt.telnet_enabled:
+    if not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
 
     from snmp_collector import TelnetCollector, create_cli_collector
@@ -1968,7 +1968,7 @@ def onu_live_info(onu_id):
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
-    if not olt or not olt.telnet_enabled:
+    if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
 
     from snmp_collector import TelnetCollector, create_cli_collector
@@ -1990,7 +1990,7 @@ def onu_get_status(onu_id):
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
-    if not olt or not olt.telnet_enabled:
+    if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
 
     from snmp_collector import TelnetCollector, create_cli_collector
@@ -2313,7 +2313,7 @@ def onu_refresh_status(onu_id):
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
 
-    if not olt or not olt.telnet_enabled:
+    if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured'})
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
@@ -2344,7 +2344,7 @@ def onu_running_config(onu_id):
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
-    if not olt or not olt.telnet_enabled:
+    if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured'})
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
@@ -2390,7 +2390,7 @@ def onu_resync_config(onu_id):
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
 
-    if not olt or not olt.telnet_enabled:
+    if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured'})
     try:
         from snmp_collector import TelnetCollector, create_cli_collector
@@ -2471,7 +2471,7 @@ def onu_replace(onu_id):
         return jsonify({'success': False, 'message': 'New serial number is required'})
 
     olt = onu.olt
-    if not olt or not olt.telnet_enabled:
+    if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
 
     if not current_user.has_permission('configure_onu'):
@@ -2826,7 +2826,7 @@ def get_olt_onu_types(olt_id):
 
     types = []
     # Only try Telnet if enabled with credentials
-    if olt.telnet_enabled and olt.cli_username:
+    if olt.cli_enabled and olt.cli_username:
         try:
             from snmp_collector import TelnetCollector, create_cli_collector
             tc = create_cli_collector(olt)
@@ -2958,7 +2958,7 @@ def update_onu_field(onu_id):
 
     def _send_onu_cli(olt, onu, cmd):
         """Helper: send CLI command to ONU interface on OLT (ZTE only)."""
-        if not olt or not olt.telnet_enabled or not olt.cli_username:
+        if not olt or not olt.cli_enabled or not olt.cli_username:
             return
         try:
             from snmp_collector import create_cli_collector
@@ -2997,7 +2997,7 @@ def update_onu_field(onu_id):
     elif field == 'onu_type':
         onu.onu_type = value
         # Send CLI to OLT — re-register ONU with new type (preserves existing config)
-        if olt and olt.telnet_enabled and olt.cli_username:
+        if olt and olt.cli_enabled and olt.cli_username:
             try:
                 from snmp_collector import create_cli_collector
                 tc = create_cli_collector(olt)
@@ -3884,7 +3884,7 @@ def onu_history(onu_id):
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
-    if not olt or not olt.telnet_enabled:
+    if not olt or not olt.cli_enabled:
         return jsonify({'success': True, 'events': []})
     # EPON ONUs don't support 'show gpon onu history' — return empty
     if (onu.card or '').lower() == 'epon':
@@ -3923,7 +3923,7 @@ def onu_traffic(onu_id):
 
     traffic = {'downstream_kbps': '0 Kbps', 'upstream_kbps': '0 Kbps'}
 
-    if olt.telnet_enabled and olt.cli_username:
+    if olt.cli_enabled and olt.cli_username:
         try:
             from snmp_collector import TelnetCollector, create_cli_collector
             tc = create_cli_collector(olt)
@@ -4090,9 +4090,9 @@ def provision_unified():
                     onu.technician_id = technician_id
                     db.session.commit()
 
-            # G4 fix: SNMP can only do basic registration. Auto-fallback to Telnet for service config.
-            if olt.telnet_enabled and olt.cli_username and not is_epon:
-                logger.info(f"[provision_unified] SNMP registration done, falling back to Telnet for service config")
+            # G4 fix: SNMP can only do basic registration. Auto-fallback to CLI for service config.
+            if olt.cli_enabled and olt.cli_username and not is_epon:
+                logger.info(f"[provision_unified] SNMP registration done, falling back to CLI for service config")
                 from snmp_collector import create_cli_collector
                 tc = create_cli_collector(olt)
                 svc_success, svc_msg = tc.register_unified(
@@ -4102,6 +4102,7 @@ def provision_unified():
                     sla_profile=sla_profile,
                     wifi_config=wifi_config, tr069_config=tr069_config,
                     name=name, description=description, is_epon=is_epon,
+                    skip_registration=True,
                 )
                 if svc_success:
                     msg = f'ONU registered via SNMP + services configured via Telnet'
@@ -4135,7 +4136,7 @@ def provision_unified():
             log_action('onu_provision', 'onu', target=f'{prefix}_{frame}/{slot}/{port}:{onu_id}', detail=f'Provisioned SN={serial} on {olt.name} as {onu_type} (SNMP)')
         return jsonify({'success': success, 'message': msg})
 
-    if not olt.telnet_enabled or not olt.cli_username:
+    if not olt.cli_enabled or not olt.cli_username:
         return jsonify({'success': False, 'message': 'OLT CLI access not configured'})
 
     from snmp_collector import create_cli_collector
@@ -4230,7 +4231,7 @@ def pre_register_onu():
                     db.session.commit()
 
             # G5 fix: SNMP can only do basic registration. Auto-fallback to Telnet for template config.
-            if olt.telnet_enabled and olt.cli_username:
+            if olt.cli_enabled and olt.cli_username:
                 pon_port = data.get('pon_port', '')
                 is_epon = data.get('is_epon', False) or 'epon-olt' in pon_port or 'epon_olt' in pon_port
                 if is_epon and onu_type.strip().upper() == 'ALL':
@@ -5541,7 +5542,7 @@ def get_olt_vlans(olt_id):
     source = 'none'
 
     # Try Telnet first (if enabled)
-    if olt.telnet_enabled and olt.cli_username:
+    if olt.cli_enabled and olt.cli_username:
         try:
             from snmp_collector import TelnetCollector, create_cli_collector
             tc = create_cli_collector(olt)
@@ -5626,7 +5627,7 @@ def get_olt_speed_profiles_full(olt_id):
     Also auto-syncs EPON SLA profiles from OLT if CLI is enabled."""
     # --- AUTO-SYNC EPON SLA PROFILES ---
     olt = db.session.get(OLT, olt_id) if olt_id else None
-    if olt and olt.telnet_enabled and olt.cli_username:
+    if olt and olt.cli_enabled and olt.cli_username:
         try:
             from snmp_collector import create_cli_collector
             tc = create_cli_collector(olt)
@@ -5838,7 +5839,7 @@ def add_onu_type(olt_id):
 
     # Try Telnet push to OLT if enabled, but always save to DB
     telnet_msg = ''
-    if olt.telnet_enabled and olt.cli_username:
+    if olt.cli_enabled and olt.cli_username:
         try:
             from snmp_collector import TelnetCollector, create_cli_collector
             tc = create_cli_collector(olt)
@@ -5889,7 +5890,7 @@ def add_onu_type(olt_id):
     msg = 'ONU type saved'
     if not telnet_ok:
         msg += f' (saved to DB, Telnet push failed: {telnet_msg[:100]})'
-    elif olt.telnet_enabled:
+    elif olt.cli_enabled:
         msg = 'ONU type saved and pushed to OLT'
     return jsonify({'success': True, 'message': msg})
 
@@ -7359,7 +7360,7 @@ def unregistered_count():
     breakdown = []
     from snmp_collector import TelnetCollector, create_cli_collector
     for olt in olts:
-        if not olt.telnet_enabled:
+        if not olt.cli_enabled:
             continue
         try:
             tc = create_cli_collector(olt)

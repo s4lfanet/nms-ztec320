@@ -121,8 +121,9 @@ with app.app_context():
     local_now = get_local_now(tz_name)
     print(f'[{now.strftime("%Y-%m-%d %H:%M:%S")} UTC / {local_now.strftime("%H:%M:%S")} {tz_name}] Auto backup started')
 
-    # Find OLTs that need backup
-    olts = OLT.query.filter_by(auto_backup_enabled=True, telnet_enabled=True).all()
+    # Find OLTs that need backup (CLI access = Telnet or SSH)
+    all_olts = OLT.query.filter_by(auto_backup_enabled=True).all()
+    olts = [o for o in all_olts if o.cli_enabled]
     if not olts:
         print('  No OLTs with auto-backup enabled. Exiting.')
         sys.exit(0)

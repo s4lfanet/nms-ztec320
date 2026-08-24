@@ -428,7 +428,7 @@ class TestSNMPTelnetFallback:
             mock_tc.register_unified.assert_called_once()
 
     def test_snmp_pre_register_falls_back_to_telnet(self, auth_client, test_olt):
-        """SNMP pre_register should call Telnet register_vendor_template after SNMP reg."""
+        """SNMP pre_register should call CLI configure_onu_profile after SNMP reg."""
         with patch('snmp_collector.create_snmp_collector') as mock_snmp, \
              patch('snmp_collector.get_write_community', return_value='private'), \
              patch('snmp_collector.create_cli_collector') as mock_cli:
@@ -439,7 +439,7 @@ class TestSNMPTelnetFallback:
             mock_snmp.return_value = mock_collector
 
             mock_tc = MagicMock()
-            mock_tc.register_vendor_template.return_value = (True, 'Telnet OK')
+            mock_tc.configure_onu_profile.return_value = (True, 'CLI config OK')
             mock_cli.return_value = mock_tc
 
             with patch('app._auto_write_config'):
@@ -450,7 +450,7 @@ class TestSNMPTelnetFallback:
                     'onu_type': 'ZTE-F609',
                     'template': 'zte_full',
                     'vlan': 100,
-                    'tcont_profile': '1G',
+                    'tcont_profile': 'default',
                     'register_mode': 'snmp',
                 }, headers={'X-Requested-With': 'XMLHttpRequest'})
 
@@ -458,5 +458,4 @@ class TestSNMPTelnetFallback:
             assert resp.status_code == 200
             assert data['success'] is True
             assert 'SNMP' in data['message']
-            assert 'Telnet' in data['message']
-            mock_tc.register_vendor_template.assert_called_once()
+            mock_tc.configure_onu_profile.assert_called_once()

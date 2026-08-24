@@ -620,7 +620,7 @@ def _check_onus_for_tenant(force_send=False):
 
     # ─── Check unregistered ONUs via Telnet (show pon onu uncfg) ───
     for olt in olts:
-        if not olt.telnet_enabled:
+        if not olt.cli_enabled:
             continue
         try:
             from snmp_collector import create_cli_collector
