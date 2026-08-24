@@ -529,7 +529,7 @@ def onu_lookup(olt_id, frame, port, onu_num):
 @app.route('/api/onu/<int:onu_id>/detail')
 @login_required
 def api_onu_detail(onu_id):
-    """Return ONU data from DB only — instant response, no Telnet."""
+    """Return ONU data from DB only — instant response, no CLI."""
     onu = db.session.get(ONU, onu_id)
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
@@ -563,7 +563,7 @@ def api_onu_detail(onu_id):
 @app.route('/api/onu/<int:onu_id>/live-detail')
 @login_required
 def api_onu_live_detail(onu_id):
-    """Fetch live ONU data from OLT via Telnet (ZTE only)."""
+    """Fetch live ONU data from OLT via CLI — SSH or Telnet (ZTE only)."""
     import json as _json
     onu = db.session.get(ONU, onu_id)
     if not onu:
@@ -920,7 +920,7 @@ def update_onu(onu_id):
                 tn.close()
                 logger.info(f"[update_onu] CLI: {cli_cmds} on {onu_if}")
             else:
-                logger.warning(f"[update_onu] Telnet connect failed to {olt.ip_address}, DB saved but OLT not updated")
+                logger.warning(f"[update_onu] CLI connect failed to {olt.ip_address}, DB saved but OLT not updated")
         except Exception as e:
             logger.warning(f"[update_onu] CLI failed: {e}")
 
@@ -1520,7 +1520,7 @@ def copy_olt_config():
 
     tn = dst_tc._connect()
     if not tn:
-        return jsonify({'success': False, 'message': 'Cannot connect to target OLT via Telnet'}), 500
+        return jsonify({'success': False, 'message': 'Cannot connect to target OLT via CLI'}), 500
 
     try:
         # --- 1. Copy VLANs ---
@@ -1794,7 +1794,7 @@ def _auto_write_config(olt_id):
                 tc = create_cli_collector(olt)
                 tn = tc._connect()
                 if not tn:
-                    logger.warning(f"Auto-write: Telnet connect failed for OLT {olt_id}")
+                    logger.warning(f"Auto-write: CLI connect failed for OLT {olt_id}")
                     return
                 out = tc._send_command(tn, 'write', timeout=30)
                 tn.close()
@@ -1993,12 +1993,12 @@ def onu_get_status(onu_id):
     if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
 
-    from snmp_collector import TelnetCollector, create_cli_collector
+    from snmp_collector import create_cli_collector
     import re as _re
     tc = create_cli_collector(olt)
     tn = tc._connect()
     if not tn:
-        return jsonify({'success': False, 'message': 'Telnet connection failed'})
+        return jsonify({'success': False, 'message': 'CLI connection failed'})
 
     is_epon = (onu.card or '').lower() == 'epon'
     prefix = 'epon-onu' if is_epon else 'gpon-onu'
@@ -2121,10 +2121,10 @@ def onu_get_status(onu_id):
                 info[k] = v
         status_data['interface'] = info
 
-        # 2. Optical status — try Telnet first (has ONU TX), SNMP fallback
-        # ZTE C320 V2.1.0: SNMP OID .11 (ONU TX) returns 0, so Telnet is needed
+        # 2. Optical status — try CLI first (has ONU TX), SNMP fallback
+        # ZTE C320 V2.1.0: SNMP OID .11 (ONU TX) returns 0, so CLI is needed
 
-        # 2a. Telnet: show pon power attenuation
+        # 2a. CLI: show pon power attenuation
         # ZTE C320 V2.1.0 output format:
         #           OLT                  ONU              Attenuation
         # --------------------------------------------------------------------------
@@ -2227,7 +2227,7 @@ def onu_get_status(onu_id):
         except Exception as e:
             logger.debug(f"Optical SNMP failed: {e}")
 
-        # 2c. ONU optical module info via Telnet: show gpon remote-onu interface
+        # 2c. ONU optical module info via CLI: show gpon remote-onu interface
         try:
             opt_out = tc._send_command(tn, f'show gpon remote-onu interface {iface}', timeout=10)
             if opt_out and 'Error' not in opt_out and 'Incomplete' not in opt_out:
@@ -2285,7 +2285,7 @@ def onu_get_status(onu_id):
             up_rx = status_data['optical']['up'].get('olt_rx')
             down_rx = status_data['optical']['down'].get('onu_rx')
             up_tx = status_data['optical']['up'].get('onu_tx')
-            # Only update rx_power (OLT RX) in DB if from Telnet, not SNMP OID .18 fallback
+            # Only update rx_power (OLT RX) in DB if from CLI, not SNMP OID .18 fallback
             if up_rx and not status_data['optical']['up'].get('olt_rx_snmp_fallback'):
                 onu.rx_power = float(_re.search(r'[-]?\d+\.?\d*', up_rx).group())
             if down_rx:
@@ -2307,7 +2307,7 @@ def onu_get_status(onu_id):
 @app.route('/api/onu/<int:onu_id>/refresh-status', methods=['POST'])
 @login_required
 def onu_refresh_status(onu_id):
-    """Re-fetch ONU status from OLT and update DB (ZTE via Telnet)."""
+    """Re-fetch ONU status from OLT and update DB (ZTE via CLI — SSH or Telnet)."""
     onu = db.session.get(ONU, onu_id)
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
@@ -2369,7 +2369,7 @@ def onu_save_config(onu_id):
     try:
         tn = tc._connect()
         if not tn:
-            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+            return jsonify({'success': False, 'message': 'CLI connection failed'})
         out = tc._send_command(tn, 'write', timeout=30)
         tn.close()
         if 'error' in out.lower() or '%' in out:
@@ -2382,7 +2382,7 @@ def onu_save_config(onu_id):
 @app.route('/api/onu/<int:onu_id>/resync-config', methods=['POST'])
 @permission_required('configure_onu')
 def onu_resync_config(onu_id):
-    """Re-collect ONU detail from OLT and update DB (ZTE via Telnet).
+    """Re-collect ONU detail from OLT and update DB (ZTE via CLI — SSH or Telnet).
     This is a READ-ONLY operation — does NOT modify OLT config.
     """
     onu = db.session.get(ONU, onu_id)
@@ -2549,7 +2549,7 @@ def get_onu_types():
 @app.route('/api/onu/<int:onu_id>/wan-service/<int:svc_idx>', methods=['POST'])
 @permission_required('configure_onu')
 def onu_wan_service_edit(onu_id, svc_idx):
-    """Edit WAN service configuration via Telnet.
+    """Edit WAN service configuration via CLI (SSH or Telnet).
     Matches R-Config modal: Status, VLAN, CoS, Download/Upload profiles,
     Mode (PPPoE NAT / Wan-IP / Bridge), with sub-options."""
     onu = db.session.get(ONU, onu_id)
@@ -2565,7 +2565,7 @@ def onu_wan_service_edit(onu_id, svc_idx):
     try:
         tn = tc._connect()
         if not tn:
-            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+            return jsonify({'success': False, 'message': 'CLI connection failed'})
         is_epon = (onu.card or '').lower() == 'epon'
         onu_pfx = 'epon-onu' if is_epon else 'gpon-onu'
         onu_path = f'{onu_pfx}_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
@@ -2766,7 +2766,7 @@ def onu_wan_service_edit(onu_id, svc_idx):
 @app.route('/api/onu/<int:onu_id>/wan-service/<int:svc_idx>', methods=['DELETE'])
 @permission_required('configure_onu')
 def onu_wan_service_delete(onu_id, svc_idx):
-    """Delete a WAN service configuration via Telnet.
+    """Delete a WAN service configuration via CLI (SSH or Telnet).
     Removes: service, wan-ip, pppoe, service-port, tcont, gemport for the given index."""
     onu = db.session.get(ONU, onu_id)
     if not onu:
@@ -2780,7 +2780,7 @@ def onu_wan_service_delete(onu_id, svc_idx):
     try:
         tn = tc._connect()
         if not tn:
-            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+            return jsonify({'success': False, 'message': 'CLI connection failed'})
         is_epon = (onu.card or '').lower() == 'epon'
         onu_pfx = 'epon-onu' if is_epon else 'gpon-onu'
         onu_path = f'{onu_pfx}_{onu.frame}/{onu.slot}/{onu.port}:{onu.onu_id}'
@@ -2814,7 +2814,7 @@ def onu_wan_service_delete(onu_id, svc_idx):
 @app.route('/api/olt/<int:olt_id>/onu-types', methods=['GET'])
 @login_required
 def get_olt_onu_types(olt_id):
-    """Get ONU types — try Telnet first (if enabled), fallback to DB. Cached 5 min."""
+    """Get ONU types — try CLI first (if enabled), fallback to DB. Cached 5 min."""
     from cache import cache_get, cache_set
     cache_key = f"olt:{olt_id}:onu-types"
     cached = cache_get(cache_key)
@@ -2832,13 +2832,13 @@ def get_olt_onu_types(olt_id):
             tc = create_cli_collector(olt)
             types = tc.collect_onu_types()
         except Exception as e:
-            logger.debug(f"Telnet onu-types failed: {e}")
+            logger.debug(f"CLI onu-types failed: {e}")
 
     if types:
         type_list = [{'type_name': t.get('type_name', ''), 'pon_type': t.get('pon_type', 'gpon')}
                      for t in types if t.get('type_name')]
         type_list.sort(key=lambda x: x['type_name'])
-        result = {'success': True, 'types': type_list, 'source': 'telnet'}
+        result = {'success': True, 'types': type_list, 'source': 'cli'}
     else:
         # Try SNMP — collect distinct type names from registered ONUs
         try:
@@ -3068,7 +3068,7 @@ def olt_write_config(olt_id):
     try:
         tn = tc._connect()
         if not tn:
-            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+            return jsonify({'success': False, 'message': 'CLI connection failed'})
         out = tc._send_command(tn, 'write', timeout=30)
         tn.close()
         if 'error' in out.lower() or '%' in out:
@@ -3217,7 +3217,7 @@ def backup_olt_config(olt_id):
     try:
         tn = tc._connect()
         if not tn:
-            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+            return jsonify({'success': False, 'message': 'CLI connection failed'})
         tc._send_command(tn, 'write memory', timeout=30)
         config = tc._send_command(tn, 'show running-config', timeout=60)
         tn.close()
@@ -3273,7 +3273,7 @@ def backup_olt_config_to_db(olt_id):
     try:
         tn = tc._connect()
         if not tn:
-            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+            return jsonify({'success': False, 'message': 'CLI connection failed'})
         # Save running config to startup (NVRAM) before backup
         tc._send_command(tn, 'write memory', timeout=30)
         config = tc._send_command(tn, 'show running-config', timeout=60)
@@ -3557,7 +3557,7 @@ def cf_logs():
 @app.route('/api/onu/<int:onu_id>/section-config', methods=['POST'])
 @permission_required('configure_onu')
 def onu_section_config(onu_id):
-    """Update section config (WiFi/LAN/VEIP/TR069) on OLT via Telnet.
+    """Update section config (WiFi/LAN/VEIP/TR069) on OLT via CLI (SSH or Telnet).
     Uses correct ZTE C320 pon-onu-mng context commands."""
     onu = db.session.get(ONU, onu_id)
     if not onu:
@@ -3589,7 +3589,7 @@ def onu_section_config(onu_id):
     try:
         tn = tc._connect()
         if not tn:
-            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+            return jsonify({'success': False, 'message': 'CLI connection failed'})
 
         is_epon = (onu.card or '').lower() == 'epon'
         onu_pfx = 'epon-onu' if is_epon else 'gpon-onu'
@@ -6131,7 +6131,7 @@ def add_sla_profile(olt_id):
     try:
         tn = tc._connect()
         if not tn:
-            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+            return jsonify({'success': False, 'message': 'CLI connection failed'})
 
         tc._send_command(tn, 'configure terminal', timeout=10)
         tc._send_command(tn, 'epon', timeout=10)
@@ -6186,7 +6186,7 @@ def delete_sla_profile(olt_id, profile_id):
     try:
         tn = tc._connect()
         if not tn:
-            return jsonify({'success': False, 'message': 'Telnet connection failed'})
+            return jsonify({'success': False, 'message': 'CLI connection failed'})
 
         tc._send_command(tn, 'configure terminal', timeout=10)
         tc._send_command(tn, 'epon', timeout=10)
