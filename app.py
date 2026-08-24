@@ -4043,7 +4043,7 @@ def provision_unified():
     # Check register mode from request — SNMP or Telnet
     use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
 
-    tcont_profile = data.get('tcont_profile', '1G')
+    tcont_profile = data.get('tcont_profile', 'default')
     traffic_profile = data.get('traffic_profile', '')
     services = data.get('services', [])
     use_veip = data.get('use_veip')  # None = auto-detect
@@ -4196,7 +4196,7 @@ def pre_register_onu():
     onu_type = data.get('onu_type', 'All')  # Default 'All' per oltc320 reference (universal type)
     serial = data.get('serial', '')
     vlan = data.get('vlan', 100)
-    tcont_profile = data.get('tcont_profile', '1G')
+    tcont_profile = data.get('tcont_profile', 'default')
     name = data.get('name', '')
     description = data.get('description', '')
     configure = data.get('configure', True)
@@ -4235,36 +4235,22 @@ def pre_register_onu():
                 is_epon = data.get('is_epon', False) or 'epon-olt' in pon_port or 'epon_olt' in pon_port
                 if is_epon and onu_type.strip().upper() == 'ALL':
                     onu_type = 'ALL-EPON'
-                logger.info(f"[pre_register] SNMP registration done, falling back to Telnet for template config")
+                logger.info(f"[pre_register] SNMP registration done, falling back to Telnet for service config")
                 from snmp_collector import create_cli_collector
                 tc = create_cli_collector(olt)
-                if template and template != 'bridge':
-                    svc_success, svc_msg = tc.register_vendor_template(
-                        frame=frame, slot=slot, port=port, onu_id=onu_id,
-                        serial=serial, template=template, onu_type=onu_type,
-                        tcont_profile=tcont_profile, vlan=vlan,
-                        name=name, description=description, extra=extra, is_epon=is_epon
-                    )
-                elif configure:
-                    svc_success, svc_msg = tc.register_and_configure(
-                        frame=frame, slot=slot, port=port, onu_id=onu_id,
-                        onu_type=onu_type, serial=serial, vlan=vlan,
-                        tcont_profile=tcont_profile, name=name, description=description, is_epon=is_epon,
-                        sla_profile=sla_profile
-                    )
-                else:
-                    svc_success, svc_msg = True, ''
-                    if name or description:
-                        tc.configure_onu_profile(
-                            frame=frame, slot=slot, port=port, onu_id=onu_id,
-                            tcont_profile=tcont_profile, user_vlan=vlan, service_vlan=vlan,
-                            name=name, description=description, is_epon=is_epon,
-                            sla_profile=sla_profile
-                        )
+                # SNMP already registered the ONU — only configure service (TCONT/GEM/VLAN)
+                # Use configure_onu_profile which skips the registration step
+                svc_success, svc_msg = tc.configure_onu_profile(
+                    frame=frame, slot=slot, port=port, onu_id=onu_id,
+                    tcont_profile=tcont_profile,
+                    user_vlan=vlan, service_vlan=vlan,
+                    name=name, description=description, is_epon=is_epon,
+                    sla_profile=sla_profile
+                )
                 if svc_success:
-                    msg = f'ONU registered via SNMP + template configured via Telnet'
+                    msg = f'ONU registered via SNMP + service configured via Telnet'
                 else:
-                    msg = f'ONU registered via SNMP but template config failed: {svc_msg}'
+                    msg = f'ONU registered via SNMP but service config failed: {svc_msg}'
             else:
                 msg = f'ONU registered via SNMP (basic only — template config requires Telnet)'
 

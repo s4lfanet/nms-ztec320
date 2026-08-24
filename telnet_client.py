@@ -1097,7 +1097,7 @@ class TelnetCollector:
             return False, str(e)
 
     def configure_onu_profile(self, frame, slot, port, onu_id,
-                               tcont_profile='1G', traffic_profile='', sla_profile='',
+                               tcont_profile='default', traffic_profile='', sla_profile='',
                                tcont_id=1, gemport_id=1,
                                user_vlan=100, service_vlan=100, service_port=1, vport=1,
                                name='', description='', is_epon=False):
@@ -1145,7 +1145,14 @@ class TelnetCollector:
                 if '%' in out and 'error' in out.lower():
                     # Fallback without name
                     tn.write(f'tcont {tcont_id} profile {tcont_profile}\n')
-                    tn.read_until(b'#', timeout=5)
+                    out2 = tn.read_until(b'#', timeout=5).decode(errors='replace')
+                    if '%' in out2 and 'error' in out2.lower():
+                        # Fallback to 'default' profile
+                        tn.write(f'tcont {tcont_id} name {service_name} profile default\n')
+                        out3 = tn.read_until(b'#', timeout=5).decode(errors='replace')
+                        if '%' in out3 and 'error' in out3.lower():
+                            tn.write(f'tcont {tcont_id} profile default\n')
+                            tn.read_until(b'#', timeout=5)
 
                 # GEM port
                 tn.write(f'gemport {gemport_id} tcont {tcont_id}\n')
@@ -1245,17 +1252,38 @@ class TelnetCollector:
             if description:
                 self._send_command(tn, f'description {description}')
 
-            # Step 9: TCONT
+            # Step 9: TCONT — try specified profile, then default
+            tcont_ok = False
             _, err = self._send_cmd_check(tn, f'tcont 1 name {service_name} profile {tcont_profile}')
             if err:
                 # Try without name
-                self._send_command(tn, f'tcont 1 profile {tcont_profile}')
+                _, err2 = self._send_cmd_check(tn, f'tcont 1 profile {tcont_profile}')
+                if err2:
+                    # Fallback to 'default' profile
+                    logger.warning(f"[register_and_configure] TCONT profile '{tcont_profile}' not found, using 'default'")
+                    _, err3 = self._send_cmd_check(tn, f'tcont 1 name {service_name} profile default')
+                    if err3:
+                        _, err4 = self._send_cmd_check(tn, 'tcont 1 profile default')
+                        if err4:
+                            logger.error(f"[register_and_configure] TCONT config failed: {err4}")
+                        else:
+                            tcont_ok = True
+                    else:
+                        tcont_ok = True
+                else:
+                    tcont_ok = True
+            else:
+                tcont_ok = True
 
             # Step 10: GEM port
-            self._send_command(tn, 'gemport 1 tcont 1')
+            _, gem_err = self._send_cmd_check(tn, 'gemport 1 tcont 1')
+            if gem_err:
+                logger.warning(f"[register_and_configure] GEM port config failed: {gem_err}")
 
             # Step 11: service-port
-            self._send_command(tn, f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
+            _, sp_err = self._send_cmd_check(tn, f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
+            if sp_err:
+                logger.warning(f"[register_and_configure] service-port config failed: {sp_err}")
 
             # Step 12: exit and end
             self._send_command(tn, 'end')
@@ -1413,6 +1441,29 @@ class TelnetCollector:
                 else:
                     logger.info(f"[register_vendor_template] CMD OK: '{cmd}'")
 
+            # Helper: TCONT with profile fallback
+            def sc_tcont(tcont_id, svc_name, profile):
+                if profile and profile != 'default':
+                    _, e1 = self._send_cmd_check(tn, f'tcont {tcont_id} name {svc_name} profile {profile}', timeout=10)
+                    if not e1:
+                        logger.info(f"[register_vendor_template] CMD OK: tcont {tcont_id} profile {profile}")
+                        return
+                    _, e2 = self._send_cmd_check(tn, f'tcont {tcont_id} profile {profile}', timeout=10)
+                    if not e2:
+                        logger.info(f"[register_vendor_template] CMD OK: tcont {tcont_id} profile {profile} (no name)")
+                        return
+                    logger.warning(f"[register_vendor_template] TCONT profile '{profile}' not found, falling back to 'default'")
+                _, e3 = self._send_cmd_check(tn, f'tcont {tcont_id} name {svc_name} profile default', timeout=10)
+                if e3:
+                    _, e4 = self._send_cmd_check(tn, f'tcont {tcont_id} profile default', timeout=10)
+                    if e4:
+                        logger.warning(f"[register_vendor_template] CMD FAILED: tcont {tcont_id} profile default -> {e4}")
+                        last_err = e4
+                    else:
+                        logger.info(f"[register_vendor_template] CMD OK: tcont {tcont_id} profile default (no name)")
+                else:
+                    logger.info(f"[register_vendor_template] CMD OK: tcont {tcont_id} profile default")
+
             # Helper: send command but don't fail on error (e.g. wifi ssid not supported on all ONU models)
             def sc_warn(cmd):
                 out, err = self._send_cmd_check(tn, cmd, timeout=10)
@@ -1428,12 +1479,12 @@ class TelnetCollector:
                 sc(f'description {description}')
 
             if template == 'bridge':
-                sc(f'tcont 1 name {service_name} profile {tcont_profile}')
+                sc_tcont(1, service_name, tcont_profile)
                 sc('gemport 1 tcont 1')
                 sc(f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
 
             elif template == 'pppoe':
-                sc(f'tcont 1 name {service_name} profile {tcont_profile}')
+                sc_tcont(1, service_name, tcont_profile)
                 sc('gemport 1 tcont 1')
                 sc(f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
                 self._send_command(tn, 'exit')  # exit ONU interface
@@ -1479,13 +1530,13 @@ class TelnetCollector:
                 # sn-bind enable sn
                 sc('sn-bind enable sn')
                 # TCONTs (no name — matching running-config)
-                sc(f'tcont 1 profile {tcont_profile}')
+                sc_tcont(1, '', tcont_profile)
                 sc('gemport 1 tcont 1')
                 if traffic_profile:
                     sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
-                sc(f'tcont 2 profile {tcont_profile}')
+                sc_tcont(2, '', tcont_profile)
                 sc('gemport 2 tcont 2')
-                sc(f'tcont 3 profile {tcont_profile}')
+                sc_tcont(3, '', tcont_profile)
                 sc('gemport 3 tcont 3')
                 sc(f'service-port 1 vport 1 user-vlan {tr069_vlan} vlan {tr069_vlan}')
                 sc(f'service-port 2 vport 2 user-vlan {internet_vlan} vlan {internet_vlan}')
@@ -1562,12 +1613,12 @@ class TelnetCollector:
 
                 # Interface config: TCONT, Gemport, Service-port
                 tcont1_name = f'VLAN{primary_vlan:04d}'
-                sc(f'tcont 1 name {tcont1_name} profile {tcont_profile}')
+                sc_tcont(1, tcont1_name, tcont_profile)
                 sc('gemport 1 tcont 1')
                 if traffic_profile:
                     sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
                 tcont2_name = f'VLAN{secondary_vlan}'
-                sc(f'tcont 2 name {tcont2_name} profile {tcont_profile}')
+                sc_tcont(2, tcont2_name, tcont_profile)
                 sc('gemport 2 tcont 2')
                 if traffic_profile:
                     sc(f'gemport 2 traffic-limit downstream {traffic_profile}')
@@ -1663,7 +1714,7 @@ class TelnetCollector:
                 firewall_level = extra.get('firewall_level', 'low')
                 traffic_profile = extra.get('traffic_profile', '')
 
-                sc(f'tcont 1 name {service_name} profile {tcont_profile}')
+                sc_tcont(1, service_name, tcont_profile)
                 sc('gemport 1 tcont 1')
                 if traffic_profile:
                     sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
@@ -1737,7 +1788,7 @@ class TelnetCollector:
                 # sn-bind enable sn
                 sc('sn-bind enable sn')
                 # Single TCONT/GEM — all service-ports share vport 1
-                sc(f'tcont 1 profile {tcont_profile}')
+                sc_tcont(1, '', tcont_profile)
                 sc('gemport 1 tcont 1')
                 for idx, v in enumerate(vlans_raw, 1):
                     vid = v.get('vlan', v) if isinstance(v, dict) else v
@@ -2084,6 +2135,29 @@ class TelnetCollector:
                 else:
                     logger.info(f"[register_unified] CMD OK: '{cmd}'")
 
+            # Helper: TCONT with profile fallback
+            def sc_tcont(tcont_id, svc_name, profile):
+                if profile and profile != 'default':
+                    _, e1 = self._send_cmd_check(tn, f'tcont {tcont_id} name {svc_name} profile {profile}', timeout=10)
+                    if not e1:
+                        logger.info(f"[register_unified] CMD OK: tcont {tcont_id} profile {profile}")
+                        return
+                    _, e2 = self._send_cmd_check(tn, f'tcont {tcont_id} profile {profile}', timeout=10)
+                    if not e2:
+                        logger.info(f"[register_unified] CMD OK: tcont {tcont_id} profile {profile} (no name)")
+                        return
+                    logger.warning(f"[register_unified] TCONT profile '{profile}' not found, falling back to 'default'")
+                _, e3 = self._send_cmd_check(tn, f'tcont {tcont_id} name {svc_name} profile default', timeout=10)
+                if e3:
+                    _, e4 = self._send_cmd_check(tn, f'tcont {tcont_id} profile default', timeout=10)
+                    if e4:
+                        logger.warning(f"[register_unified] CMD FAILED: tcont {tcont_id} profile default -> {e4}")
+                        last_err = e4
+                    else:
+                        logger.info(f"[register_unified] CMD OK: tcont {tcont_id} profile default (no name)")
+                else:
+                    logger.info(f"[register_unified] CMD OK: tcont {tcont_id} profile default")
+
             # Step 1: Enter config
             self._send_command(tn, 'end')
             self._send_command(tn, 'configure terminal')
@@ -2182,7 +2256,7 @@ class TelnetCollector:
                 tcont = tcont_profile
                 down_profile = svc.get('traffic_profile', '') or traffic_profile
 
-                sc(f'tcont {n} name {svc_name} profile {tcont}')
+                sc_tcont(n, svc_name, tcont)
                 sc(f'gemport {n} tcont {n}')
                 if down_profile:
                     sc(f'gemport {n} traffic-limit downstream {down_profile}')
