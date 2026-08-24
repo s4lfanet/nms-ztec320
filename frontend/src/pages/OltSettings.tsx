@@ -1259,13 +1259,13 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
               <div>
                 <label className="label-sm mb-1">Connection Mode</label>
                 <div className="flex gap-2 items-center">
-                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer" title="Faster — no encryption overhead. Use on private/trusted networks.">
                     <input type="radio" checked={!form.ssh_enabled} onChange={() => setForm(prev => ({ ...prev, ssh_enabled: false }))} />
-                    Telnet
+                    Telnet <span className="text-[10px] opacity-60">(faster)</span>
                   </label>
-                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer" title="Encrypted — safer for non-private networks. Slightly slower due to encryption.">
                     <input type="radio" checked={form.ssh_enabled} onChange={() => setForm(prev => ({ ...prev, ssh_enabled: true }))} />
-                    SSH
+                    SSH <span className="text-[10px] opacity-60">(secure)</span>
                   </label>
                 </div>
               </div>
