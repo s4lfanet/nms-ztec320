@@ -136,12 +136,16 @@ def poll_olt(olt, progress_cb=None, light=False):
                 onus = collector.collect_onus_light()
             collector.close()
 
-            # EPON ONUs are invisible to SNMP — collect via Telnet if enabled
+            # EPON ONUs are invisible to SNMP — collect via CLI if enabled
             if olt.telnet_enabled or olt.ssh_enabled:
                 try:
-                    report(50, 'Light sync: collecting EPON ONUs via Telnet...')
-                    port = olt.telnet_port or 23
-                    tc_epon = TelnetCollector(olt.ip_address, olt.cli_username, olt.cli_password, port)
+                    if olt.ssh_enabled:
+                        port = olt.ssh_port or 22
+                        report(50, f'Light sync: collecting EPON ONUs via SSH ({olt.ip_address}:{port})...')
+                    else:
+                        port = olt.telnet_port or 23
+                        report(50, f'Light sync: collecting EPON ONUs via Telnet ({olt.ip_address}:{port})...')
+                    tc_epon = create_cli_collector(olt)
                     epon_onus = tc_epon._collect_epon_onus_fast(olt.ip_address, olt.cli_username, olt.cli_password, port)
                     result['telnet_ok'] = True
                     if epon_onus:
@@ -222,9 +226,13 @@ def poll_olt(olt, progress_cb=None, light=False):
 
     if olt.telnet_enabled or olt.ssh_enabled:
         try:
-            port = olt.telnet_port or 23
-            report(30, f'Connecting Telnet ({olt.ip_address}:{port})...')
-            tc = TelnetCollector(olt.ip_address, olt.cli_username, olt.cli_password, port)
+            if olt.ssh_enabled:
+                port = olt.ssh_port or 22
+                report(30, f'Connecting SSH ({olt.ip_address}:{port})...')
+            else:
+                port = olt.telnet_port or 23
+                report(30, f'Connecting Telnet ({olt.ip_address}:{port})...')
+            tc = create_cli_collector(olt)
 
             # Get chassis info
             chassis = tc.collect_chassis_info()

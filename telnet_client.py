@@ -1334,7 +1334,7 @@ class TelnetCollector:
             return False, str(e)
 
     def register_and_configure(self, frame, slot, port, onu_id, onu_type='All',
-                                serial='', vlan=100, tcont_profile='1G',
+                                serial='', vlan=100, tcont_profile='default',
                                 name='', description='', is_epon=False, sla_profile=''):
         """Register ONU + configure profile matching oltc320 register_onu_stepbystep().
         Uses 'type All' (universal), step-by-step with error checking, 2s sleep.
@@ -2239,7 +2239,7 @@ class TelnetCollector:
                          tcont_profile, services, use_veip=None,
                          traffic_profile='', sla_profile='', wifi_config=None,
                          tr069_config=None, name='', description='',
-                         extra=None, is_epon=False):
+                         extra=None, is_epon=False, skip_registration=False):
         """Unified ONU registration — works for all vendors.
         
         Args:
@@ -2256,6 +2256,7 @@ class TelnetCollector:
             use_veip: bool or None (None = auto-detect from SN: ZTE→False, non-ZTE→True)
             wifi_config: dict with ssid1_name, ssid1_pass, ssid1_auth, ssid2_name, ssid2_pass, ssid2_auth
             tr069_config: dict with acs_url, acs_user, acs_pass, tr069_vlan, tr069_vlan_mode
+            skip_registration: if True, skip ONU registration (SNMP already did it) — only configure services
         """
         extra = extra or {}
         # Auto-detect VEIP
@@ -2316,22 +2317,25 @@ class TelnetCollector:
             self._send_command(tn, 'end')
             self._send_command(tn, 'configure terminal')
 
-            # Step 2: Register ONU on PON interface
-            _, err = self._send_cmd_check(tn, f'interface {pon_if}')
-            if err:
-                self._send_command(tn, 'end'); tn.close()
-                return False, f'PON interface error: {err}'
+            # Step 2: Register ONU on PON interface (skip if SNMP already registered)
+            if not skip_registration:
+                _, err = self._send_cmd_check(tn, f'interface {pon_if}')
+                if err:
+                    self._send_command(tn, 'end'); tn.close()
+                    return False, f'PON interface error: {err}'
 
-            if is_epon and (not serial or serial.startswith('EPON-')):
-                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type}')
-            elif is_epon:
-                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} mac {_format_epon_mac(serial)}')
+                if is_epon and (not serial or serial.startswith('EPON-')):
+                    _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type}')
+                elif is_epon:
+                    _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} mac {_format_epon_mac(serial)}')
+                else:
+                    _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} sn {serial}')
+                if err:
+                    self._send_command(tn, 'end'); tn.close()
+                    return False, f'Registration failed: {err}'
+                self._send_command(tn, 'exit')
             else:
-                _, err = self._send_cmd_check(tn, f'onu {onu_id} type {onu_type} sn {serial}')
-            if err:
-                self._send_command(tn, 'end'); tn.close()
-                return False, f'Registration failed: {err}'
-            self._send_command(tn, 'exit')
+                logger.info(f"[register_unified] skip_registration=True — ONU already registered via SNMP, configuring services only")
 
             if is_epon:
                 # EPON ONUs are managed via ZTE ExtOAM ('pon-onu-mng'), not GPON OMCI.

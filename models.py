@@ -220,6 +220,11 @@ class OLT(db.Model):
     def snmp_community_write(self, value):
         self._snmp_community_write_enc = encrypt_field(value)
 
+    @property
+    def cli_enabled(self):
+        """True if any CLI access (Telnet or SSH) is enabled."""
+        return bool(self.telnet_enabled or self.ssh_enabled)
+
 
 class ONU(db.Model):
     __tablename__ = 'onus'
