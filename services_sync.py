@@ -1,7 +1,7 @@
 """OLT sync service — core sync logic extracted from app.py route handlers.
 
 These functions are called by route_olt.py to avoid blocking the request thread.
-The actual SNMP/Telnet collection is delegated to snmp_collector.py.
+The actual SNMP/CLI collection is delegated to snmp_collector.py.
 """
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -17,7 +17,7 @@ MAX_SYNC_WORKERS = 5
 def run_single_sync(app, olt_id, sync_id, light=False):
     """Background thread function: sync a single OLT.
     
-    When light=True: SNMP-only sync (no Telnet, no config data).
+    When light=True: SNMP-only sync (no CLI, no config data).
     Used for auto-sync after ONU actions to minimize OLT load.
     """
     with app.app_context():

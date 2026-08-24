@@ -1088,7 +1088,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
         if (d.results.telnet) setTelnetStatus(d.results.telnet.ok ? 'connected' : 'disconnected');
         const sOk = d.results.snmp?.ok;
         const tOk = d.results.telnet?.ok;
-        toast[sOk ? 'success' : 'error'](`SNMP: ${sOk ? 'OK' : 'Failed'} | Telnet: ${tOk === null ? 'N/A' : tOk ? 'OK' : 'Failed'}`);
+        toast[sOk ? 'success' : 'error'](`SNMP: ${sOk ? 'OK' : 'Failed'} | CLI: ${tOk === null ? 'N/A' : tOk ? 'OK' : 'Failed'}`);
       } else {
         toast.error('Test failed');
       }
@@ -1138,7 +1138,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             const sOk = testD.results.snmp?.ok;
             const tOk = testD.results.telnet?.ok;
             toast[sOk ? 'success' : 'warning'](
-              `SNMP: ${sOk ? 'Connected' : 'Failed'} | Telnet: ${tOk === null ? 'N/A (SNMP-only)' : tOk ? 'Connected' : 'Failed'}`
+              `SNMP: ${sOk ? 'Connected' : 'Failed'} | CLI: ${tOk === null ? 'N/A (SNMP-only)' : tOk ? 'Connected' : 'Failed'}`
             );
           }
         } catch { /* ignore */ }

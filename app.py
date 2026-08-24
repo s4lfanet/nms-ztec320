@@ -1107,7 +1107,7 @@ def migrate_onu(onu_id):
     if not serial:
         return jsonify({'success': False, 'message': 'ONU has no serial number — cannot re-register'})
 
-    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
+    use_snmp = data.get('register_mode', 'cli') == 'snmp' and olt.snmp_enabled
 
     if use_snmp:
         from snmp_collector import create_snmp_collector, get_write_community
@@ -1824,7 +1824,7 @@ def onu_action(onu_id):
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
 
-    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
+    use_snmp = data.get('register_mode', 'cli') == 'snmp' and olt.snmp_enabled
 
     # SNMP mode: handle delete/deregister via SNMP SET
     if use_snmp and action == 'delete':
@@ -4040,8 +4040,8 @@ def provision_unified():
     description = data.get('description', '')
     technician_id = data.get('technician_id')
 
-    # Check register mode from request — SNMP or Telnet
-    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
+    # Check register mode from request — SNMP or CLI (SSH/Telnet)
+    use_snmp = data.get('register_mode', 'cli') == 'snmp' and olt.snmp_enabled
 
     tcont_profile = data.get('tcont_profile', 'default')
     traffic_profile = data.get('traffic_profile', '')
@@ -4208,8 +4208,8 @@ def pre_register_onu():
     if traffic_profile and 'traffic_profile' not in extra:
         extra['traffic_profile'] = traffic_profile
 
-    # Check register mode from request — SNMP or Telnet
-    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
+    # Check register mode from request — SNMP or CLI (SSH/Telnet)
+    use_snmp = data.get('register_mode', 'cli') == 'snmp' and olt.snmp_enabled
 
     if use_snmp:
         from snmp_collector import create_snmp_collector, get_write_community
@@ -4335,7 +4335,7 @@ def scan_unconfigured():
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
 
-    use_snmp = data.get('register_mode', 'telnet') == 'snmp' and olt.snmp_enabled
+    use_snmp = data.get('register_mode', 'cli') == 'snmp' and olt.snmp_enabled
 
     if use_snmp:
         from snmp_collector import create_snmp_collector, get_write_community
