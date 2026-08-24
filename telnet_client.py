@@ -2414,6 +2414,11 @@ class TelnetCollector:
                 tcont = tcont_profile
                 down_profile = svc.get('traffic_profile', '') or traffic_profile
 
+                # Cleanup existing entries to prevent "already existed" errors on re-provision
+                self._send_command(tn, f'no service-port {n}', timeout=5)
+                self._send_command(tn, f'no gemport {n}', timeout=5)
+                self._send_command(tn, f'no tcont {n}', timeout=5)
+
                 sc_tcont(n, svc_name, tcont)
                 sc(f'gemport {n} tcont {n}')
                 if down_profile:
