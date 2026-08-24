@@ -32,7 +32,7 @@ interface WizardData {
   template: string;
   extra: Record<string, string>;
   technicianId: number | null;
-  registerMode: 'telnet' | 'snmp';
+  registerMode: 'cli' | 'snmp';
 }
 
 const STEPS = [
@@ -407,12 +407,12 @@ export function RegisterWizard() {
   const location = useLocation();
   const [step, setStep] = useState(1);
   const [data, setData] = useState<WizardData>(() => {
-    const state = location.state as { prefillRegisterMode?: 'telnet' | 'snmp' } | null;
+    const state = location.state as { prefillRegisterMode?: 'cli' | 'snmp' } | null;
     return {
       oltId: 0, selectedOnus: [], onuType: 'All', namePrefix: '',
       description: '', tcontProfile: '', trafficProfile: '', slaProfile: '', vlan: 100, configure: true,
       template: 'bridge', extra: {}, technicianId: null,
-      registerMode: state?.prefillRegisterMode || 'telnet',
+      registerMode: state?.prefillRegisterMode || 'cli',
     };
   });
   const [scanning, setScanning] = useState(false);
@@ -700,12 +700,12 @@ export function RegisterWizard() {
             <div className="pt-2">
               <label className="label-sm mb-2">Registration Mode</label>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => update('registerMode', 'telnet')}
+                <button type="button" onClick={() => update('registerMode', 'cli')}
                   className={cn('flex items-center gap-2 p-2.5 rounded-lg border text-left transition',
-                    data.registerMode === 'telnet' ? 'border-accent bg-accent/10' : 'border-brd hover:border-tx3')}>
-                  <Wrench size={16} className={data.registerMode === 'telnet' ? 'text-accent' : 'text-tx3'} />
+                    data.registerMode === 'cli' ? 'border-accent bg-accent/10' : 'border-brd hover:border-tx3')}>
+                  <Wrench size={16} className={data.registerMode === 'cli' ? 'text-accent' : 'text-tx3'} />
                   <div>
-                    <div className="text-sm font-medium">Telnet / CLI</div>
+                    <div className="text-sm font-medium">CLI (SSH/Telnet)</div>
                     <div className="text-xs text-tx3">Full provisioning</div>
                   </div>
                 </button>

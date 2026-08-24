@@ -25,7 +25,7 @@ def save_sync_result(olt, result, sync, light=False):
     olt.uptime = sys_info.get('uptime', 0)
     olt.is_online = True
     olt.connection_status = 'connected'
-    # Update individual SNMP/Telnet status from sync result flags
+    # Update individual SNMP/CLI status from sync result flags
     olt.snmp_status = 'connected' if result.get('snmp_ok') else 'disconnected'
     olt.telnet_status = 'connected' if result.get('telnet_ok') else 'disconnected'
     desc = sys_info.get('description', '')
@@ -441,7 +441,7 @@ def save_sync_result(olt, result, sync, light=False):
 
 
 def check_unregistered_onus(olt):
-    """Check for unregistered ONUs and create notification if found (ZTE via Telnet CLI)."""
+    """Check for unregistered ONUs and create notification if found (ZTE via CLI — SSH or Telnet)."""
     from snmp_collector import create_cli_collector
     tc = create_cli_collector(olt)
     unregistered = tc.collect_unregistered_onus()

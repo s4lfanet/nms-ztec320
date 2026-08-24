@@ -2,7 +2,7 @@
 """Auto-sync OLT via cronjob — runs poll_olt directly without HTTP/session.
 
 Uses LIGHT SYNC (SNMP-only) by default for frequent auto-sync to minimize OLT CPU load.
-Falls back to FULL SYNC (Telnet + config data) every 6 hours or when last full sync failed.
+Falls back to FULL SYNC (CLI + config data) every 6 hours or when last full sync failed.
 Also triggers alert check after sync so notification bell updates.
 All poll_olt operations are read-only (show commands only).
 Uses file lock to prevent overlapping cron runs.
@@ -98,7 +98,7 @@ def _sync_one_olt(olt_id, use_light):
             if not olt:
                 return olt_id, False, "OLT not found", 0
 
-            sync_mode = 'light (SNMP-only)' if use_light else 'full (Telnet+config)'
+            sync_mode = 'light (SNMP-only)' if use_light else 'full (CLI+config)'
             print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Syncing OLT: {olt.name} ({olt.ip_address}) — {sync_mode}')
 
             sync = OLTSyncStatus.query.filter_by(olt_id=olt.id).first()
@@ -124,7 +124,7 @@ def _sync_one_olt(olt_id, use_light):
                 onu_count, stale_count = save_sync_result(olt, result, sync, light=use_light)
                 print(f'  {olt.name}: OK — {onu_count} ONUs synced' + (f', {stale_count} stale removed' if stale_count else ''))
 
-                # Only check unregistered ONUs via Telnet in full mode
+                # Only check unregistered ONUs via CLI in full mode
                 if not use_light:
                     try:
                         unreg_count = check_unregistered_onus(olt)

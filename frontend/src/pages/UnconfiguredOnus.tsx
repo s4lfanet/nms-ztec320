@@ -37,7 +37,7 @@ export function UnconfiguredOnus() {
   const [results, setResults] = useState<OltScanResult[]>([]);
   const [collapsedOlt, setCollapsedOlt] = useState<Record<number, boolean>>({});
   const [scanningOltIds, setScanningOltIds] = useState<Set<number>>(new Set());
-  const [registerMode, setRegisterMode] = useState<'telnet' | 'snmp'>('telnet');
+  const [registerMode, setRegisterMode] = useState<'cli' | 'snmp'>('cli');
 
   const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard });
   const olts = data?.olts || [];
@@ -174,10 +174,10 @@ export function UnconfiguredOnus() {
       <div className="glass-card p-3 flex items-center gap-3 flex-wrap">
         <span className="text-xs md:text-sm font-semibold text-tx2">Scan Mode:</span>
         <div className="flex gap-2">
-          <button type="button" onClick={() => setRegisterMode('telnet')}
+          <button type="button" onClick={() => setRegisterMode('cli')}
             className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition',
-              registerMode === 'telnet' ? 'border-accent bg-accent/10 text-accent' : 'border-brd text-tx3 hover:border-tx3')}>
-            <Wrench size={14} /> Telnet
+              registerMode === 'cli' ? 'border-accent bg-accent/10 text-accent' : 'border-brd text-tx3 hover:border-tx3')}>
+            <Wrench size={14} /> CLI
           </button>
           <button type="button" onClick={() => setRegisterMode('snmp')}
             className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition',

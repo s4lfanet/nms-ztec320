@@ -144,13 +144,13 @@ def poll_olt(olt, progress_cb=None, light=False):
                         report(50, f'Light sync: collecting EPON ONUs via SSH ({olt.ip_address}:{port})...')
                     else:
                         port = olt.telnet_port or 23
-                        report(50, f'Light sync: collecting EPON ONUs via Telnet ({olt.ip_address}:{port})...')
+                        report(50, f'Light sync: collecting EPON ONUs via CLI/Telnet ({olt.ip_address}:{port})...')
                     tc_epon = create_cli_collector(olt)
                     epon_onus = tc_epon._collect_epon_onus_fast(olt.ip_address, olt.cli_username, olt.cli_password, port)
                     result['telnet_ok'] = True
                     if epon_onus:
                         onus.extend(epon_onus)
-                        report(70, f'Light sync: +{len(epon_onus)} EPON ONUs via Telnet')
+                        report(70, f'Light sync: +{len(epon_onus)} EPON ONUs via CLI')
                 except Exception as e:
                     logger.debug(f"EPON light collection: {e}")
 
@@ -186,12 +186,12 @@ def poll_olt(olt, progress_cb=None, light=False):
         finally:
             if collector: collector.close()
 
-    # Step 2: CLI (Telnet for both C300 and C320) - PRIMARY source for ALL ONU data
-    # If Telnet not enabled, fall back to SNMP-only ONU collection (like light sync)
+    # Step 2: CLI (SSH or Telnet for both C300 and C320) - PRIMARY source for ALL ONU data
+    # If CLI not enabled, fall back to SNMP-only ONU collection (like light sync)
     if not (olt.telnet_enabled or olt.ssh_enabled):
         if olt.snmp_enabled and result.get('snmp_ok'):
             try:
-                report(30, 'No Telnet — collecting ONUs via SNMP...')
+                report(30, 'No CLI — collecting ONUs via SNMP...')
                 snmp_col = SNMPCollector(olt.ip_address, olt.snmp_community, olt.snmp_port)
                 if is_c300:
                     snmp_sig = snmp_col.collect_onus_c300()
@@ -218,7 +218,7 @@ def poll_olt(olt, progress_cb=None, light=False):
                 snmp_col.close()
                 result['onus'] = onus
                 result['success'] = True
-                report(75, f'SNMP: found {len(onus)} ONUs (no Telnet)')
+                report(75, f'SNMP: found {len(onus)} ONUs (no CLI)')
             except Exception as e:
                 result['errors'].append(f'SNMP ONUs: {str(e)}')
                 logger.error(f"SNMP ONU collection {olt.name} failed: {e}")
@@ -241,9 +241,9 @@ def poll_olt(olt, progress_cb=None, light=False):
             report(35, f'CLI: temp={chassis.get("temperature")}C, fans={len(chassis.get("fans", []))}')
 
             # Get ALL ONU data from Telnet as primary source
-            report(38, 'Collecting ONU data via Telnet (primary source)...')
+            report(38, 'Collecting ONU data via CLI (primary source)...')
             onus = tc.collect_all_onus()
-            report(75, f'Telnet: found {len(onus)} ONUs')
+            report(75, f'CLI: found {len(onus)} ONUs')
 
             # Enrich with SNMP signal power data - match by SN first, then positional
             snmp_by_sn = snmp_signal.get('by_sn', {})
@@ -270,8 +270,8 @@ def poll_olt(olt, progress_cb=None, light=False):
                 if sn in snmp_by_sn:
                     sig = snmp_by_sn[sn]
                     # OID .10 = ONU RX (correct). OID .18 = WRONG on ZTE C320 V2.1.0.
-                    # OLT RX (rx_power) is collected via Telnet 'show pon power attenuation'
-                    # in enrich_onus_via_telnet above — do NOT overwrite with bad OID .18.
+                    # OLT RX (rx_power) is collected via CLI 'show pon power attenuation'
+                    # in enrich_onus above — do NOT overwrite with bad OID .18.
                     if onu.get('rx_power') is None:
                         onu['rx_power'] = sig.get('rx_power')    # fallback to OID .18 if Telnet failed
                     onu['onu_rx_power'] = sig.get('onu_rx_power') # ONU RX (OID .10) — correct
@@ -355,16 +355,16 @@ def poll_olt(olt, progress_cb=None, light=False):
                 logger.warning(f'PON port collection failed: {e}')
                 result['pon_ports'] = []
 
-            report(97, f'Done: {len(onus)} ONUs with Telnet data + SNMP signal + config')
+            report(97, f'Done: {len(onus)} ONUs with CLI data + SNMP signal + config')
 
         except Exception as e:
             result['errors'].append(f'CLI: {str(e)}')
             logger.error(f"CLI {olt.name} failed: {e}")
 
-    # ─── SNMP-ONLY CONFIG: If no Telnet, collect config via SNMP ───
+    # ─── SNMP-ONLY CONFIG: If no CLI, collect config via SNMP ───
     if not result.get('telnet_ok') and olt.snmp_enabled:
         try:
-            report(91, 'Collecting config via SNMP (no Telnet)...')
+            report(91, 'Collecting config via SNMP (no CLI)...')
             snmp_col = SNMPCollector(olt.ip_address, olt.snmp_community, olt.snmp_port)
             try:
                 vlans = snmp_col.collect_vlans_snmp()

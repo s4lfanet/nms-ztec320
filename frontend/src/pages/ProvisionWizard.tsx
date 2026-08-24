@@ -80,7 +80,7 @@ interface WizardState {
   wifi: WifiConfig;
   tr069: Tr069Config;
   technicianId: number | null;
-  registerMode: 'telnet' | 'snmp';
+  registerMode: 'cli' | 'snmp';
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
@@ -304,7 +304,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
     wifi: { ssids: [], ssid1_name: '', ssid1_pass: '', ssid1_auth: 'wpa2', ssid2_name: '', ssid2_pass: '', ssid2_auth: 'wpa2' },
     tr069: { enabled: false, acs_url: '', acs_user: '', acs_pass: '', tr069_vlan: 0, tr069_vlan_mode: 'tag', profile_id: '' },
     technicianId: null,
-    registerMode: 'telnet',
+    registerMode: 'cli',
   });
 
   const [scanning, setScanning] = useState(false);
@@ -612,12 +612,12 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             <div className="pt-2">
               <label className="label-sm mb-2">Registration Mode</label>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => update('registerMode', 'telnet')}
+                <button type="button" onClick={() => update('registerMode', 'cli')}
                   className={cn('flex items-center gap-2 p-2.5 rounded-lg border text-left transition',
-                    data.registerMode === 'telnet' ? 'border-accent bg-accent/10' : 'border-brd hover:border-tx3')}>
-                  <Wrench size={16} className={data.registerMode === 'telnet' ? 'text-accent' : 'text-tx3'} />
+                    data.registerMode === 'cli' ? 'border-accent bg-accent/10' : 'border-brd hover:border-tx3')}>
+                  <Wrench size={16} className={data.registerMode === 'cli' ? 'text-accent' : 'text-tx3'} />
                   <div>
-                    <div className="text-sm font-medium">Telnet / CLI</div>
+                    <div className="text-sm font-medium">CLI (SSH/Telnet)</div>
                     <div className="text-xs text-tx3">Full provisioning</div>
                   </div>
                 </button>
