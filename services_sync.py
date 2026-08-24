@@ -248,7 +248,7 @@ def start_single_sync(app, olt_id, light=False):
     """Create sync status record and start background sync thread.
     Returns (sync_record, thread).
     
-    When light=True: SNMP-only sync (no Telnet, no config data).
+    When light=True: SNMP-only sync (no CLI, no config data).
     """
     sync = OLTSyncStatus.query.filter_by(olt_id=olt_id).first()
     if not sync:

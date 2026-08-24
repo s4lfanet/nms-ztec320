@@ -3206,7 +3206,7 @@ def olt_cli_users(olt_id):
 @app.route('/api/olt/<int:olt_id>/backup-config', methods=['POST'])
 @permission_required('settings_ip_olts')
 def backup_olt_config(olt_id):
-    """Backup OLT running configuration via Telnet."""
+    """Backup OLT running configuration via CLI (SSH or Telnet)."""
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
@@ -4230,13 +4230,13 @@ def pre_register_onu():
                     onu.technician_id = technician_id
                     db.session.commit()
 
-            # G5 fix: SNMP can only do basic registration. Auto-fallback to Telnet for template config.
+            # G5 fix: SNMP can only do basic registration. Auto-fallback to CLI for template config.
             if olt.cli_enabled and olt.cli_username:
                 pon_port = data.get('pon_port', '')
                 is_epon = data.get('is_epon', False) or 'epon-olt' in pon_port or 'epon_olt' in pon_port
                 if is_epon and onu_type.strip().upper() == 'ALL':
                     onu_type = 'ALL-EPON'
-                logger.info(f"[pre_register] SNMP registration done, falling back to Telnet for service config")
+                logger.info(f"[pre_register] SNMP registration done, falling back to CLI for service config")
                 from snmp_collector import create_cli_collector
                 tc = create_cli_collector(olt)
                 # SNMP already registered the ONU — only configure service (TCONT/GEM/VLAN)
@@ -4249,17 +4249,17 @@ def pre_register_onu():
                     sla_profile=sla_profile
                 )
                 if svc_success:
-                    msg = f'ONU registered via SNMP + service configured via Telnet'
+                    msg = f'ONU registered via SNMP + service configured via CLI'
                 else:
                     msg = f'ONU registered via SNMP but service config failed: {svc_msg}'
             else:
-                msg = f'ONU registered via SNMP (basic only — template config requires Telnet)'
+                msg = f'ONU registered via SNMP (basic only — template config requires CLI)'
 
             # Auto-save config to startup-config
             _auto_write_config(olt_id)
         return jsonify({'success': success, 'message': msg})
 
-    # Telnet mode (original)
+    # CLI mode (SSH or Telnet)
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
 
@@ -4395,7 +4395,7 @@ def scan_unconfigured():
 
         return jsonify({'success': True, 'onus': unconfigured, 'registered_types': reg_types})
 
-    # Telnet mode (original)
+    # CLI mode (SSH or Telnet)
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
     unconfigured = tc.collect_unregistered_onus()
@@ -4542,7 +4542,7 @@ def sync_history(olt_id):
 @app.route('/api/olt/<int:olt_id>/test-connection', methods=['POST'])
 @permission_required('settings_ip_olts')
 def test_olt_connection(olt_id):
-    """Test SNMP and Telnet connections to OLT"""
+    """Test SNMP and CLI (SSH or Telnet) connections to OLT"""
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
@@ -4811,7 +4811,7 @@ def get_uplinks(olt_id):
 @app.route('/api/olt/<int:olt_id>/uplinks/live-traffic', methods=['GET'])
 @login_required
 def uplinks_live_traffic(olt_id):
-    """Real-time traffic rates for all uplink ports via Telnet (called every 3s by frontend)."""
+    """Real-time traffic rates for all uplink ports via CLI (called every 3s by frontend)."""
     import time as _time
     olt = db.session.get(OLT, olt_id)
     if not olt or not olt.cli_enabled or not olt.cli_username:
@@ -4837,7 +4837,7 @@ def refresh_uplinks(olt_id):
     tc = create_cli_collector(olt)
     uplinks = tc.collect_uplinks()
     if not uplinks:
-        return jsonify({'success': False, 'message': 'Failed to collect uplinks (Telnet connection error)'}), 500
+        return jsonify({'success': False, 'message': 'Failed to collect uplinks (CLI connection error)'}), 500
     # Save existing IP configs before delete (keyed by port_name)
     existing = OLTUplink.query.filter_by(olt_id=olt.id).all()
     saved_ips = {}

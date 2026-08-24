@@ -1,9 +1,9 @@
 """
-SNMP & Telnet collector — compatibility shim.
+SNMP & CLI collector — compatibility shim.
 
 Actual code is split into:
 - snmp_core.py: OIDs, decode/parse functions, SNMPCollector class
-- telnet_client.py: SimpleTelnet class, TelnetCollector class
+- telnet_client.py: SimpleTelnet/SimpleSSH class, TelnetCollector class (SSH or Telnet)
 
 This module re-exports everything for backward compatibility.
 All existing `from snmp_collector import X` will continue to work.
@@ -78,14 +78,14 @@ def get_write_community(olt):
 # ==================== COMBINED POLL ====================
 
 def poll_olt(olt, progress_cb=None, light=False):
-    """Poll OLT data. Telnet/SSH as primary, SNMP for signal power.
+    """Poll OLT data. CLI (SSH or Telnet) as primary, SNMP for signal power.
     Auto-detects C300 vs C320 to select correct transport ( SNMP OIDs).
     
     When light=True: SNMP-only mode — collect ONU status/signal/name/serial via SNMP walks.
-    No Telnet connection, no config data (VLANs, profiles, uplinks). 
+    No CLI connection, no config data (VLANs, profiles, uplinks). 
     Much lighter on OLT CPU/RAM. Used for frequent auto-sync.
     
-    When light=False: Full sync — Telnet for ONU data + config, SNMP for signal enrichment.
+    When light=False: Full sync — CLI (SSH or Telnet) for ONU data + config, SNMP for signal enrichment.
     """
     def report(pct, msg):
         if progress_cb: progress_cb(pct, msg)
@@ -97,7 +97,7 @@ def poll_olt(olt, progress_cb=None, light=False):
     model = (olt.model or 'C320').upper()
     is_c300 = 'C300' in model
 
-    # ─── LIGHT SYNC: SNMP only, no Telnet ───
+    # ─── LIGHT SYNC: SNMP only, no CLI ───
     if light:
         if not olt.snmp_enabled:
             result['errors'].append('Light sync requires SNMP enabled')
@@ -164,7 +164,7 @@ def poll_olt(olt, progress_cb=None, light=False):
         report(98, 'Light sync complete')
         return result
 
-    # ─── FULL SYNC: Telnet primary + SNMP signal + config data ───
+    # ─── FULL SYNC: CLI (SSH or Telnet) primary + SNMP signal + config data ───
     snmp_signal = {}  # keyed by serial number
     if olt.snmp_enabled:
         collector = None
@@ -186,7 +186,7 @@ def poll_olt(olt, progress_cb=None, light=False):
         finally:
             if collector: collector.close()
 
-    # Step 2: CLI (SSH or Telnet for both C300 and C320) - PRIMARY source for ALL ONU data
+    # Step 2: CLI (SSH or Telnet for both C300 and C320) — PRIMARY source for ALL ONU data
     # If CLI not enabled, fall back to SNMP-only ONU collection (like light sync)
     if not (olt.telnet_enabled or olt.ssh_enabled):
         if olt.snmp_enabled and result.get('snmp_ok'):
@@ -240,7 +240,7 @@ def poll_olt(olt, progress_cb=None, light=False):
             result['telnet_ok'] = True
             report(35, f'CLI: temp={chassis.get("temperature")}C, fans={len(chassis.get("fans", []))}')
 
-            # Get ALL ONU data from Telnet as primary source
+            # Get ALL ONU data from CLI as primary source
             report(38, 'Collecting ONU data via CLI (primary source)...')
             onus = tc.collect_all_onus()
             report(75, f'CLI: found {len(onus)} ONUs')
