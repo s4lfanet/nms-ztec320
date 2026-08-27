@@ -4,6 +4,160 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-08-27 — Registration Error Fix & React Error #31
+
+#### Diperbaiki — ETH Port VLAN Menyebabkan Registrasi Terlihat Gagal (HIGH)
+- **Root cause**: Template `zte_full`/`fiberhome_veip`/`pppoe`/`zte_single` mengirim `vlan port eth_0/1` sampai `eth_0/4`. ONU dengan <4 ETH port (mis. F670L punya 2) menyebabkan `%Code 63990-GPONRM` pada `eth_0/3` dan `eth_0/4`. Helper `sc()` menyetel `last_err` saat gagal, sehingga `register_vendor_template()`/`register_unified()` mengembalikan `False` meskipun registrasi sebenarnya berhasil
+- **Fix**: Ubah `sc()` → `sc_warn()` untuk semua ETH port VLAN commands di 6 template (register_vendor_template + register_unified). `sc_warn()` mencatat warning tapi tidak menyetel `last_err`
+- **Bukti VPS log**: `CMD FAILED: 'vlan port eth_0/3 mode tag vlan 30' -> %Code 63990-GPONRM` tapi `POST /api/pre-register` tetap 200
+
+#### Diperbaiki — React Error #31 di View ONU & Templates (HIGH)
+- **Root cause**: API `/api/olt/<id>/onu-types` mengembalikan array of objects `[{type_name, pon_type}, ...]` tapi `OnuTypeModal` di `ViewOnu.tsx` dan `Templates.tsx` menganggap sebagai array of strings. React crash #31 saat render object sebagai child
+- **Fix**: Extract `type_name` dari setiap object sebelum set state. Backward compat dengan format string lama
+
+#### Diperbaiki — Frontend Sync Error Display (MEDIUM)
+- `OltSettings.tsx`: Error message dari backend (mis. "Sync already in progress") sekarang ditampilkan ke user, bukan generic "Sync failed"
+- `OltSettings.tsx`: Deteksi sync yang sedang berjalan saat page load (cek sync status semua OLT on mount)
+
+#### Diubah — CLI Terminology Audit
+- Semua referensi "Telnet" di docstrings, error messages, dan comments diubah ke "CLI" atau "CLI (SSH or Telnet)" untuk mencerminkan abstraksi `create_cli_collector`
+- `olt.telnet_status` → `olt.cli_status` di API list dan auto-sync
+
+#### Ditambahkan — OLT Connection Mode Hints
+- `OltSettings.tsx`: Tooltip dan label hints untuk Telnet "(faster)" dan SSH "(secure)" di Connection Mode selector
+
+---
+
+### 2026-08-24 — SSH Support, SNMP-Only Mode & ONU Registration Overhaul
+
+#### Ditambahkan — SSH Support untuk ZTE C320 OLT
+- **`SimpleSSH` class** di `telnet_client.py`: Koneksi SSH ke ZTE C320 menggunakan paramiko dengan legacy algorithm patch (ssh-rsa, ssh-dss, group14-sha256). Interface sama dengan `SimpleTelnet` (read_until, write, close)
+- **`create_cli_collector(olt)`** di `snmp_collector.py`: Dispatch SSH atau Telnet berdasarkan `olt.ssh_enabled`. Port dari `olt.ssh_port`
+- **`TelnetCollector._connect()`**: Dispatch ke `_connect_ssh()` atau `_connect_telnet()` berdasarkan flag `use_ssh`
+- **Test connection endpoints**: Kedua endpoint `test-connection` di `app.py` sekarang test SSH saat `ssh_enabled=True`
+- **`requirements.txt`**: Ditambahkan `paramiko>=3.0,<4.0` (v5.0 menghapus ssh-rsa)
+- **Frontend**: `OltSettings.tsx` toggle SSH/Telnet, `OltInfo` interface ditambah `ssh_enabled` dan `ssh_port`
+
+#### Ditambahkan — SNMP-Only Mode
+- **CLI optional**: OLT dengan empty Telnet username auto-disables CLI. SNMP tetap berfungsi untuk sync dasar
+- **`cli_enabled` property** di model OLT: Derived dari `telnet_enabled OR ssh_enabled`
+- **SNMP-based profile/VLAN collection**: `collect_profiles_snmp()` dan `collect_vlans_snmp()` untuk mode SNMP-only
+- **SNMP ONU collection**: `collect_onus_light()` untuk full sync tanpa Telnet
+- **Seed default ONU types**: 36 tipe ZTE default (GPON + EPON) saat tidak ada Telnet dan DB kosong
+- **Frontend**: OLT settings form, CLI fields optional
+
+#### Ditambahkan — SNMP ONU Registration
+- **SNMP-based registration** untuk ZTE C320: Register ONU via SNMP SET (createAndGo) ke `onuMgmtTable`
+- **Multi-varbind SET**: Single SNMP packet dengan semua field (type, slot, port, onu_id, serial)
+- **Auto-cleanup stale entry**: Hapus SNMP entry sebelum retry registrasi
+- **SNMP+Telnet hybrid**: SNMP untuk registrasi, Telnet/SSH untuk service config (TCONT/GEM/VLAN)
+- **`skip_registration` parameter**: `configure_onu_profile()` melewati re-registrasi jika ONU sudah terdaftar
+- **`register_mode`**: Pilihan registrasi (SNMP, Telnet, Auto) di wizard UI
+
+#### Diperbaiki — TCONT Profile Fallback
+- **Default profile**: Ubah dari `1G` ke `default` (profile yang pasti ada di OLT)
+- **Fallback chain**: specified profile → without name → `default` profile
+- **`sc_tcont()` helper** di `register_vendor_template` dan `register_unified`: Auto-fallback dengan logging
+
+#### Diperbaiki — ONU Registration & Deregister
+- **`cli_enabled` property**: Cek sebelum mencoba koneksi CLI
+- **SSH port in sync**: `services_sync.py` meneruskan `ssh_port` ke `poll_olt`
+- **Deregister**: Gunakan `delete gpon onu` alih-alih `no onu N` (lebih reliable)
+- **SNMP+Telnet flow**: `/api/pre-register` SNMP path menggunakan `configure_onu_profile` (bukan `register_vendor_template` yang mencoba re-register)
+
+#### Ditambahkan — ONU Types via SNMP
+- **`collect_onu_types_snmp()`**: Koleksi tipe ONU dari registered ONUs via SNMP
+- **GPON/EPON separation**: Tipe ZTEG-* = GPON, ZTE-* = EPON
+- **Save to DB**: Tipe ONU disimpan meskipun Telnet disabled/fails
+
+#### Diperbaiki — FiberHome VEIP WAN Config
+- **WAN service add/edit/delete** di ViewOnu untuk FiberHome VEIP ONUs
+- **PPPoE NAT mode**: `wan-ip pppoe` alih-alih legacy `pppoe` command
+- **VEIP and iphost mutually exclusive**: Remove VEIP untuk PPPoE/Wan-IP modes
+- **VLAN empty string fix**: Handle empty VLAN di fiberhome_veip template
+- **wan-ip host conflict**: Fix conflict antara wan-ip 1 dan wan-ip 2 di host yang sama
+
+#### Diperbaiki — Sync & Delete
+- **Sync after delete/clear-config**: Full sync + delay untuk mencegah ghost ONUs
+- **`telnet_status` fix**: Light sync tanpa EPON ONUs tidak lagi set disconnected
+- **Sync error logging**: Improved error logging di `services_sync.py`
+
+---
+
+### 2026-08-20 — Security Hardening, Sync Concurrency & Template Editor
+
+#### Ditambahkan — Security Hardening (Phase 1-11)
+- **WebSocket auth**: WS connection memerlukan session cookie, `/broadcast` endpoint memerlukan internal API key
+- **OLT access control**: User hanya bisa akses OLT yang assigned (kecuali super admin dengan `all_olt`)
+- **CORS hardening**: Non-wildcard origin check, separate `SECRET_KEY` dan `INTERNAL_API_KEY`
+- **Internal API auth**: Heartbeat verify, internal endpoints memerlukan `X-Internal-Key` header
+- **Sensitive config masking**: SystemConfig keys seperti password, token di-mask untuk non-admin
+- **CSRF protection**: SameSite cookie + X-Requested-With header check
+- **FastAPI docs disabled in production**: Swagger/ReDoc hanya di mode development
+- **DB backup with remote SCP**: Auto-backup database ke remote server via SCP
+- **Restore endpoint**: Restore database dari backup dengan auto-rollback on failure
+- **Docker non-root user**: Container berjalan sebagai non-root user
+- **CSP tightened**: Strict Content-Security-Policy, external scripts di external file
+- **Port security**: Internal ports (8765) tidak exposed ke publik
+
+#### Ditambahkan — Sync Concurrency Lock
+- **`sync_lock.py`**: Distributed lock menggunakan Redis SET NX EX (dengan in-memory fallback)
+- **409 Conflict**: Sync request saat sync berjalan mengembalikan 409 dengan pesan "Sync already in progress"
+- **Job lifecycle**: Sync job tracking dengan status (running, completed, failed)
+
+#### Ditambahkan — Performance Optimization
+- **DB indexes**: `olt_sync_status`, `sync_jobs` indexes ditambah via `ensure_index()` di `migrate_schema()`
+- **N+1 query fix**: Batch query untuk ONU data di dashboard
+- **Cache LRU eviction**: In-memory cache dengan LRU eviction
+- **Redis SCAN**: Non-blocking scan untuk cache invalidation
+- **SQLite WAL**: Write-Ahead Logging untuk concurrent read/write
+- **Graceful shutdown**: Proper cleanup pada SIGTERM/SIGINT
+
+#### Ditambahkan — Template Editor
+- **Template CRUD**: Create, read, update, delete template di Templates page
+- **Full template editor**: Form dengan OLT data integration (ONU types, speed profiles, VLANs, TR069 profiles)
+- **RegisterWizard template loading**: Load template config dari DB ke wizard
+- **Service config editor**: Edit service config per template
+
+#### Ditambahkan — Cross-OLT Migration
+- **ONU migration**: Pindah ONU antar OLT dengan config copy
+- **OLT config copy**: Copy ONU types, speed profiles, VLANs, WAN-IP profiles antar OLT
+- **API endpoints**: `/api/olt/<id>/migrate-onu`, `/api/olt/<id>/copy-config`
+
+#### Ditambahkan — System Update from Web UI
+- **Check updates**: Cek update terbaru dari GitHub via web UI
+- **Apply updates**: Pull, rebuild, restart dari System Update page
+- **Git fetch fix**: Extend PATH untuk systemd context, add X-Requested-With header
+
+#### Ditambahkan — SNMP Community & CLI User Management
+- **SNMP community CRUD**: Add/edit/delete SNMP community strings di OLT device
+- **CLI user CRUD**: Add/edit/delete CLI users di OLT device
+- **API endpoints**: `/api/olt/<id>/snmp-community`, `/api/olt/<id>/cli-user`
+
+#### Ditambahkan — Provisioning Tests
+- **26 automated tests**: Dead endpoints, templates, SNMP/Telnet, read-back verification, secret masking, DB save, SNMP+Telnet fallback
+- **Dead endpoint removal**: Hapus `ont_provisioner` endpoints yang tidak digunakan
+
+#### Diperbaiki — WiFi OMCI Auth
+- **Auth type not fully applied**: Add delay + reentry before SSID config
+- **Retry mechanism**: Retry auth commands if first attempt fails
+- **Comprehensive logging**: WiFi payload logging di API dan telnet layers
+
+#### Diperbaiki — Lain-lain
+- **3 log noise/error issues** dari VPS audit
+- **Duitku remnants removal**: Hapus sisa code Duitku payment gateway
+- **Deprecation warnings fix**
+- **OLT status badges**: Show correct SNMP/Telnet status
+- **Template modal responsive**: Bottom-sheet on mobile, sticky header/footer
+- **SNMP add form layout**: Responsive grid columns
+
+#### Dihapus
+- `test_ssh_conn.py` dan test scripts lainnya (dev artifacts)
+- `ont_provisioner` dead endpoints
+- Duitku payment integration remnants
+
+---
+
 ### 2026-08-07 — EPON SLA Profile Management & Timezone Sync Fix
 
 #### Ditambahkan — EPON SLA Profile Management
