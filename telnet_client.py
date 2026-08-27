@@ -1644,10 +1644,10 @@ class TelnetCollector:
                 self._send_command(tn, 'exit')  # exit ONU interface
                 self._send_command(tn, f'pon-onu-mng {onu_if}')
                 sc(f'service INTERNET gemport 1 vlan {vlan}')
-                sc(f'vlan port eth_0/1 mode hybrid def-vlan {vlan}')
-                sc(f'vlan port eth_0/2 mode hybrid def-vlan {vlan}')
-                sc(f'vlan port eth_0/3 mode hybrid def-vlan {vlan}')
-                sc(f'vlan port eth_0/4 mode hybrid def-vlan {vlan}')
+                sc_warn(f'vlan port eth_0/1 mode hybrid def-vlan {vlan}')
+                sc_warn(f'vlan port eth_0/2 mode hybrid def-vlan {vlan}')
+                sc_warn(f'vlan port eth_0/3 mode hybrid def-vlan {vlan}')
+                sc_warn(f'vlan port eth_0/4 mode hybrid def-vlan {vlan}')
                 pppoe_user = extra.get('pppoe_user', '')
                 pppoe_pass = extra.get('pppoe_pass', '')
                 vlan_profile = extra.get('vlan_profile', 'pppoe')
@@ -1710,11 +1710,11 @@ class TelnetCollector:
                 sc(f'service 2 gemport 2 vlan {internet_vlan}')
                 sc(f'service 3 gemport 3 vlan {voip_vlan}')
                 sc('vlan port veip_1 mode hybrid')
-                sc(f'vlan port eth_0/1 mode tag vlan {internet_vlan}')
-                sc(f'vlan port eth_0/2 mode tag vlan {internet_vlan}')
-                sc(f'vlan port eth_0/3 mode tag vlan {internet_vlan}')
-                sc(f'vlan port eth_0/4 mode tag vlan {internet_vlan}')
-                sc(f'vlan port wifi_0/1 mode tag vlan {internet_vlan}')
+                sc_warn(f'vlan port eth_0/1 mode tag vlan {internet_vlan}')
+                sc_warn(f'vlan port eth_0/2 mode tag vlan {internet_vlan}')
+                sc_warn(f'vlan port eth_0/3 mode tag vlan {internet_vlan}')
+                sc_warn(f'vlan port eth_0/4 mode tag vlan {internet_vlan}')
+                sc_warn(f'vlan port wifi_0/1 mode tag vlan {internet_vlan}')
                 # WAN config for internet service (VEIP mode — always host 1)
                 if wan_mode == 'pppoe' and pppoe_user:
                     if vlan_profile:
@@ -1821,7 +1821,7 @@ class TelnetCollector:
                     lan_vlans = lan_vlans_raw or []
                 for eth_port in range(1, 5):
                     port_vlan = lan_vlans[eth_port - 1] if eth_port - 1 < len(lan_vlans) and lan_vlans[eth_port - 1] else primary_vlan
-                    sc(f'vlan port eth_0/{eth_port} mode tag vlan {port_vlan}')
+                    sc_warn(f'vlan port eth_0/{eth_port} mode tag vlan {port_vlan}')
 
                 # WiFi VLAN tagging — use per-SSID VLAN from ssids_list if provided
                 for s in ssids_list:
@@ -1902,10 +1902,10 @@ class TelnetCollector:
                     sc('wan 1 service internet host 1')
 
                 # ETH port VLAN
-                sc(f'vlan port eth_0/1 mode hybrid def-vlan {vlan}')
-                sc(f'vlan port eth_0/2 mode hybrid def-vlan {vlan}')
-                sc(f'vlan port eth_0/3 mode hybrid def-vlan {vlan}')
-                sc(f'vlan port eth_0/4 mode hybrid def-vlan {vlan}')
+                sc_warn(f'vlan port eth_0/1 mode hybrid def-vlan {vlan}')
+                sc_warn(f'vlan port eth_0/2 mode hybrid def-vlan {vlan}')
+                sc_warn(f'vlan port eth_0/3 mode hybrid def-vlan {vlan}')
+                sc_warn(f'vlan port eth_0/4 mode hybrid def-vlan {vlan}')
 
                 # WiFi VLAN tagging (non-fatal: wifi port may not exist in ONU type)
                 if ssid_name:
@@ -2055,7 +2055,7 @@ class TelnetCollector:
                         # Bridge: no wan-ip, but apply VLAN to ETH ports so traffic flows
                         if not use_veip:
                             for eth_port in (1, 2, 3, 4):
-                                sc(f'vlan port eth_0/{eth_port} mode hybrid def-vlan {svc_vlan_for_service}')
+                                sc_warn(f'vlan port eth_0/{eth_port} mode hybrid def-vlan {svc_vlan_for_service}')
                     elif svc_type == 'tr069' and vlan_profile:
                         # TR069: force DHCP via WAN-IP with VLAN profile
                         sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
@@ -2098,7 +2098,7 @@ class TelnetCollector:
                     for eth_port in range(1, 5):
                         port_vlan = lan_vlans[eth_port - 1] if eth_port - 1 < len(lan_vlans) and lan_vlans[eth_port - 1] else None
                         if port_vlan:
-                            sc(f'vlan port eth_0/{eth_port} mode tag vlan {port_vlan}')
+                            sc_warn(f'vlan port eth_0/{eth_port} mode tag vlan {port_vlan}')
                 else:
                     # Auto-tag: ETH port N → service N VLAN (if not already tagged by bridge service)
                     for idx, svc in enumerate(services):
@@ -2108,7 +2108,7 @@ class TelnetCollector:
                             pv = int(svc_vlans[0]) if svc_vlans else vlan
                             svc_type = svc.get('service_type', 'internet')
                             if svc_type != 'bridge':  # bridge already tagged above
-                                sc(f'vlan port eth_0/{n} mode tag vlan {pv}')
+                                sc_warn(f'vlan port eth_0/{n} mode tag vlan {pv}')
 
                 # WiFi VLAN tagging — per-SSID VLAN from ssids_list
                 for s in ssids_list:
