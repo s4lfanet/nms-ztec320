@@ -1,6 +1,6 @@
 # Salfanet NMS — ZTE OLT Management System
 
-Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600, C650). Mendukung kartu **GPON** (GTG) dan **EPON** (ETG). Dibangun dengan Flask + React, mendukung sinkronisasi SNMP/Telnet, monitoring ONU real-time, alerting, provisioning, dan manajemen infrastruktur FTTH dari satu dashboard.
+Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600, C650). Mendukung kartu **GPON** (GTG) dan **EPON** (ETG). Dibangun dengan Flask + React, mendukung sinkronisasi SNMP + CLI (SSH/Telnet), monitoring ONU real-time, alerting, provisioning, dan manajemen infrastruktur FTTH dari satu dashboard.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.12+-green)
@@ -10,9 +10,12 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 ## Fitur Utama
 
 ### OLT & ONU Management
-- Tambah, edit, hapus, dan sinkronisasi OLT via SNMP + Telnet
+- Tambah, edit, hapus, dan sinkronisasi OLT via SNMP + CLI (SSH atau Telnet)
 - Monitoring status ONU, sinyal RX/TX, jarak, serial number, dan detail perangkat
 - Aksi CLI: reboot, reset, delete, clear config, enable/disable, restore factory, restore WiFi, **replace ONU (swap SN/MAC)**
+- **SSH support**: Koneksi SSH ke ZTE C320 (paramiko dengan legacy algorithm patch untuk ssh-rsa). Pilih SSH (secure) atau Telnet (faster) per OLT
+- **SNMP-only mode**: OLT tanpa CLI credentials tetap berfungsi untuk sync dasar (SNMP-based ONU collection, profile/VLAN collection, seed default ONU types)
+- **SNMP ONU registration**: Registrasi ONU via SNMP SET (createAndGo) ke onuMgmtTable, dengan SNMP+Telnet hybrid untuk service config
 - Auto-sync setelah aksi ONU (reboot/delete/clear-config)
 - **Non-ZTE ONU reboot**: FiberHome/Huawei ONUs menggunakan `shutdown`/`no shutdown` fallback (OMCI reboot tidak direspons). Deteksi vendor via SN prefix
 - Rack diagram visual untuk chassis OLT (slot, port, fan, PSU)
@@ -22,9 +25,12 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 ### ONU Provisioning
 - Pre-register wizard: scan ONU → pilih template → konfigurasi → preview CLI → register
 - Provision wizard dengan mode manual/pre-config
+- **Template editor**: CRUD template dengan OLT data integration (ONU types, speed profiles, VLANs, TR069 profiles)
 - Template ZTE (Single/Dual/Multi VLAN), Huawei Full, Fiberhome VEIP
 - WiFi SSID OMCI config: Open/WPA/WPA2/Mixed auth untuk dual-band (2.4G & 5G)
 - TR069/ACS profile support untuk Fiberhome VEIP template
+- **FiberHome VEIP WAN config**: PPPoE/DHCP/Static WAN mode, WAN service add/edit/delete dari View ONU
+- **TCONT profile fallback**: Auto-fallback ke `default` profile jika specified profile tidak ditemukan
 - **EPON support**: Deteksi otomatis kartu ETG, CLI prefix `epon-olt_`/`epon-onu_`, scan uncfg EPON, script preview dinamis
 - **EPON ONU registration**: MAC address diformat dotted (`xxxx.xxxx.xxxx`) untuk CLI ZTE, ONU type `ALL-EPON` (bukan `All`), keyword `mac` (bukan `sn`), skip GPON-only template commands (tcont/gemport), apply basic bridge service via `service-port`
 - **EPON SLA Profile**: Auto-sync SLA profiles dari OLT (`show onu-profile sla`), API endpoints untuk add/delete, UI management di OLT Configuration, SLA profile selector di Provision/Register Wizard untuk EPON ONUs
@@ -46,6 +52,17 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Maintenance window untuk suppress alerts
 - OLT health check via SNMP (CPU, memory, temperature)
 - Real-time push via WebSocket (bell icon update tanpa refresh)
+
+### Security & Reliability
+- **WebSocket auth**: WS connection memerlukan session cookie
+- **OLT access control**: User hanya bisa akses OLT yang assigned
+- **CORS hardening**: Non-wildcard origin check
+- **CSRF protection**: SameSite cookie + X-Requested-With header
+- **Sync concurrency lock**: Redis-based distributed lock (mencegah concurrent sync)
+- **DB backup with remote SCP**: Auto-backup database ke remote server
+- **Restore with auto-rollback**: Restore database dengan validasi dan rollback otomatis
+- **Sensitive config masking**: Password/token di-mask untuk non-admin
+- **System update from web UI**: Check dan apply GitHub updates langsung dari browser
 
 ### FTTH Infrastructure
 - Manajemen hierarki OTB → ODC → ODP
@@ -104,7 +121,7 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 |-------|-----------|
 | Backend | Flask 3.x, SQLAlchemy 2.x, Flask-Login, Flask-Migrate |
 | Async/WebSocket | FastAPI, uvicorn, websockets |
-| Network | pysnmp 7.x (SNMP), raw socket Telnet (IAC negotiation) |
+| Network | pysnmp 7.x (SNMP), raw socket Telnet (IAC negotiation), paramiko SSH |
 | Frontend | React 19, TypeScript, Vite 8, TailwindCSS v4 |
 | State | Zustand (auth), React Query (data fetching) |
 | Charts | Recharts |
@@ -120,8 +137,8 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ├── models.py              # SQLAlchemy models (OLT, ONU, Alert, FTTH, Users, etc.)
 ├── sync_lock.py            # Distributed sync lock (prevent concurrent syncs)
 ├── snmp_core.py           # SNMP core collector (pysnmp 7.x Slim API)
-├── snmp_collector.py      # Compatibility shim (re-exports snmp_core + telnet_client)
-├── telnet_client.py       # ZTE CLI collector & provisioning (~4330 lines)
+├── snmp_collector.py      # Compatibility shim + create_cli_collector() SSH/Telnet dispatch
+├── telnet_client.py       # ZTE CLI collector & provisioning (~6500 lines, SSH+Telnet)
 ├── alerts.py              # Alert engine + notification (Telegram, WA, in-app)
 ├── services_sync.py       # Sync service (background thread management)
 ├── sync_helper.py         # Sync result persistence to DB
@@ -137,12 +154,12 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ├── helpers.py             # Shared helpers (permissions, rate limiting, logging)
 ├── logging_config.py      # Structured logging (JSON for prod, human-readable for dev)
 ├── run_server.py          # Hybrid server launcher (Flask + FastAPI)
-├── olt_adapters/          # ZTE adapter package
-│   ├── __init__.py        # Auto-registers ZTE adapter
+├── olt_adapters/          # Multi-vendor adapter package
+│   ├── __init__.py        # Auto-registers all adapters
 │   ├── base.py            # BaseOLTAdapter abstract class
 │   ├── registry.py        # RackAdapterRegistry
 │   ├── normalized.py      # Normalized data classes (RackData, Slot, Port, Fan, PSU)
-│   ├── snmp_oids.py       # ZTE SNMP OID mappings
+│   ├── snmp_oids.py       # Per-vendor SNMP OID mappings (ZTE, HSGQ, Raisecom, BDCOM, etc.)
 │   └── zte_adapter.py     # ZTE adapter (delegates to snmp_collector)
 ├── frontend/              # React SPA
 │   ├── src/
@@ -175,7 +192,7 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 
 - **Python 3.12+**
 - **Node.js 22+** (for frontend)
-- **ZTE OLT** (C320/C300) accessible via SNMP (port 161) and Telnet (port 23)
+- **ZTE OLT** (C320/C300) accessible via SNMP (port 161) and CLI (Telnet port 23 or SSH port 22)
 
 ### Option 1: VPS Full Installer (Ubuntu 22.04/24.04)
 
@@ -341,7 +358,7 @@ journalctl -u salfanet-nms -f      # View logs (live)
 1. Login to the web UI
 2. Go to **Settings → OLT Settings**
 3. Click **Add OLT**
-4. Enter OLT name, IP address, SNMP community, Telnet credentials
+4. Enter OLT name, IP address, SNMP community, CLI credentials (Telnet or SSH)
 5. Click **Test Connection** to verify
 6. Click **Sync** to pull ONU data
 
