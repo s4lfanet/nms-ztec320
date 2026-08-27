@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { Zap, Activity, Radio, Server, ShieldCheck, Wifi, Network } from 'lucide-react';
+import { Zap, Activity, Radio, Server, ShieldCheck, Wifi } from 'lucide-react';
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -76,11 +76,6 @@ export function AuthLayout({ children, brandName }: AuthLayoutProps) {
           <div className="flex items-center gap-2 text-xs text-tx3">
             <Wifi size={14} className="text-accent" />
             <span>FTTH Ready</span>
-          </div>
-          <div className="h-4 w-px bg-brd" />
-          <div className="flex items-center gap-2 text-xs text-tx3">
-            <Network size={14} className="text-accent" />
-            <span>Multi-Vendor</span>
           </div>
         </div>
       </div>

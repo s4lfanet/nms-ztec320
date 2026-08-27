@@ -154,12 +154,12 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ├── helpers.py             # Shared helpers (permissions, rate limiting, logging)
 ├── logging_config.py      # Structured logging (JSON for prod, human-readable for dev)
 ├── run_server.py          # Hybrid server launcher (Flask + FastAPI)
-├── olt_adapters/          # Multi-vendor adapter package
-│   ├── __init__.py        # Auto-registers all adapters
+├── olt_adapters/          # ZTE adapter package
+│   ├── __init__.py        # Auto-registers ZTE adapter
 │   ├── base.py            # BaseOLTAdapter abstract class
 │   ├── registry.py        # RackAdapterRegistry
 │   ├── normalized.py      # Normalized data classes (RackData, Slot, Port, Fan, PSU)
-│   ├── snmp_oids.py       # Per-vendor SNMP OID mappings (ZTE, HSGQ, Raisecom, BDCOM, etc.)
+│   ├── snmp_oids.py       # ZTE SNMP OID mappings
 │   └── zte_adapter.py     # ZTE adapter (delegates to snmp_collector)
 ├── frontend/              # React SPA
 │   ├── src/
