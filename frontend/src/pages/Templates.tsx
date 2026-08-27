@@ -221,7 +221,7 @@ export default function Templates() {
       fetch(`/api/olt/${selectedOltId}/vlans`, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
       fetch('/api/tr069', { credentials: 'include' }).then(r => r.json()).catch(() => []),
     ]).then(([types, speed, vlans, tr069]) => {
-      if (types.success && types.types) setOnuTypes(types.types);
+      if (types.success && types.types) setOnuTypes(types.types.map((t: unknown) => typeof t === 'string' ? t : (t as Record<string, string>).type_name).filter(Boolean));
       if (speed.success) { setTcontProfiles(speed.tcont || []); setTrafficProfiles(speed.traffic || []); }
       if (vlans.success && vlans.vlans) setVlanList(vlans.vlans);
       else if (vlans.vlans) setVlanList(vlans.vlans);

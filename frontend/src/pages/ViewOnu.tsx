@@ -988,7 +988,10 @@ function OnuTypeModal({ onuId, oltId, currentType, onClose, onSuccess }: { onuId
   useEffect(() => {
     fetch(`/api/olt/${oltId}/onu-types`, { credentials: 'include' })
       .then(r => r.json()).then(d => {
-        if (d.success && d.types && d.types.length > 0) { setTypes(d.types); setStatus(`${d.types.length} types found on OLT`); }
+        if (d.success && d.types && d.types.length > 0) {
+          const names = d.types.map((t: unknown) => typeof t === 'string' ? t : (t as Record<string, string>).type_name).filter(Boolean);
+          setTypes(names); setStatus(`${names.length} types found on OLT`);
+        }
         else setStatus('No types found.');
       }).catch(e => setStatus('Error: ' + e.message));
   }, [oltId]);
