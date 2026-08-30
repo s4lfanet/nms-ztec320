@@ -188,7 +188,15 @@ def parse_c300_ponindex(pon_index):
 
 
 def decode_oper_state(value):
-    m = {1: 'not_present', 2: 'inactive', 3: 'activating', 4: 'online', 5: 'dyinggasp', 6: 'dyinggasp'}
+    """Decode ZTE C320 oper_state integer to status string.
+
+    ZTE C320 V2.1.0 firmware mapping (verified via SNMP walk + CLI):
+      1=not_present, 2=inactive, 3=activating, 4=online, 5=online, 6=dyinggasp
+
+    Note: oper_state=5 means 'online' on C320 V2.1.0, NOT 'dyinggasp'.
+    The C300 uses a different OID (C300_OID_RUN_STATUS) with different values.
+    """
+    m = {1: 'not_present', 2: 'inactive', 3: 'activating', 4: 'online', 5: 'online', 6: 'dyinggasp'}
     return m.get(value, 'offline')
 
 
@@ -201,8 +209,13 @@ def decode_dereg_reason(value):
 def classify_onu_status(oper_state, dereg_reason=0, olt_rx=None, onu_rx=None):
     """Classify ONU status using oper_state + dereg_reason + RX power.
 
-    ZTE C320 SNMP oper_state:
-      1=not_present, 2=inactive, 3=activating, 4=online, 5=dyinggasp, 6=dyinggasp
+    ZTE C320 V2.1.0 SNMP oper_state:
+      1=not_present, 2=inactive, 3=activating, 4=online, 5=online, 6=dyinggasp
+
+    dereg_reason is a LATCHED value — it records the reason for the ONU's
+    *last* deregistration and persists even after the ONU comes back online.
+    Therefore dereg_reason should ONLY be used when oper_state indicates
+    the ONU is currently offline (inactive/not_present).
 
     When oper_state=2 (inactive), use dereg_reason to distinguish:
       LOS (2/3) → 'los' (fiber cut)
@@ -211,7 +224,7 @@ def classify_onu_status(oper_state, dereg_reason=0, olt_rx=None, onu_rx=None):
       other → 'offline'
 
     RX power sanity check: if oper_state says online but both RX values are None,
-    the ONU is likely in a transient state — check dereg_reason as fallback.
+    the ONU is likely in a transient state — use dereg_reason as fallback.
     """
     status = decode_oper_state(oper_state)
 
