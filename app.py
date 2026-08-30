@@ -861,6 +861,76 @@ def refresh_onu_signal(olt_id):
         return jsonify({'success': False, 'message': str(e)})
 
 
+@app.route('/api/olt/<int:olt_id>/olt-logs', methods=['GET'])
+@login_required
+def olt_device_logs(olt_id):
+    """Fetch OLT device logs via CLI (show log alarmlog / cmdlog / snmplog)."""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'})
+    log_type = request.args.get('type', 'alarmlog')
+    lines_limit = min(int(request.args.get('lines', 200)), 2000)
+    try:
+        from snmp_collector import create_cli_collector
+        tc = create_cli_collector(olt)
+        tn = tc._connect()
+        if not tn:
+            return jsonify({'success': False, 'message': 'Could not connect to OLT via CLI'})
+        try:
+            cmd_map = {
+                'alarmlog': 'show log alarmlog',
+                'cmdlog': 'show log cmdlog',
+                'snmplog': 'show log snmplog',
+            }
+            cmd = cmd_map.get(log_type, 'show log alarmlog')
+            output = tc._send_command(tn, cmd, timeout=30)
+            all_lines = (output or '').split('\n')
+            # Strip header lines (Max/Current/percent)
+            data_lines = [l for l in all_lines if l.strip() and not l.startswith('Max ') and not l.startswith('Current ') and not l.strip().startswith('%')]
+            # Take last N lines (most recent)
+            result_lines = data_lines[-lines_limit:] if len(data_lines) > lines_limit else data_lines
+            return jsonify({
+                'success': True,
+                'type': log_type,
+                'total_lines': len(data_lines),
+                'lines': result_lines,
+            })
+        finally:
+            try: tn.close()
+            except: pass
+    except Exception as e:
+        logger.error(f"olt-logs OLT {olt_id} failed: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/olt/<int:olt_id>/sync-logs', methods=['GET'])
+@login_required
+def olt_sync_logs(olt_id):
+    """Fetch NMS sync logs from /var/log/salfanet-sync.log."""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'})
+    lines_limit = min(int(request.args.get('lines', 200)), 2000)
+    try:
+        import os
+        log_path = os.environ.get('SYNC_LOG_PATH', '/var/log/salfanet-sync.log')
+        if not os.path.exists(log_path):
+            return jsonify({'success': True, 'lines': [], 'total_lines': 0, 'message': f'Log file not found: {log_path}'})
+        with open(log_path, 'r', errors='replace') as f:
+            all_lines = f.readlines()
+        # Filter lines related to this OLT (by name or IP)
+        olt_name = olt.name or ''
+        olt_ip = olt.ip_address or ''
+        olt_lines = [l.rstrip('\n') for l in all_lines if olt_name in l or olt_ip in l or 'Auto-sync' in l or 'Starting parallel' in l]
+        result_lines = olt_lines[-lines_limit:] if len(olt_lines) > lines_limit else olt_lines
+        return jsonify({
+            'success': True,
+            'total_lines': len(olt_lines),
+            'lines': result_lines,
+        })
+    except Exception as e:
+        logger.error(f"sync-logs OLT {olt_id} failed: {e}")
+        return jsonify({'success': False, 'message': str(e)})
 
 
 @app.route('/api/onu/<int:onu_id>/update', methods=['POST'])

@@ -30,6 +30,7 @@ const GuidePage = lazy(() => import('./pages/GuidePage').then(m => ({ default: m
 const UnconfiguredOnus = lazy(() => import('./pages/UnconfiguredOnus').then(m => ({ default: m.UnconfiguredOnus })));
 const OnuWizard = lazy(() => import('./pages/OnuWizard').then(m => ({ default: m.OnuWizard })));
 const SystemUpdate = lazy(() => import('./pages/SystemUpdate').then(m => ({ default: m.SystemUpdate })));
+const OltLogs = lazy(() => import('./pages/OltLogs').then(m => ({ default: m.OltLogs })));
 
 const routePermissions: Record<string, string> = {
   '/dashboard/onus/add': 'add_onu',
@@ -158,6 +159,7 @@ export default function App() {
         <Route path="logs" element={<ActionLogs />} />
         <Route path="guide" element={<GuidePage />} />
         <Route path="settings/update" element={<SystemUpdate />} />
+        <Route path="olt-logs" element={<OltLogs />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
