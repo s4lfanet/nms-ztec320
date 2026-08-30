@@ -273,6 +273,8 @@ def poll_olt(olt, progress_cb=None, light=False):
                     onu['onu_rx_power'] = sig.get('onu_rx_power') # ONU RX (OID .10) — correct
                     if onu.get('tx_power') is None:
                         onu['tx_power'] = sig.get('tx_power')    # ONU TX (OID .11)
+                    if onu.get('distance') is None:
+                        onu['distance'] = sig.get('distance')    # SNMP distance (OID .14)
                     onu['oper_state'] = sig.get('oper_state', 0)
                     matched += 1
                 # Fallback: positional match (Telnet order = SNMP walk order)

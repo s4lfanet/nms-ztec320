@@ -27,6 +27,7 @@ OID_OPER_STATE = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.6'
 OID_DEREG_REASON = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.7'
 OID_RX_POWER = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.10'    # ONU RX (from OLT to ONU)
 OID_TX_POWER = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.11'    # TX power
+OID_DISTANCE = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.14'   # ONU distance (raw, decode with decode_distance)
 OID_OLT_RX = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.18'      # OLT RX (from ONU to OLT)
 
 BOARD1_BASE = 268500992
@@ -703,6 +704,7 @@ class SNMPCollector:
             f'{OID_DEREG_REASON}{reg_suffix}',
             f'{OID_RX_POWER}{reg_suffix}',
             f'{OID_TX_POWER}{reg_suffix}',
+            f'{OID_DISTANCE}{reg_suffix}',
             f'{OID_OLT_RX}{reg_suffix}',
         ]
 
@@ -717,6 +719,7 @@ class SNMPCollector:
         rx_power = None
         tx_power = None
         olt_rx = None
+        distance = None
 
         for oid, val in raw.items():
             if oid.startswith(OID_ONU_NAME):
@@ -740,6 +743,9 @@ class SNMPCollector:
             elif oid.startswith(OID_OLT_RX):
                 try: olt_rx = decode_rx_power(int(val))
                 except: pass
+            elif oid.startswith(OID_DISTANCE):
+                try: distance = decode_distance(int(val))
+                except: pass
 
         status = classify_onu_status(oper_state, dereg_reason, olt_rx, rx_power)
 
@@ -753,6 +759,7 @@ class SNMPCollector:
             'rx_power': olt_rx,
             'onu_rx_power': rx_power,
             'tx_power': tx_power,
+            'distance': distance,
         }
 
     def collect_onus_batch(self, onu_keys: list[tuple[int, int]]) -> list[dict]:
@@ -793,7 +800,7 @@ class SNMPCollector:
                 'rx_power': detail['rx_power'],
                 'onu_rx_power': detail['onu_rx_power'],
                 'tx_power': detail['tx_power'],
-                'distance': None,
+                'distance': detail.get('distance'),
                 'actual_type': '',
                 'last_dereg_reason': detail.get('dereg_reason', ''),
                 'pppoe': '',
@@ -968,8 +975,8 @@ class SNMPCollector:
 
         OPTIMIZED: Uses GETBULK (50 OIDs/packet) + asyncio.gather for concurrent walks.
         """
-        # Walk all 8 tables concurrently with GETBULK
-        name_raw, serial_raw, oper_raw, dereg_raw, rx_raw, tx_raw, olt_rx_raw, desc_raw = \
+        # Walk all 9 tables concurrently with GETBULK
+        name_raw, serial_raw, oper_raw, dereg_raw, rx_raw, tx_raw, dist_raw, olt_rx_raw, desc_raw = \
             await asyncio.gather(
                 self._bulk_walk(OID_ONU_NAME),
                 self._bulk_walk(OID_ONU_SERIAL),
@@ -977,10 +984,11 @@ class SNMPCollector:
                 self._bulk_walk(OID_DEREG_REASON),
                 self._bulk_walk(OID_RX_POWER),
                 self._bulk_walk(OID_TX_POWER),
+                self._bulk_walk(OID_DISTANCE),
                 self._bulk_walk(OID_OLT_RX),
                 self._bulk_walk(OID_ONU_DESCRIPTION),
             )
-        logger.info(f"  SNMP light: name={len(name_raw)} serial={len(serial_raw)} oper={len(oper_raw)} dereg={len(dereg_raw)} rx={len(rx_raw)} tx={len(tx_raw)} olt_rx={len(olt_rx_raw)} desc={len(desc_raw)}")
+        logger.info(f"  SNMP light: name={len(name_raw)} serial={len(serial_raw)} oper={len(oper_raw)} dereg={len(dereg_raw)} rx={len(rx_raw)} tx={len(tx_raw)} dist={len(dist_raw)} olt_rx={len(olt_rx_raw)} desc={len(desc_raw)}")
 
         # Parse cfgTable (name, description, serial): suffix .ponIndex.cfgId
         # cfgId == onuSlot (sequential ONU ID on that PON port)
@@ -1014,6 +1022,7 @@ class SNMPCollector:
         dereg_by_key = {}
         rx_by_key = {}
         tx_by_key = {}
+        dist_by_key = {}
         olt_rx_by_key = {}
 
         for oid_str, val, val_str in oper_raw:
@@ -1028,6 +1037,13 @@ class SNMPCollector:
             parts = suffix.lstrip('.').split('.')
             if len(parts) >= 3:
                 try: dereg_by_key[(int(parts[0]), int(parts[1]))] = int(val)
+                except: pass
+
+        for oid_str, val, val_str in dist_raw:
+            suffix = oid_str[len(OID_DISTANCE):]
+            parts = suffix.lstrip('.').split('.')
+            if len(parts) >= 3:
+                try: dist_by_key[(int(parts[0]), int(parts[1]))] = decode_distance(int(val))
                 except: pass
 
         for oid_str, val, val_str in rx_raw:
@@ -1086,7 +1102,7 @@ class SNMPCollector:
                 'rx_power': olt_rx,      # OLT RX (upstream)
                 'onu_rx_power': onu_rx,   # ONU RX (downstream)
                 'tx_power': tx,
-                'distance': None,
+                'distance': dist_by_key.get(key),
                 'actual_type': '',
                 'last_dereg_reason': decode_dereg_reason(dereg_val),
                 'pppoe': '',
@@ -1098,16 +1114,17 @@ class SNMPCollector:
 
     async def _collect_onus_async(self):
         """Walk signal tables only — uses GETBULK + asyncio.gather for concurrent walks."""
-        # Walk all 5 signal tables concurrently with GETBULK
-        oper_raw, rx_raw, tx_raw, olt_rx_raw, serial_raw = \
+        # Walk all 6 signal tables concurrently with GETBULK
+        oper_raw, rx_raw, tx_raw, dist_raw, olt_rx_raw, serial_raw = \
             await asyncio.gather(
                 self._bulk_walk(OID_OPER_STATE),
                 self._bulk_walk(OID_RX_POWER),
                 self._bulk_walk(OID_TX_POWER),
+                self._bulk_walk(OID_DISTANCE),
                 self._bulk_walk(OID_OLT_RX),
                 self._bulk_walk(OID_ONU_SERIAL),
             )
-        logger.info(f"  SNMP signal: oper={len(oper_raw)} rx={len(rx_raw)} tx={len(tx_raw)} olt_rx={len(olt_rx_raw)} serial={len(serial_raw)}")
+        logger.info(f"  SNMP signal: oper={len(oper_raw)} rx={len(rx_raw)} tx={len(tx_raw)} dist={len(dist_raw)} olt_rx={len(olt_rx_raw)} serial={len(serial_raw)}")
 
         # Parse SNMP data using composite key (ponIndex, onuSlot) to avoid
         # cross-port collision. Multiple PON ports share the same onuSlot values
@@ -1121,6 +1138,7 @@ class SNMPCollector:
         oper_by_key = {}   # (ponIndex, onuSlot) -> oper_state int
         rx_by_key   = {}   # (ponIndex, onuSlot) -> ONU RX power float|None
         tx_by_key   = {}   # (ponIndex, onuSlot) -> TX power float|None
+        dist_by_key = {}   # (ponIndex, onuSlot) -> distance int|None
         olt_rx_by_key = {} # (ponIndex, onuSlot) -> OLT RX power float|None
         sn_by_key   = {}   # (ponIndex, cfgId)   -> serial string
 
@@ -1143,6 +1161,13 @@ class SNMPCollector:
             parts = suffix.lstrip('.').split('.')
             if len(parts) >= 3:
                 try: tx_by_key[(int(parts[0]), int(parts[1]))] = decode_rx_power(int(val))
+                except: pass
+
+        for oid_str, val, val_str in dist_raw:
+            suffix = oid_str[len(OID_DISTANCE):]
+            parts = suffix.lstrip('.').split('.')
+            if len(parts) >= 3:
+                try: dist_by_key[(int(parts[0]), int(parts[1]))] = decode_distance(int(val))
                 except: pass
 
         for oid_str, val, val_str in olt_rx_raw:
@@ -1171,6 +1196,7 @@ class SNMPCollector:
                     'rx_power':     olt_rx_by_key.get(key),    # OLT RX (OID .18) — upstream
                     'onu_rx_power': rx_by_key.get(key),        # ONU RX (OID .10) — downstream
                     'tx_power':     tx_by_key.get(key),
+                    'distance':     dist_by_key.get(key),
                     'oper_state':   oper_by_key.get(key, 0),
                 }
         # Fallback: if OLT RX not available, still record ONU RX and TX
@@ -1181,6 +1207,7 @@ class SNMPCollector:
                     'rx_power':     None,                        # OLT RX not available
                     'onu_rx_power': rx_by_key.get(key),          # ONU RX (OID .10)
                     'tx_power':     tx_by_key.get(key),
+                    'distance':     dist_by_key.get(key),
                     'oper_state':   oper_by_key.get(key, 0),
                 }
 
@@ -1284,7 +1311,7 @@ class SNMPCollector:
             suffix = oid_str[len(C300_OID_DISTANCE):]
             parts = suffix.lstrip('.').split('.')
             if len(parts) >= 2:
-                try: dist_by_key[(int(parts[0]), int(parts[1]))] = int(val)
+                try: dist_by_key[(int(parts[0]), int(parts[1]))] = decode_distance(int(val))
                 except: pass
 
         # Parse model: key = (ifIndex, onuId)
