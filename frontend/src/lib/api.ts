@@ -92,6 +92,16 @@ export const api = {
   syncAllOlts: () => request(`/api/olt/sync-all`, { method: 'POST' }),
   syncStatus: (oltId: number) => request<SyncStatus>(`/api/olt/${oltId}/sync-status`),
   getOlt: (oltId: number) => request<OltFullData>(`/api/olt/${oltId}`),
+  oltLogs: (oltId: number, type: string, lines?: number) => {
+    const qs = new URLSearchParams({ type });
+    if (lines) qs.set('lines', String(lines));
+    return request<{ success: boolean; type: string; total_lines: number; lines: string[]; message?: string }>(`/api/olt/${oltId}/olt-logs?${qs}`);
+  },
+  syncLogs: (oltId: number, lines?: number) => {
+    const qs = new URLSearchParams();
+    if (lines) qs.set('lines', String(lines));
+    return request<{ success: boolean; total_lines: number; lines: string[]; message?: string }>(`/api/olt/${oltId}/sync-logs?${qs}`);
+  },
   discoverSlots: (oltId: number) => request<{ success: boolean; message: string; cards: unknown[]; fans: unknown[]; temperature: number | null }>(`/api/olt/${oltId}/discover-slots`, { method: 'POST' }),
   testConnection: (oltId: number | null, data: Record<string, unknown>) => {
     const url = oltId ? `/api/olt/${oltId}/test-connection` : '/api/olt/test-connection';

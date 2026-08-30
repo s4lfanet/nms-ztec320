@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Radio,
-  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity, BookOpen
+  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity, BookOpen, MonitorSmartphone
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../stores/auth';
@@ -60,6 +60,7 @@ const navItems: NavItem[] = [
   },
   { label: 'Panduan', icon: <BookOpen size={20} />, path: '/dashboard/guide' },
   { label: 'Activity Log', icon: <ScrollText size={20} />, path: '/dashboard/logs', permission: 'manage_users' },
+  { label: 'OLT Logs', icon: <MonitorSmartphone size={20} />, path: '/dashboard/olt-logs', permission: 'view_dashboard' },
 ];
 
 function buildVisibleItems(user: { is_super_admin?: boolean; permissions?: string[] } | null): NavItem[] {
