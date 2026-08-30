@@ -711,18 +711,22 @@ def api_customization_columns():
 @app.route('/api/olt/<int:olt_id>/refresh-signal', methods=['POST'])
 @login_required
 def refresh_onu_signal(olt_id):
-    """Fast SNMP-only refresh of RX/TX power and status for all ONUs (ZTE)."""
+    """Fast SNMP-only refresh of status + RX/TX power for all ONUs (ZTE).
+    Walks oper_state, ONU RX, TX, OLT RX, and serial — updates status + signal in DB."""
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
     try:
-        from snmp_collector import SNMPCollector, TelnetCollector, decode_rx_power
+        from snmp_collector import SNMPCollector, TelnetCollector, decode_rx_power, parse_serial
+        from snmp_core import classify_onu_status, decode_dereg_reason
         import asyncio
         from pysnmp.hlapi.v1arch.asyncio import Slim, ObjectType, ObjectIdentity
 
         OID_OPER = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.6'
+        OID_DEREG = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.7'
         OID_RX = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.10'
         OID_TX = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.11'
+        OID_OLT_RX = '1.3.6.1.4.1.3902.1012.3.50.12.1.1.18'
         OID_SN = '1.3.6.1.4.1.3902.1012.3.28.1.1.5'
 
         async def _refresh():
@@ -748,8 +752,10 @@ def refresh_onu_signal(olt_id):
                         s.close()
                     return results
 
-                sn_raw = await walk(OID_SN)
-                rx_raw = await walk(OID_RX)
+                sn_raw, oper_raw, dereg_raw, rx_raw, tx_raw, olt_rx_raw = await asyncio.gather(
+                    walk(OID_SN), walk(OID_OPER), walk(OID_DEREG),
+                    walk(OID_RX), walk(OID_TX), walk(OID_OLT_RX),
+                )
 
                 def parse_key(oid_str, base):
                     suffix = oid_str[len(base):]
@@ -762,27 +768,84 @@ def refresh_onu_signal(olt_id):
                 for oid, val in sn_raw:
                     k = parse_key(oid, OID_SN)
                     if k:
-                        from snmp_collector import parse_serial
                         sn_by_key[k] = parse_serial(val)
 
-                onu_rx_by_sn = {}
+                oper_by_key = {}
+                for oid, val in oper_raw:
+                    k = parse_key(oid, OID_OPER)
+                    if k:
+                        try: oper_by_key[k] = int(val)
+                        except: pass
+
+                dereg_by_key = {}
+                for oid, val in dereg_raw:
+                    k = parse_key(oid, OID_DEREG)
+                    if k:
+                        try: dereg_by_key[k] = int(val)
+                        except: pass
+
+                onu_rx_by_key = {}
                 for oid, val in rx_raw:
                     k = parse_key(oid, OID_RX)
-                    if k and k in sn_by_key:
-                        onu_rx_by_sn[sn_by_key[k]] = decode_rx_power(int(val))
+                    if k:
+                        onu_rx_by_key[k] = decode_rx_power(int(val))
 
-                return onu_rx_by_sn
+                tx_by_key = {}
+                for oid, val in tx_raw:
+                    k = parse_key(oid, OID_TX)
+                    if k:
+                        tx_by_key[k] = decode_rx_power(int(val))
+
+                olt_rx_by_key = {}
+                for oid, val in olt_rx_raw:
+                    k = parse_key(oid, OID_OLT_RX)
+                    if k:
+                        olt_rx_by_key[k] = decode_rx_power(int(val))
+
+                # Build signal map by serial
+                signal_by_sn = {}
+                for k, sn in sn_by_key.items():
+                    if sn:
+                        signal_by_sn[sn] = {
+                            'oper_state': oper_by_key.get(k, 0),
+                            'dereg_reason': dereg_by_key.get(k, 0),
+                            'onu_rx': onu_rx_by_key.get(k),
+                            'tx': tx_by_key.get(k),
+                            'olt_rx': olt_rx_by_key.get(k),
+                        }
+
+                return signal_by_sn
             finally:
                 slim.close()
 
-        onu_rx_map = asyncio.run(_refresh())
+        signal_map = asyncio.run(_refresh())
 
         onus = ONU.query.filter_by(olt_id=olt_id).all()
         updated = 0
+        status_changed = 0
         for o in onus:
             sn = o.serial_number or ''
-            if sn in onu_rx_map and onu_rx_map[sn] is not None:
-                o.onu_rx_power = onu_rx_map[sn]
+            if sn in signal_map:
+                sig = signal_map[sn]
+                new_status = classify_onu_status(sig['oper_state'], sig['dereg_reason'], sig['olt_rx'], sig['onu_rx'])
+                if o.status != new_status:
+                    o.status = new_status
+                    o.oper_state = sig['oper_state']
+                    status_changed += 1
+                # Update signal values for online ONUs
+                if new_status == 'online':
+                    if sig['olt_rx'] is not None:
+                        o.rx_power = sig['olt_rx']
+                    if sig['onu_rx'] is not None:
+                        o.onu_rx_power = sig['onu_rx']
+                    if sig['tx'] is not None:
+                        o.tx_power = sig['tx']
+                else:
+                    o.rx_power = None
+                    o.tx_power = None
+                    o.onu_rx_power = None
+                o.last_dereg_reason = decode_dereg_reason(sig['dereg_reason'])
+                o.last_seen = datetime.now(timezone.utc)
                 updated += 1
         db.session.commit()
         # Invalidate cache
@@ -792,7 +855,7 @@ def refresh_onu_signal(olt_id):
             cache_clear(f"olt:{olt_id}:*")
         except Exception:
             pass
-        return jsonify({'success': True, 'updated': updated, 'total': len(onus)})
+        return jsonify({'success': True, 'updated': updated, 'total': len(onus), 'status_changed': status_changed})
     except Exception as e:
         logger.error(f"refresh-signal OLT {olt_id} failed: {e}")
         return jsonify({'success': False, 'message': str(e)})

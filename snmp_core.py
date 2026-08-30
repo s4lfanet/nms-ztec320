@@ -207,7 +207,7 @@ def decode_dereg_reason(value):
 
 
 def classify_onu_status(oper_state, dereg_reason=0, olt_rx=None, onu_rx=None):
-    """Classify ONU status using oper_state + dereg_reason + RX power.
+    """Classify ONU status using oper_state + dereg_reason.
 
     ZTE C320 V2.1.0 SNMP oper_state:
       1=not_present, 2=inactive, 3=activating, 4=online, 5=online, 6=dyinggasp
@@ -223,20 +223,10 @@ def classify_onu_status(oper_state, dereg_reason=0, olt_rx=None, onu_rx=None):
       AuthFail (8) → 'offline'
       other → 'offline'
 
-    RX power sanity check: if oper_state says online but both RX values are None,
-    the ONU is likely in a transient state — use dereg_reason as fallback.
+    RX power is NOT used to override oper_state — an ONU can be online
+    (registered, active) with 0 RX power during transient states.
     """
     status = decode_oper_state(oper_state)
-
-    # If online but no RX power at all, ONU is not truly online — use dereg_reason
-    if status == 'online' and olt_rx is None and onu_rx is None:
-        dr = decode_dereg_reason(dereg_reason)
-        if 'LOS' in dr:
-            status = 'los'
-        elif dr == 'PowerOff':
-            status = 'dyinggasp'
-        else:
-            status = 'offline'
 
     # If inactive, use dereg_reason to distinguish los/dyinggasp/offline
     if status == 'inactive':

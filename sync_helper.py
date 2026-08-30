@@ -430,12 +430,13 @@ def save_sync_result(olt, result, sync, light=False):
     sync.onu_count = len(onus_data)
     db.session.commit()
 
-    # Invalidate dashboard cache so frontend sees fresh data
+    # Invalidate caches so frontend sees fresh data
     try:
         from cache import cache_clear
         cache_clear("dashboard:*")
+        cache_clear(f"olt:{olt.id}:*")
     except Exception as e:
-        logger.warning(f"[sync_helper] cache_clear dashboard failed (non-critical): {e}")
+        logger.warning(f"[sync_helper] cache_clear failed (non-critical): {e}")
 
     return len(onus_data), stale_count
 
