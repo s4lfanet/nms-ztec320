@@ -365,8 +365,11 @@ def save_sync_result(olt, result, sync, light=False):
         if _new_type:
             if _new_type.lower() not in _VENDOR_NAMES:
                 onu.actual_type = _new_type
-            elif not onu.actual_type:
-                onu.actual_type = _new_type
+        # Clear stale vendor-name actual_type from DB
+        # (telnet_client _bad_models filters these out, so sync returns '' —
+        #  but old bad values persisted because empty _new_type was skipped)
+        if (onu.actual_type or '').lower() in _VENDOR_NAMES:
+            onu.actual_type = ''
         _new_onu_type = onu_data.get('onu_type', '')
         if _new_onu_type and not onu.onu_type:
             onu.onu_type = _new_onu_type
