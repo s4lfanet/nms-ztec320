@@ -467,7 +467,7 @@ class TelnetCollector:
 
             # Step 2: Get name, description from detail-info
             for (frame, slot, port), port_onus in port_groups.items():
-                for onu in port_onus[:60]:
+                for onu in port_onus[:128]:
                     cmd = f'show gpon onu detail-info gpon-onu_{frame}/{slot}/{port}:{onu["onu_id"]}'
                     try:
                         output = self._send_command(tn, cmd, timeout=8)
@@ -495,7 +495,7 @@ class TelnetCollector:
                            'zte', 'huawei', 'fiberhome', 'alcatel-lucent', 'eci', 'hsgq', 'raisecom',
                            'bdcom', 'c-data', 'vsol', 'dasan'}
             for (frame, slot, port), port_onus in port_groups.items():
-                for onu in port_onus[:60]:
+                for onu in port_onus[:128]:
                     cmd = f'show gpon remote-onu equip gpon-onu_{frame}/{slot}/{port}:{onu["onu_id"]}'
                     try:
                         output = self._send_command(tn, cmd, timeout=10)
@@ -515,7 +515,7 @@ class TelnetCollector:
             # SNMP OID .18 gives wrong values on ZTE C320 V2.1.0 — Telnet is ground truth
             # (verified: Telnet matches rConfig 'Get Status' values exactly)
             for (frame, slot, port), port_onus in port_groups.items():
-                for onu in port_onus[:60]:
+                for onu in port_onus[:128]:
                     iface_pw = f'gpon-onu_{frame}/{slot}/{port}:{onu["onu_id"]}'
                     try:
                         pw_out = self._send_command(tn, f'show pon power attenuation {iface_pw}', timeout=8)
@@ -5840,7 +5840,7 @@ class TelnetCollector:
                     logger.debug(f"state {frame}/{slot}/{port}: {e}")
 
             # Step 4: Get name, description from detail-info
-            # Process up to 60 ONUs per port for performance
+            # Process up to 128 ONUs per port (ZTE C320 GPON max)
             port_groups = {}
             for onu in onu_list:
                 k = (onu['frame'], onu['slot'], onu['port'])
@@ -5848,7 +5848,7 @@ class TelnetCollector:
                 port_groups[k].append(onu)
 
             for (frame, slot, port), p_onus in port_groups.items():
-                for onu in p_onus[:60]:
+                for onu in p_onus[:128]:
                     cmd = f'show gpon onu detail-info gpon-onu_{frame}/{slot}/{port}:{onu["onu_id"]}'
                     try:
                         output = self._send_command(tn, cmd, timeout=8)
@@ -5874,7 +5874,7 @@ class TelnetCollector:
                            'zte', 'huawei', 'fiberhome', 'alcatel-lucent', 'eci', 'hsgq', 'raisecom',
                            'bdcom', 'c-data', 'vsol', 'dasan'}
             for (frame, slot, port), p_onus in port_groups.items():
-                for onu in p_onus[:60]:
+                for onu in p_onus[:128]:
                     cmd = f'show gpon remote-onu equip gpon-onu_{frame}/{slot}/{port}:{onu["onu_id"]}'
                     try:
                         output = self._send_command(tn, cmd, timeout=10)
@@ -5894,7 +5894,7 @@ class TelnetCollector:
             # SNMP OID .18 gives wrong values on ZTE C320 V2.1.0 — Telnet is ground truth
             # (verified: Telnet 'up Rx' matches rConfig 'Get Status' values exactly)
             for (frame, slot, port), p_onus in port_groups.items():
-                for onu in p_onus[:60]:
+                for onu in p_onus[:128]:
                     iface_pw = f'gpon-onu_{frame}/{slot}/{port}:{onu["onu_id"]}'
                     try:
                         pw_out = self._send_command(tn, f'show pon power attenuation {iface_pw}', timeout=8)
