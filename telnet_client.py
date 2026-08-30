@@ -491,7 +491,9 @@ class TelnetCollector:
             # Step 2b: Get ONU hardware model via 'show gpon remote-onu equip'
             # Uses OMCI to read Equipment ID directly from ONU — works on V2.1.0+
             # Offline ONUs won't respond; errors are caught silently
-            _bad_models = {'', 'n/a', 'none', 'unknown', 'null', '-', 'not set', 'all', 'czte'}
+            _bad_models = {'', 'n/a', 'none', 'unknown', 'null', '-', 'not set', 'all', 'czte',
+                           'zte', 'huawei', 'fiberhome', 'alcatel-lucent', 'eci', 'hsgq', 'raisecom',
+                           'bdcom', 'c-data', 'vsol', 'dasan'}
             for (frame, slot, port), port_onus in port_groups.items():
                 for onu in port_onus[:60]:
                     cmd = f'show gpon remote-onu equip gpon-onu_{frame}/{slot}/{port}:{onu["onu_id"]}'
@@ -5868,7 +5870,9 @@ class TelnetCollector:
             # Step 4b: Get ONU hardware model via 'show gpon remote-onu equip'
             # Uses OMCI to read Equipment ID directly from ONU — works on V2.1.0+
             # Offline ONUs won't respond; errors are caught silently
-            _bad_models = {'', 'n/a', 'none', 'unknown', 'null', '-', 'not set', 'all', 'czte'}
+            _bad_models = {'', 'n/a', 'none', 'unknown', 'null', '-', 'not set', 'all', 'czte',
+                           'zte', 'huawei', 'fiberhome', 'alcatel-lucent', 'eci', 'hsgq', 'raisecom',
+                           'bdcom', 'c-data', 'vsol', 'dasan'}
             for (frame, slot, port), p_onus in port_groups.items():
                 for onu in p_onus[:60]:
                     cmd = f'show gpon remote-onu equip gpon-onu_{frame}/{slot}/{port}:{onu["onu_id"]}'
