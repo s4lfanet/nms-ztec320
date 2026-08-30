@@ -187,7 +187,7 @@ def parse_c300_ponindex(pon_index):
 
 
 def decode_oper_state(value):
-    m = {1: 'not_present', 2: 'inactive', 3: 'activating', 4: 'online', 5: 'online', 6: 'dyinggasp'}
+    m = {1: 'not_present', 2: 'inactive', 3: 'activating', 4: 'online', 5: 'dyinggasp', 6: 'dyinggasp'}
     return m.get(value, 'offline')
 
 
@@ -195,6 +195,48 @@ def decode_dereg_reason(value):
     m = {0: '', 1: 'Unknown', 2: 'LOS', 3: 'LOSi', 4: 'LOFi', 5: 'SFi', 6: 'LOAi', 7: 'LOAMi',
          8: 'AuthFail', 9: 'PowerOff', 10: 'DeactiveSucc', 11: 'DeactiveFail', 12: 'Reboot', 13: 'Shutdown'}
     return m.get(value, f'Unknown({value})')
+
+
+def classify_onu_status(oper_state, dereg_reason=0, olt_rx=None, onu_rx=None):
+    """Classify ONU status using oper_state + dereg_reason + RX power.
+
+    ZTE C320 SNMP oper_state:
+      1=not_present, 2=inactive, 3=activating, 4=online, 5=dyinggasp, 6=dyinggasp
+
+    When oper_state=2 (inactive), use dereg_reason to distinguish:
+      LOS (2/3) → 'los' (fiber cut)
+      PowerOff (9) → 'dyinggasp' (ONU powered down)
+      AuthFail (8) → 'offline'
+      other → 'offline'
+
+    RX power sanity check: if oper_state says online but both RX values are None,
+    the ONU is likely in a transient state — check dereg_reason as fallback.
+    """
+    status = decode_oper_state(oper_state)
+
+    # If online but no RX power at all, ONU is not truly online — use dereg_reason
+    if status == 'online' and olt_rx is None and onu_rx is None:
+        dr = decode_dereg_reason(dereg_reason)
+        if 'LOS' in dr:
+            status = 'los'
+        elif dr == 'PowerOff':
+            status = 'dyinggasp'
+        else:
+            status = 'offline'
+
+    # If inactive, use dereg_reason to distinguish los/dyinggasp/offline
+    if status == 'inactive':
+        dr = decode_dereg_reason(dereg_reason)
+        if 'LOS' in dr:
+            status = 'los'
+        elif dr == 'PowerOff':
+            status = 'dyinggasp'
+        elif dr == 'AuthFail':
+            status = 'offline'
+        else:
+            status = 'offline'
+
+    return status
 
 
 def decode_rx_power(raw):
@@ -658,6 +700,7 @@ class SNMPCollector:
             f'{OID_ONU_SERIAL}{cfg_suffix}',
             f'{OID_ONU_DESCRIPTION}{cfg_suffix}',
             f'{OID_OPER_STATE}{reg_suffix}',
+            f'{OID_DEREG_REASON}{reg_suffix}',
             f'{OID_RX_POWER}{reg_suffix}',
             f'{OID_TX_POWER}{reg_suffix}',
             f'{OID_OLT_RX}{reg_suffix}',
@@ -670,6 +713,7 @@ class SNMPCollector:
         serial = ''
         description = ''
         oper_state = 0
+        dereg_reason = 0
         rx_power = None
         tx_power = None
         olt_rx = None
@@ -684,6 +728,9 @@ class SNMPCollector:
             elif oid.startswith(OID_OPER_STATE):
                 try: oper_state = int(val)
                 except: pass
+            elif oid.startswith(OID_DEREG_REASON):
+                try: dereg_reason = int(val)
+                except: pass
             elif oid.startswith(OID_RX_POWER):
                 try: rx_power = decode_rx_power(int(val))
                 except: pass
@@ -694,9 +741,7 @@ class SNMPCollector:
                 try: olt_rx = decode_rx_power(int(val))
                 except: pass
 
-        status = decode_oper_state(oper_state)
-        if status == 'online' and olt_rx is None and rx_power is None:
-            status = 'dyinggasp'
+        status = classify_onu_status(oper_state, dereg_reason, olt_rx, rx_power)
 
         return {
             'name': name,
@@ -704,6 +749,7 @@ class SNMPCollector:
             'description': description,
             'status': status,
             'oper_state': oper_state,
+            'dereg_reason': decode_dereg_reason(dereg_reason),
             'rx_power': olt_rx,
             'onu_rx_power': rx_power,
             'tx_power': tx_power,
@@ -749,7 +795,7 @@ class SNMPCollector:
                 'tx_power': detail['tx_power'],
                 'distance': None,
                 'actual_type': '',
-                'last_dereg_reason': '',
+                'last_dereg_reason': detail.get('dereg_reason', ''),
                 'pppoe': '',
             }
             onus.append(onu)
@@ -922,18 +968,19 @@ class SNMPCollector:
 
         OPTIMIZED: Uses GETBULK (50 OIDs/packet) + asyncio.gather for concurrent walks.
         """
-        # Walk all 7 tables concurrently with GETBULK
-        name_raw, serial_raw, oper_raw, rx_raw, tx_raw, olt_rx_raw, desc_raw = \
+        # Walk all 8 tables concurrently with GETBULK
+        name_raw, serial_raw, oper_raw, dereg_raw, rx_raw, tx_raw, olt_rx_raw, desc_raw = \
             await asyncio.gather(
                 self._bulk_walk(OID_ONU_NAME),
                 self._bulk_walk(OID_ONU_SERIAL),
                 self._bulk_walk(OID_OPER_STATE),
+                self._bulk_walk(OID_DEREG_REASON),
                 self._bulk_walk(OID_RX_POWER),
                 self._bulk_walk(OID_TX_POWER),
                 self._bulk_walk(OID_OLT_RX),
                 self._bulk_walk(OID_ONU_DESCRIPTION),
             )
-        logger.info(f"  SNMP light: name={len(name_raw)} serial={len(serial_raw)} oper={len(oper_raw)} rx={len(rx_raw)} tx={len(tx_raw)} olt_rx={len(olt_rx_raw)} desc={len(desc_raw)}")
+        logger.info(f"  SNMP light: name={len(name_raw)} serial={len(serial_raw)} oper={len(oper_raw)} dereg={len(dereg_raw)} rx={len(rx_raw)} tx={len(tx_raw)} olt_rx={len(olt_rx_raw)} desc={len(desc_raw)}")
 
         # Parse cfgTable (name, description, serial): suffix .ponIndex.cfgId
         # cfgId == onuSlot (sequential ONU ID on that PON port)
@@ -962,8 +1009,9 @@ class SNMPCollector:
                 try: sn_by_key[(int(parts[0]), int(parts[1]))] = parse_serial(val)
                 except: pass
 
-        # Parse regTable (oper_state, rx, tx, olt_rx): suffix .ponIndex.onuSlot.onuId
+        # Parse regTable (oper_state, dereg_reason, rx, tx, olt_rx): suffix .ponIndex.onuSlot.onuId
         oper_by_key = {}
+        dereg_by_key = {}
         rx_by_key = {}
         tx_by_key = {}
         olt_rx_by_key = {}
@@ -973,6 +1021,13 @@ class SNMPCollector:
             parts = suffix.lstrip('.').split('.')
             if len(parts) >= 3:
                 try: oper_by_key[(int(parts[0]), int(parts[1]))] = int(val)
+                except: pass
+
+        for oid_str, val, val_str in dereg_raw:
+            suffix = oid_str[len(OID_DEREG_REASON):]
+            parts = suffix.lstrip('.').split('.')
+            if len(parts) >= 3:
+                try: dereg_by_key[(int(parts[0]), int(parts[1]))] = int(val)
                 except: pass
 
         for oid_str, val, val_str in rx_raw:
@@ -1008,18 +1063,13 @@ class SNMPCollector:
             if not sn: continue  # skip entries without serial
 
             oper_val = oper_by_key.get(key, 0)
-            status = decode_oper_state(oper_val)
+            dereg_val = dereg_by_key.get(key, 0)
 
             olt_rx = olt_rx_by_key.get(key)
             onu_rx = rx_by_key.get(key)
             tx = tx_by_key.get(key)
 
-            # ZTE C320 SNMP oper_state=5 covers both 'online' and 'dyinggasp'.
-            # A truly online ONU always has RX power values from SNMP.
-            # A DyingGasp ONU has rx_power=None but may still have tx_power.
-            # If oper_state says online but both RX values are None, mark as dyinggasp.
-            if status == 'online' and olt_rx is None and onu_rx is None:
-                status = 'dyinggasp'
+            status = classify_onu_status(oper_val, dereg_val, olt_rx, onu_rx)
 
             onu = {
                 'frame': frame,
@@ -1038,7 +1088,7 @@ class SNMPCollector:
                 'tx_power': tx,
                 'distance': None,
                 'actual_type': '',
-                'last_dereg_reason': '',
+                'last_dereg_reason': decode_dereg_reason(dereg_val),
                 'pppoe': '',
             }
             onus.append(onu)

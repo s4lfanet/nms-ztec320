@@ -20,6 +20,7 @@ from snmp_core import (
     decode_oper_state, decode_dereg_reason, decode_rx_power,
     decode_distance, format_uptime, parse_serial,
     detect_vendor_from_sn, detect_model_from_sn, parse_pon_index,
+    decode_c300_run_status, classify_onu_status,
     SNMPCollector,
     # SNMP registration exports
     encode_pon_index, encode_sn_to_hex,
@@ -113,12 +114,9 @@ def poll_olt(olt, progress_cb=None, light=False):
                 # Build ONU list from C300 signal data
                 onus = []
                 for sn, sig in snmp_signal.get('by_sn', {}).items():
-                    _status = decode_oper_state(sig.get('oper_state', 0))
+                    _status = decode_c300_run_status(sig.get('oper_state', 0))
                     _rx = sig.get('rx_power')
                     _onu_rx = sig.get('onu_rx_power')
-                    # SNMP oper_state may not distinguish online from DyingGasp
-                    if _status == 'online' and _rx is None and _onu_rx is None:
-                        _status = 'dyinggasp'
                     onus.append({
                         'serial_number': sn,
                         'status': _status,
@@ -197,11 +195,9 @@ def poll_olt(olt, progress_cb=None, light=False):
                     snmp_sig = snmp_col.collect_onus_c300()
                     onus = []
                     for sn, sig in snmp_sig.get('by_sn', {}).items():
-                        _status = decode_oper_state(sig.get('oper_state', 0))
+                        _status = decode_c300_run_status(sig.get('oper_state', 0))
                         _rx = sig.get('rx_power')
                         _onu_rx = sig.get('onu_rx_power')
-                        if _status == 'online' and _rx is None and _onu_rx is None:
-                            _status = 'dyinggasp'
                         onus.append({
                             'serial_number': sn, 'status': _status,
                             'oper_state': sig.get('oper_state', 0),
