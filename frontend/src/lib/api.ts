@@ -102,6 +102,12 @@ export const api = {
     if (lines) qs.set('lines', String(lines));
     return request<{ success: boolean; total_lines: number; lines: string[]; message?: string }>(`/api/olt/${oltId}/sync-logs?${qs}`);
   },
+  onuStatusHistory: (oltId: number, limit?: number, status?: string) => {
+    const qs = new URLSearchParams();
+    if (limit) qs.set('limit', String(limit));
+    if (status && status !== 'all') qs.set('status', status);
+    return request<{ success: boolean; total: number; records: OnuStatusHistoryRecord[] }>(`/api/olt/${oltId}/onu-status-history?${qs}`);
+  },
   discoverSlots: (oltId: number) => request<{ success: boolean; message: string; cards: unknown[]; fans: unknown[]; temperature: number | null }>(`/api/olt/${oltId}/discover-slots`, { method: 'POST' }),
   testConnection: (oltId: number | null, data: Record<string, unknown>) => {
     const url = oltId ? `/api/olt/${oltId}/test-connection` : '/api/olt/test-connection';
@@ -932,4 +938,19 @@ export interface RegisterData {
   admin_username: string;
   admin_password: string;
   package_id: number;
+}
+
+export interface OnuStatusHistoryRecord {
+  id: number;
+  onu_id: number;
+  onu_name: string;
+  onu_index: string;
+  serial_number: string;
+  old_status: string;
+  new_status: string;
+  dereg_reason: string;
+  rx_power: number | null;
+  distance: number | null;
+  source: string;
+  created_at: string | null;
 }

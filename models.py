@@ -878,3 +878,28 @@ class ActionLog(db.Model):
         db.Index('ix_action_logs_user_id', 'user_id'),
         db.Index('ix_action_logs_category', 'category'),
     )
+
+
+class OnuStatusHistory(db.Model):
+    """Track every ONU status change (online -> offline/dyinggasp/los and back)"""
+    __tablename__ = 'onu_status_history'
+    id = db.Column(db.Integer, primary_key=True)
+    onu_id = db.Column(db.Integer, db.ForeignKey('onus.id'), nullable=False)
+    olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=False)
+    onu_name = db.Column(db.String(150), default='')
+    onu_index = db.Column(db.String(30), default='')  # e.g. "1/1/1:62"
+    serial_number = db.Column(db.String(100), default='')
+    old_status = db.Column(db.String(20), default='')
+    new_status = db.Column(db.String(20), default='')
+    dereg_reason = db.Column(db.String(50), default='')
+    rx_power = db.Column(db.Float, nullable=True)
+    distance = db.Column(db.Integer, nullable=True)
+    source = db.Column(db.String(20), default='sync')  # sync, refresh, auto_sync
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.Index('ix_onu_status_history_onu_id', 'onu_id'),
+        db.Index('ix_onu_status_history_olt_id', 'olt_id'),
+        db.Index('ix_onu_status_history_created_at', 'created_at'),
+        db.Index('ix_onu_status_history_new_status', 'new_status'),
+    )
