@@ -4,6 +4,68 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-08-31 — ONU Status Classification Fix (DyingGasp vs Online)
+
+#### Diperbaiki — oper_state=5 Salah Diklasifikasi sebagai 'online' (CRITICAL)
+- **Root cause**: Pada ZTE C320 V2.1.0, `oper_state=5` berarti "registered" — SEMUA ONU (online maupun dyinggasp) melaporkan nilai yang sama. Pemetaan lama `5: 'online'` menyebabkan ONU dyinggasp tampil sebagai online di NMS
+- **Bukti audit**: Semua 65 ONU punya `oper_state=5, dereg_reason=9 (PowerOff)`. ONU 1/1/1:39 (DyingGasp di CLI) punya `rx_raw=65535, olt_rx_raw=0` (tidak ada sinyal), sementara ONU online punya RX valid
+- **Fix**: `classify_onu_status()` sekarang cek RX power saat `oper_state` memetakan ke 'online'. Jika `olt_rx is None AND onu_rx is None` → gunakan `dereg_reason` untuk klasifikasi (PowerOff→dyinggasp, LOS→los, lain→offline). Jika ada sinyal → online
+- **File**: `snmp_core.py` — `classify_onu_status()` function
+- **Dampak**: ONU dyinggasp sekarang tampil dengan status benar di refresh-signal dan light sync (SNMP-only paths). Full sync (CLI primary) tidak terdampak karena CLI sudah parse phase state dengan benar
+
+---
+
+### 2026-08-30 — ONU Status History & OLT Logs Page
+
+#### Ditambahkan — ONU Status History Tracking
+- **`OnuStatusHistory` model** di `models.py`: Catat setiap perubahan status ONU dengan timestamp, old/new status, dereg_reason, RX power, dan source (sync/refresh/action)
+- **Recording di sync_helper.py**: Setiap perubahan status ONU saat sync disimpan ke history table
+- **Recording di app.py refresh-signal**: Perubahan status dari SNMP refresh juga dicatat
+- **API endpoint** `/api/olt/<id>/onu-status-history`: Filter by ONU name, serial, status, date range. Pagination support
+- **Frontend**: Tab "ONU Status History" di halaman OLT Logs dengan tabel, filter, dan pagination
+
+#### Ditambahkan — OLT Logs Page
+- **Halaman OLT Logs** (`/dashboard/logs`): View OLT device logs (show log) dan NMS sync logs dari satu halaman
+- **Tab**: Device Logs, NMS Logs, ONU Status History
+- **Fitur**: OLT selector, line limit, auto-refresh, filter status untuk history
+
+---
+
+### 2026-08-29 — Distance, actual_type & ONU Detail Fixes
+
+#### Diperbaiki — ONU dengan onu_id > 60 Skipped untuk Detail/Equip/Power (HIGH)
+- **Root cause**: `[:60]` slice di `collect_all_onus()` menyebabkan ONU dengan ID > 60 tidak diambil detail-info, equipment, dan power data
+- **Fix**: Ubah `[:60]` → `[:128]` (ZTE C320 GPON max 128 ONUs per port)
+
+#### Diperbaiki — Distance Tidak Terpopulate di ONU Data (MEDIUM)
+- **Root cause**: `OID_DISTANCE` tidak ditambahkan ke semua SNMP collection paths
+- **Fix**: Tambah `OID_DISTANCE` ke `collect_onus_light()`, `collect_onus()`, dan `collect_onu_detail_batch()`
+
+#### Diperbaiki — actual_type Menampilkan Vendor Names (MEDIUM)
+- **Root cause**: Field `actual_type` terisi nama vendor (mis. 'Huawei') alih-alih model ONU yang sebenarnya
+- **Fix**: Filter vendor names dari actual_type, clear stale values dari DB
+
+#### Diperbaiki — ONU Status Tidak Update, Refresh-signal Incomplete (HIGH)
+- **Root cause**: Refresh-signal endpoint tidak mengupdate status ONU dengan benar, cache invalidation tidak lengkap
+- **Fix**: Lengkapi refresh-signal logic, pastikan cache di-invalidate setelah update
+
+---
+
+### 2026-08-28 — LOS Misclassification & Multi-Vendor Cleanup
+
+#### Diperbaiki — ONU Status Misclassification: LOS Terdeteksi sebagai DyingGasp (HIGH)
+- **Root cause**: `classify_onu_status()` tidak cek `dereg_reason` untuk LOS dengan benar
+- **Fix**: Tambah LOS detection di `classify_onu_status()` menggunakan `dereg_reason` values 2/3
+
+#### Diperbaiki — Hapus Referensi Multi-Vendor (CLEANUP)
+- **Root cause**: Sistem adalah ZTE-only, tetapi masih ada referensi ke vendor lain (HSGQ, Raisecom, dll.)
+- **Fix**: Hapus semua referensi multi-vendor dari README, CHANGELOG, dan code comments
+
+#### Diperbaiki — Revert oper_state=5 ke 'online' (REVERTED)
+- **Catatan**: Commit `45fff03` revert `oper_state=5` dari 'dyinggasp' kembali ke 'online' karena semua ONU tampil dyinggasp setelah sync. Fix final dilakukan di 2026-08-31 dengan RX power check
+
+---
+
 ### 2026-08-27 — Registration Error Fix & React Error #31
 
 #### Diperbaiki — ETH Port VLAN Menyebabkan Registrasi Terlihat Gagal (HIGH)
