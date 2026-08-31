@@ -829,6 +829,21 @@ def refresh_onu_signal(olt_id):
                 sig = signal_map[sn]
                 new_status = classify_onu_status(sig['oper_state'], sig['dereg_reason'], sig['olt_rx'], sig['onu_rx'])
                 if o.status != new_status:
+                    # Record status change in history
+                    try:
+                        from models import OnuStatusHistory
+                        hist = OnuStatusHistory(
+                            onu_id=o.id, olt_id=olt_id,
+                            onu_name=o.name or '', onu_index=o.onu_id_str,
+                            serial_number=o.serial_number or '',
+                            old_status=o.status, new_status=new_status,
+                            dereg_reason=decode_dereg_reason(sig['dereg_reason']),
+                            rx_power=sig['olt_rx'],
+                            source='refresh',
+                        )
+                        db.session.add(hist)
+                    except Exception:
+                        pass
                     o.status = new_status
                     o.oper_state = sig['oper_state']
                     status_changed += 1
@@ -930,6 +945,44 @@ def olt_sync_logs(olt_id):
         })
     except Exception as e:
         logger.error(f"sync-logs OLT {olt_id} failed: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/olt/<int:olt_id>/onu-status-history', methods=['GET'])
+@login_required
+def onu_status_history(olt_id):
+    """Fetch ONU status change history."""
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'})
+    try:
+        from models import OnuStatusHistory
+        limit = min(int(request.args.get('limit', 100)), 500)
+        status_filter = request.args.get('status', '')
+        q = OnuStatusHistory.query.filter_by(olt_id=olt_id)
+        if status_filter and status_filter != 'all':
+            q = q.filter(OnuStatusHistory.new_status == status_filter)
+        records = q.order_by(OnuStatusHistory.created_at.desc()).limit(limit).all()
+        return jsonify({
+            'success': True,
+            'total': len(records),
+            'records': [{
+                'id': r.id,
+                'onu_id': r.onu_id,
+                'onu_name': r.onu_name,
+                'onu_index': r.onu_index,
+                'serial_number': r.serial_number,
+                'old_status': r.old_status,
+                'new_status': r.new_status,
+                'dereg_reason': r.dereg_reason,
+                'rx_power': r.rx_power,
+                'distance': r.distance,
+                'source': r.source,
+                'created_at': r.created_at.isoformat() if r.created_at else None,
+            } for r in records],
+        })
+    except Exception as e:
+        logger.error(f"onu-status-history OLT {olt_id} failed: {e}")
         return jsonify({'success': False, 'message': str(e)})
 
 

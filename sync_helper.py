@@ -340,6 +340,23 @@ def save_sync_result(olt, result, sync, light=False):
             except Exception as e:
                 logger.warning(f"[sync_helper:{olt.id}] WebSocket status broadcast failed (non-critical): {e}")
 
+            # Record status change in history table
+            try:
+                from models import OnuStatusHistory
+                hist = OnuStatusHistory(
+                    onu_id=onu.id, olt_id=olt.id,
+                    onu_name=onu.name or '', onu_index=onu.onu_id_str,
+                    serial_number=onu.serial_number or '',
+                    old_status=_prev_status, new_status=onu.status,
+                    dereg_reason=onu_data.get('last_dereg_reason', ''),
+                    rx_power=onu_data.get('rx_power'),
+                    distance=onu_data.get('distance'),
+                    source='sync',
+                )
+                db.session.add(hist)
+            except Exception as e:
+                logger.warning(f"[sync_helper:{olt.id}] Failed to record status history: {e}")
+
         # For non-online ONUs (dyinggasp, offline, los), clear optical values
         # SNMP returns cached/last-known values for offline ONUs which is misleading
         if onu.status != 'online':
