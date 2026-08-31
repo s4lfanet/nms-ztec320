@@ -207,26 +207,42 @@ def decode_dereg_reason(value):
 
 
 def classify_onu_status(oper_state, dereg_reason=0, olt_rx=None, onu_rx=None):
-    """Classify ONU status using oper_state + dereg_reason.
+    """Classify ONU status using oper_state + dereg_reason + RX power.
 
     ZTE C320 V2.1.0 SNMP oper_state:
-      1=not_present, 2=inactive, 3=activating, 4=online, 5=online, 6=dyinggasp
+      1=not_present, 2=inactive, 3=activating, 4=online, 5=registered, 6=dyinggasp
+
+    IMPORTANT: oper_state=5 means "registered" on C320 V2.1.0, NOT "online".
+    All ONUs (online AND dyinggasp) report oper_state=5. The only way to
+    distinguish via SNMP is RX power: dyinggasp ONUs have olt_rx=None AND
+    onu_rx=None (raw values 0 or 65535), while online ONUs have valid signal.
 
     dereg_reason is a LATCHED value — it records the reason for the ONU's
     *last* deregistration and persists even after the ONU comes back online.
-    Therefore dereg_reason should ONLY be used when oper_state indicates
-    the ONU is currently offline (inactive/not_present).
+    Therefore dereg_reason should ONLY be used when the ONU has no signal
+    (offline/dyinggasp), not when it's actively online.
 
-    When oper_state=2 (inactive), use dereg_reason to distinguish:
+    When oper_state=2 (inactive) or oper_state=5 with no signal, use
+    dereg_reason to distinguish:
       LOS (2/3) → 'los' (fiber cut)
       PowerOff (9) → 'dyinggasp' (ONU powered down)
       AuthFail (8) → 'offline'
       other → 'offline'
-
-    RX power is NOT used to override oper_state — an ONU can be online
-    (registered, active) with 0 RX power during transient states.
     """
     status = decode_oper_state(oper_state)
+
+    # oper_state=5 on C320 V2.1.0 means "registered" — could be online or dyinggasp.
+    # Check RX power to determine actual state.
+    if status == 'online':
+        if olt_rx is None and onu_rx is None:
+            # No signal — ONU is not truly online. Use dereg_reason to classify.
+            dr = decode_dereg_reason(dereg_reason)
+            if 'LOS' in dr:
+                status = 'los'
+            elif dr == 'PowerOff':
+                status = 'dyinggasp'
+            else:
+                status = 'offline'
 
     # If inactive, use dereg_reason to distinguish los/dyinggasp/offline
     if status == 'inactive':
