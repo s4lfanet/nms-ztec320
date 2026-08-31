@@ -19,6 +19,8 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Auto-sync setelah aksi ONU (reboot/delete/clear-config)
 - **Non-ZTE ONU reboot**: FiberHome/Huawei ONUs menggunakan `shutdown`/`no shutdown` fallback (OMCI reboot tidak direspons). Deteksi vendor via SN prefix
 - Rack diagram visual untuk chassis OLT (slot, port, fan, PSU)
+- **ONU Status History**: Tracking setiap perubahan status ONU (online→dyinggasp→online, dll) dengan timestamp, dereg_reason, dan RX power. View di halaman OLT Logs
+- **OLT Logs page**: View OLT device logs (`show log`) dan NMS sync logs dari satu halaman. Tab: Device Logs, NMS Logs, ONU Status History
 - **GPON + EPON support**: Kartu GTG (GPON) dan ETG (EPON) terdeteksi otomatis, CLI commands menggunakan prefix yang sesuai (`gpon-olt_`/`gpon-onu_` vs `epon-olt_`/`epon-onu_`)
 - **Auto-backup OLT config**: Backup running-config via Telnet (`write memory` + `show running-config`), simpan ke DB, download/restore, auto-prune berdasarkan retention policy, notifikasi failure ke admin
 
@@ -133,12 +135,12 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ## Struktur Proyek
 
 ```text
-├── app.py                 # Flask routes, API, sync orchestration (~7300 lines)
+├── app.py                 # Flask routes, API, sync orchestration
 ├── models.py              # SQLAlchemy models (OLT, ONU, Alert, FTTH, Users, etc.)
 ├── sync_lock.py            # Distributed sync lock (prevent concurrent syncs)
 ├── snmp_core.py           # SNMP core collector (pysnmp 7.x Slim API)
 ├── snmp_collector.py      # Compatibility shim + create_cli_collector() SSH/Telnet dispatch
-├── telnet_client.py       # ZTE CLI collector & provisioning (~6500 lines, SSH+Telnet)
+├── telnet_client.py       # ZTE CLI collector & provisioning (SSH+Telnet)
 ├── alerts.py              # Alert engine + notification (Telegram, WA, in-app)
 ├── services_sync.py       # Sync service (background thread management)
 ├── sync_helper.py         # Sync result persistence to DB
@@ -161,6 +163,7 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 │   ├── normalized.py      # Normalized data classes (RackData, Slot, Port, Fan, PSU)
 │   ├── snmp_oids.py       # ZTE SNMP OID mappings
 │   └── zte_adapter.py     # ZTE adapter (delegates to snmp_collector)
+├── metrics_service.py     # SNMP poll metrics tracking
 ├── frontend/              # React SPA
 │   ├── src/
 │   │   ├── pages/         # Dashboard, AllOnus, ViewOnu, Settings, Customization, etc.
@@ -178,11 +181,10 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 │   ├── deploy-frontend.ps1 # Frontend build & deploy script
 │   └── .env.template      # Production env template
 ├── migrations/            # Alembic database migrations
-├── tests/                 # pytest unit tests
-├── scripts/               # CLI utility scripts
+├── tests/                 # pytest unit tests (test_basic, test_provisioning, test_security)
 ├── requirements.txt       # Python dependencies
-├── Dockerfile             # Multi-stage Docker build
-├── docker-compose.yml     # Docker Compose (backend + postgres + redis + nginx)
+├── install-vps.sh         # One-click VPS installer
+├── uninstall-vps.sh       # VPS uninstaller
 └── .env.example           # Environment config template
 ```
 
@@ -435,6 +437,8 @@ WantedBy=multi-user.target
 | `/api/bot-config/*` | GET/PUT | Telegram/WA bot config |
 | `/api/ftth/*` | GET/POST | FTTH infrastructure |
 | `/api/metrics/history` | GET | Historical metrics |
+| `/api/olt/<id>/logs` | GET | OLT device logs (show log) |
+| `/api/olt/<id>/onu-status-history` | GET | ONU status change history |
 | `/api/public/branding` | GET | NMS branding (no auth) |
 
 ## Testing
