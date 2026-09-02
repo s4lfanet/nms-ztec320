@@ -148,6 +148,7 @@ def _otb_to_dict(o):
         'location': o.location, 'latitude': o.latitude, 'longitude': o.longitude,
         'olt_id': o.olt_id, 'olt_name': o.olt.name if o.olt else '',
         'pon_port': o.pon_port, 'total_cores': total_cores,
+        'fibers_per_tube': o.fibers_per_tube or 12,
         'description': o.description or '',
         'odc_count': odc_count,
         'used_cores': odc_count,
@@ -164,7 +165,8 @@ def _odc_to_dict(o):
         'location': o.location, 'latitude': o.latitude, 'longitude': o.longitude,
         'otb_id': o.otb_id, 'otb_name': o.otb.name if o.otb else '',
         'otb_core_number': o.otb_core_number,
-        'total_cores': total_cores, 'splitter_model': o.splitter_model,
+        'total_cores': total_cores, 'fibers_per_tube': o.fibers_per_tube or 12,
+        'splitter_model': o.splitter_model,
         'description': o.description or '',
         'odp_count': odp_count,
         'used_cores': odp_count,
@@ -238,7 +240,8 @@ def ftth_otb_create():
         name=d.get('name', ''), type=d.get('type', 'otb'), model=d.get('model', ''),
         location=d.get('location', ''), latitude=d.get('latitude'), longitude=d.get('longitude'),
         olt_id=d.get('olt_id'), pon_port=d.get('pon_port', ''),
-        total_cores=d.get('total_cores', 12), description=d.get('description', ''),
+        total_cores=d.get('total_cores', 12), fibers_per_tube=d.get('fibers_per_tube', 12),
+        description=d.get('description', ''),
     )
     db.session.add(o)
     db.session.flush()
@@ -258,7 +261,7 @@ def ftth_otb_update(otb_id):
         if k in d: setattr(o, k, d[k])
     for k in ['latitude', 'longitude']:
         if k in d: setattr(o, k, d[k])
-    for k in ['olt_id', 'total_cores']:
+    for k in ['olt_id', 'total_cores', 'fibers_per_tube']:
         if k in d: setattr(o, k, d[k])
     if 'total_cores' in d:
         _ensure_otb_ports(o)
@@ -321,7 +324,8 @@ def ftth_odc_create():
         name=d.get('name', ''), model=d.get('model', ''),
         location=d.get('location', ''), latitude=d.get('latitude'), longitude=d.get('longitude'),
         otb_id=d.get('otb_id'), otb_core_number=d.get('otb_core_number', 1),
-        total_cores=d.get('total_cores', 8), splitter_model=d.get('splitter_model', ''),
+        total_cores=d.get('total_cores', 8), fibers_per_tube=d.get('fibers_per_tube', 12),
+        splitter_model=d.get('splitter_model', ''),
         description=d.get('description', ''),
     )
     db.session.add(o)
@@ -340,7 +344,7 @@ def ftth_odc_update(odc_id):
         if k in d: setattr(o, k, d[k])
     for k in ['latitude', 'longitude']:
         if k in d: setattr(o, k, d[k])
-    for k in ['otb_id', 'otb_core_number', 'total_cores']:
+    for k in ['otb_id', 'otb_core_number', 'total_cores', 'fibers_per_tube']:
         if k in d: setattr(o, k, d[k])
     db.session.commit()
     return jsonify({'success': True, 'item': _odc_to_dict(o)})

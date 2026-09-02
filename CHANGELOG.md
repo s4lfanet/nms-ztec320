@@ -4,6 +4,21 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — Warna Tube/Core Otomatis (Standar TIA-598) di Diagram OTB/ODC/ODP
+
+#### Ditambahkan — Penentuan Warna Core Ala NetBox Custom Field, Dihitung Otomatis dari Nomor Core
+- **Konteks**: ditanya apakah NetBox punya cara menandai core berdasarkan warna tube — jawabannya NetBox sendiri tidak punya field warna tube/core bawaan (cuma rear-port position + naming manual), jadi fitur ini melangkah lebih jauh dari NetBox: warna dihitung otomatis mengikuti standar industri TIA-598 (12 warna: Biru, Jingga, Hijau, Coklat, Abu-abu, Putih, Merah, Hitam, Kuning, Ungu, Merah Muda, Aqua — berulang tiap tube berikutnya), bukan diketik manual
+- **Backend**: kolom baru `fibers_per_tube` (default 12) di `FTTHOTB` dan `FTTHODC` — masing-masing menyimpan berapa fiber per tube untuk kabel keluarnya sendiri (kabel trunk OTB beda fisik dari kabel distribusi ODC, jadi nilainya independen). Tidak ada logika warna di backend — cuma menyimpan konfigurasi, supaya satu-satunya sumber kebenaran perhitungan warna ada di satu tempat (frontend)
+- **Frontend**: `lib/fiberColor.ts` — fungsi `coreColorInfo(coreNumber, fibersPerTube)` murni (tube number = `ceil(core/fibersPerTube)`, warna tube & warna core dari tabel 12-warna TIA-598, berulang). Dipakai di:
+  - Diagram port OTB/ODF — tiap kotak core sekarang ada 2 titik warna kecil (tube + core) di pojok, plus tooltip
+  - List ODC, List ODP, List PON, dan Tree view — badge "Tube N Warna • Warna" di sebelah info "Core X from Y"
+  - Form tambah/edit ODC, ODP, PON Port — preview warna langsung muncul begitu core number/parent dipilih, sebelum disimpan
+  - Field baru "Fibers per Tube" di form OTB dan ODC (default 12, jarang perlu diubah)
+- **Migration**: `3c4612c99cab_add_fibers_per_tube_to_ftth_otb_and_.py` — nullable=False dengan `server_default='12'` supaya baris existing (termasuk 48 core OTB yang sudah ada di production) otomatis dapat nilai 12 tanpa perlu backfill manual
+- **Diverifikasi**: 129/129 test backend tetap lolos (perubahan schema backward-compatible). Dites sungguhan di browser: seed OTB 15-core (melewati batas tube 12→13) → core #13 tampil warna tube berbeda dari core #1 (Jingga vs Biru) tapi warna core sama (Biru, karena posisi-1-dalam-tube) → dicek ulang di ODC list, ODC edit form (live preview), ODP list, dan Tree view — semua konsisten menampilkan "Tube 2 Jingga • Biru" untuk core yang sama, nol error console
+
+---
+
 ### 2026-09-02 — Diagram Port Visual untuk ODP Juga (Menyamakan dengan OTB/ODF)
 
 #### Ditambahkan — Toggle Diagram/List di Port Management ODP
