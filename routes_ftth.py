@@ -14,7 +14,7 @@ from models import (
     db, User, Role, OLT, ONU, Template, TR069Profile, ONUCustomColumn, Fan,
     OLTSyncStatus, OLTCard, OLTUplink, ONUVlan, ONUType, SpeedProfile,
     WanIpProfile, OLTPort, AVAILABLE_PERMISSIONS, Notification, AlertRule,
-    AlertHistory, BotConfig, FTTHOTB, FTTHODC, FTTHODP, FTTHODPPort,
+    AlertHistory, BotConfig, FTTHOTB, FTTHOTBPort, FTTHODC, FTTHODP, FTTHODPPort,
     FTTHPonPort, FTTHFiberPath, SystemConfig, ActionLog, MetricHistory,
     TrafficLog, TrafficLogHourly, OLTConfigBackup,
 )
@@ -203,6 +203,25 @@ def _odp_port_to_dict(p):
     }
 
 
+def _otb_port_to_dict(p):
+    odc = FTTHODC.query.filter_by(otb_id=p.otb_id, otb_core_number=p.port_number).first()
+    return {
+        'id': p.id, 'otb_id': p.otb_id, 'port_number': p.port_number,
+        'label': p.label or '', 'description': p.description or '',
+        'status': 'used' if odc else 'available',
+        'odc_id': odc.id if odc else None,
+        'odc_name': odc.name if odc else '',
+    }
+
+
+def _ensure_otb_ports(otb):
+    """Create any missing FTTHOTBPort rows up to otb.total_cores (idempotent)."""
+    existing = {p.port_number for p in FTTHOTBPort.query.filter_by(otb_id=otb.id).all()}
+    for i in range(1, (otb.total_cores or 0) + 1):
+        if i not in existing:
+            db.session.add(FTTHOTBPort(otb_id=otb.id, port_number=i))
+
+
 @bp.route('/api/ftth/otb', methods=['GET'])
 @login_required
 def ftth_otb_list():
@@ -222,6 +241,8 @@ def ftth_otb_create():
         total_cores=d.get('total_cores', 12), description=d.get('description', ''),
     )
     db.session.add(o)
+    db.session.flush()
+    _ensure_otb_ports(o)
     db.session.commit()
     return jsonify({'success': True, 'item': _otb_to_dict(o)})
 
@@ -239,8 +260,35 @@ def ftth_otb_update(otb_id):
         if k in d: setattr(o, k, d[k])
     for k in ['olt_id', 'total_cores']:
         if k in d: setattr(o, k, d[k])
+    if 'total_cores' in d:
+        _ensure_otb_ports(o)
     db.session.commit()
     return jsonify({'success': True, 'item': _otb_to_dict(o)})
+
+
+@bp.route('/api/ftth/otb/<int:otb_id>/ports', methods=['GET'])
+@login_required
+def ftth_otb_ports(otb_id):
+    o = db.session.get(FTTHOTB, otb_id)
+    if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
+    # Backfill: OTBs created before per-port naming existed have no port rows yet.
+    _ensure_otb_ports(o)
+    db.session.commit()
+    ports = FTTHOTBPort.query.filter_by(otb_id=otb_id).order_by(FTTHOTBPort.port_number).all()
+    return jsonify({'success': True, 'ports': [_otb_port_to_dict(p) for p in ports]})
+
+
+@bp.route('/api/ftth/otb-port/<int:port_id>', methods=['PUT'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_otb_port_update(port_id):
+    p = db.session.get(FTTHOTBPort, port_id)
+    if not p: return jsonify({'success': False, 'message': 'Not found'}), 404
+    d = request.get_json() or {}
+    for k in ['label', 'description']:
+        if k in d: setattr(p, k, d[k])
+    db.session.commit()
+    return jsonify({'success': True, 'port': _otb_port_to_dict(p)})
 
 
 @bp.route('/api/ftth/otb/<int:otb_id>', methods=['DELETE'])

@@ -805,6 +805,25 @@ class FTTHODPPort(db.Model):
     onu = db.relationship('ONU', backref=db.backref('odp_port', uselist=False))
 
 
+class FTTHOTBPort(db.Model):
+    """Individual core/port on an OTB/ODF — nameable, like a NetBox rear-port
+    diagram. Which ODC (if any) is patched into a core is looked up via
+    FTTHODC.otb_id + otb_core_number rather than a second FK here, so the
+    existing OTB<->ODC link stays the single source of truth."""
+    __tablename__ = 'ftth_otb_port'
+    id = db.Column(db.Integer, primary_key=True)
+    otb_id = db.Column(db.Integer, db.ForeignKey('ftth_otb.id'), nullable=False)
+    port_number = db.Column(db.Integer, nullable=False)
+    label = db.Column(db.String(150), default='')  # custom name, e.g. "Ruko Blok A"
+    description = db.Column(db.String(256), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    otb = db.relationship('FTTHOTB', backref=db.backref('ports', lazy=True, cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('otb_id', 'port_number', name='uq_otb_port_number'),
+    )
+
+
 class FTTHPonPort(db.Model):
     """PON port data — links OLT PON port to OTB/ODF core"""
     __tablename__ = 'ftth_pon_port'

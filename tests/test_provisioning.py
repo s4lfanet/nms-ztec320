@@ -656,3 +656,112 @@ class TestOltBackupDownloadPermission:
 
         resp = auth_client.get(f'/api/olt/{test_olt}/backup/{backup_id}/download')
         assert resp.status_code == 200
+
+
+class TestOtbPortDiagram:
+    """OTB/ODF per-port naming — regression tests for the port diagram feature."""
+
+    def test_create_otb_auto_creates_ports_matching_total_cores(self, auth_client):
+        resp = auth_client.post('/api/ftth/otb', json={
+            'name': 'OTB-Test', 'type': 'otb', 'total_cores': 6,
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        otb_id = resp.get_json()['item']['id']
+
+        resp = auth_client.get(f'/api/ftth/otb/{otb_id}/ports')
+        assert resp.status_code == 200
+        ports = resp.get_json()['ports']
+        assert len(ports) == 6
+        assert [p['port_number'] for p in ports] == [1, 2, 3, 4, 5, 6]
+        assert all(p['status'] == 'available' and p['label'] == '' for p in ports)
+
+    def test_update_port_label(self, auth_client):
+        resp = auth_client.post('/api/ftth/otb', json={
+            'name': 'OTB-Label', 'total_cores': 4,
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        otb_id = resp.get_json()['item']['id']
+        ports = auth_client.get(f'/api/ftth/otb/{otb_id}/ports').get_json()['ports']
+        port_id = ports[0]['id']
+
+        resp = auth_client.put(f'/api/ftth/otb-port/{port_id}', json={
+            'label': 'Ruko Blok A', 'description': 'Downtown cluster',
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['port']['label'] == 'Ruko Blok A'
+
+        ports = auth_client.get(f'/api/ftth/otb/{otb_id}/ports').get_json()['ports']
+        assert ports[0]['label'] == 'Ruko Blok A'
+        assert ports[0]['description'] == 'Downtown cluster'
+
+    def test_increasing_total_cores_adds_ports_without_duplicating(self, auth_client):
+        resp = auth_client.post('/api/ftth/otb', json={
+            'name': 'OTB-Grow', 'total_cores': 4,
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        otb_id = resp.get_json()['item']['id']
+        ports = auth_client.get(f'/api/ftth/otb/{otb_id}/ports').get_json()['ports']
+        port_id = ports[0]['id']
+        auth_client.put(f'/api/ftth/otb-port/{port_id}', json={'label': 'Keep Me'},
+                         headers={'X-Requested-With': 'XMLHttpRequest'})
+
+        resp = auth_client.put(f'/api/ftth/otb/{otb_id}', json={'total_cores': 8},
+                                headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+
+        ports = auth_client.get(f'/api/ftth/otb/{otb_id}/ports').get_json()['ports']
+        assert len(ports) == 8
+        assert [p['port_number'] for p in ports] == list(range(1, 9))
+        assert ports[0]['label'] == 'Keep Me'  # not clobbered by the resize
+
+    def test_backfill_ports_for_otb_created_before_this_feature(self, auth_client):
+        """An OTB row with no FTTHOTBPort rows yet (pre-existing data) should
+        self-heal on first GET instead of returning an empty port list."""
+        from models import db, FTTHOTB
+        with app.app_context():
+            o = FTTHOTB(name='OTB-Legacy', total_cores=3)
+            db.session.add(o)
+            db.session.commit()
+            otb_id = o.id
+
+        resp = auth_client.get(f'/api/ftth/otb/{otb_id}/ports')
+        assert resp.status_code == 200
+        ports = resp.get_json()['ports']
+        assert len(ports) == 3
+
+    def test_port_status_reflects_connected_odc(self, auth_client):
+        resp = auth_client.post('/api/ftth/otb', json={
+            'name': 'OTB-Link', 'total_cores': 2,
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        otb_id = resp.get_json()['item']['id']
+
+        resp = auth_client.post('/api/ftth/odc', json={
+            'name': 'ODC-1', 'otb_id': otb_id, 'otb_core_number': 1, 'total_cores': 4,
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+
+        ports = auth_client.get(f'/api/ftth/otb/{otb_id}/ports').get_json()['ports']
+        p1 = next(p for p in ports if p['port_number'] == 1)
+        p2 = next(p for p in ports if p['port_number'] == 2)
+        assert p1['status'] == 'used' and p1['odc_name'] == 'ODC-1'
+        assert p2['status'] == 'available' and p2['odc_id'] is None
+
+    def test_viewer_cannot_rename_port(self, auth_client):
+        resp = auth_client.post('/api/ftth/otb', json={
+            'name': 'OTB-Perm', 'total_cores': 2,
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        otb_id = resp.get_json()['item']['id']
+        port_id = auth_client.get(f'/api/ftth/otb/{otb_id}/ports').get_json()['ports'][0]['id']
+
+        from models import Role, User
+        with app.app_context():
+            role = Role(name='OtbViewer', permissions='')
+            db.session.add(role)
+            viewer = User(username='otbviewer', full_name='Viewer', role=role)
+            viewer.set_password('viewer12345')
+            db.session.add(viewer)
+            db.session.commit()
+
+        auth_client.post('/api/auth/logout', headers={'X-Requested-With': 'XMLHttpRequest'})
+        auth_client.post('/api/auth/login', json={'username': 'otbviewer', 'password': 'viewer12345'})
+        resp = auth_client.put(f'/api/ftth/otb-port/{port_id}', json={'label': 'Hacked'},
+                                headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 403

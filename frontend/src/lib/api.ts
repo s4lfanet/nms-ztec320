@@ -122,6 +122,8 @@ export const api = {
   ftthOtbCreate: (data: Partial<FTTHOtb>) => request<{ success: boolean; item: FTTHOtb }>('/api/ftth/otb', { method: 'POST', body: JSON.stringify(data) }),
   ftthOtbUpdate: (id: number, data: Partial<FTTHOtb>) => request<{ success: boolean; item: FTTHOtb }>(`/api/ftth/otb/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthOtbDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/otb/${id}`, { method: 'DELETE' }),
+  ftthOtbPorts: (otbId: number) => request<{ success: boolean; ports: FTTHOtbPort[] }>(`/api/ftth/otb/${otbId}/ports`),
+  ftthOtbPortUpdate: (id: number, data: Partial<FTTHOtbPort>) => request<{ success: boolean; port: FTTHOtbPort }>(`/api/ftth/otb-port/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthOdcList: (otbId?: number) => request<{ success: boolean; items: FTTHOdc[] }>(`/api/ftth/odc${otbId ? '?otb_id=' + otbId : ''}`),
   ftthOdcCreate: (data: Partial<FTTHOdc>) => request<{ success: boolean; item: FTTHOdc }>('/api/ftth/odc', { method: 'POST', body: JSON.stringify(data) }),
   ftthOdcUpdate: (id: number, data: Partial<FTTHOdc>) => request<{ success: boolean; item: FTTHOdc }>(`/api/ftth/odc/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -796,6 +798,17 @@ export interface FTTHOtb {
   used_cores: number;
   available_cores: number;
   is_active: boolean;
+}
+
+export interface FTTHOtbPort {
+  id: number;
+  otb_id: number;
+  port_number: number;
+  label: string;
+  description: string;
+  status: string;
+  odc_id: number | null;
+  odc_name: string;
 }
 
 export interface FTTHOdc {

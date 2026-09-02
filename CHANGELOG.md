@@ -4,6 +4,21 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Diagram Port Visual untuk OTB/ODF (ala NetBox)
+
+#### Diaudit — OTB/ODF Belum Punya Entitas Per-Port Sama Sekali
+- Beda dari ODP yang sudah punya tabel `FTTHODPPort` per-port (list biasa, belum diagram visual), OTB/ODF cuma punya field `total_cores` (angka doang) — tidak ada cara memberi nama masing-masing core/port
+
+#### Ditambahkan — Model, API, dan Diagram Visual Baru untuk Port OTB/ODF
+- **Backend**: tabel baru `FTTHOTBPort` (mirip pola `FTTHODPPort`) — tiap core OTB dapat baris sendiri dengan `label` (nama custom) + `description`. Status "connected/available" dihitung otomatis dari relasi `FTTHODC.otb_id`+`otb_core_number` yang sudah ada (tidak duplikasi data). Port otomatis dibuat sejumlah `total_cores` saat OTB dibuat, dan otomatis nambah kalau `total_cores` di-update lebih besar (tanpa menghapus nama yang sudah diisi). Self-healing: OTB lama yang dibuat sebelum fitur ini otomatis dapat port row saat pertama kali dibuka
+- **API baru**: `GET /api/ftth/otb/<id>/ports`, `PUT /api/ftth/otb-port/<id>`
+- **Frontend**: komponen `OtbPortDiagram` — grid visual ala NetBox (bukan tabel), tiap core jadi kotak dengan nomor + nama, warna beda untuk yang sudah connect ke ODC vs masih kosong. Klik kotak → beri nama. Tombol "Port Diagram" baru di kartu OTB/ODF
+- **Migration**: `89a0f326f24c_add_ftth_otb_port_table.py`, diverifikasi apply bersih dari baseline
+- **Diverifikasi**: 6 test backend baru (auto-create sesuai jumlah port, rename port, nambah port saat resize tanpa menghapus nama lama, backfill OTB lama, status ikut ODC yang connect, permission viewer ditolak) — semua lolos, plus **dites sungguhan di browser** (Playwright): tambah OTB 8 core → diagram muncul 8 kotak sesuai jumlah → klik core #1 → kasih nama "Ruko Blok A" → tersimpan dan tampil di kotak, tanpa error console
+- **Catatan**: ODP (`FTTHODPPort`) masih pakai tampilan tabel lama, belum diupgrade ke diagram visual yang sama — bisa disamakan kalau diminta
+
+---
+
 ### 2026-09-02 — CI GitHub Actions Gagal Sejak Awal Sesi — Ketahuan Saat Audit Local
 
 #### Diperbaiki — `/api/system/backup-db` 500 Error karena Kehilangan Fallback URL Database
