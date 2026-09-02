@@ -7,8 +7,10 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 ### 2026-09-02 — Installer: Fix Python Version Terlalu Lama di Fresh VPS
 
 #### Diperbaiki — `install-vps.sh`/`deploy/vps-setup.sh` Gagal di VPS dengan Python < 3.10
-- **Root cause**: Installer `apt-get install python3 python3-venv python3-pip` lalu `python3 -m venv .venv` blind mengikuti versi `python3` default distro. Di VPS dengan Python 3.8.10 (mis. image Ubuntu 20.04 atau image lama), `pip install -r requirements.txt` gagal total: `uvicorn>=0.34.0`/`fastapi>=0.115.0` tidak punya rilis yang mendukung Python 3.8
-- **Fix**: Installer sekarang cari `python3.10`/`3.11`/`3.12`/`3.13` yang sudah terpasang, atau pasang Python 3.12 via PPA `deadsnakes` kalau versi sistem terlalu tua — baru bikin venv dari situ. Diterapkan ke `install-vps.sh` dan `deploy/vps-setup.sh` (dua-duanya punya bug yang sama)
+- **Root cause #1**: Installer `apt-get install python3 python3-venv python3-pip` lalu `python3 -m venv .venv` blind mengikuti versi `python3` default distro. Di VPS dengan Python 3.8.10 (mis. image Ubuntu 20.04 atau image lama), `pip install -r requirements.txt` gagal total: `uvicorn>=0.34.0`/`fastapi>=0.115.0` tidak punya rilis yang mendukung Python 3.8
+- **Root cause #2** (ditemukan saat testing fix #1 di VPS baru): fallback awal pakai `add-apt-repository -y ppa:deadsnakes/ppa` — ini fetch GPG key lewat protokol keyserver klasik (port 11371), yang di banyak jaringan/firewall VPS **diblokir**, dan `add-apt-repository` hang tanpa pesan error apa pun (persis gejala yang dilaporkan: installer "berhenti" tanpa clone repo)
+- **Fix**: Installer sekarang cari `python3.10`/`3.11`/`3.12`/`3.13` yang sudah terpasang; kalau tidak ada, pasang Python 3.12 dari PPA `deadsnakes` dengan fetch GPG key lewat **HTTPS biasa** (port 443, `keyserver.ubuntu.com/pks/lookup?op=get`) plus `signed-by` di `sources.list.d`, bukan `add-apt-repository` — dilindungi `timeout` dan pesan error jelas kalau tetap gagal. Diterapkan ke `install-vps.sh` dan `deploy/vps-setup.sh`
+- **Diverifikasi**: direproduksi persis (hang, exit 124 dengan timeout guard) di VPS fresh, lalu fix di-test end-to-end 2x — sekali dengan Python 3.10 tersedia langsung (skip fallback), sekali dengan `python3.10` sengaja disembunyikan untuk memaksa jalur fallback deadsnakes. Keduanya selesai `EXIT_CODE=0`, service aktif, health check 200, venv aplikasi terkonfirmasi pakai Python 3.12.13 dari fallback
 
 ---
 
