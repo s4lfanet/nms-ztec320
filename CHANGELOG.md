@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Production Readiness Pass: Izin Backup, Log Rotation, Cron Konsisten
+
+#### Diperbaiki — Download Backup Config OLT Bisa Diakses User Mana Pun (MEDIUM, dari audit lama)
+- `download_olt_backup` (`/api/olt/<id>/backup/<id>/download`) sebelumnya cuma `@login_required` — user role apa pun bisa unduh isi lengkap running-config OLT (VLAN plan, topologi WAN, URL ACS). Sekarang `@permission_required('settings_ip_olts')`, konsisten dengan route OLT sensitif lainnya
+- `list_olt_backups` (cuma metadata: id/status/size/timestamp, bukan isi config) sengaja dibiarkan `@login_required` — risikonya rendah
+- Test baru: `tests/test_provisioning.py::TestOltBackupDownloadPermission` (2 test)
+
+#### Ditambahkan — Log Rotation untuk Cron Logs
+- `/var/log/salfanet-*.log` (db-backup, backup, sync, traffic) sebelumnya numpuk tanpa batas — cron jalan tiap jam/5 menit selamanya tanpa rotation. Sekarang ada `/etc/logrotate.d/salfanet-nms` (daily, 14 hari retensi, compress) yang dibuat installer
+- **Diverifikasi nyata**: dry-run `logrotate -d` di VPS asli — ternyata `/var/log` di Ubuntu default group-writable (`root:syslog`), logrotate menolak rotate tanpa directive `su`. Ditambahkan `su salfanet salfanet` di config, dry-run ulang berhasil bersih tanpa error
+
+#### Diperbaiki — `deploy/vps-setup.sh` Ketinggalan Cron `db_backup.py`
+- Saat cron `db_backup.py` ditambahkan ke `install-vps.sh` sebelumnya, `deploy/vps-setup.sh` (jalur deploy alternatif) tidak ikut ter-update — sekarang disamakan
+
+---
+
 ### 2026-09-02 — CRITICAL: Installer Tidak Pernah Set Production Mode
 
 #### Diperbaiki — Semua Instalasi via `install-vps.sh` Diam-diam Jalan Mode Development

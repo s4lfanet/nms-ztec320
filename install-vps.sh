@@ -296,10 +296,27 @@ TRAFFIC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 traffic_
 ( crontab -l 2>/dev/null | grep -v 'db_backup\.py\|auto_backup\|auto_sync\|traffic_poller\|salfanet-nms' ; echo "$DB_BACKUP_CRON" ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ; echo "$TRAFFIC_CRON" ) | crontab -
 touch /var/log/salfanet-db-backup.log /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log
 chown ${APP_USER}:${APP_USER} /var/log/salfanet-db-backup.log /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log 2>/dev/null || true
+
+# Cron logs above are appended to forever with no rotation otherwise —
+# harmless short-term, but grows unbounded over months/years of hourly
+# and every-5-minutes cron runs.
+cat > /etc/logrotate.d/${APP_NAME} << LOGROTATE_EOF
+/var/log/salfanet-*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    su ${APP_USER} ${APP_USER}
+}
+LOGROTATE_EOF
+
 echo "  ✅ DB backup cron: hourly (instance/backups/, 24 hourly + 7 daily retention)"
 echo "  ✅ OLT config backup cron: hourly"
 echo "  ✅ Auto-sync cron: every 5 minutes"
 echo "  ✅ Traffic poller cron: every 5 minutes"
+echo "  ✅ Log rotation: daily, 14 days retention"
 
 # ── 9. Start & verify ──
 echo "[9/9] Starting services..."
