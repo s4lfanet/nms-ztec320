@@ -40,7 +40,11 @@ echo "  Node.js: $(node --version)"
 # Check pnpm (frontend package manager — pnpm-lock.yaml is the source of truth)
 if ! command -v pnpm &>/dev/null; then
     echo "  pnpm not found, installing..."
-    corepack enable pnpm 2>/dev/null || npm install -g pnpm
+    # corepack asks an interactive Y/n before downloading pnpm the first time —
+    # in a non-interactive script with no stdin to answer, this hangs forever
+    # with no error output. Disable the prompt and bound the download.
+    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+    timeout 60 corepack enable pnpm 2>/dev/null || npm install -g pnpm
 fi
 echo "  pnpm: $(pnpm --version)"
 

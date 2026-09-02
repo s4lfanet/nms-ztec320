@@ -107,7 +107,11 @@ if [ -d "${SCRIPT_DIR}/frontend/dist" ]; then
 else
     echo "  Frontend not built. Building now..."
     cd "${APP_DIR}/frontend"
-    corepack enable pnpm 2>/dev/null || npm install -g pnpm 2>/dev/null || true
+    # corepack asks an interactive Y/n before downloading pnpm the first time —
+    # in a non-interactive script with no stdin to answer, this hangs forever
+    # with no error output. Disable the prompt and bound the download.
+    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+    timeout 60 corepack enable pnpm 2>/dev/null || npm install -g pnpm 2>/dev/null || true
 
     # Optional faster mirror for slow/regional connections to the default npm
     # registry — opt-in only, e.g.: PNPM_REGISTRY=https://registry.npmmirror.com
