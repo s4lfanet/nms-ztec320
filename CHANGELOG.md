@@ -4,6 +4,17 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — CI GitHub Actions Gagal Sejak Awal Sesi — Ketahuan Saat Audit Local
+
+#### Diperbaiki — `/api/system/backup-db` 500 Error karena Kehilangan Fallback URL Database
+- **Ditemukan lewat**: audit "production ready" untuk kondisi lokal — cek status CI di GitHub, ternyata **gagal di setiap commit sejak `d32d720`** (commit pertama hari ini), padahal semua test lokal (123/123) selalu lolos. Reproduksi pakai Python 3.10 asli (persis versi CI, beda dari Python 3.14 yang saya pakai sepanjang hari) — langsung ketemu 2 test gagal
+- **Root cause**: saat refactor `backup_database()` untuk pakai `db_backup.py` (commit `2589abd`), fallback lama "kalau `app.config['SQLALCHEMY_DATABASE_URI']` nunjuk ke `:memory:` tapi engine sungguhan sudah di-swap ke file nyata, pakai URL engine yang asli" **hilang tanpa sengaja** — cuma `restore_database()` (fungsi sebelahnya) yang masih punya fallback ini
+- **Fix**: `backup_database()` sekarang pakai pola yang sama persis dengan `restore_database()` — coba `str(db.engine.url)` dulu (URL sungguhan), baru fallback ke `app.config` kalau itu gagal
+- **Diverifikasi**: install Python 3.10 asli secara lokal, jalankan test suite persis seperti CI (`FLASK_ENV=testing INTERNAL_API_KEY=... SECRET_KEY=... pytest`) — 123/123 lolos, dan Python 3.14 lokal tetap lolos juga (tidak ada regresi)
+- **Pelajaran**: cuma andalkan test lokal di satu versi Python tidak cukup — perlu cek status CI aktual secara rutin, bukan asumsi "test lolos lokal = aman"
+
+---
+
 ### 2026-09-02 — "Apply Update" Gagal di Step Restart: `salfanet` Tidak Punya Izin Restart Service Sendiri
 
 #### Diperbaiki — Restart Service Setelah Update Gagal "Interactive authentication required"
