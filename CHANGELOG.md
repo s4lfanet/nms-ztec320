@@ -9,7 +9,7 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 #### Diperbaiki — Restart Service Setelah Update Gagal "Interactive authentication required"
 - **Ditemukan setelah fix pnpm-skip di atas** — begitu step pull+frontend berhasil cepat, proses baru sampai sejauh step restart, dan ternyata **selalu gagal** di situ: user `salfanet` (non-root, yang menjalankan service) tidak pernah diberi izin restart service systemd miliknya sendiri. Kemungkinan besar fitur "Apply Update" belum pernah benar-benar sukses sampai tuntas sebelumnya — selalu gagal duluan di step lain (build frontend) sebelum sempat ketahuan step restart-nya juga bermasalah
 - **Fix**: `install-vps.sh`/`deploy/vps-setup.sh` sekarang bikin rule sudoers sempit (`/etc/sudoers.d/salfanet-nms-restart`) — user `salfanet` cuma diizinkan `sudo systemctl restart salfanet-nms`, tidak ada akses sudo lain apa pun. `routes_system.py` sekarang panggil restart lewat `sudo -n systemctl restart ...` (non-interactive, gagal cepat dengan pesan jelas kalau rule belum ada, bukan hang)
-- **Diverifikasi**: rule diterapkan manual di VPS, dites `sudo -u salfanet sudo -n systemctl restart salfanet-nms` langsung berhasil (exit 0), service tetap sehat setelahnya
+- **Diverifikasi**: rule diterapkan manual di VPS, dites `sudo -u salfanet sudo -n systemctl restart salfanet-nms` langsung berhasil (exit 0), service tetap sehat setelahnya. Verifikasi end-to-end lewat `/api/system/update/apply` sungguhan (bukan manual SSH) menyusul di commit berikutnya, karena fix untuk mekanisme update-nya sendiri baru aktif setelah satu kali restart manual (bootstrap) — proses yang jalan sebelumnya masih pakai kode lama yang belum punya fix ini
 
 ---
 
