@@ -1060,7 +1060,7 @@ def backup_olt_config_to_db(olt_id):
 
 
 @bp.route('/api/olt/<int:olt_id>/backup/<int:backup_id>/download', methods=['GET'])
-@login_required
+@permission_required('settings_ip_olts')
 def download_olt_backup(olt_id, backup_id):
     """Download a specific config backup."""
     backup = db.session.get(OLTConfigBackup, backup_id)

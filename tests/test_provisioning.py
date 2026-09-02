@@ -612,3 +612,47 @@ class TestCLISecretMaskingHelper:
 
         cmd = 'interface gpon-onu_1/1/1:1'
         assert _mask_cli_secrets(cmd) == cmd
+
+
+class TestOltBackupDownloadPermission:
+    """Downloading an OLT's full running-config backup must require
+    settings_ip_olts, not just being logged in (regression test — this
+    endpoint used to be @login_required only, exposing VLAN plans, WAN
+    topology, and ACS URLs to any authenticated user of any role)."""
+
+    def test_viewer_without_permission_cannot_download_backup(self, auth_client, test_olt):
+        from models import Role, User, OLTConfigBackup
+
+        with app.app_context():
+            viewer_role = Role(name='BackupDownloadViewer', permissions='')
+            db.session.add(viewer_role)
+            viewer = User(username='backupviewer', full_name='Backup Viewer', role=viewer_role)
+            viewer.set_password('viewer12345')
+            db.session.add(viewer)
+            backup = OLTConfigBackup(
+                olt_id=test_olt, config_text='interface x\nvlan 100',
+                config_size=20, backup_type='manual', status='success',
+            )
+            db.session.add(backup)
+            db.session.commit()
+            backup_id = backup.id
+
+        auth_client.post('/api/auth/logout', headers={'X-Requested-With': 'XMLHttpRequest'})
+        auth_client.post('/api/auth/login', json={'username': 'backupviewer', 'password': 'viewer12345'})
+        resp = auth_client.get(f'/api/olt/{test_olt}/backup/{backup_id}/download')
+        assert resp.status_code == 403
+
+    def test_admin_with_permission_can_download_backup(self, auth_client, test_olt):
+        from models import OLTConfigBackup
+
+        with app.app_context():
+            backup = OLTConfigBackup(
+                olt_id=test_olt, config_text='interface x\nvlan 100',
+                config_size=20, backup_type='manual', status='success',
+            )
+            db.session.add(backup)
+            db.session.commit()
+            backup_id = backup.id
+
+        resp = auth_client.get(f'/api/olt/{test_olt}/backup/{backup_id}/download')
+        assert resp.status_code == 200
