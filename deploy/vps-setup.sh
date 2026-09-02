@@ -108,8 +108,24 @@ else
     echo "  Frontend not built. Building now..."
     cd "${APP_DIR}/frontend"
     corepack enable pnpm 2>/dev/null || npm install -g pnpm 2>/dev/null || true
-    pnpm install --no-frozen-lockfile
-    pnpm build
+
+    # pnpm install can hang indefinitely on a slow/flaky connection with no
+    # feedback — bound each attempt and retry instead of getting stuck silently.
+    _pnpm_ok=0
+    for _attempt in 1 2 3; do
+        if timeout 180 pnpm install --no-frozen-lockfile; then
+            _pnpm_ok=1
+            break
+        fi
+        echo "  pnpm install attempt ${_attempt}/3 failed or timed out (slow network?), retrying..."
+        sleep 5
+    done
+    if [ "$_pnpm_ok" -ne 1 ]; then
+        echo "[ERROR] pnpm install failed after 3 attempts — check your network connection, or retry manually:"
+        echo "         cd ${APP_DIR}/frontend && pnpm install"
+        exit 1
+    fi
+    timeout 300 pnpm build
     cd "${APP_DIR}"
 fi
 
