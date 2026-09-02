@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Installer: Corepack Minta Konfirmasi Interaktif, Bikin Installer Stuck
+
+#### Diperbaiki — `corepack enable pnpm` Hang Menunggu Input yang Tidak Akan Pernah Datang
+- **Root cause**: Saat `pnpm` belum pernah dipakai di mesin itu, `corepack` (yang menginstall `pnpm` itu sendiri, terpisah dari `pnpm install` untuk package project) minta konfirmasi interaktif `[Y/n]` sebelum download. Dikonfirmasi langsung dari source code shim-nya: `process.env.COREPACK_ENABLE_DOWNLOAD_PROMPT ??= '1'` — default-nya memang nanya
+- **Dampak**: di sesi terminal interaktif, installer diam menunggu user ketik `y` — kalau tidak sadar ada prompt tersembunyi di tengah output, kelihatan seperti "stuck" total (persis yang dilaporkan, sampai user coba `Ctrl+C` berkali-kali)
+- **Fix**: `export COREPACK_ENABLE_DOWNLOAD_PROMPT=0` sebelum panggil `corepack enable pnpm` di ketiga installer (`install-vps.sh`, `deploy/vps-setup.sh`, `install.sh`), plus `timeout 60` sebagai jaring pengaman tambahan
+- **Diverifikasi**: reproduksi langsung di VPS — pnpm versi yang belum pernah di-cache, dengan prompt aktif vs dimatikan, dikonfirmasi env var ini yang menentukan apakah prompt muncul atau tidak
+
+---
+
 ### 2026-09-02 — CRITICAL: Fix Sebelumnya (FLASK_ENV=production) Merusak Login Tanpa HTTPS
 
 #### Diperbaiki — Login Rusak Total di Instalasi IP-based Tanpa HTTPS (Regresi dari Fix Sebelumnya)
