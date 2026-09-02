@@ -65,10 +65,26 @@ if [ -z "$PYTHON_BIN" ] && command -v python3 &>/dev/null; then
 fi
 if [ -z "$PYTHON_BIN" ]; then
     echo "  System Python is too old (need 3.10+) — installing Python 3.12 via deadsnakes PPA..."
-    add-apt-repository -y ppa:deadsnakes/ppa > /dev/null 2>&1
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3.12 python3.12-venv python3.12-dev > /dev/null 2>&1
-    PYTHON_BIN="python3.12"
+    # Add the PPA by fetching its signing key over plain HTTPS (443) instead of
+    # `add-apt-repository`, which uses the classic hkp keyserver protocol
+    # (port 11371) — that port is blocked on some networks/firewalls and
+    # add-apt-repository then hangs indefinitely with no error output.
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gnupg > /dev/null 2>&1
+    mkdir -p /etc/apt/keyrings
+    if timeout 20 curl -fsSL 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xBA6932366A755776' -o /tmp/deadsnakes.asc \
+        && gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg /tmp/deadsnakes.asc; then
+        CODENAME=$(lsb_release -cs 2>/dev/null || . /etc/os-release && echo "$VERSION_CODENAME")
+        echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu ${CODENAME} main" \
+            > /etc/apt/sources.list.d/deadsnakes.list
+        apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3.12 python3.12-venv python3.12-dev > /dev/null 2>&1 || true
+    fi
+    if command -v python3.12 &>/dev/null; then
+        PYTHON_BIN="python3.12"
+    else
+        echo "[ERROR] Could not install Python 3.10+. Install it manually (e.g. via deadsnakes PPA) and re-run."
+        exit 1
+    fi
 else
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${PYTHON_BIN}-venv" > /dev/null 2>&1 || true
 fi
