@@ -135,40 +135,45 @@ fi
 
 # ── 4. Build frontend ──
 echo "[4/9] Building frontend..."
-cd frontend
-# corepack asks an interactive Y/n before downloading pnpm the first time —
-# in a non-interactive script with no stdin to answer, this hangs forever
-# with no error output (this is the "stuck right after Building frontend"
-# behavior). Disable the prompt and bound the download with a timeout.
-export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-timeout 60 corepack enable pnpm 2>/dev/null || npm install -g pnpm 2>/dev/null || true
+if [ -f "frontend/dist/index.html" ]; then
+    echo "  Using pre-built frontend/dist/ from the repo — no Node/pnpm/registry needed."
+else
+    echo "  frontend/dist/ not found in repo, building from source..."
+    cd frontend
+    # corepack asks an interactive Y/n before downloading pnpm the first time —
+    # in a non-interactive script with no stdin to answer, this hangs forever
+    # with no error output (this is the "stuck right after Building frontend"
+    # behavior). Disable the prompt and bound the download with a timeout.
+    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+    timeout 60 corepack enable pnpm 2>/dev/null || npm install -g pnpm 2>/dev/null || true
 
-# Optional faster mirror for slow/regional connections to the default npm
-# registry — opt-in only, e.g.: PNPM_REGISTRY=https://registry.npmmirror.com bash install-vps.sh
-_pnpm_install_args=(install --no-frozen-lockfile)
-if [ -n "${PNPM_REGISTRY:-}" ]; then
-    echo "  Using pnpm registry: ${PNPM_REGISTRY}"
-    _pnpm_install_args+=(--registry "${PNPM_REGISTRY}")
-fi
-
-# pnpm install can hang indefinitely on a slow/flaky connection with no
-# feedback — bound each attempt and retry instead of getting stuck silently.
-_pnpm_ok=0
-for _attempt in 1 2 3; do
-    if timeout 180 pnpm "${_pnpm_install_args[@]}"; then
-        _pnpm_ok=1
-        break
+    # Optional faster mirror for slow/regional connections to the default npm
+    # registry — opt-in only, e.g.: PNPM_REGISTRY=https://registry.npmmirror.com bash install-vps.sh
+    _pnpm_install_args=(install --no-frozen-lockfile)
+    if [ -n "${PNPM_REGISTRY:-}" ]; then
+        echo "  Using pnpm registry: ${PNPM_REGISTRY}"
+        _pnpm_install_args+=(--registry "${PNPM_REGISTRY}")
     fi
-    echo "  pnpm install attempt ${_attempt}/3 failed or timed out (slow network?), retrying..."
-    sleep 5
-done
-if [ "$_pnpm_ok" -ne 1 ]; then
-    echo "[ERROR] pnpm install failed after 3 attempts — check your network connection, or retry manually:"
-    echo "         cd ${APP_DIR}/frontend && pnpm install"
-    exit 1
+
+    # pnpm install can hang indefinitely on a slow/flaky connection with no
+    # feedback — bound each attempt and retry instead of getting stuck silently.
+    _pnpm_ok=0
+    for _attempt in 1 2 3; do
+        if timeout 180 pnpm "${_pnpm_install_args[@]}"; then
+            _pnpm_ok=1
+            break
+        fi
+        echo "  pnpm install attempt ${_attempt}/3 failed or timed out (slow network?), retrying..."
+        sleep 5
+    done
+    if [ "$_pnpm_ok" -ne 1 ]; then
+        echo "[ERROR] pnpm install failed after 3 attempts — check your network connection, or retry manually:"
+        echo "         cd ${APP_DIR}/frontend && pnpm install"
+        exit 1
+    fi
+    timeout 300 pnpm build
+    cd ..
 fi
-timeout 300 pnpm build
-cd ..
 
 # ── 5. Configuration ──
 echo "[5/9] Creating configuration..."

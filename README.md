@@ -190,6 +190,9 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 │   │   ├── stores/        # Zustand auth store
 │   │   ├── types/         # TypeScript interfaces (rack.ts, etc.)
 │   │   └── utils/         # API client, formatters
+│   ├── dist/              # Pre-built frontend — COMMITTED so installers don't need
+│   │                      # Node/pnpm/registry access. Rebuild + commit after any
+│   │                      # frontend change: cd frontend && pnpm build
 │   └── vite.config.ts     # Vite config with proxy + PWA
 ├── wa_gateway/            # WhatsApp Native gateway (Node.js/Baileys)
 ├── deploy/                # Deployment scripts & configs
@@ -233,7 +236,7 @@ What it does:
 1. Installs system packages (Python 3, Node.js 22, nginx, git)
 2. Clones repo to `/opt/salfanet-nms/`
 3. Creates Python venv + installs dependencies
-4. Builds frontend (React SPA)
+4. Uses the pre-built frontend already in the repo (`frontend/dist/`) — no Node/pnpm/registry download needed
 5. Creates `.env` with auto-generated `SECRET_KEY`
 6. Sets up systemd service (`salfanet-nms`)
 7. Configures Nginx reverse proxy (port 80 → Flask 5000 + WebSocket 8765)

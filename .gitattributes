@@ -1,0 +1,3 @@
+# Built frontend assets are committed so installers don't need Node/pnpm —
+# keep them byte-for-byte as produced by the build, no CRLF/LF conversion.
+frontend/dist/** -text

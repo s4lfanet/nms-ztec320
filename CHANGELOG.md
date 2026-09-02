@@ -4,6 +4,17 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Commit `frontend/dist/` — Install VPS Tidak Perlu Node/pnpm/Registry Sama Sekali
+
+#### Ditambahkan — Frontend Pre-built Ikut Di-commit ke Repo
+- Atas permintaan user: install package dari registry npm kadang lambat/stuck di koneksi tertentu. Solusinya bukan "masukkan registry ke repo" (tidak praktis — registry itu bukan 1 file, tapi jutaan versi package yang terus berubah), tapi **commit hasil build (`frontend/dist/`, ~2.1MB, 47 file) langsung ke repo** — installer tinggal pakai file itu, tidak perlu compile ulang di VPS
+- `install-vps.sh` & `install.sh`: kalau `frontend/dist/index.html` sudah ada dari `git clone` (akan selalu ada sekarang), **skip total** langkah `pnpm install`/`pnpm build` — bahkan `install.sh` skip cek Node.js/pnpm sama sekali kalau tidak diperlukan
+- `deploy/vps-setup.sh` sudah otomatis kompatibel — script itu sudah lama punya logic "pakai dist yang ada di source checkout kalau ada", tidak perlu diubah
+- `.gitattributes` baru: `frontend/dist/** -text` — supaya git tidak mengonversi line ending file build (CRLF/LF) yang bisa merusak minified JS
+- **Trade-off yang harus diingat**: setiap ada perubahan kode frontend, `frontend/dist/` harus di-rebuild (`cd frontend && pnpm build`) dan di-commit ulang manual — kalau lupa, VPS baru akan pasang frontend versi lama yang tidak sinkron dengan kode sumber. Belum diotomasi lewat CI (opsi itu ditawarkan tapi belum dipilih)
+
+---
+
 ### 2026-09-02 — Installer: Corepack Minta Konfirmasi Interaktif, Bikin Installer Stuck
 
 #### Diperbaiki — `corepack enable pnpm` Hang Menunggu Input yang Tidak Akan Pernah Datang

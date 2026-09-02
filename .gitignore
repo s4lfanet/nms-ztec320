@@ -24,8 +24,10 @@ env/
 
 # Node
 frontend/node_modules/
-frontend/dist/
 node_modules/
+# frontend/dist/ is intentionally committed — installers use it directly so
+# a VPS install doesn't need Node/pnpm/registry access. Rebuild + commit it
+# (cd frontend && pnpm build) whenever frontend source changes.
 
 # IDE
 .devin/
