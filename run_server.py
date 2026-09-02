@@ -23,6 +23,25 @@ import signal
 import sys
 import threading
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+# Load .env before anything below reads FLASK_ENV/INTERNAL_API_KEY — config.py
+# does the same loading, but that only happens once app.py is imported inside
+# start_servers(), which is too late for the production check right below.
+# Without this, FLASK_ENV=production in .env is invisible here, the production
+# check never fires, and INTERNAL_API_KEY silently gets an ephemeral dev value
+# instead of the one actually configured in .env.
+_env_file = Path(__file__).resolve().parent / ".env"
+if _env_file.exists():
+    with open(_env_file) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _, _value = _line.partition("=")
+                _key = _key.strip()
+                _value = _value.strip().strip('"').strip("'")
+                if _key and _key not in os.environ:
+                    os.environ[_key] = _value
 
 # Mark this as the server process so app.py runs schema init (migrate_schema +
 # db.create_all + seed_initial_data). Cron scripts that import app.py won't

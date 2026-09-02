@@ -170,16 +170,26 @@ echo "[5/9] Creating configuration..."
 mkdir -p instance
 if [ ! -f ".env" ]; then
     cp .env.example .env
-    # Generate random SECRET_KEY
+    # Generate random secrets. FLASK_ENV must be "production" here — .env.example
+    # defaults to "development" (Werkzeug debugger + insecure cookies enabled),
+    # which is right for local dev but wrong for a VPS install.
     SECRET_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
-    if grep -q "SECRET_KEY=" .env; then
-        sed -i "s/^SECRET_KEY=.*/SECRET_KEY=${SECRET_KEY}/" .env
-    else
-        echo "SECRET_KEY=${SECRET_KEY}" >> .env
-    fi
-    echo "  Created .env with generated SECRET_KEY"
+    INTERNAL_API_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
+    CREDENTIAL_ENCRYPTION_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
+    sed -i \
+        -e "s/^SECRET_KEY=.*/SECRET_KEY=${SECRET_KEY}/" \
+        -e "s/^INTERNAL_API_KEY=.*/INTERNAL_API_KEY=${INTERNAL_API_KEY}/" \
+        -e "s/^CREDENTIAL_ENCRYPTION_KEY=.*/CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}/" \
+        -e "s/^FLASK_ENV=.*/FLASK_ENV=production/" \
+        .env
+    echo "  Created .env (FLASK_ENV=production) with generated SECRET_KEY, INTERNAL_API_KEY, CREDENTIAL_ENCRYPTION_KEY"
 else
     echo "  .env already exists, skipping."
+    if grep -q "^FLASK_ENV=development" .env; then
+        echo "  [WARNING] Existing .env has FLASK_ENV=development — the debugger and insecure"
+        echo "            cookies are enabled. Set FLASK_ENV=production in ${APP_DIR}/.env"
+        echo "            and restart: systemctl restart ${APP_NAME}"
+    fi
 fi
 
 # Set permissions
