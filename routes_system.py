@@ -426,7 +426,15 @@ def backup_database():
     from flask import current_app
     from db_backup import create_db_backup, prune_old_db_backups
 
-    db_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    # Prefer the actual live engine URL over app.config — they can diverge
+    # (e.g. test fixtures that swap db.engines[None] to a temp file without
+    # updating app.config['SQLALCHEMY_DATABASE_URI'], which stays pinned to
+    # TestingConfig's "sqlite:///:memory:"), matching restore_database()'s
+    # existing fallback below.
+    try:
+        db_uri = str(db.engine.url)
+    except Exception:
+        db_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
     ok, backup_path, err = create_db_backup(db_uri)
     if not ok:
         return jsonify({'success': False, 'message': err}), 500
