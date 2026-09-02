@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Installer: Fix Python Version Terlalu Lama di Fresh VPS
+
+#### Diperbaiki — `install-vps.sh`/`deploy/vps-setup.sh` Gagal di VPS dengan Python < 3.10
+- **Root cause**: Installer `apt-get install python3 python3-venv python3-pip` lalu `python3 -m venv .venv` blind mengikuti versi `python3` default distro. Di VPS dengan Python 3.8.10 (mis. image Ubuntu 20.04 atau image lama), `pip install -r requirements.txt` gagal total: `uvicorn>=0.34.0`/`fastapi>=0.115.0` tidak punya rilis yang mendukung Python 3.8
+- **Fix**: Installer sekarang cari `python3.10`/`3.11`/`3.12`/`3.13` yang sudah terpasang, atau pasang Python 3.12 via PPA `deadsnakes` kalau versi sistem terlalu tua — baru bikin venv dari situ. Diterapkan ke `install-vps.sh` dan `deploy/vps-setup.sh` (dua-duanya punya bug yang sama)
+
+---
+
 ### 2026-09-02 — Audit Keamanan & Arsitektur: Perbaikan Critical/High + Refactor app.py
 
 Hasil audit menyeluruh (security, backend, database/dependencies, frontend) — perbaikan berikut dikerjakan dengan test regresi baru untuk tiap fix dan tanpa mengubah bagian yang sudah berfungsi baik (CSRF, CORS, auth, enkripsi kredensial, dll tetap utuh).

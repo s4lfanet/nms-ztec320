@@ -33,7 +33,35 @@ fi
 echo "[1/8] Installing system packages..."
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-    python3 python3-venv python3-pip nginx certbot python3-certbot-nginx curl rsync
+    software-properties-common nginx certbot python3-certbot-nginx curl rsync
+
+# Ensure a Python 3.10+ interpreter is available. Ubuntu's default `python3`
+# varies a lot by release (3.8 on 20.04, 3.10 on 22.04, 3.12 on 24.04) — this
+# app's deps (uvicorn>=0.34, fastapi>=0.115) don't support Python < 3.9, so
+# relying on whatever `python3` happens to resolve to fails on older images.
+PYTHON_BIN=""
+for cand in python3.12 python3.13 python3.11 python3.10; do
+    if command -v "$cand" &>/dev/null; then
+        PYTHON_BIN="$cand"
+        break
+    fi
+done
+if [ -z "$PYTHON_BIN" ] && command -v python3 &>/dev/null; then
+    _sys_minor=$(python3 -c 'import sys; print(sys.version_info[1])' 2>/dev/null || echo 0)
+    if [ "$_sys_minor" -ge 10 ]; then
+        PYTHON_BIN="python3"
+    fi
+fi
+if [ -z "$PYTHON_BIN" ]; then
+    echo "  System Python is too old (need 3.10+) — installing Python 3.12 via deadsnakes PPA..."
+    add-apt-repository -y ppa:deadsnakes/ppa > /dev/null 2>&1
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3.12 python3.12-venv python3.12-dev > /dev/null 2>&1
+    PYTHON_BIN="python3.12"
+else
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${PYTHON_BIN}-venv" > /dev/null 2>&1 || true
+fi
+echo "  Python: $(${PYTHON_BIN} --version) (${PYTHON_BIN})"
 
 # ── 2. Create app user ──
 echo "[2/8] Creating application user..."
@@ -65,7 +93,7 @@ fi
 
 # ── 4. Python virtual environment ──
 echo "[4/8] Setting up Python environment..."
-python3 -m venv "${APP_DIR}/.venv"
+"${PYTHON_BIN}" -m venv "${APP_DIR}/.venv"
 "${APP_DIR}/.venv/bin/pip" install --quiet --upgrade pip
 "${APP_DIR}/.venv/bin/pip" install --quiet -r "${APP_DIR}/requirements.txt"
 
@@ -74,7 +102,7 @@ echo "[5/8] Creating configuration..."
 mkdir -p "${APP_DIR}/instance"
 if [ ! -f "${APP_DIR}/.env" ]; then
     cp "${APP_DIR}/.env.example" "${APP_DIR}/.env"
-    SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    SECRET_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
     if grep -q "SECRET_KEY=" "${APP_DIR}/.env"; then
         sed -i "s/^SECRET_KEY=.*/SECRET_KEY=${SECRET_KEY}/" "${APP_DIR}/.env"
     else
