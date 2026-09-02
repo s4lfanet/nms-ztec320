@@ -3,6 +3,8 @@
 # Salfanet NMS — Full VPS Installer
 # For: Ubuntu 22.04 / 24.04 LTS (fresh VPS)
 # Usage: bash install-vps.sh [domain]
+# On a slow connection to the default npm registry, point pnpm at a faster
+# mirror: PNPM_REGISTRY=https://registry.npmmirror.com bash install-vps.sh
 #
 # What this does:
 #   1. Install system packages (Python, Node.js 22, nginx)
@@ -136,11 +138,19 @@ echo "[4/9] Building frontend..."
 cd frontend
 corepack enable pnpm 2>/dev/null || npm install -g pnpm 2>/dev/null || true
 
+# Optional faster mirror for slow/regional connections to the default npm
+# registry — opt-in only, e.g.: PNPM_REGISTRY=https://registry.npmmirror.com bash install-vps.sh
+_pnpm_install_args=(install --no-frozen-lockfile)
+if [ -n "${PNPM_REGISTRY:-}" ]; then
+    echo "  Using pnpm registry: ${PNPM_REGISTRY}"
+    _pnpm_install_args+=(--registry "${PNPM_REGISTRY}")
+fi
+
 # pnpm install can hang indefinitely on a slow/flaky connection with no
 # feedback — bound each attempt and retry instead of getting stuck silently.
 _pnpm_ok=0
 for _attempt in 1 2 3; do
-    if timeout 180 pnpm install --no-frozen-lockfile; then
+    if timeout 180 pnpm "${_pnpm_install_args[@]}"; then
         _pnpm_ok=1
         break
     fi

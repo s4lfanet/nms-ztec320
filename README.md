@@ -224,6 +224,9 @@ bash install-vps.sh
 
 # Or with a domain
 bash install-vps.sh yourdomain.com
+
+# On a slow/restricted connection to the default npm registry, try a mirror:
+PNPM_REGISTRY=https://registry.npmmirror.com bash install-vps.sh
 ```
 
 What it does:

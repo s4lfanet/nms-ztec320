@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Installer: Dukungan Mirror Registry npm (Opsional)
+
+#### Ditambahkan — `PNPM_REGISTRY` Env Var untuk Ganti Mirror npm
+- Installer (`install-vps.sh`, `deploy/vps-setup.sh`, `install.sh`) sekarang terima env var opsional `PNPM_REGISTRY` untuk override registry npm yang dipakai `pnpm install` — default tetap `registry.npmjs.org` kalau tidak di-set (tidak ada perubahan perilaku untuk yang tidak butuh)
+- Contoh: `PNPM_REGISTRY=https://registry.npmmirror.com bash install-vps.sh`
+- **Catatan jujur dari testing**: di VM test saya, mirror `npmmirror.com` justru **lebih lambat** dari registry default (11.3s vs 7.3s) — karena jaringan ke npmjs.org di situ sudah bagus. Manfaatnya baru terasa kalau jaringan VPS memang lambat/terbatas ke registry default; hasilnya tergantung jalur network masing-masing, coba dua-duanya dan pakai yang lebih cepat
+
+---
+
 ### 2026-09-02 — Installer: `pnpm install` Bisa Hang Tanpa Batas di Koneksi Lambat
 
 #### Diperbaiki — Frontend Build Bisa Stuck Selamanya Kalau Koneksi Lambat/Putus
