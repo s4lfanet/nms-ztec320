@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath } from '../lib/api';
 import { cn } from '../lib/utils';
+import { coreColorInfo } from '../lib/fiberColor';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import { LocationPicker } from '../components/LocationPicker';
@@ -248,6 +249,7 @@ export function FtthInfrastructure() {
                     {p.olt_name && <span>• OLT: {p.olt_name}</span>}
                     <span>• Frame {p.frame} / Slot {p.slot} / Port {p.port}</span>
                     {p.otb_name && <span>• → OTB: {p.otb_name} (Core {p.otb_core_number})</span>}
+                    {p.otb_name && <CoreColorTag coreNumber={p.otb_core_number} fibersPerTube={otbList?.items?.find(x => x.id === p.otb_id)?.fibers_per_tube} />}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -331,6 +333,7 @@ export function FtthInfrastructure() {
                   </div>
                   <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
                     {o.otb_name && <span>• From: {o.otb_name} (Core {o.otb_core_number})</span>}
+                    {o.otb_name && <CoreColorTag coreNumber={o.otb_core_number} fibersPerTube={otbList?.items?.find(x => x.id === o.otb_id)?.fibers_per_tube} />}
                     {o.splitter_model && <span>• Splitter: {o.splitter_model}</span>}
                     {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
                   </div>
@@ -369,6 +372,7 @@ export function FtthInfrastructure() {
                   </div>
                   <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
                     {o.odc_name && <span>• From: {o.odc_name} (Core {o.odc_core_number})</span>}
+                    {o.odc_name && <CoreColorTag coreNumber={o.odc_core_number} fibersPerTube={odcList?.items?.find(x => x.id === o.odc_id)?.fibers_per_tube} />}
                     {o.splitter_model && <span>• Splitter: {o.splitter_model}</span>}
                     {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
                   </div>
@@ -707,6 +711,7 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
                     <div className="font-medium text-sm truncate">{odc.name}</div>
                     <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
                       <span>Core {odc.otb_core_number} from {odc.otb_name}</span>
+                      <CoreColorTag coreNumber={odc.otb_core_number} fibersPerTube={otb.fibers_per_tube} />
                       {odc.splitter_model && <span>• Splitter: {odc.splitter_model}</span>}
                       <span>• {odc.odp_count} ODPs</span>
                       {odc.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {odc.latitude.toFixed(4)}, {odc.longitude?.toFixed(4)}</span>}
@@ -728,6 +733,7 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
                           <div className="font-medium text-sm truncate">{odp.name}</div>
                           <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
                             <span>Core {odp.odc_core_number} from {odp.odc_name}</span>
+                            <CoreColorTag coreNumber={odp.odc_core_number} fibersPerTube={odc.fibers_per_tube} />
                             {odp.splitter_model && <span>• Splitter: {odp.splitter_model}</span>}
                             <span>• {odp.used_ports}/{odp.total_ports} ports used</span>
                             {odp.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {odp.latitude.toFixed(4)}, {odp.longitude?.toFixed(4)}</span>}
@@ -1008,25 +1014,32 @@ function OtbPortDiagram({ otb, ports, canEdit, onClose, onUpdated }: {
             <p className="text-tx3 text-sm text-center py-8">No cores configured.</p>
           ) : (
             <>
-              <div className="flex items-center gap-4 mb-4 text-[11px] text-tx3">
+              <div className="flex items-center gap-4 mb-4 text-[11px] text-tx3 flex-wrap">
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-brd bg-glass inline-block" /> Available</span>
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-success bg-success/15 inline-block" /> Connected</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-tx3 inline-block" /> Warna tube/core (TIA-598, {otb.fibers_per_tube}/tube)</span>
                 {canEdit && <span className="ml-auto italic">Click a core to name it</span>}
               </div>
               <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-                {ports.map(p => (
+                {ports.map(p => {
+                  const cc = coreColorInfo(p.port_number, otb.fibers_per_tube);
+                  return (
                   <button
                     key={p.id}
                     onClick={() => openPort(p)}
                     disabled={!canEdit}
-                    title={p.status === 'used' ? `Core ${p.port_number} → ${p.odc_name}` : `Core ${p.port_number}${p.label ? ` — ${p.label}` : ''}`}
+                    title={`${p.status === 'used' ? `Core ${p.port_number} → ${p.odc_name}` : `Core ${p.port_number}${p.label ? ` — ${p.label}` : ''}`} • Tube ${cc.tubeNumber} (${cc.tubeColor}) • Core ${cc.positionInTube} (${cc.coreColor})`}
                     className={cn(
-                      'aspect-square rounded-lg border-2 flex flex-col items-center justify-center gap-0.5 p-1 transition-all',
+                      'relative aspect-square rounded-lg border-2 flex flex-col items-center justify-center gap-0.5 p-1 transition-all',
                       canEdit && 'hover:scale-[1.06] hover:shadow-md cursor-pointer',
                       !canEdit && 'cursor-default',
                       p.status === 'used' ? 'border-success bg-success/10' : 'border-brd bg-glass/40',
                     )}
                   >
+                    <span className="absolute top-1 right-1 flex gap-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full border border-black/10" style={{ backgroundColor: cc.tubeColorHex }} />
+                      <span className="w-1.5 h-1.5 rounded-full border border-black/10" style={{ backgroundColor: cc.coreColorHex }} />
+                    </span>
                     <span className="text-[10px] font-mono text-tx3 leading-none">#{p.port_number}</span>
                     <span className={cn('text-[11px] font-semibold leading-tight text-center line-clamp-2 px-0.5', p.label ? 'text-tx1' : 'text-tx3 italic font-normal')}>
                       {p.label || (canEdit ? 'Unnamed' : '—')}
@@ -1035,7 +1048,8 @@ function OtbPortDiagram({ otb, ports, canEdit, onClose, onUpdated }: {
                       <span className="text-[9px] text-success leading-none truncate w-full text-center px-0.5">{p.odc_name}</span>
                     )}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
@@ -1047,6 +1061,7 @@ function OtbPortDiagram({ otb, ports, canEdit, onClose, onUpdated }: {
             <div className="modal-overlay" onClick={() => setEditingPort(null)} />
             <div className="relative glass-card w-full max-w-md p-4 md:p-5 space-y-3 rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in" onClick={e => e.stopPropagation()}>
               <h3 className="text-sm font-semibold">Name Core #{editingPort.port_number}</h3>
+              <p className="text-xs"><CoreColorTag coreNumber={editingPort.port_number} fibersPerTube={otb.fibers_per_tube} /></p>
               {editingPort.status === 'used' && (
                 <p className="text-xs text-tx3">Connected to ODC: <span className="font-medium text-tx1">{editingPort.odc_name}</span></p>
               )}
@@ -1067,6 +1082,18 @@ function OtbPortDiagram({ otb, ports, canEdit, onClose, onUpdated }: {
 // ─── Form Field helper ───
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return <div><label className="text-xs text-tx3 font-medium block mb-1">{label}</label>{children}</div>;
+}
+
+// ─── Core color tag — TIA-598 tube + core color for a given core number ───
+function CoreColorTag({ coreNumber, fibersPerTube }: { coreNumber: number; fibersPerTube?: number }) {
+  const c = coreColorInfo(coreNumber, fibersPerTube || 12);
+  return (
+    <span className="inline-flex items-center gap-1" title={`Tube ${c.tubeNumber} (${c.tubeColor}) • Core ${c.positionInTube} (${c.coreColor})`}>
+      <span className="w-2 h-2 rounded-full border border-brd/50 flex-shrink-0" style={{ backgroundColor: c.tubeColorHex }} />
+      <span className="w-2 h-2 rounded-full border border-brd/50 flex-shrink-0" style={{ backgroundColor: c.coreColorHex }} />
+      <span className="text-tx3">Tube {c.tubeNumber} {c.tubeColor} • {c.coreColor}</span>
+    </span>
+  );
 }
 
 // ─── PON Modal ───
@@ -1091,6 +1118,7 @@ function PonModal({ item, otbList, onClose, onSaved }: { item: FTTHPonPort | nul
     d.otb_core_number = parseInt(String(form.otb_core_number));
     mut.mutate(d);
   };
+  const selectedOtb = otbList.find(o => o.id === Number(form.otb_id));
   return (
     <Modal title={item ? 'Edit PON Port' : 'Add PON Port'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
       <FormField label="PON Name"><input className="input-field" value={form.pon_name} onChange={e => setForm({ ...form, pon_name: e.target.value })} placeholder="gpon-olt_1/1/1" /></FormField>
@@ -1104,6 +1132,7 @@ function PonModal({ item, otbList, onClose, onSaved }: { item: FTTHPonPort | nul
         <FormField label="OTB/ODF (connected core)"><select className="input-field" value={form.otb_id} onChange={e => setForm({ ...form, otb_id: e.target.value })}><option value="">— None —</option>{otbList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
         <FormField label="Core Number in OTB"><input className="input-field" type="number" value={form.otb_core_number} onChange={e => setForm({ ...form, otb_core_number: parseInt(e.target.value) || 1 })} /></FormField>
       </div>
+      {selectedOtb && <p className="text-xs -mt-1"><CoreColorTag coreNumber={form.otb_core_number} fibersPerTube={selectedOtb.fibers_per_tube} /></p>}
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1115,6 +1144,7 @@ function OtbModal({ item, onClose, onSaved }: { item: FTTHOtb | null; onClose: (
     name: item?.name || '', type: item?.type || 'otb', model: item?.model || '',
     location: item?.location || '', latitude: item?.latitude || '', longitude: item?.longitude || '',
     total_cores: item?.total_cores || 12,
+    fibers_per_tube: item?.fibers_per_tube || 12,
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1127,6 +1157,7 @@ function OtbModal({ item, onClose, onSaved }: { item: FTTHOtb | null; onClose: (
     d.latitude = form.latitude === '' ? null : parseFloat(String(form.latitude));
     d.longitude = form.longitude === '' ? null : parseFloat(String(form.longitude));
     d.total_cores = parseInt(String(form.total_cores));
+    d.fibers_per_tube = parseInt(String(form.fibers_per_tube));
     mut.mutate(d);
   };
   return (
@@ -1144,7 +1175,11 @@ function OtbModal({ item, onClose, onSaved }: { item: FTTHOtb | null; onClose: (
           onChange={(lat, lng) => setForm({ ...form, latitude: lat, longitude: lng })}
         />
       </FormField>
-      <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
+        <FormField label="Fibers per Tube"><input className="input-field" type="number" min={1} value={form.fibers_per_tube} onChange={e => setForm({ ...form, fibers_per_tube: parseInt(e.target.value) || 12 })} /></FormField>
+      </div>
+      <p className="text-[11px] text-tx3 -mt-1">Warna tube/core mengikuti standar TIA-598 (12 warna), dihitung otomatis dari nomor core — biasanya 12 per tube.</p>
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1156,7 +1191,8 @@ function OdcModal({ item, parent, otbList, onClose, onSaved }: { item: FTTHOdc |
     name: item?.name || '', model: item?.model || '',
     location: item?.location || '', latitude: item?.latitude || '', longitude: item?.longitude || '',
     otb_id: item?.otb_id || parent?.id || '', otb_core_number: item?.otb_core_number || 1,
-    total_cores: item?.total_cores || 8, splitter_model: item?.splitter_model || '',
+    total_cores: item?.total_cores || 8, fibers_per_tube: item?.fibers_per_tube || 12,
+    splitter_model: item?.splitter_model || '',
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1171,8 +1207,10 @@ function OdcModal({ item, parent, otbList, onClose, onSaved }: { item: FTTHOdc |
     d.otb_id = form.otb_id === '' ? null : parseInt(String(form.otb_id));
     d.otb_core_number = parseInt(String(form.otb_core_number));
     d.total_cores = parseInt(String(form.total_cores));
+    d.fibers_per_tube = parseInt(String(form.fibers_per_tube));
     mut.mutate(d);
   };
+  const selectedOtb = otbList.find(x => x.id === Number(form.otb_id));
   return (
     <Modal title={item ? 'Edit ODC' : 'Add ODC'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
       <FormField label="Name"><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="ODC-01" /></FormField>
@@ -1193,6 +1231,8 @@ function OdcModal({ item, parent, otbList, onClose, onSaved }: { item: FTTHOdc |
         <FormField label="Core from OTB"><input className="input-field" type="number" value={form.otb_core_number} onChange={e => setForm({ ...form, otb_core_number: parseInt(e.target.value) || 1 })} /></FormField>
         <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
       </div>
+      {selectedOtb && <p className="text-xs -mt-1"><CoreColorTag coreNumber={form.otb_core_number} fibersPerTube={selectedOtb.fibers_per_tube} /></p>}
+      <FormField label="Fibers per Tube (cable ODC ini ke ODP)"><input className="input-field" type="number" min={1} value={form.fibers_per_tube} onChange={e => setForm({ ...form, fibers_per_tube: parseInt(e.target.value) || 12 })} /></FormField>
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1221,6 +1261,7 @@ function OdpModal({ item, parent, odcList, onClose, onSaved }: { item: FTTHOdp |
     d.total_ports = parseInt(String(form.total_ports));
     mut.mutate(d);
   };
+  const selectedOdc = odcList.find(x => x.id === Number(form.odc_id));
   return (
     <Modal title={item ? 'Edit ODP' : 'Add ODP'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
       <FormField label="Name"><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="ODP-01" /></FormField>
@@ -1241,6 +1282,7 @@ function OdpModal({ item, parent, odcList, onClose, onSaved }: { item: FTTHOdp |
         <FormField label="Core from ODC"><input className="input-field" type="number" value={form.odc_core_number} onChange={e => setForm({ ...form, odc_core_number: parseInt(e.target.value) || 1 })} /></FormField>
         <FormField label="Total Ports"><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
       </div>
+      {selectedOdc && <p className="text-xs -mt-1"><CoreColorTag coreNumber={form.odc_core_number} fibersPerTube={selectedOdc.fibers_per_tube} /></p>}
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );

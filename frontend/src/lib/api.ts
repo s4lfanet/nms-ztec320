@@ -793,6 +793,7 @@ export interface FTTHOtb {
   olt_name: string;
   pon_port: string;
   total_cores: number;
+  fibers_per_tube: number;
   description: string;
   odc_count: number;
   used_cores: number;
@@ -822,6 +823,7 @@ export interface FTTHOdc {
   otb_name: string;
   otb_core_number: number;
   total_cores: number;
+  fibers_per_tube: number;
   splitter_model: string;
   description: string;
   odp_count: number;

@@ -748,6 +748,7 @@ class FTTHOTB(db.Model):
     olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=True)
     pon_port = db.Column(db.String(50), default='')  # e.g. gpon-olt_1/1/1
     total_cores = db.Column(db.Integer, default=12)
+    fibers_per_tube = db.Column(db.Integer, default=12, nullable=False)  # TIA-598 tube grouping for this cable
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('ftth_otbs', lazy=True))
@@ -765,6 +766,7 @@ class FTTHODC(db.Model):
     otb_id = db.Column(db.Integer, db.ForeignKey('ftth_otb.id'), nullable=True)
     otb_core_number = db.Column(db.Integer, default=1)  # which core from OTB
     total_cores = db.Column(db.Integer, default=8)
+    fibers_per_tube = db.Column(db.Integer, default=12, nullable=False)  # TIA-598 tube grouping for the ODC's own outgoing cable
     splitter_model = db.Column(db.String(50), default='')  # e.g. 1:8, 1:16
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
