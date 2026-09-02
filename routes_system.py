@@ -280,8 +280,7 @@ def system_update_check():
 @bp.route('/api/system/update/apply', methods=['POST'])
 @super_admin_required
 def system_update_apply():
-    """Apply update from GitHub: git pull, build frontend, restart service.
-    Only works on the VPS (must have git repo + node + pnpm)."""
+    """Apply update from GitHub: git pull, (re)build frontend if needed, restart service."""
     app_dir = os.path.dirname(os.path.abspath(__file__))
     frontend_dir = os.path.join(app_dir, 'frontend')
     try:
@@ -295,21 +294,41 @@ def system_update_apply():
         if 'Already up to date' in pull_output or 'Already up-to-date' in pull_output:
             return jsonify({'success': True, 'message': 'Already up to date. No changes needed.', 'restarted': False})
 
-        # Step 2: Install frontend deps + build
-        install = _run_cmd(['pnpm', 'install', '--no-frozen-lockfile'], cwd=frontend_dir, timeout=120)
-        if install.returncode != 0:
-            return jsonify({'success': False, 'message': f'pnpm install failed: {install.stderr[:300]}'})
+        # Step 2: frontend/dist/ is committed to the repo, so `git pull` above
+        # already brought in the current pre-built frontend — no need to
+        # reinstall/rebuild with pnpm (which also risks corepack's
+        # interactive download prompt hanging this request the first time
+        # pnpm is used). Only fall back to building if dist is somehow
+        # missing (e.g. a very old checkout, or dist was deleted locally).
+        frontend_step = 'skipped (using pre-built frontend/dist/ from git pull)'
+        if not os.path.isfile(os.path.join(frontend_dir, 'dist', 'index.html')):
+            import subprocess as _sp
+            env = os.environ.copy()
+            env['PATH'] = _VPS_PATH
+            env['COREPACK_ENABLE_DOWNLOAD_PROMPT'] = '0'
+            try:
+                install = _sp.run(['pnpm', 'install', '--no-frozen-lockfile'], cwd=frontend_dir,
+                                   capture_output=True, text=True, timeout=120, env=env)
+            except _sp.TimeoutExpired:
+                return jsonify({'success': False, 'message': 'pnpm install timed out after 120s'})
+            if install.returncode != 0:
+                return jsonify({'success': False, 'message': f'pnpm install failed: {install.stderr[:300]}'})
 
-        build = _run_cmd(['pnpm', 'build'], cwd=frontend_dir, timeout=120)
-        if build.returncode != 0:
-            return jsonify({'success': False, 'message': f'Frontend build failed: {build.stderr[:300]}'})
+            try:
+                build = _sp.run(['pnpm', 'build'], cwd=frontend_dir,
+                                 capture_output=True, text=True, timeout=120, env=env)
+            except _sp.TimeoutExpired:
+                return jsonify({'success': False, 'message': 'Frontend build timed out after 120s'})
+            if build.returncode != 0:
+                return jsonify({'success': False, 'message': f'Frontend build failed: {build.stderr[:300]}'})
+            frontend_step = 'built with pnpm (dist/ was missing)'
 
         # Step 3: Restart service (systemd)
         restart = _run_cmd(['systemctl', 'restart', 'salfanet-nms'], timeout=30)
         if restart.returncode != 0:
             return jsonify({'success': True, 'message': f'Update applied but service restart failed: {restart.stderr[:200]}. Please restart manually.', 'restarted': False})
 
-        log_action('system_update', 'system', detail=f'Git pull + frontend build + service restart. Pull: {pull_output[:100]}')
+        log_action('system_update', 'system', detail=f'Git pull + service restart (frontend: {frontend_step}). Pull: {pull_output[:100]}')
         return jsonify({
             'success': True,
             'message': 'Update applied successfully. Service restarted.',

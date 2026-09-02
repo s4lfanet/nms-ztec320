@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Fitur "System Update" di Web App Ikut Disesuaikan dengan `frontend/dist/` yang Di-commit
+
+#### Diperbaiki — `/api/system/update/apply` Masih Selalu Jalankan `pnpm install`/`build` Meski Tidak Perlu
+- Setelah `frontend/dist/` di-commit ke repo, tombol "Apply Update" di web app (`system_update_apply()`) ternyata **masih selalu** jalankan `pnpm install --no-frozen-lockfile` + `pnpm build` setelah `git pull` — padahal `git pull` sudah bawa `dist/` yang benar. Ini kerjaan sia-sia (buang waktu sampai 240 detik) dan berisiko kena masalah interactive-prompt corepack yang sama di jalur kode ini (beda dari installer bash, `_run_cmd()` di sini tidak set `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`)
+- **Fix**: sekarang cek `frontend/dist/index.html` setelah pull — kalau sudah ada (akan selalu ada, karena ikut ke-pull dari git), **skip pnpm sepenuhnya**. Fallback ke build manual (dengan `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` + timeout, untuk jaga-jaga) cuma kalau `dist/` somehow tidak ada
+- **Diverifikasi**: full test suite 123/123 lolos, plus dites langsung via API `/api/system/update/apply` di VPS — update kembali sukses dalam hitungan detik, bukan puluhan detik
+
+---
+
 ### 2026-09-02 — Commit `frontend/dist/` — Install VPS Tidak Perlu Node/pnpm/Registry Sama Sekali
 
 #### Ditambahkan — Frontend Pre-built Ikut Di-commit ke Repo
