@@ -323,8 +323,12 @@ def system_update_apply():
                 return jsonify({'success': False, 'message': f'Frontend build failed: {build.stderr[:300]}'})
             frontend_step = 'built with pnpm (dist/ was missing)'
 
-        # Step 3: Restart service (systemd)
-        restart = _run_cmd(['systemctl', 'restart', 'salfanet-nms'], timeout=30)
+        # Step 3: Restart service (systemd). The app runs as a non-root user
+        # (salfanet), which can't restart its own systemd unit directly —
+        # install-vps.sh grants it a narrowly-scoped NOPASSWD sudo rule for
+        # exactly this one command. -n (non-interactive) fails fast with a
+        # clear error instead of hanging if that rule isn't set up.
+        restart = _run_cmd(['sudo', '-n', 'systemctl', 'restart', 'salfanet-nms'], timeout=30)
         if restart.returncode != 0:
             return jsonify({'success': True, 'message': f'Update applied but service restart failed: {restart.stderr[:200]}. Please restart manually.', 'restarted': False})
 

@@ -241,6 +241,15 @@ EOF
 systemctl daemon-reload
 systemctl enable "${APP_NAME}"
 
+# The app runs as the non-root ${APP_USER} user and needs to restart its own
+# service after a self-update (System Update page / POST /api/system/update/apply)
+# — grant exactly that one command, nothing broader.
+cat > /etc/sudoers.d/${APP_NAME}-restart << EOF
+${APP_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart ${APP_NAME}
+EOF
+chmod 440 /etc/sudoers.d/${APP_NAME}-restart
+visudo -cf /etc/sudoers.d/${APP_NAME}-restart > /dev/null || rm -f /etc/sudoers.d/${APP_NAME}-restart
+
 # ── 7. Nginx reverse proxy ──
 echo "[7/9] Configuring Nginx..."
 SERVER_NAME="${DOMAIN:-_}"
