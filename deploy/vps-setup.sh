@@ -153,13 +153,20 @@ if [ ! -f "${APP_DIR}/.env" ]; then
     SECRET_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
     INTERNAL_API_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
     CREDENTIAL_ENCRYPTION_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
+    # A "Secure" session cookie is only ever sent by the browser back over
+    # HTTPS — this script only sets up plain HTTP (port 80) by default, so
+    # SESSION_COOKIE_SECURE=1 here would silently break every login. Only
+    # turn it on once HTTPS is actually in place (certbot --nginx -d ...).
     sed -i \
         -e "s/^SECRET_KEY=.*/SECRET_KEY=${SECRET_KEY}/" \
         -e "s/^INTERNAL_API_KEY=.*/INTERNAL_API_KEY=${INTERNAL_API_KEY}/" \
         -e "s/^CREDENTIAL_ENCRYPTION_KEY=.*/CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}/" \
         -e "s/^FLASK_ENV=.*/FLASK_ENV=production/" \
+        -e "s/^SESSION_COOKIE_SECURE=.*/SESSION_COOKIE_SECURE=0/" \
         "${APP_DIR}/.env"
     echo "  Created .env (FLASK_ENV=production) with generated SECRET_KEY, INTERNAL_API_KEY, CREDENTIAL_ENCRYPTION_KEY"
+    echo "  Note: SESSION_COOKIE_SECURE=0 (HTTP-only by default) — after enabling HTTPS,"
+    echo "        set it to 1 in ${APP_DIR}/.env and restart the service."
 fi
 
 # Set permissions

@@ -4,6 +4,17 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — CRITICAL: Fix Sebelumnya (FLASK_ENV=production) Merusak Login Tanpa HTTPS
+
+#### Diperbaiki — Login Rusak Total di Instalasi IP-based Tanpa HTTPS (Regresi dari Fix Sebelumnya)
+- **Root cause**: Fix `FLASK_ENV=production` di commit sebelumnya otomatis mengaktifkan `SESSION_COOKIE_SECURE=1`. Browser (dan curl) **menolak menyimpan cookie ber-flag `Secure` yang diterima lewat HTTP biasa** — installer `install-vps.sh` cuma setup HTTP (port 80) secara default, HTTPS harus disetup manual via certbot dan butuh domain (Let's Encrypt tidak bisa terbitkan sertifikat untuk bare IP)
+- **Dampak nyata**: login `POST /api/auth/login` sukses (200) tapi cookie sesi tidak pernah tersimpan browser → request berikutnya langsung 401. Login rusak total untuk mode IP-based (default paling umum, tanpa domain)
+- **Ditemukan lewat**: pertanyaan user soal dampak HTTPS manual — langsung dites di VPS asli pakai cookie jar curl (yang meniru perilaku Secure-flag browser), terbukti cookie jar kosong setelah login meski response 200
+- **Fix**: installer sekarang set `SESSION_COOKIE_SECURE=0` secara eksplisit saat generate `.env` baru (bukan ikut default `.env.example` yang jadi `1` sejak fix production-mode kemarin), dengan instruksi jelas di pesan penyelesaian instalasi: aktifkan `SESSION_COOKIE_SECURE=1` manual di `.env` + restart **setelah** HTTPS benar-benar jalan
+- **Pelajaran**: setiap fix keamanan yang mengubah behavior harus dites end-to-end sampai ke level "bisa login beneran", bukan cuma cek config value-nya benar
+
+---
+
 ### 2026-09-02 — Production Readiness Pass: Izin Backup, Log Rotation, Cron Konsisten
 
 #### Diperbaiki — Download Backup Config OLT Bisa Diakses User Mana Pun (MEDIUM, dari audit lama)
