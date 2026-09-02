@@ -7,7 +7,7 @@ import {
   Activity, AlertTriangle, Wifi, WifiOff, Zap, CircleDashed, Gauge, RefreshCw,
   UserX
 } from 'lucide-react';
-import { api, type FTTHItem, type FTTHOtb, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath } from '../lib/api';
+import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
@@ -39,6 +39,7 @@ export function FtthInfrastructure() {
   const [parentCtx, setParentCtx] = useState<any>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedOdp, setSelectedOdp] = useState<FTTHOdp | null>(null);
+  const [selectedOtb, setSelectedOtb] = useState<FTTHOtb | null>(null);
   const [drawMode, setDrawMode] = useState(false);
   const [autoRouteMode, setAutoRouteMode] = useState(false);
   const [autoRouteStart, setAutoRouteStart] = useState<any>(null);
@@ -103,6 +104,11 @@ export function FtthInfrastructure() {
     queryFn: () => api.ftthOdpPorts(selectedOdp!.id),
     enabled: !!selectedOdp,
   });
+  const { data: otbPorts } = useQuery({
+    queryKey: ['ftth-otb-ports', selectedOtb?.id],
+    queryFn: () => api.ftthOtbPorts(selectedOtb!.id),
+    enabled: !!selectedOtb,
+  });
   const { data: availableOnus } = useQuery({ queryKey: ['ftth-onus'], queryFn: () => api.ftthAvailableOnus() });
   const { data: ponList } = useQuery({ queryKey: ['ftth-pon'], queryFn: api.ftthPonList });
   const { data: fiberPaths } = useQuery({ queryKey: ['ftth-paths'], queryFn: api.ftthPathsList, enabled: tab === 'map' });
@@ -115,6 +121,7 @@ export function FtthInfrastructure() {
     qc.invalidateQueries({ queryKey: ['ftth-odc'] });
     qc.invalidateQueries({ queryKey: ['ftth-odp'] });
     qc.invalidateQueries({ queryKey: ['ftth-odp-ports'] });
+    qc.invalidateQueries({ queryKey: ['ftth-otb-ports'] });
     qc.invalidateQueries({ queryKey: ['ftth-pon'] });
     qc.invalidateQueries({ queryKey: ['ftth-paths'] });
   }, [qc]);
@@ -290,6 +297,7 @@ export function FtthInfrastructure() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  <button onClick={() => setSelectedOtb(o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Port Diagram"><Cable size={15} /></button>
                   {canEdit && <button onClick={() => openEdit('otb', o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
                   {canEdit && <button onClick={() => handleDelete('otb', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
                 </div>
@@ -437,6 +445,17 @@ export function FtthInfrastructure() {
           ports={odpPorts?.ports || []}
           availableOnus={availableOnus?.onus || []}
           onClose={() => setSelectedOdp(null)}
+          onUpdated={() => { invalidate(); }}
+        />
+      )}
+
+      {/* OTB/ODF Port Diagram */}
+      {selectedOtb && (
+        <OtbPortDiagram
+          otb={selectedOtb}
+          ports={otbPorts?.ports || []}
+          canEdit={canEdit}
+          onClose={() => setSelectedOtb(null)}
           onUpdated={() => { invalidate(); }}
         />
       )}
@@ -889,6 +908,111 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── OTB/ODF Port Diagram — NetBox-style rear-port grid, each core nameable ───
+function OtbPortDiagram({ otb, ports, canEdit, onClose, onUpdated }: {
+  otb: FTTHOtb; ports: FTTHOtbPort[]; canEdit: boolean; onClose: () => void; onUpdated: () => void;
+}) {
+  const qc = useQueryClient();
+  const [editingPort, setEditingPort] = useState<FTTHOtbPort | null>(null);
+  const [labelDraft, setLabelDraft] = useState('');
+  const [descDraft, setDescDraft] = useState('');
+
+  const saveMut = useMutation({
+    mutationFn: (data: Partial<FTTHOtbPort> & { id: number }) => api.ftthOtbPortUpdate(data.id, data),
+    onSuccess: () => {
+      toast.success('Port updated');
+      qc.invalidateQueries({ queryKey: ['ftth-otb-ports', otb.id] });
+      setEditingPort(null);
+      onUpdated();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const openPort = (p: FTTHOtbPort) => {
+    if (!canEdit) return;
+    setEditingPort(p);
+    setLabelDraft(p.label);
+    setDescDraft(p.description);
+  };
+
+  const usedCount = ports.filter(p => p.status === 'used').length;
+  // Roughly square-ish grid — NetBox-style patch panels are usually wide
+  // and shallow, so favor more columns over more rows.
+  const cols = ports.length <= 6 ? ports.length : ports.length <= 12 ? 6 : ports.length <= 24 ? 8 : 12;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="modal-overlay" onClick={onClose} />
+      <div className="relative glass-card w-full max-w-4xl max-h-[90vh] md:max-h-[85vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
+        <div className="px-4 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between sticky top-0 bg-surface z-10 rounded-t-2xl md:rounded-t-2xl">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold flex items-center gap-2 truncate"><Cable size={16} /> {otb.name} — Port Diagram</h2>
+            <p className="text-xs text-tx3 mt-0.5 truncate">{otb.type.toUpperCase()}{otb.model && ` • ${otb.model}`} • {usedCount}/{ports.length} cores used</p>
+          </div>
+          <button onClick={onClose} className="text-tx3 hover:text-tx1 flex-shrink-0"><X size={18} /></button>
+        </div>
+
+        <div className="p-4 md:p-5 overflow-y-auto flex-1">
+          {ports.length === 0 ? (
+            <p className="text-tx3 text-sm text-center py-8">No cores configured.</p>
+          ) : (
+            <>
+              <div className="flex items-center gap-4 mb-4 text-[11px] text-tx3">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-brd bg-glass inline-block" /> Available</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-success bg-success/15 inline-block" /> Connected</span>
+                {canEdit && <span className="ml-auto italic">Click a core to name it</span>}
+              </div>
+              <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+                {ports.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => openPort(p)}
+                    disabled={!canEdit}
+                    title={p.status === 'used' ? `Core ${p.port_number} → ${p.odc_name}` : `Core ${p.port_number}${p.label ? ` — ${p.label}` : ''}`}
+                    className={cn(
+                      'aspect-square rounded-lg border-2 flex flex-col items-center justify-center gap-0.5 p-1 transition-all',
+                      canEdit && 'hover:scale-[1.06] hover:shadow-md cursor-pointer',
+                      !canEdit && 'cursor-default',
+                      p.status === 'used' ? 'border-success bg-success/10' : 'border-brd bg-glass/40',
+                    )}
+                  >
+                    <span className="text-[10px] font-mono text-tx3 leading-none">#{p.port_number}</span>
+                    <span className={cn('text-[11px] font-semibold leading-tight text-center line-clamp-2 px-0.5', p.label ? 'text-tx1' : 'text-tx3 italic font-normal')}>
+                      {p.label || (canEdit ? 'Unnamed' : '—')}
+                    </span>
+                    {p.status === 'used' && (
+                      <span className="text-[9px] text-success leading-none truncate w-full text-center px-0.5">{p.odc_name}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Edit port modal */}
+        {editingPort && (
+          <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center p-0 md:p-4">
+            <div className="modal-overlay" onClick={() => setEditingPort(null)} />
+            <div className="relative glass-card w-full max-w-md p-4 md:p-5 space-y-3 rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-semibold">Name Core #{editingPort.port_number}</h3>
+              {editingPort.status === 'used' && (
+                <p className="text-xs text-tx3">Connected to ODC: <span className="font-medium text-tx1">{editingPort.odc_name}</span></p>
+              )}
+              <FormField label="Label"><input className="input-field" placeholder="e.g. Ruko Blok A" value={labelDraft} onChange={e => setLabelDraft(e.target.value)} autoFocus /></FormField>
+              <FormField label="Description"><input className="input-field" value={descDraft} onChange={e => setDescDraft(e.target.value)} /></FormField>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setEditingPort(null)} className="btn-cancel text-sm">Cancel</button>
+                <button onClick={() => saveMut.mutate({ id: editingPort.id, label: labelDraft, description: descDraft })} className="btn-primary text-sm" disabled={saveMut.isPending}>Save</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
