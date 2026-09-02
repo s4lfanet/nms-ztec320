@@ -70,6 +70,8 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 ### FTTH Infrastructure
 - Manajemen hierarki OTB → ODC → ODP
 - ODP port management dan assignment ke ONU
+- Diagram port visual ala NetBox untuk OTB/ODF dan ODP — tiap core/port bisa diberi nama sendiri, grid diagram atau tabel (toggle)
+- Warna tube/core otomatis mengikuti standar industri TIA-598 (12 warna, berulang tiap tube) — tampil di diagram, list, tree view, dan form tambah/edit
 - Koordinat lokasi dengan tampilan peta
 - Tree view navigasi infrastruktur
 
