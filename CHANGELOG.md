@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Installer: `pnpm install` Bisa Hang Tanpa Batas di Koneksi Lambat
+
+#### Diperbaiki — Frontend Build Bisa Stuck Selamanya Kalau Koneksi Lambat/Putus
+- **Root cause**: `pnpm install`/`pnpm build` di installer (`install-vps.sh`, `deploy/vps-setup.sh`, `install.sh`) dijalankan tanpa timeout — di koneksi lambat/tidak stabil, proses bisa menggantung tanpa batas waktu dan tanpa pesan apa pun
+- **Fix**: Dibungkus `timeout` (180s per percobaan) + retry otomatis 3x dengan jeda, baru keluar dengan pesan error jelas kalau tetap gagal setelah 3x. `pnpm build` juga dikasih timeout (300s) sebagai jaring pengaman
+- **Diverifikasi**: logika retry dites terpisah (simulasi selalu timeout) — benar mencoba 3x lalu keluar exit 1 dengan pesan jelas dalam 12 detik. Jalur normal (koneksi bagus) dites ulang end-to-end di VPS asli — tetap `EXIT_CODE=0`, 43 detik, tidak ada regresi
+
+---
+
 ### 2026-09-02 — Installer: Fix dpkg Lock Contention (unattended-upgrades)
 
 #### Diperbaiki — Installer Gagal Diam-diam Kalau `unattended-upgrades` Lagi Jalan
