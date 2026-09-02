@@ -5,7 +5,7 @@ import {
   Map as MapIcon, TreePine, Plus, Edit2, Trash2, ChevronDown, ChevronRight,
   Server, Box, Network, Split, X, MapPin, Link2, Unlink, Phone, Download, Upload, Cable,
   Activity, AlertTriangle, Wifi, WifiOff, Zap, CircleDashed, Gauge, RefreshCw,
-  UserX
+  UserX, LayoutGrid, List
 } from 'lucide-react';
 import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -780,6 +780,7 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
   const qc = useQueryClient();
   const [editingPort, setEditingPort] = useState<FTTHOdpPort | null>(null);
   const [showLink, setShowLink] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<'diagram' | 'list'>('diagram');
 
   const saveMut = useMutation({
     mutationFn: (data: Partial<FTTHOdpPort> & { id: number }) => api.ftthOdpPortUpdate(data.id, data),
@@ -791,6 +792,8 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
     saveMut.mutate({ id: port.id, onu_id: null, customer_name: '', customer_phone: '' });
   };
 
+  const cols = ports.length <= 6 ? ports.length : ports.length <= 12 ? 6 : ports.length <= 24 ? 8 : 12;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
       <div className="modal-overlay" />
@@ -800,11 +803,54 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
             <h2 className="text-sm font-semibold flex items-center gap-2 truncate"><Split size={16} /> {odp.name} — Port Management</h2>
             <p className="text-xs text-tx3 mt-0.5 truncate">{odp.splitter_model} • {odp.used_ports}/{odp.total_ports} used • Core {odp.odc_core_number} from {odp.odc_name}</p>
           </div>
-          <button onClick={onClose} className="text-tx3 hover:text-tx1 flex-shrink-0"><X size={18} /></button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="hidden md:flex items-center rounded-lg bg-glass/60 p-0.5 mr-1">
+              <button onClick={() => setViewMode('diagram')} className={cn('p-1.5 rounded-md transition-colors', viewMode === 'diagram' ? 'bg-surface text-accent shadow-sm' : 'text-tx3 hover:text-tx1')} title="Diagram view"><LayoutGrid size={14} /></button>
+              <button onClick={() => setViewMode('list')} className={cn('p-1.5 rounded-md transition-colors', viewMode === 'list' ? 'bg-surface text-accent shadow-sm' : 'text-tx3 hover:text-tx1')} title="List view"><List size={14} /></button>
+            </div>
+            <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
+          </div>
         </div>
         <div className="p-3 md:p-4 overflow-y-auto flex-1">
+          {/* Diagram view (desktop) — NetBox-style splitter port grid */}
+          {viewMode === 'diagram' && (
+            <div className="hidden md:block">
+              <div className="flex items-center gap-4 mb-4 text-[11px] text-tx3">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-brd bg-glass inline-block" /> Available</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-success bg-success/15 inline-block" /> Used</span>
+                <span className="ml-auto italic">Click a port to edit • use the corner icon to link/unlink</span>
+              </div>
+              <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+                {ports.map(p => (
+                  <div
+                    key={p.id}
+                    title={p.customer_name ? `Port ${p.port_number} — ${p.customer_name}` : `Port ${p.port_number}`}
+                    className={cn(
+                      'relative aspect-square rounded-lg border-2 transition-all hover:scale-[1.06] hover:shadow-md',
+                      p.status === 'used' ? 'border-success bg-success/10' : 'border-brd bg-glass/40',
+                    )}
+                  >
+                    <button onClick={() => setEditingPort(p)} className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 p-1">
+                      <span className="text-[10px] font-mono text-tx3 leading-none">#{p.port_number}</span>
+                      <span className={cn('text-[11px] font-semibold leading-tight text-center line-clamp-2 px-0.5', p.customer_name ? 'text-tx1' : 'text-tx3 italic font-normal')}>
+                        {p.customer_name || 'Available'}
+                      </span>
+                      {p.onu_id && <span className="text-[9px] text-success leading-none truncate w-full text-center px-0.5">{p.onu_name}</span>}
+                    </button>
+                    <button
+                      onClick={() => p.onu_id ? unlink(p) : setShowLink(p.id)}
+                      className="absolute top-0.5 right-0.5 p-0.5 rounded hover:bg-glass text-tx3 hover:text-accent"
+                      title={p.onu_id ? 'Unlink ONU' : 'Link ONU'}
+                    >
+                      {p.onu_id ? <Unlink size={11} /> : <Link2 size={11} />}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Desktop table */}
-          <table className="hidden md:table w-full text-sm">
+          <table className={cn('w-full text-sm', viewMode === 'list' ? 'hidden md:table' : 'hidden')}>
             <thead><tr className="border-b border-brd">
               <th className="px-2 py-2 text-left text-xs text-tx3 uppercase">Port</th>
               <th className="px-2 py-2 text-left text-xs text-tx3 uppercase">Status</th>
