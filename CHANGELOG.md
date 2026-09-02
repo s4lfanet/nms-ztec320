@@ -16,6 +16,7 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
   - Field baru "Fibers per Tube" di form OTB dan ODC (default 12, jarang perlu diubah)
 - **Migration**: `3c4612c99cab_add_fibers_per_tube_to_ftth_otb_and_.py` — nullable=False dengan `server_default='12'` supaya baris existing (termasuk 48 core OTB yang sudah ada di production) otomatis dapat nilai 12 tanpa perlu backfill manual
 - **Diverifikasi**: 129/129 test backend tetap lolos (perubahan schema backward-compatible). Dites sungguhan di browser: seed OTB 15-core (melewati batas tube 12→13) → core #13 tampil warna tube berbeda dari core #1 (Jingga vs Biru) tapi warna core sama (Biru, karena posisi-1-dalam-tube) → dicek ulang di ODC list, ODC edit form (live preview), ODP list, dan Tree view — semua konsisten menampilkan "Tube 2 Jingga • Biru" untuk core yang sama, nol error console
+- **Catatan deploy**: DB production ternyata tidak di-track Alembic sama sekali (tidak ada tabel `alembic_version`) — skema selama ini terbentuk murni dari `db.create_all()` saat startup, yang cuma bikin tabel baru dan **tidak** menambah kolom ke tabel lama. Kolom `fibers_per_tube` di production ditambahkan manual lewat `ALTER TABLE ... ADD COLUMN ... DEFAULT 12` sebelum restart, supaya baris OTB/ODC yang sudah ada tidak pecah. Migration Alembic di repo tetap dipertahankan untuk dev lokal/fresh install (yang memang jalan lewat `flask db upgrade`)
 
 ---
 
