@@ -69,11 +69,19 @@ pip install -r requirements.txt --quiet
 echo "[3/5] Installing frontend dependencies..."
 cd frontend
 
+# Optional faster mirror for slow/regional connections to the default npm
+# registry — opt-in only, e.g.: PNPM_REGISTRY=https://registry.npmmirror.com bash install.sh
+_pnpm_install_args=(install --no-frozen-lockfile)
+if [ -n "${PNPM_REGISTRY:-}" ]; then
+    echo "  Using pnpm registry: ${PNPM_REGISTRY}"
+    _pnpm_install_args+=(--registry "${PNPM_REGISTRY}")
+fi
+
 # pnpm install can hang indefinitely on a slow/flaky connection with no
 # feedback — bound each attempt and retry instead of getting stuck silently.
 _pnpm_ok=0
 for _attempt in 1 2 3; do
-    if timeout 180 pnpm install --no-frozen-lockfile; then
+    if timeout 180 pnpm "${_pnpm_install_args[@]}"; then
         _pnpm_ok=1
         break
     fi
