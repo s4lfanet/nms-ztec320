@@ -176,13 +176,22 @@ if [ ! -f ".env" ]; then
     SECRET_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
     INTERNAL_API_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
     CREDENTIAL_ENCRYPTION_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
+    # A "Secure" session cookie is only ever sent by the browser back over
+    # HTTPS — this installer only sets up plain HTTP (port 80) by default,
+    # so SESSION_COOKIE_SECURE=1 here would silently break every login
+    # (cookie gets set, browser refuses to send it back, every subsequent
+    # request 401s). Only turn it on once HTTPS is actually in place
+    # (see the reminder printed after certbot in step 9).
     sed -i \
         -e "s/^SECRET_KEY=.*/SECRET_KEY=${SECRET_KEY}/" \
         -e "s/^INTERNAL_API_KEY=.*/INTERNAL_API_KEY=${INTERNAL_API_KEY}/" \
         -e "s/^CREDENTIAL_ENCRYPTION_KEY=.*/CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}/" \
         -e "s/^FLASK_ENV=.*/FLASK_ENV=production/" \
+        -e "s/^SESSION_COOKIE_SECURE=.*/SESSION_COOKIE_SECURE=0/" \
         .env
     echo "  Created .env (FLASK_ENV=production) with generated SECRET_KEY, INTERNAL_API_KEY, CREDENTIAL_ENCRYPTION_KEY"
+    echo "  Note: SESSION_COOKIE_SECURE=0 (HTTP-only by default) — after enabling HTTPS"
+    echo "        (see 'Enable HTTPS' below), set it to 1 in .env and restart the service."
 else
     echo "  .env already exists, skipping."
     if grep -q "^FLASK_ENV=development" .env; then
@@ -374,12 +383,20 @@ echo ""
 echo "  Config:   ${APP_DIR}/.env"
 echo "  App dir:  ${APP_DIR}"
 echo ""
+echo "  Next steps:"
+echo "    1. Add your OLT via Settings > OLT Settings"
 if [ -z "$DOMAIN" ]; then
-    echo "  Next steps:"
-    echo "    1. Add your OLT via Settings > OLT Settings"
     echo "    2. (Optional) Point a domain to this IP and re-run:"
     echo "       bash install-vps.sh yourdomain.com"
-    echo "    3. (Optional) Enable HTTPS:"
+    echo "    3. (Optional) Enable HTTPS — requires a domain (Let's Encrypt can't"
+    echo "       certify a bare IP), then:"
     echo "       certbot --nginx -d yourdomain.com"
-    echo ""
+else
+    echo "    2. Enable HTTPS:"
+    echo "       certbot --nginx -d ${DOMAIN}"
 fi
+echo "    * After HTTPS is working, set SESSION_COOKIE_SECURE=1 in ${APP_DIR}/.env"
+echo "      and restart (systemctl restart ${APP_NAME}) — until then, login only"
+echo "      works over plain HTTP; a Secure cookie set without HTTPS is silently"
+echo "      dropped by the browser and breaks login."
+echo ""
