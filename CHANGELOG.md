@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Installer: Fix dpkg Lock Contention (unattended-upgrades)
+
+#### Diperbaiki — Installer Gagal Diam-diam Kalau `unattended-upgrades` Lagi Jalan
+- **Root cause**: VPS fresh boot sering langsung menjalankan `unattended-upgrades` otomatis di background, memegang dpkg lock. `apt-get install` di installer langsung gagal saat itu (output-nya di-redirect ke `/dev/null` + `set -e` aktif), jadi installer "berhenti" tanpa pesan error sama sekali — persis gejala yang dilaporkan (macet di "[1/9] Installing system packages..." tanpa lanjut)
+- **Fix**: Semua pemanggilan `apt-get` di `install-vps.sh` dan `deploy/vps-setup.sh` sekarang lewat wrapper `apt_get()` yang pakai `-o DPkg::Lock::Timeout=300` — apt jadi **menunggu** sampai 5 menit kalau lock lagi dipegang proses lain, bukan langsung gagal
+- **Diverifikasi**: simulasi lock ditahan proses lain selama 25 detik lewat `flock` di VPS asli, lalu installer dijalankan bersamaan — instalasi menunggu lock lepas lalu lanjut normal sampai selesai (`EXIT_CODE=0`, service aktif, health check 200)
+
+---
+
 ### 2026-09-02 — Installer: Fix Python Version Terlalu Lama di Fresh VPS
 
 #### Diperbaiki — `install-vps.sh`/`deploy/vps-setup.sh` Gagal di VPS dengan Python < 3.10

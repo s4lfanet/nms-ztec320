@@ -29,10 +29,16 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Fresh cloud VPS instances often run `unattended-upgrades` automatically
+# right after boot, which holds the dpkg lock for a while — a plain
+# `apt-get install` fails immediately in that window. -o DPkg::Lock::Timeout
+# makes apt wait for the lock instead of failing.
+apt_get() { apt-get -o DPkg::Lock::Timeout=300 "$@"; }
+
 # ── 1. System packages ──
 echo "[1/8] Installing system packages..."
-apt-get update -qq
-DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+apt_get update -qq
+DEBIAN_FRONTEND=noninteractive apt_get install -y -qq \
     software-properties-common nginx certbot python3-certbot-nginx curl rsync
 
 # Ensure a Python 3.10+ interpreter is available. Ubuntu's default `python3`
@@ -58,15 +64,15 @@ if [ -z "$PYTHON_BIN" ]; then
     # `add-apt-repository`, which uses the classic hkp keyserver protocol
     # (port 11371) — that port is blocked on some networks/firewalls and
     # add-apt-repository then hangs indefinitely with no error output.
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gnupg > /dev/null 2>&1
+    DEBIAN_FRONTEND=noninteractive apt_get install -y -qq gnupg > /dev/null 2>&1
     mkdir -p /etc/apt/keyrings
     if timeout 20 curl -fsSL 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xBA6932366A755776' -o /tmp/deadsnakes.asc \
         && gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg /tmp/deadsnakes.asc; then
         CODENAME=$(lsb_release -cs 2>/dev/null || . /etc/os-release && echo "$VERSION_CODENAME")
         echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu ${CODENAME} main" \
             > /etc/apt/sources.list.d/deadsnakes.list
-        apt-get update -qq
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3.12 python3.12-venv python3.12-dev > /dev/null 2>&1 || true
+        apt_get update -qq
+        DEBIAN_FRONTEND=noninteractive apt_get install -y -qq python3.12 python3.12-venv python3.12-dev > /dev/null 2>&1 || true
     fi
     if command -v python3.12 &>/dev/null; then
         PYTHON_BIN="python3.12"
@@ -75,7 +81,7 @@ if [ -z "$PYTHON_BIN" ]; then
         exit 1
     fi
 else
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${PYTHON_BIN}-venv" > /dev/null 2>&1 || true
+    DEBIAN_FRONTEND=noninteractive apt_get install -y -qq "${PYTHON_BIN}-venv" > /dev/null 2>&1 || true
 fi
 echo "  Python: $(${PYTHON_BIN} --version) (${PYTHON_BIN})"
 
