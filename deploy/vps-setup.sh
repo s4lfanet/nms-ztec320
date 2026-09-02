@@ -148,13 +148,18 @@ echo "[5/8] Creating configuration..."
 mkdir -p "${APP_DIR}/instance"
 if [ ! -f "${APP_DIR}/.env" ]; then
     cp "${APP_DIR}/.env.example" "${APP_DIR}/.env"
+    # .env.example defaults to FLASK_ENV=development (debugger + insecure
+    # cookies) — wrong for a VPS deploy, so force production here.
     SECRET_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
-    if grep -q "SECRET_KEY=" "${APP_DIR}/.env"; then
-        sed -i "s/^SECRET_KEY=.*/SECRET_KEY=${SECRET_KEY}/" "${APP_DIR}/.env"
-    else
-        echo "SECRET_KEY=${SECRET_KEY}" >> "${APP_DIR}/.env"
-    fi
-    echo "  Created .env with generated SECRET_KEY"
+    INTERNAL_API_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
+    CREDENTIAL_ENCRYPTION_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
+    sed -i \
+        -e "s/^SECRET_KEY=.*/SECRET_KEY=${SECRET_KEY}/" \
+        -e "s/^INTERNAL_API_KEY=.*/INTERNAL_API_KEY=${INTERNAL_API_KEY}/" \
+        -e "s/^CREDENTIAL_ENCRYPTION_KEY=.*/CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}/" \
+        -e "s/^FLASK_ENV=.*/FLASK_ENV=production/" \
+        "${APP_DIR}/.env"
+    echo "  Created .env (FLASK_ENV=production) with generated SECRET_KEY, INTERNAL_API_KEY, CREDENTIAL_ENCRYPTION_KEY"
 fi
 
 # Set permissions

@@ -4,6 +4,18 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — CRITICAL: Installer Tidak Pernah Set Production Mode
+
+#### Diperbaiki — Semua Instalasi via `install-vps.sh` Diam-diam Jalan Mode Development
+- **Root cause #1**: `install-vps.sh`/`deploy/vps-setup.sh` copy `.env.example` → `.env` tapi tidak pernah override `FLASK_ENV=development` (default di `.env.example`) jadi `production`. Akibatnya **setiap instalasi VPS via installer resmi berjalan mode development** — Werkzeug debugger aktif, cookie session tidak `Secure`. Ini persis peringatan yang muncul di semua log test hari ini (`Starting with DevelopmentConfig...`) yang belum sempat ditandai sebagai bug installer
+- **Root cause #2** (baru ketemu saat verifikasi fix #1): bahkan setelah `.env` diset `FLASK_ENV=production`, `run_server.py` mengecek `FLASK_ENV`/`INTERNAL_API_KEY` di baris paling atas file — **sebelum** file `.env` sempat dibaca (baru dibaca belakangan lewat `config.py`, dipicu saat `app.py` di-import di dalam `start_servers()`). Akibatnya: proteksi fail-closed "`INTERNAL_API_KEY` wajib eksplisit di production" **tidak pernah aktif** lewat jalur deploy normal, dan `INTERNAL_API_KEY` asli dari `.env` diam-diam diabaikan, diganti key ephemeral yang di-generate ulang tiap restart
+- **Fix**:
+  1. `install-vps.sh`/`deploy/vps-setup.sh` sekarang generate & set `FLASK_ENV=production`, `INTERNAL_API_KEY`, dan `CREDENTIAL_ENCRYPTION_KEY` (terpisah dari `SECRET_KEY`) saat bikin `.env` baru — bukan cuma `SECRET_KEY` seperti sebelumnya. Kalau `.env` sudah ada dan masih `FLASK_ENV=development`, installer sekarang kasih warning eksplisit
+  2. `run_server.py` sekarang load `.env` di baris paling atas file (sebelum cek `FLASK_ENV`/`INTERNAL_API_KEY`), jadi urutan pembacaan config benar dan proteksi fail-closed-nya beneran aktif
+- **Diverifikasi**: full test suite lokal 121/121 tetap lolos setelah perubahan; verifikasi end-to-end di VPS asli menyusul di commit ini
+
+---
+
 ### 2026-09-02 — Installer: Dukungan Mirror Registry npm (Opsional)
 
 #### Ditambahkan — `PNPM_REGISTRY` Env Var untuk Ganti Mirror npm
