@@ -30,23 +30,32 @@ if [ "$PY_MAJOR" -lt 3 ] || ([ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]); t
 fi
 echo "  Python: $PY_VERSION"
 
-# Check Node.js
-if ! command -v node &>/dev/null; then
-    echo "[ERROR] Node.js not found. Please install Node.js 22+ from https://nodejs.org"
-    exit 1
+# Node/pnpm are only needed to build the frontend — skip entirely if
+# frontend/dist/ is already committed in the repo (see step 3 below).
+_FRONTEND_PREBUILT=0
+if [ -f "frontend/dist/index.html" ]; then
+    _FRONTEND_PREBUILT=1
 fi
-echo "  Node.js: $(node --version)"
 
-# Check pnpm (frontend package manager — pnpm-lock.yaml is the source of truth)
-if ! command -v pnpm &>/dev/null; then
-    echo "  pnpm not found, installing..."
-    # corepack asks an interactive Y/n before downloading pnpm the first time —
-    # in a non-interactive script with no stdin to answer, this hangs forever
-    # with no error output. Disable the prompt and bound the download.
-    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-    timeout 60 corepack enable pnpm 2>/dev/null || npm install -g pnpm
+if [ "$_FRONTEND_PREBUILT" -eq 0 ]; then
+    # Check Node.js
+    if ! command -v node &>/dev/null; then
+        echo "[ERROR] Node.js not found. Please install Node.js 22+ from https://nodejs.org"
+        exit 1
+    fi
+    echo "  Node.js: $(node --version)"
+
+    # Check pnpm (frontend package manager — pnpm-lock.yaml is the source of truth)
+    if ! command -v pnpm &>/dev/null; then
+        echo "  pnpm not found, installing..."
+        # corepack asks an interactive Y/n before downloading pnpm the first time —
+        # in a non-interactive script with no stdin to answer, this hangs forever
+        # with no error output. Disable the prompt and bound the download.
+        export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+        timeout 60 corepack enable pnpm 2>/dev/null || npm install -g pnpm
+    fi
+    echo "  pnpm: $(pnpm --version)"
 fi
-echo "  pnpm: $(pnpm --version)"
 
 # Auto-install python3-venv on Debian/Ubuntu if missing
 if ! python3 -c 'import ensurepip' &>/dev/null; then
@@ -71,36 +80,42 @@ pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 
 echo "[3/5] Installing frontend dependencies..."
-cd frontend
+if [ -f "frontend/dist/index.html" ]; then
+    echo "  Using pre-built frontend/dist/ from the repo — no Node/pnpm/registry needed."
+    echo "[4/5] Building frontend..."
+    echo "  Skipped (using committed frontend/dist/)."
+else
+    cd frontend
 
-# Optional faster mirror for slow/regional connections to the default npm
-# registry — opt-in only, e.g.: PNPM_REGISTRY=https://registry.npmmirror.com bash install.sh
-_pnpm_install_args=(install --no-frozen-lockfile)
-if [ -n "${PNPM_REGISTRY:-}" ]; then
-    echo "  Using pnpm registry: ${PNPM_REGISTRY}"
-    _pnpm_install_args+=(--registry "${PNPM_REGISTRY}")
-fi
-
-# pnpm install can hang indefinitely on a slow/flaky connection with no
-# feedback — bound each attempt and retry instead of getting stuck silently.
-_pnpm_ok=0
-for _attempt in 1 2 3; do
-    if timeout 180 pnpm "${_pnpm_install_args[@]}"; then
-        _pnpm_ok=1
-        break
+    # Optional faster mirror for slow/regional connections to the default npm
+    # registry — opt-in only, e.g.: PNPM_REGISTRY=https://registry.npmmirror.com bash install.sh
+    _pnpm_install_args=(install --no-frozen-lockfile)
+    if [ -n "${PNPM_REGISTRY:-}" ]; then
+        echo "  Using pnpm registry: ${PNPM_REGISTRY}"
+        _pnpm_install_args+=(--registry "${PNPM_REGISTRY}")
     fi
-    echo "  pnpm install attempt ${_attempt}/3 failed or timed out (slow network?), retrying..."
-    sleep 5
-done
-if [ "$_pnpm_ok" -ne 1 ]; then
-    echo "[ERROR] pnpm install failed after 3 attempts — check your network connection, or retry manually:"
-    echo "         cd frontend && pnpm install"
-    exit 1
-fi
 
-echo "[4/5] Building frontend..."
-timeout 300 pnpm build
-cd ..
+    # pnpm install can hang indefinitely on a slow/flaky connection with no
+    # feedback — bound each attempt and retry instead of getting stuck silently.
+    _pnpm_ok=0
+    for _attempt in 1 2 3; do
+        if timeout 180 pnpm "${_pnpm_install_args[@]}"; then
+            _pnpm_ok=1
+            break
+        fi
+        echo "  pnpm install attempt ${_attempt}/3 failed or timed out (slow network?), retrying..."
+        sleep 5
+    done
+    if [ "$_pnpm_ok" -ne 1 ]; then
+        echo "[ERROR] pnpm install failed after 3 attempts — check your network connection, or retry manually:"
+        echo "         cd frontend && pnpm install"
+        exit 1
+    fi
+
+    echo "[4/5] Building frontend..."
+    timeout 300 pnpm build
+    cd ..
+fi
 
 echo "[5/5] Creating .env configuration..."
 mkdir -p instance
