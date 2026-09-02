@@ -326,9 +326,23 @@ def system_update_apply():
         # Step 3: Restart service (systemd). The app runs as a non-root user
         # (salfanet), which can't restart its own systemd unit directly —
         # install-vps.sh grants it a narrowly-scoped NOPASSWD sudo rule for
-        # exactly this one command. -n (non-interactive) fails fast with a
-        # clear error instead of hanging if that rule isn't set up.
-        restart = _run_cmd(['sudo', '-n', 'systemctl', 'restart', 'salfanet-nms'], timeout=30)
+        # exactly this one command.
+        #
+        # A plain `systemctl restart` here would be a *child of the very
+        # service being restarted* — systemd tears down that whole process
+        # tree as part of the restart, so this handler can get killed
+        # mid-flight before it reads the subprocess's exit code, reporting
+        # a false "restart failed" even though the restart genuinely
+        # succeeded (confirmed by testing: journalctl showed the new
+        # process started right on time despite the API returning an
+        # error). `systemd-run --no-block` runs the restart in its own
+        # separate transient scope, detached from this process tree, and
+        # returns immediately once the restart is queued rather than
+        # waiting for it — avoiding the race entirely.
+        restart = _run_cmd([
+            'sudo', '-n', '/usr/bin/systemd-run', '--no-block', '--unit=salfanet-nms-restart',
+            '--', '/usr/bin/systemctl', 'restart', 'salfanet-nms',
+        ], timeout=30)
         if restart.returncode != 0:
             return jsonify({'success': True, 'message': f'Update applied but service restart failed: {restart.stderr[:200]}. Please restart manually.', 'restarted': False})
 

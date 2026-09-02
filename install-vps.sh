@@ -245,7 +245,7 @@ systemctl enable "${APP_NAME}"
 # service after a self-update (System Update page / POST /api/system/update/apply)
 # — grant exactly that one command, nothing broader.
 cat > /etc/sudoers.d/${APP_NAME}-restart << EOF
-${APP_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart ${APP_NAME}
+${APP_USER} ALL=(root) NOPASSWD: /usr/bin/systemd-run --no-block --unit=${APP_NAME}-restart -- /usr/bin/systemctl restart ${APP_NAME}
 EOF
 chmod 440 /etc/sudoers.d/${APP_NAME}-restart
 visudo -cf /etc/sudoers.d/${APP_NAME}-restart > /dev/null || rm -f /etc/sudoers.d/${APP_NAME}-restart
