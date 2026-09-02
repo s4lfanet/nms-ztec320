@@ -201,15 +201,17 @@ nginx -t 2>/dev/null
 systemctl reload nginx
 systemctl enable nginx
 
-# ── 8. Setup cron jobs (auto-backup + auto-sync) ──
+# ── 8. Setup cron jobs (db backup + OLT config backup + auto-sync) ──
 echo "[8/9] Setting up cron jobs..."
+DB_BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 db_backup.py >> /var/log/salfanet-db-backup.log 2>&1"
 BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
 SYNC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
 TRAFFIC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
-( crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|traffic_poller\|salfanet-nms' ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ; echo "$TRAFFIC_CRON" ) | crontab -
-touch /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log
-chown ${APP_USER}:${APP_USER} /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log 2>/dev/null || true
-echo "  ✅ Auto-backup cron: hourly"
+( crontab -l 2>/dev/null | grep -v 'db_backup\.py\|auto_backup\|auto_sync\|traffic_poller\|salfanet-nms' ; echo "$DB_BACKUP_CRON" ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ; echo "$TRAFFIC_CRON" ) | crontab -
+touch /var/log/salfanet-db-backup.log /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log
+chown ${APP_USER}:${APP_USER} /var/log/salfanet-db-backup.log /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log 2>/dev/null || true
+echo "  ✅ DB backup cron: hourly (instance/backups/, 24 hourly + 7 daily retention)"
+echo "  ✅ OLT config backup cron: hourly"
 echo "  ✅ Auto-sync cron: every 5 minutes"
 echo "  ✅ Traffic poller cron: every 5 minutes"
 

@@ -14,8 +14,11 @@ Usage:
     cp .env.example .env
 """
 import os
+import logging
 from pathlib import Path
 from datetime import timedelta
+
+_logger = logging.getLogger(__name__)
 
 # Load .env file if it exists (simple dotenv implementation)
 _base_dir = Path(__file__).resolve().parent
@@ -31,14 +34,27 @@ if _env_file.exists():
                 if key and key not in os.environ:
                     os.environ[key] = value
 
+# Resolve environment early — needed below to decide whether missing secrets
+# should fail closed (production) or auto-generate (development/testing).
+_env_name = os.environ.get("FLASK_ENV", "development")
+_is_production = _env_name == "production"
+
 
 class Config:
     """Base configuration."""
 
     # --- Core ---
-    # Generate a random SECRET_KEY if not set, but persist it to .env so sessions survive restarts
+    # SECRET_KEY: required explicitly in production (no fallback — a silently
+    # regenerated key would invalidate every session on restart). In
+    # development, generate a random one and persist it to .env so sessions
+    # survive restarts.
     _secret = os.environ.get("SECRET_KEY")
     if not _secret:
+        if _is_production:
+            raise RuntimeError(
+                "SECRET_KEY must be explicitly configured in production. "
+                "Set it in your .env file or environment variables."
+            )
         import secrets as _secrets
         _secret = _secrets.token_hex(32)
         # Persist to .env so the key survives restarts
@@ -47,8 +63,12 @@ class Config:
             with open(_env_path, 'a') as _f:
                 _f.write(f"\nSECRET_KEY={_secret}\n")
             os.environ["SECRET_KEY"] = _secret
-        except Exception:
-            pass
+        except Exception as _e:
+            _logger.warning(
+                "Could not persist generated SECRET_KEY to .env (%s) — a new "
+                "key will be generated on every restart, invalidating sessions "
+                "and credential encryption each time.", _e,
+            )
     SECRET_KEY = _secret
     DEBUG = os.environ.get("FLASK_DEBUG", "0") == "1"
 
@@ -130,5 +150,12 @@ _config_map = {
     "testing": TestingConfig,
 }
 
-_env = os.environ.get("FLASK_ENV", "development")
-ActiveConfig = _config_map.get(_env, DevelopmentConfig)
+ActiveConfig = _config_map.get(_env_name, DevelopmentConfig)
+
+if ActiveConfig is DevelopmentConfig and _env_name != "testing":
+    _logger.warning(
+        "Starting with DevelopmentConfig (FLASK_ENV=%r) — the Werkzeug debugger "
+        "and insecure session cookies (SESSION_COOKIE_SECURE=False) are ENABLED. "
+        "Set FLASK_ENV=production for any real/internet-facing deployment.",
+        _env_name,
+    )

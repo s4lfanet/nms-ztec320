@@ -61,9 +61,10 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - **CORS hardening**: Non-wildcard origin check
 - **CSRF protection**: SameSite cookie + X-Requested-With header
 - **Sync concurrency lock**: Redis-based distributed lock (mencegah concurrent sync)
-- **DB backup with remote SCP**: Auto-backup database ke remote server
+- **CLI command sanitization**: Semua command ke OLT (Telnet/SSH) di-strip dari CR/LF/control byte sebelum dikirim — mencegah command injection lewat field seperti nama/deskripsi ONU
+- **Automated DB backup**: Cron per jam (`db_backup.py`) — SQLite & PostgreSQL, retensi 24 hourly + 7 daily, plus opsional upload SCP ke remote server
 - **Restore with auto-rollback**: Restore database dengan validasi dan rollback otomatis
-- **Sensitive config masking**: Password/token di-mask untuk non-admin
+- **Sensitive config masking**: Password/token di-mask untuk non-admin (termasuk di log, bukan cuma response API)
 - **System update from web UI**: Check dan apply GitHub updates langsung dari browser
 
 ### FTTH Infrastructure
@@ -135,7 +136,23 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ## Struktur Proyek
 
 ```text
-├── app.py                 # Flask routes, API, sync orchestration
+├── app.py                 # Flask app setup, error handlers, security headers, startup (517 lines)
+├── routes_auth.py         # Blueprint: login, logout, API auth
+├── routes_onu.py          # Blueprint: ONU CRUD, provisioning, actions, traffic
+├── routes_olt_ports.py    # Blueprint: uplink/PON port, VLAN, ONU type, speed/WAN-IP/SLA profiles
+├── routes_olt_settings.py # Blueprint: OLT CRUD, write-config, backup, CLI users
+├── routes_olt_sync.py     # Blueprint: OLT sync trigger/status/history, connection test
+├── routes_olt_spa_data.py # Blueprint: DB-backed SPA lookups (live uplink traffic, VLANs, WAN-IP)
+├── routes_templates.py    # Blueprint: provisioning templates, TR069 profiles
+├── routes_users.py        # Blueprint: profile, users, roles, permissions
+├── routes_system.py       # Blueprint: action logs, customization, system update/config, DB backup API
+├── routes_notifications.py # Blueprint: notifications, maintenance windows, uptime/SLA, alert rules, bot config
+├── routes_dashboard.py    # Blueprint: dashboard summary, all-ONUs list, users/technicians lookup
+├── routes_public.py       # Blueprint: public branding endpoint (no auth)
+├── routes_whatsapp.py     # Blueprint: WhatsApp Native gateway management
+├── routes_cloudflare.py   # Blueprint: Cloudflare Tunnel config
+├── routes_ftth.py         # Blueprint: FTTH infrastructure (OTB/ODC/ODP, tree, map, import/export)
+├── routes_traffic.py      # Blueprint: traffic grid/history/live, metrics history
 ├── models.py              # SQLAlchemy models (OLT, ONU, Alert, FTTH, Users, etc.)
 ├── sync_lock.py            # Distributed sync lock (prevent concurrent syncs)
 ├── snmp_core.py           # SNMP core collector (pysnmp 7.x Slim API)
@@ -147,11 +164,11 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ├── cache.py               # Redis caching layer (in-memory fallback for dev)
 ├── auto_sync.py           # Cron-based auto-sync
 ├── auto_backup.py         # Automatic OLT config backup
+├── db_backup.py           # Automatic app database backup (SQLite/PostgreSQL, hourly cron)
 ├── traffic_poller.py      # Traffic polling via Telnet CLI
 ├── ws_bridge.py           # WebSocket bridge for real-time events
 ├── api_async.py           # FastAPI app (WebSocket + Swagger docs)
 ├── api_docs.py            # FastAPI endpoint documentation
-├── routes_auth.py         # Auth Blueprint (login, logout, API auth)
 ├── extensions.py          # Shared Flask extensions (db, login_manager, migrate)
 ├── helpers.py             # Shared helpers (permissions, rate limiting, logging)
 ├── logging_config.py      # Structured logging (JSON for prod, human-readable for dev)
