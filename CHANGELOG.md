@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Diagram Port Visual untuk ODP Juga (Menyamakan dengan OTB/ODF)
+
+#### Ditambahkan — Toggle Diagram/List di Port Management ODP
+- Follow-up dari entri di bawah: ODP (`FTTHODPPort`) sekarang punya pilihan tampilan diagram grid ala NetBox yang sama persis dengan OTB/ODF, di samping tabel detail yang sudah ada (nomor telepon customer, serial ONU) — bisa toggle bolak-balik lewat ikon di header modal "Port Management"
+- Klik kotak port → modal edit customer name/phone/description (sama seperti sebelumnya). Ikon kecil di pojok kotak → link/unlink ONU cepat tanpa buka modal
+- Tidak ada perubahan backend/API — murni penambahan komponen frontend (`OdpPortPanel` di `FtthInfrastructure.tsx`) yang reuse data `ftthOdpPorts` yang sudah ada
+- **Diverifikasi langsung di browser** (Playwright, bukan cuma asumsi): seed 1 OTB → 1 ODC → 1 ODP (8 port) di DB dev lokal, buka Port Management → diagram muncul 8 kotak "Available" → klik kotak #3 → isi nama "Budi Santoso" → toast "Port updated" → kotak #3 langsung tampil nama tebal → toggle ke List view → baris Port 3 juga menampilkan nama yang sama, nol error console di seluruh alur
+
+---
+
 ### 2026-09-02 — Diagram Port Visual untuk OTB/ODF (ala NetBox)
 
 #### Diaudit — OTB/ODF Belum Punya Entitas Per-Port Sama Sekali
@@ -15,7 +25,7 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 - **Frontend**: komponen `OtbPortDiagram` — grid visual ala NetBox (bukan tabel), tiap core jadi kotak dengan nomor + nama, warna beda untuk yang sudah connect ke ODC vs masih kosong. Klik kotak → beri nama. Tombol "Port Diagram" baru di kartu OTB/ODF
 - **Migration**: `89a0f326f24c_add_ftth_otb_port_table.py`, diverifikasi apply bersih dari baseline
 - **Diverifikasi**: 6 test backend baru (auto-create sesuai jumlah port, rename port, nambah port saat resize tanpa menghapus nama lama, backfill OTB lama, status ikut ODC yang connect, permission viewer ditolak) — semua lolos, plus **dites sungguhan di browser** (Playwright): tambah OTB 8 core → diagram muncul 8 kotak sesuai jumlah → klik core #1 → kasih nama "Ruko Blok A" → tersimpan dan tampil di kotak, tanpa error console
-- **Catatan**: ODP (`FTTHODPPort`) masih pakai tampilan tabel lama, belum diupgrade ke diagram visual yang sama — bisa disamakan kalau diminta
+- **Catatan**: ODP (`FTTHODPPort`) sudah menyusul dapat diagram yang sama — lihat entri di atas
 
 ---
 
