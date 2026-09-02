@@ -24,7 +24,7 @@ except (IOError, OSError):
     sys.exit(0)
 
 from app import app, db
-from models import OLT, OLTConfigBackup, SystemConfig, Notification, User
+from models import OLT, OLTConfigBackup, SystemConfig, Notification
 
 
 def get_system_timezone():
@@ -50,22 +50,29 @@ def get_local_now(tz_name):
 
 
 def notify_backup_failure(olt, error):
-    """Create in-app notification for super admin when auto-backup fails."""
+    """Create/update an in-app notification (bell icon) when auto-backup fails.
+    Dedup by (olt_id, category) like other system notifications, rather than
+    one row per admin — Notification has no per-user targeting field."""
     try:
-        admins = User.query.filter_by(is_super_admin=True).all()
-        for admin in admins:
-            n = Notification(
-                user_id=admin.id,
-                title=f'Auto-backup failed: {olt.name}',
-                message=f'OLT {olt.name} ({olt.ip_address}) auto-backup failed: {error[:200]}',
-                type='olt_offline',
-                icon_type='warning',
-                is_read=False,
-            )
-            db.session.add(n)
+        title = f'Auto-backup failed: {olt.name}'
+        message = f'OLT {olt.name} ({olt.ip_address}) auto-backup failed: {error[:200]}'
+        existing = Notification.query.filter_by(
+            olt_id=olt.id, category='olt_backup_failed', is_read=False, resolved=False
+        ).first()
+        if existing:
+            existing.title = title
+            existing.message = message
+        else:
+            db.session.add(Notification(
+                olt_id=olt.id,
+                title=title,
+                message=message,
+                severity='warning',
+                category='olt_backup_failed',
+            ))
         db.session.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f'    WARNING: could not create backup-failure notification: {e}')
 
 
 def get_retention_days():

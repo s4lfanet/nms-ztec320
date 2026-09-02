@@ -31,6 +31,14 @@ from snmp_core import (
 
 logger = logging.getLogger(__name__)
 
+_SECRET_CMD_RE = re.compile(r'((?:password|passwd|secret)\s+)\S+', re.IGNORECASE)
+
+
+def _mask_cli_secrets(cmd):
+    """Redact password/secret values from a CLI command string before logging
+    (e.g. 'pppoe 1 nat enable user bob password hunter2' -> '... password ***')."""
+    return _SECRET_CMD_RE.sub(r'\1***', cmd)
+
 
 def _format_epon_mac(serial):
     """Format a MAC address for ZTE EPON CLI 'mac' keyword.
@@ -109,9 +117,15 @@ class SimpleTelnet:
     def write(self, data):
         if isinstance(data, str):
             data = data.encode()
+        # A single write() must be exactly one CLI line. Strip any embedded
+        # CR/LF/control bytes from the body first so a value concatenated into
+        # a command string upstream (e.g. an ONU name/description field) can't
+        # inject additional CLI commands into an already-privileged session.
+        trailing_nl = data.endswith(b'\n')
+        body = data[:-1] if trailing_nl else data
+        body = re.sub(rb'[\r\n\x00-\x1f]', b'', body)
         # Telnet protocol requires \r\n (CR+LF) for line endings
-        if data.endswith(b'\n') and not data.endswith(b'\r\n'):
-            data = data[:-1] + b'\r\n'
+        data = body + b'\r\n' if trailing_nl else body
         try:
             self.sock.sendall(data)
         except Exception as e:
@@ -247,9 +261,19 @@ class SimpleSSH:
     def write(self, data):
         if isinstance(data, str):
             data = data.encode()
-        # SSH uses \n (LF), not \r\n (CR+LF) like Telnet
+        # A single write() must be exactly one CLI line. Strip any embedded
+        # CR/LF/control bytes from the body first so a value concatenated into
+        # a command string upstream (e.g. an ONU name/description field) can't
+        # inject additional CLI commands into an already-privileged session.
         if data.endswith(b'\r\n'):
-            data = data[:-2] + b'\n'
+            body, trailing_nl = data[:-2], True
+        elif data.endswith(b'\n'):
+            body, trailing_nl = data[:-1], True
+        else:
+            body, trailing_nl = data, False
+        body = re.sub(rb'[\r\n\x00-\x1f]', b'', body)
+        # SSH uses \n (LF), not \r\n (CR+LF) like Telnet
+        data = body + b'\n' if trailing_nl else body
         try:
             self.shell.send(data)
         except Exception as e:
@@ -1591,11 +1615,12 @@ class TelnetCollector:
             def sc(cmd):
                 nonlocal last_err
                 out, err = self._send_cmd_check(tn, cmd, timeout=10)
+                safe_cmd = _mask_cli_secrets(cmd)
                 if err:
-                    logger.warning(f"[register_vendor_template] CMD FAILED: '{cmd}' -> {err}")
+                    logger.warning(f"[register_vendor_template] CMD FAILED: '{safe_cmd}' -> {err}")
                     last_err = err
                 else:
-                    logger.info(f"[register_vendor_template] CMD OK: '{cmd}'")
+                    logger.info(f"[register_vendor_template] CMD OK: '{safe_cmd}'")
 
             # Helper: TCONT with profile fallback
             def sc_tcont(tcont_id, svc_name, profile):
@@ -1623,10 +1648,11 @@ class TelnetCollector:
             # Helper: send command but don't fail on error (e.g. wifi ssid not supported on all ONU models)
             def sc_warn(cmd):
                 out, err = self._send_cmd_check(tn, cmd, timeout=10)
+                safe_cmd = _mask_cli_secrets(cmd)
                 if err:
-                    logger.warning(f"[register_vendor_template] CMD WARN (non-fatal): '{cmd}' -> {err}")
+                    logger.warning(f"[register_vendor_template] CMD WARN (non-fatal): '{safe_cmd}' -> {err}")
                 else:
-                    logger.info(f"[register_vendor_template] CMD OK: '{cmd}'")
+                    logger.info(f"[register_vendor_template] CMD OK: '{safe_cmd}'")
 
             # Set name/description on ONU interface
             if name:
@@ -2279,18 +2305,20 @@ class TelnetCollector:
             def sc(cmd):
                 nonlocal last_err
                 out, err = self._send_cmd_check(tn, cmd, timeout=10)
+                safe_cmd = _mask_cli_secrets(cmd)
                 if err:
-                    logger.warning(f"[register_unified] CMD FAIL: '{cmd}' -> {err}")
+                    logger.warning(f"[register_unified] CMD FAIL: '{safe_cmd}' -> {err}")
                     last_err = err
                 else:
-                    logger.info(f"[register_unified] CMD OK: '{cmd}'")
+                    logger.info(f"[register_unified] CMD OK: '{safe_cmd}'")
 
             def sc_warn(cmd):
                 out, err = self._send_cmd_check(tn, cmd, timeout=10)
+                safe_cmd = _mask_cli_secrets(cmd)
                 if err:
-                    logger.warning(f"[register_unified] WARN: '{cmd}' -> {err}")
+                    logger.warning(f"[register_unified] WARN: '{safe_cmd}' -> {err}")
                 else:
-                    logger.info(f"[register_unified] CMD OK: '{cmd}'")
+                    logger.info(f"[register_unified] CMD OK: '{safe_cmd}'")
 
             # Helper: TCONT with profile fallback
             def sc_tcont(tcont_id, svc_name, profile):

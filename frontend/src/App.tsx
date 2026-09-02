@@ -49,6 +49,7 @@ const routePermissions: Record<string, string> = {
   '/dashboard/logs': 'manage_users',
   '/dashboard/settings/alerts': 'customization',
   '/dashboard/settings/cloudflare': 'customization',
+  '/dashboard/settings/update': 'manage_users',
 };
 
 const routePatterns: { pattern: RegExp; perm: string }[] = [

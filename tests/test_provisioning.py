@@ -365,7 +365,7 @@ class TestDBSave:
             mock_tc.register_unified.return_value = (True, 'OK')
             mock_cli.return_value = mock_tc
 
-            with patch('app._auto_sync_olt'), patch('app._auto_write_config'):
+            with patch('routes_onu._auto_sync_olt'), patch('routes_onu._auto_write_config'):
                 resp = auth_client.post('/api/provision/unified', json={
                     'olt_id': test_olt,
                     'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
@@ -408,7 +408,7 @@ class TestSNMPTelnetFallback:
             mock_tc.register_unified.return_value = (True, 'Telnet OK')
             mock_cli.return_value = mock_tc
 
-            with patch('app._auto_sync_olt'), patch('app._auto_write_config'):
+            with patch('routes_onu._auto_sync_olt'), patch('routes_onu._auto_write_config'):
                 resp = auth_client.post('/api/provision/unified', json={
                     'olt_id': test_olt,
                     'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
@@ -442,7 +442,7 @@ class TestSNMPTelnetFallback:
             mock_tc.configure_onu_profile.return_value = (True, 'CLI config OK')
             mock_cli.return_value = mock_tc
 
-            with patch('app._auto_write_config'):
+            with patch('routes_onu._auto_write_config'):
                 resp = auth_client.post('/api/pre-register', json={
                     'olt_id': test_olt,
                     'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
@@ -459,3 +459,156 @@ class TestSNMPTelnetFallback:
             assert data['success'] is True
             assert 'SNMP' in data['message']
             mock_tc.configure_onu_profile.assert_called_once()
+
+
+# ==================== CLI Injection Prevention ====================
+
+class TestCLIInjectionPrevention:
+    """SimpleTelnet.write()/SimpleSSH.write() must strip embedded CR/LF/control
+    bytes so a value concatenated into a command string upstream (e.g. an ONU
+    name or description field from the API) cannot inject additional CLI
+    commands into an already-privileged OLT session."""
+
+    def test_telnet_write_strips_embedded_newline(self):
+        from telnet_client import SimpleTelnet
+
+        tn = SimpleTelnet('127.0.0.1')
+        tn.sock = MagicMock()
+        tn.write('name evil\nusername backdoor password x123 level 15\n')
+
+        sent = tn.sock.sendall.call_args[0][0]
+        # Exactly one line terminator (the trailing one write() manages itself) —
+        # the injected text can no longer start its own CLI command line.
+        assert sent.count(b'\n') == 1, f"expected exactly one line terminator, got: {sent!r}"
+        assert b'\nusername backdoor' not in sent
+        assert sent == b'name evilusername backdoor password x123 level 15\r\n'
+
+    def test_telnet_write_strips_bare_carriage_return(self):
+        from telnet_client import SimpleTelnet
+
+        tn = SimpleTelnet('127.0.0.1')
+        tn.sock = MagicMock()
+        tn.write('description foo\rexit\r')
+
+        sent = tn.sock.sendall.call_args[0][0]
+        assert b'\r' not in sent[:-2]  # only the trailing \r\n terminator may remain
+
+    def test_ssh_write_strips_embedded_newline(self):
+        from telnet_client import SimpleSSH
+
+        ssh = SimpleSSH('127.0.0.1')
+        ssh.shell = MagicMock()
+        ssh.write('name evil\nusername backdoor password x123 level 15\n')
+
+        sent = ssh.shell.send.call_args[0][0]
+        assert sent.count(b'\n') == 1
+        assert b'\nusername backdoor' not in sent
+
+    def test_telnet_write_normal_command_unaffected(self):
+        """A well-formed single-line command must pass through unchanged."""
+        from telnet_client import SimpleTelnet
+
+        tn = SimpleTelnet('127.0.0.1')
+        tn.sock = MagicMock()
+        tn.write('interface gpon-onu_1/1/1:1\n')
+
+        sent = tn.sock.sendall.call_args[0][0]
+        assert sent == b'interface gpon-onu_1/1/1:1\r\n'
+
+
+class TestOrphanCleanupOnDelete:
+    """Deleting an OLT/user must not leave orphaned rows in related tables
+    (regression test for the missing cleanup entries found in audit)."""
+
+    def test_delete_olt_cleans_up_config_backup_and_metric_history(self, auth_client, test_olt):
+        from models import OLTConfigBackup, MetricHistory, TrafficLogHourly, MaintenanceWindow
+        from datetime import datetime, timezone
+
+        with app.app_context():
+            db.session.add(OLTConfigBackup(
+                olt_id=test_olt, config_text='interface x', config_size=12,
+                backup_type='manual', status='success',
+            ))
+            db.session.add(MetricHistory(
+                olt_id=test_olt, metric_type='olt_cpu', value=42.0,
+                recorded_at=datetime.now(timezone.utc),
+            ))
+            db.session.add(TrafficLogHourly(
+                olt_id=test_olt, port_type='uplink', port_name='xgei_1/1/1',
+                hour_start=datetime.now(timezone.utc),
+            ))
+            db.session.add(MaintenanceWindow(
+                olt_id=test_olt,
+                start_time=datetime.now(timezone.utc), end_time=datetime.now(timezone.utc),
+            ))
+            db.session.commit()
+
+        resp = auth_client.delete(f'/api/olt/{test_olt}', headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['success'] is True
+
+        with app.app_context():
+            assert OLTConfigBackup.query.filter_by(olt_id=test_olt).count() == 0
+            assert MetricHistory.query.filter_by(olt_id=test_olt).count() == 0
+            assert TrafficLogHourly.query.filter_by(olt_id=test_olt).count() == 0
+            assert MaintenanceWindow.query.filter_by(olt_id=test_olt).count() == 0
+
+    def test_delete_user_unassigns_technician_from_onus(self, auth_client, test_olt):
+        from models import Role, User, ONU
+
+        with app.app_context():
+            role = Role.query.filter_by(name='Full Access').first()
+            tech = User(username='tech1', full_name='Technician One', role_id=role.id)
+            tech.set_password('tech12345')
+            db.session.add(tech)
+            db.session.flush()
+            tech_id = tech.id
+
+            onu = ONU(
+                olt_id=test_olt, serial_number='ZTEGCTEST01', frame=1, slot=1, port=1, onu_id=1,
+                technician_id=tech_id,
+            )
+            db.session.add(onu)
+            db.session.commit()
+            onu_id = onu.id
+
+        resp = auth_client.delete(f'/api/user/{tech_id}', headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['success'] is True
+
+        with app.app_context():
+            onu = db.session.get(ONU, onu_id)
+            assert onu.technician_id is None
+
+
+class TestCLISecretMaskingHelper:
+    """_mask_cli_secrets() redacts password/secret values before they're logged."""
+
+    def test_masks_pppoe_password(self):
+        from telnet_client import _mask_cli_secrets
+
+        cmd = 'pppoe 2 nat enable user bob password hunter2'
+        masked = _mask_cli_secrets(cmd)
+        assert 'hunter2' not in masked
+        assert 'password ***' in masked
+        assert 'user bob' in masked  # username is not a secret, stays visible
+
+    def test_masks_password_followed_by_more_args(self):
+        from telnet_client import _mask_cli_secrets
+
+        cmd = 'wan-ip 1 mode pppoe username bob password hunter2 vlan-profile p1 host 1'
+        masked = _mask_cli_secrets(cmd)
+        assert 'hunter2' not in masked
+        assert 'vlan-profile p1 host 1' in masked
+
+    def test_masks_acs_password(self):
+        from telnet_client import _mask_cli_secrets
+
+        cmd = 'tr069-mgmt 1 acs http://acs.example password s3cret'
+        assert 's3cret' not in _mask_cli_secrets(cmd)
+
+    def test_leaves_password_free_command_unchanged(self):
+        from telnet_client import _mask_cli_secrets
+
+        cmd = 'interface gpon-onu_1/1/1:1'
+        assert _mask_cli_secrets(cmd) == cmd

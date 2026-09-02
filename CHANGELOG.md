@@ -4,6 +4,55 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-02 — Audit Keamanan & Arsitektur: Perbaikan Critical/High + Refactor app.py
+
+Hasil audit menyeluruh (security, backend, database/dependencies, frontend) — perbaikan berikut dikerjakan dengan test regresi baru untuk tiap fix dan tanpa mengubah bagian yang sudah berfungsi baik (CSRF, CORS, auth, enkripsi kredensial, dll tetap utuh).
+
+#### Diperbaiki — CLI Command Injection ke OLT (CRITICAL)
+- **Root cause**: `telnet_client.py` mengirim command CLI ke OLT dengan `tn.write(command + '\n')` tanpa sanitasi — nilai user (nama/deskripsi ONU, dll) yang mengandung `\n`/`\r` bisa menyisipkan command CLI tambahan ke sesi yang sudah privileged (termasuk berpotensi bikin akun admin OLT baru)
+- **Fix**: `SimpleTelnet.write()` dan `SimpleSSH.write()` — satu-satunya titik keluar semua command ke OLT — sekarang strip semua CR/LF/control byte dari body command sebelum dikirim, menutup celah ini di seluruh codebase sekaligus (bukan per call-site)
+- **File**: `telnet_client.py`. Test baru: `tests/test_provisioning.py::TestCLIInjectionPrevention` (4 test)
+
+#### Diperbaiki — Password PPPoE/ACS Ter-log Plaintext (HIGH)
+- **Fix**: Tambah `_mask_cli_secrets()` di `telnet_client.py`, redact nilai setelah keyword `password`/`secret` sebelum di-log (pola yang sebelumnya sudah dipakai untuk WiFi password, sekarang konsisten di semua path registrasi ONU)
+- Test baru: `tests/test_provisioning.py::TestCLISecretMaskingHelper` (4 test)
+
+#### Diperbaiki — Server Diam-diam Jalan Mode Development (HIGH)
+- **Root cause**: Kalau `FLASK_ENV` lupa di-set, `SECRET_KEY` auto-generate diam-diam dan `SESSION_COOKIE_SECURE=False` — tanpa warning
+- **Fix**: `config.py` — `SECRET_KEY` wajib eksplisit di production (fail closed, sama seperti `INTERNAL_API_KEY`), dan warning jelas di log saat start dengan `DevelopmentConfig`
+
+#### Diperbaiki — Orphan Rows Saat Hapus OLT/User (HIGH)
+- **Root cause**: SQLite FK enforcement tidak aktif; `delete_olt()` tidak membersihkan `OLTConfigBackup`, `TrafficLogHourly`, `MetricHistory`, `MaintenanceWindow`; `delete_user()` tidak clear `ONU.technician_id`
+- **Fix**: Lengkapi cleanup list di `delete_olt()`/`delete_user()` (`app.py` → sekarang di `routes_olt_settings.py`/`routes_users.py`)
+- Test baru: `tests/test_provisioning.py::TestOrphanCleanupOnDelete` (2 test)
+
+#### Diperbaiki — Notifikasi Kegagalan Auto-Backup Selalu Error Diam-diam (HIGH)
+- **Root cause**: `auto_backup.py` bikin `Notification(user_id=..., type=..., icon_type=...)` — field yang tidak ada di model `Notification`, selalu `TypeError`, ditangkap `except: pass`
+- **Fix**: Sesuaikan dengan skema `Notification` asli (dedup by `olt_id`+`category`, bukan per-user)
+
+#### Diperbaiki — Lockfile Frontend Konflik (HIGH)
+- `frontend/package-lock.json` (npm, basi sejak proyek pindah ke pnpm) dihapus — `pnpm-lock.yaml` satu-satunya sumber kebenaran
+
+#### Diperbaiki — Frontend: Halaman System Update Tanpa Route Guard (HIGH)
+- `App.tsx` — `routePermissions` sekarang menyertakan `/dashboard/settings/update` (permission `manage_users`), konsisten dengan Sidebar. Backend sudah benar dari awal (super-admin only)
+
+#### Ditambahkan — Backup Database Aplikasi Otomatis (CRITICAL)
+- **Root cause**: Cron backup DB aplikasi (`db_backup.py`, `db_backup_offsite.py`) sempat terhapus di commit sebelumnya dan tidak diganti — hanya ada backup config OLT, bukan database NMS sendiri. Endpoint manual `/api/system/backup-db` juga ternyata **selalu menghapus file backup setelah dibuat** kalau remote SCP tidak dikonfigurasi
+- **Fix**: `db_backup.py` baru — cron per jam, dukung SQLite (online backup API) & PostgreSQL (`pg_dump`), retensi 24 hourly + 7 daily, simpan ke `instance/backups/`. Endpoint manual dan cron sekarang pakai logic yang sama (`create_db_backup()`/`prune_old_db_backups()`), backup lokal selalu disimpan (upload SCP remote jadi tambahan opsional, bukan pengganti)
+- Cron baru didaftarkan di `install-vps.sh`
+
+#### Ditambahkan — Baseline Migrasi Skema (Alembic)
+- **Root cause**: History Alembic/Flask-Migrate terhapus total di masa lalu; `migrate_schema()` (raw `ALTER TABLE`, silent-fail) jadi satu-satunya mekanisme migrasi, tanpa version tracking
+- **Fix**: `migrations/` di-restore dengan baseline migration dari schema `models.py` saat ini — **diverifikasi**: schema hasil `flask db upgrade` dibandingkan byte-per-byte dengan `db.create_all()`, 59/59 tabel & index cocok. `migrate_schema()` **tidak dihapus**, tetap jalan sebagai safety net — murni tooling baru untuk perubahan schema ke depannya. Deployment existing perlu `flask db stamp head` sekali (lihat `migrations/README`)
+
+#### Diubah — `app.py` Dipecah dari Monolith 9.908 Baris → 517 Baris + 15 Blueprint
+- **Root cause**: 201 route dalam 1 file menyulitkan maintenance dan code review
+- **Fix**: Route dipisah ke `routes_onu.py`, `routes_olt_ports.py`, `routes_olt_settings.py`, `routes_olt_sync.py`, `routes_olt_spa_data.py`, `routes_ftth.py`, `routes_notifications.py`, `routes_system.py`, `routes_users.py`, `routes_templates.py`, `routes_traffic.py`, `routes_dashboard.py`, `routes_public.py`, `routes_whatsapp.py`, `routes_cloudflare.py` — berdasarkan domain URL, bukan cuma judul section (beberapa route ternyata salah section di file asli)
+- **Verifikasi**: 206 route (rule+method) sebelum vs sesudah split — cocok 100%. Server dinyalakan sungguhan dan 13 endpoint lintas semua blueprint di-curl langsung — semua respons sesuai ekspektasi. Full test suite (121 test) lolos
+- **Tidak ada logic yang berubah** — murni pemindahan kode, endpoint/URL/permission/behavior identik
+
+---
+
 ### 2026-08-31 — ONU Status Classification Fix (DyingGasp vs Online)
 
 #### Diperbaiki — oper_state=5 Salah Diklasifikasi sebagai 'online' (CRITICAL)
