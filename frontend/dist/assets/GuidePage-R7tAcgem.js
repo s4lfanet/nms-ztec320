@@ -30,7 +30,9 @@ Sistem akan scan ONU yang belum terdaftar (uncfg) di PON port tersebut.`},{title
 
 Template menentukan VLAN, WAN mode, WiFi config, dan TR069 settings.`},{title:`WiFi & Review`,content:`Konfigurasi WiFi SSID: nama, auth type (Open/WPA/WPA2/Mixed), password, VLAN.
 
-Review semua config sebelum provision. Script CLI preview tersedia untuk verifikasi command yang akan dikirim ke OLT.`}],tips:[`Pre-config mode: provision ONU yang sudah terdaftar tanpa re-register`,`Register Wizard: wizard lengkap dengan template selection`,`Pastikan ONU sudah online (uncfg) sebelum provision`]},{id:`register-wizard`,category:`ONU Management`,page:`/dashboard/onus/register`,title:`Panduan Register Wizard`,description:`Register ONU baru ke OLT dengan wizard multi-step`,steps:[{title:`Select OLT`,content:`Pilih OLT target dari dropdown. Hanya OLT dengan CLI enabled (SSH/Telnet) yang tersedia.
+Review semua config sebelum provision. Script CLI preview tersedia untuk verifikasi command yang akan dikirim ke OLT.
+
+Di step Review, tiap ONU punya dropdown **"— ODP (optional) —"** untuk langsung assign ONU tersebut ke port ODP pelanggan saat provisioning — tidak wajib diisi, bisa juga di-assign belakangan lewat menu Assign ODP di FTTH Infrastructure.`}],tips:[`Pre-config mode: provision ONU yang sudah terdaftar tanpa re-register`,`Register Wizard: wizard lengkap dengan template selection`,`Pastikan ONU sudah online (uncfg) sebelum provision`,`Assign ODP port saat provisioning bersifat opsional — dropdown hanya menampilkan port yang masih available`]},{id:`register-wizard`,category:`ONU Management`,page:`/dashboard/onus/register`,title:`Panduan Register Wizard`,description:`Register ONU baru ke OLT dengan wizard multi-step`,steps:[{title:`Select OLT`,content:`Pilih OLT target dari dropdown. Hanya OLT dengan CLI enabled (SSH/Telnet) yang tersedia.
 
 Sistem akan cek koneksi CLI ke OLT sebelum lanjut.`},{title:`Scan ONUs`,content:`Sistem scan ONU uncfg di semua PON port OLT yang dipilih.
 
@@ -38,7 +40,9 @@ Pilih ONU yang ingin di-register dari daftar.`},{title:`Configure`,content:`Pili
 
 Fiberhome VEIP template menggunakan TR069 Profile dropdown untuk ACS config.`},{title:`Review & Register`,content:`Review semua config. Script CLI preview menampilkan exact command yang akan dikirim.
 
-Klik **Register** untuk eksekusi. ONU akan di-register ke OLT dan config diterapkan.`}]},{id:`olt-settings`,category:`Infrastructure`,page:`/dashboard/settings/olts`,title:`Panduan OLT Settings`,description:`Kelola OLT: tambah, edit, hapus, sync`,steps:[{title:`Tambah OLT`,content:`Klik **Add OLT** untuk menambah OLT baru. Isi: name, IP address, vendor (ZTE/Huawei/Fiberhome), SNMP community, CLI credentials (SSH/Telnet).
+Setiap ONU di daftar punya dropdown **"— ODP (optional) —"** untuk langsung assign ke port ODP pelanggan saat registrasi — opsional, bisa di-assign belakangan juga.
+
+Klik **Register** untuk eksekusi. ONU akan di-register ke OLT dan config diterapkan.`}],tips:[`Assign ODP port saat registrasi bersifat opsional — dropdown hanya menampilkan port yang masih available`]},{id:`olt-settings`,category:`Infrastructure`,page:`/dashboard/settings/olts`,title:`Panduan OLT Settings`,description:`Kelola OLT: tambah, edit, hapus, sync`,steps:[{title:`Tambah OLT`,content:`Klik **Add OLT** untuk menambah OLT baru. Isi: name, IP address, vendor (ZTE/Huawei/Fiberhome), SNMP community, CLI credentials (SSH/Telnet).
 
 Test koneksi SNMP dan CLI sebelum save.`},{title:`Edit & Delete OLT`,content:`Klik **Edit** pada kartu OLT untuk ubah konfigurasi. Klik **Delete** untuk hapus OLT (ONU terkait juga akan dihapus).
 
@@ -58,9 +62,11 @@ Pilih periode: **Live** (real-time, update 5 detik), **1H/6H/1D/3D/7D/30D** (his
 
 Live mode: auto-update setiap 5 detik. Historical: data dari traffic poller (5 menit interval).`},{title:`Port Selection`,content:`Pilih port spesifik dari dropdown untuk melihat traffic per port.
 
-Uplink ports: ge1-4, xge1-2. PON ports: gpon-olt_0/1/1, dll.`}],tips:[`Traffic poller berjalan setiap 5 menit via cron — historical data tersimpan di DB`,`Live traffic menggunakan SNMP get real-time ke OLT`,`WebSocket aktif: chart auto-update tanpa manual refresh`]},{id:`ftth`,category:`Infrastructure`,page:`/dashboard/ftth`,title:`Panduan FTTH Infrastructure`,description:`Kelola infrastruktur FTTH: OTB, ODC, ODP, PON ports`,steps:[{title:`Overview Tab`,content:`Dashboard FTTH menampilkan summary: total OLT, PON ports, ODP, ONU per area.
+Uplink ports: ge1-4, xge1-2. PON ports: gpon-olt_0/1/1, dll.`}],tips:[`Traffic poller berjalan setiap 5 menit via cron — historical data tersimpan di DB`,`Live traffic menggunakan SNMP get real-time ke OLT`,`WebSocket aktif: chart auto-update tanpa manual refresh`]},{id:`ftth`,category:`Infrastructure`,page:`/dashboard/ftth`,title:`Panduan FTTH Infrastructure`,description:`Kelola infrastruktur FTTH: OTB, JC, ODC, ODP, PON ports, dan peta`,steps:[{title:`Overview Tab`,content:`Dashboard FTTH menampilkan summary: total OLT, PON ports, ODP, ONU per area.
 
-Klik area untuk drill-down ke detail infrastruktur.`},{title:`PON Ports Tab`,content:`Lihat semua PON port di semua OLT. Menampilkan: OLT, slot/port, ONU count, capacity, utilization.
+Klik area untuk drill-down ke detail infrastruktur.`},{title:`Tree Tab`,content:`Tampilan pohon (hierarki) dari seluruh rantai fiber: OTB/ODF → (opsional lewat JC) → ODC → (opsional lewat JC) → ODP → port pelanggan.
+
+Klik panah untuk expand/collapse tiap node. Ikon di setiap baris untuk tambah ODC, tambah JC, tambah ODP, edit, atau hapus — tergantung jenis node-nya. Node JC ditandai warna ungu dengan ikon sambungan.`},{title:`PON Ports Tab`,content:`Lihat semua PON port di semua OLT. Menampilkan: OLT, slot/port, ONU count, capacity, utilization.
 
 Klik PON port untuk lihat ONU terkait dan ODP yang terhubung.`},{title:`OTB/ODF, ODC, ODP Tabs`,content:`**OTB/ODF**: Optical Terminal Box / Optical Distribution Frame — titik koneksi fiber dari OLT.
 
@@ -68,9 +74,19 @@ Klik PON port untuk lihat ONU terkait dan ODP yang terhubung.`},{title:`OTB/ODF,
 
 **ODP**: Optical Distribution Point — distribusi fiber ke rumah pelanggan.
 
-Kelola (tambah/edit/hapus) dan lihat port utilization.`},{title:`FTTH Map`,content:`Peta interaktif menampilkan lokasi OLT, ODC, ODP pada peta.
+Kelola (tambah/edit/hapus) dan lihat port utilization. Warna tube/core (standar TIA-598) ditampilkan sampai level ODC (core dari OTB) — di level ODP warna tube/core tidak lagi relevan sehingga tidak ditampilkan.
 
-Klik marker untuk detail. Garis menampilkan koneksi fiber (OLT → ODC → ODP → ONU).`}]},{id:`customization`,category:`System`,page:`/dashboard/customization`,title:`Panduan Customization`,description:`Kustomisasi tampilan: kolom, filter, RX colors`,steps:[{title:`Desktop Columns`,content:`Atur visibilitas dan urutan kolom di tabel All ONUs untuk tampilan desktop.
+Saat tambah/edit ODC atau ODP, ada toggle **"Fed From"**: pilih apakah node ini disambung langsung dari OTB/ODC, atau lewat titik sambungan **JC** (lihat langkah berikutnya).`},{title:`JC (Joint Closure / Titik Sambungan) Tab`,content:`JC adalah titik sambungan (closure) di sepanjang jalur fiber — dipakai kalau kabel dari OTB ke ODC (atau ODC ke ODP) melewati titik splice di lapangan, bukan sambungan langsung.
+
+JC bisa diletakkan di mana saja: OTB→JC→ODC, ODC→JC→ODP, bahkan JC berantai (JC→JC). Setiap JC punya "Fed From (parent)" sendiri (OTB, ODC, atau JC lain).
+
+**Fibers per Tube** (opsional): isi kalau closure ini terdiri dari lebih dari 1 tube (mis. 2 tube × 12 core) — dipakai untuk menghitung warna tube/core TIA-598 pada splice.
+
+**Splices**: setelah JC tersimpan, buka **Edit / Manage Splices** untuk mencatat sambungan core — pilih Tube + posisi core di sisi masuk (dari parent) dan sisi keluar (ke downstream), warna tube/core langsung ditampilkan di kedua sisi. Core keluar inilah yang muncul sebagai pilihan saat membuat ODC/ODP dengan "Fed From" = JC.`},{title:`Draw Fiber Path & Auto Route`,content:`Di tab **Map**, tombol **Draw Fiber Path** untuk menggambar jalur kabel manual di peta (klik titik demi titik, lalu Save Path) — bisa untuk jalur apa saja termasuk yang melewati JC.
+
+Tombol **Auto Route (OSRM)** untuk membuat jalur otomatis mengikuti jalan antara dua titik: klik titik awal lalu titik akhir pada marker di peta.`},{title:`FTTH Map`,content:`Peta interaktif (OpenStreetMap) menampilkan lokasi OLT, JC, ODC, ODP pada peta dengan warna berbeda per jenis (lihat legenda di atas peta).
+
+Klik marker untuk detail dan highlight jalur koneksinya. Garis menampilkan koneksi fiber (OLT → [JC] → ODC → [JC] → ODP → ONU).`}],tips:[`JC bersifat opsional — kalau jalur fiber memang langsung tanpa titik sambungan, tidak perlu dibuat JC sama sekali, cukup OTB → ODC → ODP seperti biasa`,`Menghapus JC tidak menghapus ODC/ODP/JC yang tersambung ke situ — mereka cuma "dilepas" (feed source-nya jadi kosong), supaya data infrastruktur riil tidak ikut hilang`,`Nomor core "in" pada splice pakai penomoran tube milik parent (OTB/ODC/JC sumbernya), nomor core "out" pakai penomoran tube milik JC itu sendiri`]},{id:`customization`,category:`System`,page:`/dashboard/customization`,title:`Panduan Customization`,description:`Kustomisasi tampilan: kolom, filter, RX colors`,steps:[{title:`Desktop Columns`,content:`Atur visibilitas dan urutan kolom di tabel All ONUs untuk tampilan desktop.
 
 Drag-and-drop untuk reorder. Toggle checkbox untuk show/hide kolom.`},{title:`Mobile Columns`,content:`Atur kolom yang tampil di tampilan mobile (layar kecil).
 

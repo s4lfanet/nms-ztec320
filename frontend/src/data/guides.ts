@@ -130,13 +130,14 @@ export const guides: Guide[] = [
       },
       {
         title: 'WiFi & Review',
-        content: 'Konfigurasi WiFi SSID: nama, auth type (Open/WPA/WPA2/Mixed), password, VLAN.\n\nReview semua config sebelum provision. Script CLI preview tersedia untuk verifikasi command yang akan dikirim ke OLT.',
+        content: 'Konfigurasi WiFi SSID: nama, auth type (Open/WPA/WPA2/Mixed), password, VLAN.\n\nReview semua config sebelum provision. Script CLI preview tersedia untuk verifikasi command yang akan dikirim ke OLT.\n\nDi step Review, tiap ONU punya dropdown **"— ODP (optional) —"** untuk langsung assign ONU tersebut ke port ODP pelanggan saat provisioning — tidak wajib diisi, bisa juga di-assign belakangan lewat menu Assign ODP di FTTH Infrastructure.',
       },
     ],
     tips: [
       'Pre-config mode: provision ONU yang sudah terdaftar tanpa re-register',
       'Register Wizard: wizard lengkap dengan template selection',
       'Pastikan ONU sudah online (uncfg) sebelum provision',
+      'Assign ODP port saat provisioning bersifat opsional — dropdown hanya menampilkan port yang masih available',
     ],
   },
   {
@@ -160,8 +161,11 @@ export const guides: Guide[] = [
       },
       {
         title: 'Review & Register',
-        content: 'Review semua config. Script CLI preview menampilkan exact command yang akan dikirim.\n\nKlik **Register** untuk eksekusi. ONU akan di-register ke OLT dan config diterapkan.',
+        content: 'Review semua config. Script CLI preview menampilkan exact command yang akan dikirim.\n\nSetiap ONU di daftar punya dropdown **"— ODP (optional) —"** untuk langsung assign ke port ODP pelanggan saat registrasi — opsional, bisa di-assign belakangan juga.\n\nKlik **Register** untuk eksekusi. ONU akan di-register ke OLT dan config diterapkan.',
       },
+    ],
+    tips: [
+      'Assign ODP port saat registrasi bersifat opsional — dropdown hanya menampilkan port yang masih available',
     ],
   },
   {
@@ -246,11 +250,15 @@ export const guides: Guide[] = [
     category: 'Infrastructure',
     page: '/dashboard/ftth',
     title: 'Panduan FTTH Infrastructure',
-    description: 'Kelola infrastruktur FTTH: OTB, ODC, ODP, PON ports',
+    description: 'Kelola infrastruktur FTTH: OTB, JC, ODC, ODP, PON ports, dan peta',
     steps: [
       {
         title: 'Overview Tab',
         content: 'Dashboard FTTH menampilkan summary: total OLT, PON ports, ODP, ONU per area.\n\nKlik area untuk drill-down ke detail infrastruktur.',
+      },
+      {
+        title: 'Tree Tab',
+        content: 'Tampilan pohon (hierarki) dari seluruh rantai fiber: OTB/ODF → (opsional lewat JC) → ODC → (opsional lewat JC) → ODP → port pelanggan.\n\nKlik panah untuk expand/collapse tiap node. Ikon di setiap baris untuk tambah ODC, tambah JC, tambah ODP, edit, atau hapus — tergantung jenis node-nya. Node JC ditandai warna ungu dengan ikon sambungan.',
       },
       {
         title: 'PON Ports Tab',
@@ -258,12 +266,25 @@ export const guides: Guide[] = [
       },
       {
         title: 'OTB/ODF, ODC, ODP Tabs',
-        content: '**OTB/ODF**: Optical Terminal Box / Optical Distribution Frame — titik koneksi fiber dari OLT.\n\n**ODC**: Optical Distribution Cabinet — distribusi fiber ke area.\n\n**ODP**: Optical Distribution Point — distribusi fiber ke rumah pelanggan.\n\nKelola (tambah/edit/hapus) dan lihat port utilization.',
+        content: '**OTB/ODF**: Optical Terminal Box / Optical Distribution Frame — titik koneksi fiber dari OLT.\n\n**ODC**: Optical Distribution Cabinet — distribusi fiber ke area.\n\n**ODP**: Optical Distribution Point — distribusi fiber ke rumah pelanggan.\n\nKelola (tambah/edit/hapus) dan lihat port utilization. Warna tube/core (standar TIA-598) ditampilkan sampai level ODC (core dari OTB) — di level ODP warna tube/core tidak lagi relevan sehingga tidak ditampilkan.\n\nSaat tambah/edit ODC atau ODP, ada toggle **"Fed From"**: pilih apakah node ini disambung langsung dari OTB/ODC, atau lewat titik sambungan **JC** (lihat langkah berikutnya).',
+      },
+      {
+        title: 'JC (Joint Closure / Titik Sambungan) Tab',
+        content: 'JC adalah titik sambungan (closure) di sepanjang jalur fiber — dipakai kalau kabel dari OTB ke ODC (atau ODC ke ODP) melewati titik splice di lapangan, bukan sambungan langsung.\n\nJC bisa diletakkan di mana saja: OTB→JC→ODC, ODC→JC→ODP, bahkan JC berantai (JC→JC). Setiap JC punya "Fed From (parent)" sendiri (OTB, ODC, atau JC lain).\n\n**Fibers per Tube** (opsional): isi kalau closure ini terdiri dari lebih dari 1 tube (mis. 2 tube × 12 core) — dipakai untuk menghitung warna tube/core TIA-598 pada splice.\n\n**Splices**: setelah JC tersimpan, buka **Edit / Manage Splices** untuk mencatat sambungan core — pilih Tube + posisi core di sisi masuk (dari parent) dan sisi keluar (ke downstream), warna tube/core langsung ditampilkan di kedua sisi. Core keluar inilah yang muncul sebagai pilihan saat membuat ODC/ODP dengan "Fed From" = JC.',
+      },
+      {
+        title: 'Draw Fiber Path & Auto Route',
+        content: 'Di tab **Map**, tombol **Draw Fiber Path** untuk menggambar jalur kabel manual di peta (klik titik demi titik, lalu Save Path) — bisa untuk jalur apa saja termasuk yang melewati JC.\n\nTombol **Auto Route (OSRM)** untuk membuat jalur otomatis mengikuti jalan antara dua titik: klik titik awal lalu titik akhir pada marker di peta.',
       },
       {
         title: 'FTTH Map',
-        content: 'Peta interaktif menampilkan lokasi OLT, ODC, ODP pada peta.\n\nKlik marker untuk detail. Garis menampilkan koneksi fiber (OLT → ODC → ODP → ONU).',
+        content: 'Peta interaktif (OpenStreetMap) menampilkan lokasi OLT, JC, ODC, ODP pada peta dengan warna berbeda per jenis (lihat legenda di atas peta).\n\nKlik marker untuk detail dan highlight jalur koneksinya. Garis menampilkan koneksi fiber (OLT → [JC] → ODC → [JC] → ODP → ONU).',
       },
+    ],
+    tips: [
+      'JC bersifat opsional — kalau jalur fiber memang langsung tanpa titik sambungan, tidak perlu dibuat JC sama sekali, cukup OTB → ODC → ODP seperti biasa',
+      'Menghapus JC tidak menghapus ODC/ODP/JC yang tersambung ke situ — mereka cuma "dilepas" (feed source-nya jadi kosong), supaya data infrastruktur riil tidak ikut hilang',
+      'Nomor core "in" pada splice pakai penomoran tube milik parent (OTB/ODC/JC sumbernya), nomor core "out" pakai penomoran tube milik JC itu sendiri',
     ],
   },
   {
