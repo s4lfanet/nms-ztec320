@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-04 — JC: Field "Fibers per Tube" Opsional (Bisa Lebih dari 1 Tube)
+
+#### Ditambahkan
+- Diminta agar JC juga bisa punya data tube — satu closure JC bisa terdiri dari beberapa tube (mis. 2 tube × 12 core), bukan cuma satu angka total core polos
+- Field baru `fibers_per_tube` di JC (opsional, default 12, sama seperti pola yang sudah ada di OTB/ODC) — warna tube/core (standar TIA-598) pada tiap splice sekarang dihitung otomatis dari nilai ini, ditampilkan langsung di daftar splice (Core X → Y beserta tag warna tube-nya) maupun saat memilih core dari JC di form tambah ODC/ODP
+- **Diverifikasi**: 1 test baru (fibers_per_tube independen dari total_cores, bisa diubah lewat update) — full suite 154 passed/2 skipped. Dicek langsung di browser: field tersimpan dan terbaca kembali dengan benar, warna tube pada splice muncul sesuai nilai fibers_per_tube JC tersebut, nol error console
+
+---
+
 ### 2026-09-03 — Titik JC (Joint Closure / Sambungan) di Rantai FTTH
 
 #### Ditambahkan

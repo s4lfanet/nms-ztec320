@@ -1413,6 +1413,7 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
           <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
         </div>
       )}
+      {form.feed_source === 'jc' && selectedJc && form.jc_core_number !== '' && <p className="text-xs -mt-1"><CoreColorTag coreNumber={Number(form.jc_core_number)} fibersPerTube={selectedJc.fibers_per_tube} /></p>}
       {form.feed_source !== 'jc' && selectedOtb && <p className="text-xs -mt-1"><CoreColorTag coreNumber={form.otb_core_number} fibersPerTube={selectedOtb.fibers_per_tube} /></p>}
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
@@ -1487,6 +1488,7 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, onClose, onSaved 
           <FormField label="Total Ports"><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
         </div>
       )}
+      {form.feed_source === 'jc' && selectedJc && form.jc_core_number !== '' && <p className="text-xs -mt-1"><CoreColorTag coreNumber={Number(form.jc_core_number)} fibersPerTube={selectedJc.fibers_per_tube} /></p>}
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1501,6 +1503,7 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
     name: item?.name || '', closure_type: item?.closure_type || 'inline',
     location: item?.location || '', latitude: item?.latitude || '', longitude: item?.longitude || '',
     total_cores: item?.total_cores || 12,
+    fibers_per_tube: item?.fibers_per_tube || 12,
     parent_type: item?.parent_type || parentKind || '',
     parent_id: item?.parent_id || parent?.id || '',
     description: item?.description || '',
@@ -1515,6 +1518,7 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
     d.latitude = form.latitude === '' ? null : parseFloat(String(form.latitude));
     d.longitude = form.longitude === '' ? null : parseFloat(String(form.longitude));
     d.total_cores = parseInt(String(form.total_cores));
+    d.fibers_per_tube = parseInt(String(form.fibers_per_tube)) || 12;
     d.parent_type = form.parent_type || null;
     d.parent_id = form.parent_id === '' ? null : parseInt(String(form.parent_id));
     mut.mutate(d);
@@ -1551,6 +1555,8 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
         </FormField>
         <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
       </div>
+      <FormField label="Fibers per Tube (optional)"><input className="input-field" type="number" min={1} value={form.fibers_per_tube} onChange={e => setForm({ ...form, fibers_per_tube: parseInt(e.target.value) || 12 })} /></FormField>
+      <p className="text-[11px] text-tx3 -mt-1">Kalau closure ini terdiri dari beberapa tube (mis. 2 tube × 12 core), isi jumlah core per tube di sini — warna tube/core pada splice di bawah dihitung otomatis dari ini (standar TIA-598).</p>
       <FormField label="Location"><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Pole number, manhole, address" /></FormField>
       <FormField label="Coordinates (GPS / Map)">
         <LocationPicker latitude={form.latitude} longitude={form.longitude} onChange={(lat, lng) => setForm({ ...form, latitude: lat, longitude: lng })} />
@@ -1580,8 +1586,9 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
           {currentSplices.length > 0 && (
             <div className="space-y-1 mb-2 max-h-40 overflow-y-auto">
               {currentSplices.map(s => (
-                <div key={s.id} className="flex items-center gap-2 p-1.5 rounded bg-glass text-xs">
+                <div key={s.id} className="flex items-center gap-2 p-1.5 rounded bg-glass text-xs flex-wrap">
                   <span className="font-mono">Core {s.core_in} → {s.core_out}</span>
+                  <CoreColorTag coreNumber={s.core_out} fibersPerTube={form.fibers_per_tube} />
                   {s.label && <span className="text-tx3 truncate flex-1">{s.label}</span>}
                   <button onClick={() => deleteSpliceMut.mutate(s.id)} className="p-1 rounded hover:bg-danger/15 text-tx3 hover:text-danger flex-shrink-0" title="Remove splice"><Trash2 size={12} /></button>
                 </div>

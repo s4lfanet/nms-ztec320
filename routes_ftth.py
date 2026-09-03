@@ -210,7 +210,7 @@ def _jc_to_dict(j):
     return {
         'id': j.id, 'name': j.name, 'closure_type': j.closure_type or 'inline',
         'location': j.location or '', 'latitude': j.latitude, 'longitude': j.longitude,
-        'total_cores': j.total_cores or 0,
+        'total_cores': j.total_cores or 0, 'fibers_per_tube': j.fibers_per_tube or 12,
         'parent_type': j.parent_type, 'parent_id': j.parent_id, 'parent_name': parent_name,
         'description': j.description or '',
         'splice_count': len(splices),
@@ -561,7 +561,7 @@ def ftth_jc_create():
     j = FTTHJC(
         name=d.get('name', ''), closure_type=d.get('closure_type', 'inline'),
         location=d.get('location', ''), latitude=d.get('latitude'), longitude=d.get('longitude'),
-        total_cores=d.get('total_cores', 12),
+        total_cores=d.get('total_cores', 12), fibers_per_tube=d.get('fibers_per_tube', 12),
         parent_type=d.get('parent_type'), parent_id=d.get('parent_id'),
         description=d.get('description', ''),
     )
@@ -586,7 +586,7 @@ def ftth_jc_update(jc_id):
         if k in d: setattr(j, k, d[k])
     for k in ['latitude', 'longitude']:
         if k in d: setattr(j, k, d[k])
-    for k in ['total_cores', 'parent_type', 'parent_id']:
+    for k in ['total_cores', 'fibers_per_tube', 'parent_type', 'parent_id']:
         if k in d: setattr(j, k, d[k])
     db.session.commit()
     return jsonify({'success': True, 'item': _jc_to_dict(j)})
