@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import pytest
+from unittest.mock import patch
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -231,11 +232,13 @@ class TestSecurityPhase1:
         client.post('/api/auth/login',
             data=json.dumps({'username': 'admin', 'password': 'admin123'}),
             content_type='application/json')
-        # Create an OLT
-        resp = client.post('/api/olt',
-            data=json.dumps({'name': 'Test OLT', 'ip_address': '192.168.1.1', 'snmp_community': 'private'}),
-            content_type='application/json',
-            headers={'X-Requested-With': 'XMLHttpRequest'})
+        # Create an OLT (auto-triggers a real sync in prod — mocked here so the
+        # test doesn't spawn a background thread that outlives this test's DB)
+        with patch('routes_olt_settings.start_single_sync'):
+            resp = client.post('/api/olt',
+                data=json.dumps({'name': 'Test OLT', 'ip_address': '192.168.1.1', 'snmp_community': 'private'}),
+                content_type='application/json',
+                headers={'X-Requested-With': 'XMLHttpRequest'})
         assert resp.status_code == 200
         olt_id = resp.get_json()['id']
 
@@ -554,11 +557,12 @@ class TestCredentialExposure:
             data=json.dumps({'username': 'admin', 'password': 'admin123'}),
             content_type='application/json')
         # Create OLT with CLI password
-        resp = client.post('/api/olt',
-            data=json.dumps({'name': 'Cred Test', 'ip_address': '10.0.0.99',
-                             'cli_password': 'supersecret'}),
-            content_type='application/json',
-            headers={'X-Requested-With': 'XMLHttpRequest'})
+        with patch('routes_olt_settings.start_single_sync'):
+            resp = client.post('/api/olt',
+                data=json.dumps({'name': 'Cred Test', 'ip_address': '10.0.0.99',
+                                 'cli_password': 'supersecret'}),
+                content_type='application/json',
+                headers={'X-Requested-With': 'XMLHttpRequest'})
         olt_id = resp.get_json()['id']
         resp = client.get(f'/api/olt/{olt_id}')
         data = resp.get_json()
@@ -584,11 +588,12 @@ class TestCredentialExposure:
             data=json.dumps({'username': 'admin', 'password': 'admin123'}),
             content_type='application/json')
         # Create OLT
-        resp = client.post('/api/olt',
-            data=json.dumps({'name': 'Mask Test', 'ip_address': '10.0.0.98',
-                             'snmp_community': 'original'}),
-            content_type='application/json',
-            headers={'X-Requested-With': 'XMLHttpRequest'})
+        with patch('routes_olt_settings.start_single_sync'):
+            resp = client.post('/api/olt',
+                data=json.dumps({'name': 'Mask Test', 'ip_address': '10.0.0.98',
+                                 'snmp_community': 'original'}),
+                content_type='application/json',
+                headers={'X-Requested-With': 'XMLHttpRequest'})
         olt_id = resp.get_json()['id']
         # Update with masked value
         client.put(f'/api/olt/{olt_id}',
@@ -637,6 +642,41 @@ class TestSyncLock:
         assert is_sync_locked(996) is True
         release_sync_lock(996, token)
         assert is_sync_locked(996) is False
+
+
+class TestNewOltAutoSync:
+    """A newly-created OLT should get an immediate full sync instead of
+    sitting empty until the next auto-sync cron tick (up to 5 min away)."""
+
+    def test_create_olt_triggers_immediate_full_sync(self, client):
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        with patch('routes_olt_settings.start_single_sync') as mock_sync:
+            resp = client.post('/api/olt',
+                data=json.dumps({'name': 'Fresh OLT', 'ip_address': '10.0.0.50'}),
+                content_type='application/json',
+                headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        olt_id = resp.get_json()['id']
+        mock_sync.assert_called_once()
+        args, kwargs = mock_sync.call_args
+        assert args[1] == olt_id  # (app, olt_id, light=False)
+        assert kwargs.get('light') is False
+
+    def test_sync_trigger_failure_does_not_break_olt_creation(self, client):
+        """If start_single_sync itself raises, OLT creation must still succeed —
+        the initial sync is a convenience, not a precondition."""
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        with patch('routes_olt_settings.start_single_sync', side_effect=RuntimeError('boom')):
+            resp = client.post('/api/olt',
+                data=json.dumps({'name': 'Flaky Sync OLT', 'ip_address': '10.0.0.51'}),
+                content_type='application/json',
+                headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['success'] is True
 
 
 class TestSyncJob:
