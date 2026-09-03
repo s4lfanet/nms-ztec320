@@ -669,6 +669,27 @@ class TestSyncLock:
         finally:
             release_sync_lock(olt_id, token)
 
+    @pytest.mark.skipif(os.name != 'posix', reason='file lock (fcntl) only used on POSIX')
+    def test_lock_file_is_world_writable(self):
+        """auto_sync.py's cron and the Flask app can run as different Unix
+        users (found live: root cron vs a 'salfanet' service user). A lock
+        file created with the default umask-restricted mode (e.g. 0644)
+        locks out whichever user didn't create it with a permission error,
+        silently defeating the cross-process lock the same way the missing
+        Redis case did. The file must end up 0o666 (rw for everyone) no
+        matter which user's process creates it first."""
+        import stat
+        from sync_lock import acquire_sync_lock, release_sync_lock, _lock_file_path
+
+        olt_id = 88887
+        token = acquire_sync_lock(olt_id, timeout=0)
+        assert token is not None
+        try:
+            mode = stat.S_IMODE(os.stat(_lock_file_path(olt_id)).st_mode)
+            assert mode == 0o666, f'lock file mode was {oct(mode)}, expected 0o666'
+        finally:
+            release_sync_lock(olt_id, token)
+
 
 def _child_try_acquire_lock(olt_id, result_queue):
     """Module-level (picklable) worker for test_lock_blocks_across_separate_processes."""

@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — File Lock Tadi Malah Terkunci Sendiri Antar User (root cron vs salfanet app)
+
+#### Ditemukan Saat Verifikasi Live di Production — Bukan dari Test
+- Setelah deploy fix file-lock sebelumnya, saya coba buktikan langsung: picu sync manual (via Python langsung, bukan cuma test) persis saat cron sedang jalan. Hasilnya: `Permission denied: '/tmp/salfanet_sync_lock_olt_1.lock'` — fix-nya sendiri malah gagal total, fallback ke in-memory lagi (bug yang sama, sebab berbeda)
+- **Root cause**: cron `auto_sync.py` di production ternyata jalan lewat **crontab root**, sementara aplikasi web jalan sebagai user **salfanet** — dua UID Linux berbeda. Siapapun yang bikin file lock duluan, defaultnya cuma `644` (rw untuk pemilik, r saja untuk lainnya) karena umask — jadi user yang satunya tidak bisa tulis ke file itu untuk ambil lock
+
+#### Diperbaiki
+- `sync_lock.py`: file lock sekarang dibuat + `fchmod` eksplisit ke `0o666` (rw untuk semua user) setiap kali dibuka — `fchmod` tidak kena umask seperti mode di `os.open()`, jadi permission-nya konsisten world-writable siapapun yang membuatnya duluan
+- Test baru `test_lock_file_is_world_writable` — pastikan file lock selalu berakhir `0o666`, bukan hanya lolos di user yang sama seperti sebelumnya
+- **Status verifikasi live**: menyusul di entri berikutnya setelah deploy — lihat catatan verifikasi di bawah
+
+---
+
 ### 2026-09-03 — Sync Lock Tidak Berfungsi Lintas Proses Tanpa Redis (Akar Masalah Race Condition)
 
 #### Ditemukan — Bukti Nyata dari Log Production, Bukan Dugaan

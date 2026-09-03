@@ -53,6 +53,25 @@ def _lock_file_path(olt_id: int) -> str:
     return os.path.join(_FILE_LOCK_DIR, f'salfanet_sync_lock_olt_{olt_id}.lock')
 
 
+def _open_lock_file(path: str):
+    """Open (creating if needed) a lock file that's writable by any user.
+
+    auto_sync.py (cron) and the Flask app can run as different UIDs (e.g.
+    root cron vs a 'salfanet' service user) — a plain open() creates the
+    file honoring umask (usually 0644), so whichever process creates it
+    first locks the other one out with a permission error, silently
+    reintroducing the very cross-process race this lock exists to prevent.
+    Explicit fchmod (not subject to umask, unlike the os.open mode arg)
+    keeps it writable by everyone regardless of who creates it.
+    """
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o666)
+    try:
+        os.fchmod(fd, 0o666)
+    except OSError:
+        pass  # already 0o666 from a prior run, or we don't own it — fine either way
+    return os.fdopen(fd, 'r+')
+
+
 def _get_redis():
     """Get Redis client. Returns None if unavailable."""
     global _redis_client, _redis_checked
@@ -113,7 +132,7 @@ def acquire_sync_lock(olt_id: int, timeout: float = 0.1) -> Optional[str]:
             path = _lock_file_path(olt_id)
             deadline = time.time() + timeout
             while True:
-                fh = open(path, 'w')
+                fh = _open_lock_file(path)
                 try:
                     fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except OSError:
@@ -123,6 +142,8 @@ def acquire_sync_lock(olt_id: int, timeout: float = 0.1) -> Optional[str]:
                         return None
                     time.sleep(0.05)
                     continue
+                fh.seek(0)
+                fh.truncate()
                 fh.write(f'{token}\n{os.getpid()}\n{time.time()}\n')
                 fh.flush()
                 with _local_meta_lock:
@@ -244,7 +265,7 @@ def is_sync_locked(olt_id: int) -> bool:
             if olt_id in _file_locks:
                 return True  # held by this process
         try:
-            fh = open(_lock_file_path(olt_id), 'a+')
+            fh = _open_lock_file(_lock_file_path(olt_id))
         except OSError:
             return False
         try:
