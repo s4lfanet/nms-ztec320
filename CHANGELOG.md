@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — Warna Tube/Core Dihapus dari ODP, Tetap Ada di ODC/OTB
+
+#### Diperbaiki
+- Diminta hapus catatan warna tube/core (mis. "Tube 1 Biru • Hijau") khusus di level ODP — menurut praktik lapangan, penandaan warna tube/core cuma relevan sampai ODC (core dari OTB), bukan dari ODC ke ODP
+- Dihapus di: list ODP, Tree view (baris ODP), dan form Tambah/Edit ODP (preview warna di bawah "Core from ODC"). Field "Fibers per Tube" di form ODC juga dihapus dari tampilan karena satu-satunya kegunaannya adalah menghitung warna yang baru saja dihapus itu
+- **Tidak diubah**: ODC tetap menampilkan warna tube/core untuk core dari OTB ("From: OTB-X (Core N) • Tube ... "), dan diagram port OTB/ODF tetap penuh dengan warna per core — sesuai standar TIA-598, cuma level ODP yang disederhanakan
+- **Diverifikasi**: dicek langsung di browser — ODC masih tampil warna, ODP dan form Tambah ODP sudah bersih tanpa catatan warna, nol error console
+
+---
+
 ### 2026-09-03 — Redesign Warna: Indigo Slate (dari Teal/Navy)
 
 #### Proses
