@@ -322,6 +322,27 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
   const { data: techData } = useQuery({ queryKey: ['technicians'], queryFn: api.technicians });
   const technicians: TechnicianData[] = techData?.technicians || [];
 
+  // Optional: assign each ONU straight to an ODP port at registration time
+  // (per-ONU, since each modem usually goes to a different customer's port).
+  const [odpAssignments, setOdpAssignments] = useState<Record<string, number | null>>({});
+  const { data: odpTreeData } = useQuery({
+    queryKey: ['ftth-tree'],
+    queryFn: async () => { const r = await fetch('/api/ftth/tree', { credentials: 'include' }); return r.json(); },
+  });
+  const odpPorts: Array<{ id: number; label: string }> = [];
+  {
+    const treeArr = Array.isArray(odpTreeData) ? odpTreeData : (odpTreeData?.tree || []);
+    for (const otb of treeArr) {
+      for (const odc of otb.odcs || []) {
+        for (const odp of odc.odps || []) {
+          for (const port of odp.ports || []) {
+            if (port.status === 'available') odpPorts.push({ id: port.id, label: `${odp.name} — Port ${port.port_number}` });
+          }
+        }
+      }
+    }
+  }
+
   // Fetch PON structure (slots/ports) from selected OLT
   const { data: ponStructure } = useQuery({
     queryKey: ['olt-pon-structure', data.oltId],
@@ -487,6 +508,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             wifi_config: isZte && (data.wifi.ssids || []).some(s => s.name) ? { ssids: data.wifi.ssids } : null,
             tr069_config: data.tr069.enabled ? data.tr069 : null,
             technician_id: data.technicianId,
+            odp_port_id: odpAssignments[onu.sn] || undefined,
             pon_port: onu.pon_port,
             is_epon: isEpon,
             register_mode: data.registerMode,
@@ -1196,7 +1218,20 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                 <span className="text-tx3">{i + 1}.</span>
                 <span className="font-mono font-semibold">{onu.sn}</span>
                 <span className="text-tx3">on {onu.pon_port}</span>
-                {data.namePrefix && <span className="text-accent ml-auto">{data.namePrefix}</span>}
+                <span className="ml-auto flex items-center gap-2">
+                  {data.namePrefix && <span className="text-accent">{data.namePrefix}</span>}
+                  {odpPorts.length > 0 && (
+                    <select
+                      value={odpAssignments[onu.sn] ?? ''}
+                      onChange={e => setOdpAssignments(prev => ({ ...prev, [onu.sn]: e.target.value ? Number(e.target.value) : null }))}
+                      className="input-field !h-7 !text-[11px] max-w-[220px]"
+                      title="Assign ODP port (optional)"
+                    >
+                      <option value="">— ODP (optional) —</option>
+                      {odpPorts.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                  )}
+                </span>
               </div>
             ))}
           </div>

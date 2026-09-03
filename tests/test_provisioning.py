@@ -564,6 +564,110 @@ class TestDbSyncOnSlotCollision:
             assert onu.name == 'NewName'
 
 
+class TestOptionalOdpAssignmentAtRegistration:
+    """Optional odp_port_id at registration time — links the new ONU straight
+    to an ODP port instead of requiring a separate manual step afterwards."""
+
+    def _make_odp_port(self, olt_id):
+        from models import FTTHOTB, FTTHODC, FTTHODP, FTTHODPPort
+        otb = FTTHOTB(name='OTB-Reg', total_cores=4)
+        db.session.add(otb); db.session.commit()
+        odc = FTTHODC(name='ODC-Reg', otb_id=otb.id, otb_core_number=1, total_cores=4)
+        db.session.add(odc); db.session.commit()
+        odp = FTTHODP(name='ODP-Reg', odc_id=odc.id, odc_core_number=1, total_ports=4)
+        db.session.add(odp); db.session.commit()
+        port = FTTHODPPort(odp_id=odp.id, port_number=1, status='available')
+        db.session.add(port); db.session.commit()
+        return port.id
+
+    def test_provision_unified_links_odp_port_for_new_onu(self, auth_client, test_olt):
+        with app.app_context():
+            port_id = self._make_odp_port(test_olt)
+
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.register_unified.return_value = (True, 'OK')
+            mock_cli.return_value = mock_tc
+            with patch('routes_onu._auto_sync_olt'), patch('routes_onu._auto_write_config'):
+                resp = auth_client.post('/api/provision/unified', json={
+                    'olt_id': test_olt, 'frame': 1, 'slot': 1, 'port': 5, 'onu_id': 1,
+                    'serial': 'ZTEGODP0001', 'onu_type': 'ZTE-F609', 'tcont_profile': '1G',
+                    'services': [{'service_type': 'internet', 'vlan': 100}],
+                    'register_mode': 'telnet', 'odp_port_id': port_id,
+                }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['success'] is True
+
+        with app.app_context():
+            from models import FTTHODPPort
+            onu = ONU.query.filter_by(olt_id=test_olt, frame=1, slot=1, port=5, onu_id=1).first()
+            port = db.session.get(FTTHODPPort, port_id)
+            assert onu is not None
+            assert port.onu_id == onu.id
+            assert port.status == 'used'
+
+    def test_provision_unified_without_odp_port_id_leaves_port_untouched(self, auth_client, test_olt):
+        """odp_port_id is optional — omitting it must not error or touch any port."""
+        with app.app_context():
+            port_id = self._make_odp_port(test_olt)
+
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.register_unified.return_value = (True, 'OK')
+            mock_cli.return_value = mock_tc
+            with patch('routes_onu._auto_sync_olt'), patch('routes_onu._auto_write_config'):
+                resp = auth_client.post('/api/provision/unified', json={
+                    'olt_id': test_olt, 'frame': 1, 'slot': 1, 'port': 6, 'onu_id': 1,
+                    'serial': 'ZTEGODP0002', 'onu_type': 'ZTE-F609', 'tcont_profile': '1G',
+                    'services': [{'service_type': 'internet', 'vlan': 100}],
+                    'register_mode': 'telnet',
+                }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['success'] is True
+
+        with app.app_context():
+            from models import FTTHODPPort
+            port = db.session.get(FTTHODPPort, port_id)
+            assert port.onu_id is None
+            assert port.status == 'available'
+
+    def test_provision_unified_odp_port_displaces_previous_occupant(self, auth_client, test_olt):
+        """Assigning an already-occupied port to a new ONU frees the old one —
+        a port holds at most one ONU, same rule as the manual assign action."""
+        with app.app_context():
+            port_id = self._make_odp_port(test_olt)
+            old_onu = ONU(olt_id=test_olt, frame=1, slot=1, port=7, onu_id=1, serial_number='OLDOCCUPANT')
+            db.session.add(old_onu); db.session.commit()
+            from models import FTTHODPPort
+            port = db.session.get(FTTHODPPort, port_id)
+            port.onu_id = old_onu.id
+            port.status = 'used'
+            db.session.commit()
+            old_onu_id = old_onu.id
+
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.register_unified.return_value = (True, 'OK')
+            mock_cli.return_value = mock_tc
+            with patch('routes_onu._auto_sync_olt'), patch('routes_onu._auto_write_config'):
+                resp = auth_client.post('/api/provision/unified', json={
+                    'olt_id': test_olt, 'frame': 1, 'slot': 1, 'port': 8, 'onu_id': 1,
+                    'serial': 'ZTEGODP0003', 'onu_type': 'ZTE-F609', 'tcont_profile': '1G',
+                    'services': [{'service_type': 'internet', 'vlan': 100}],
+                    'register_mode': 'telnet', 'odp_port_id': port_id,
+                }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['success'] is True
+
+        with app.app_context():
+            from models import FTTHODPPort
+            new_onu = ONU.query.filter_by(olt_id=test_olt, frame=1, slot=1, port=8, onu_id=1).first()
+            port = db.session.get(FTTHODPPort, port_id)
+            old_onu_reloaded = db.session.get(ONU, old_onu_id)
+            assert port.onu_id == new_onu.id  # displaced the old occupant
+            assert old_onu_reloaded.odp_port is None  # old ONU no longer linked to any port
+
+
 # ==================== CLI Injection Prevention ====================
 
 class TestCLIInjectionPrevention:

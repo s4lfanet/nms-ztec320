@@ -260,22 +260,7 @@ def update_onu(onu_id):
     if 'odp_port_id' in data:
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
-        from models import FTTHODPPort
-        # Unlink old ODP port if any
-        if onu.odp_port:
-            old_port = onu.odp_port
-            old_port.onu_id = None
-            old_port.status = 'available'
-        # Link new ODP port
-        new_port_id = data['odp_port_id']
-        if new_port_id:
-            new_port = db.session.get(FTTHODPPort, int(new_port_id))
-            if new_port:
-                # Free up the ONU currently on this port (if any)
-                if new_port.onu_id and new_port.onu_id != onu.id:
-                    new_port.onu_id = None
-                new_port.onu_id = onu.id
-                new_port.status = 'used'
+        _link_odp_port(onu, data['odp_port_id'])
         db.session.flush()
     db.session.commit()
     logger.info(f"[update_onu] DB committed for ONU {onu_id}, fields: {list(data.keys())}")
@@ -2205,6 +2190,26 @@ def format_speed(bps):
         return f'{bps:.0f} bps'
 
 
+def _link_odp_port(onu, odp_port_id):
+    """Link (or clear, if odp_port_id is falsy) an ONU to an ODP port.
+    Frees the ONU's previous port (if any) and displaces whatever ONU
+    already occupied the target port (if any) — a port holds at most one
+    ONU. Shared by the manual "assign ODP" action and optional ODP
+    selection during registration, so both go through the same logic."""
+    from models import FTTHODPPort
+    if onu.odp_port:
+        old_port = onu.odp_port
+        old_port.onu_id = None
+        old_port.status = 'available'
+    if odp_port_id:
+        new_port = db.session.get(FTTHODPPort, int(odp_port_id))
+        if new_port:
+            if new_port.onu_id and new_port.onu_id != onu.id:
+                new_port.onu_id = None
+            new_port.onu_id = onu.id
+            new_port.status = 'used'
+
+
 def _duplicate_serial_error(serial, olt_id, frame, slot, port, onu_id):
     """Reject registration if this physical modem (by serial) is already
     registered on a different slot — same slot is a legitimate re-register
@@ -2284,6 +2289,7 @@ def provision_unified():
     name = data.get('name', '')
     description = data.get('description', '')
     technician_id = data.get('technician_id')
+    odp_port_id = data.get('odp_port_id')  # optional: assign straight to an ODP port at registration time
 
     # Check register mode from request — SNMP or CLI (SSH/Telnet)
     use_snmp = data.get('register_mode', 'cli') == 'snmp' and olt.snmp_enabled
@@ -2375,6 +2381,9 @@ def provision_unified():
                     card='epon' if is_epon else '',
                 )
                 db.session.add(onu)
+                if odp_port_id:
+                    db.session.flush()  # need onu.id before it can be linked to a port
+                    _link_odp_port(onu, odp_port_id)
             else:
                 # Same rationale as the CLI path below: the SNMP command already
                 # succeeded for this new serial, so don't leave a stale DB row.
@@ -2390,6 +2399,8 @@ def provision_unified():
                 existing.onu_type = onu_type
                 existing.technician_id = technician_id or None
                 existing.card = 'epon' if is_epon else ''
+                if odp_port_id:
+                    _link_odp_port(existing, odp_port_id)
             db.session.commit()
 
             # Trigger background sync + auto-write config
@@ -2432,6 +2443,9 @@ def provision_unified():
                 card='epon' if is_epon else '',
             )
             db.session.add(onu)
+            if odp_port_id:
+                db.session.flush()  # need onu.id before it can be linked to a port
+                _link_odp_port(onu, odp_port_id)
         else:
             # The OLT command above already succeeded for this new serial, so this
             # slot's DB row is now stale (still holding whatever it had before) —
@@ -2448,6 +2462,8 @@ def provision_unified():
             existing.onu_type = onu_type
             existing.technician_id = technician_id or None
             existing.card = 'epon' if is_epon else ''
+            if odp_port_id:
+                _link_odp_port(existing, odp_port_id)
         db.session.commit()
 
         # Trigger background sync to update status from OLT
@@ -2507,10 +2523,14 @@ def pre_register_onu():
         if success:
             log_action('onu_register', 'onu', target=f'gpon-onu_{frame}/{slot}/{port}:{onu_id}', detail=f'Registered SN={serial} on {olt.name} as {onu_type} (SNMP)')
             technician_id = data.get('technician_id')
-            if technician_id:
+            odp_port_id = data.get('odp_port_id')
+            if technician_id or odp_port_id:
                 onu = ONU.query.filter_by(olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id).first()
                 if onu:
-                    onu.technician_id = technician_id
+                    if technician_id:
+                        onu.technician_id = technician_id
+                    if odp_port_id:
+                        _link_odp_port(onu, odp_port_id)
                     db.session.commit()
 
             # G5 fix: SNMP can only do basic registration. Auto-fallback to CLI for template config.
@@ -2597,12 +2617,16 @@ def pre_register_onu():
     if success:
         prefix = 'epon-onu' if is_epon else 'gpon-onu'
         log_action('onu_register', 'onu', target=f'{prefix}_{frame}/{slot}/{port}:{onu_id}', detail=f'Registered SN={serial} on {olt.name} as {onu_type}')
-        # Save technician_id to the ONU record if provided
+        # Save technician_id / odp_port_id to the ONU record if provided
         technician_id = data.get('technician_id')
-        if technician_id:
+        odp_port_id = data.get('odp_port_id')
+        if technician_id or odp_port_id:
             onu = ONU.query.filter_by(olt_id=olt_id, frame=frame, slot=slot, port=port, onu_id=onu_id).first()
             if onu:
-                onu.technician_id = technician_id
+                if technician_id:
+                    onu.technician_id = technician_id
+                if odp_port_id:
+                    _link_odp_port(onu, odp_port_id)
                 db.session.commit()
         # Auto-save config to startup-config so changes persist across reboots
         _auto_write_config(olt_id)
