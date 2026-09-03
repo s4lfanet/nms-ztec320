@@ -1,7 +1,13 @@
 """Per-OLT sync lock — prevents concurrent syncs of the same OLT.
 
 Uses Redis SET NX EX for distributed locking when Redis is available.
-Falls back to in-memory threading.Lock when Redis is unavailable.
+Without Redis, falls back to an flock()-based file lock on POSIX (this is
+still cross-process — auto_sync.py's cron process and the Flask app's own
+process otherwise can't see each other's locks at all, which let a manual
+"Sync" click race a running auto-sync cycle undetected and hit the OLT
+concurrently from two processes). On Windows (no fcntl — local dev only)
+falls back further to an in-memory threading.Lock, which is single-process
+but fine there since dev doesn't run the cron alongside the app.
 
 All three sync entry points use this:
 1. services_sync.py — UI-triggered sync (start_single_sync, start_sync_all)
@@ -17,20 +23,34 @@ import time
 import uuid
 from typing import Optional
 
+try:
+    import fcntl
+    _HAS_FCNTL = True
+except ImportError:
+    _HAS_FCNTL = False
+
 logger = logging.getLogger(__name__)
 
 _LOCK_TTL = 600  # 10 minutes
 _LOCK_KEY_PREFIX = 'sync_lock:olt'
+_FILE_LOCK_DIR = os.environ.get('SYNC_LOCK_DIR', '/tmp')
 
-# In-memory fallback locks (per-OLT)
+# In-memory fallback locks (per-OLT) — used only when fcntl isn't available
 _local_locks: dict[int, threading.Lock] = {}
 _local_lock_holders: dict[int, str] = {}
 _local_lock_timestamps: dict[int, float] = {}
 _local_meta_lock = threading.Lock()
 
+# Open file handles for held flock()-based locks (olt_id -> (file, token))
+_file_locks: dict[int, tuple] = {}
+
 # Redis client (lazy init)
 _redis_client = None
 _redis_checked = False
+
+
+def _lock_file_path(olt_id: int) -> str:
+    return os.path.join(_FILE_LOCK_DIR, f'salfanet_sync_lock_olt_{olt_id}.lock')
 
 
 def _get_redis():
@@ -86,9 +106,33 @@ def acquire_sync_lock(olt_id: int, timeout: float = 0.1) -> Optional[str]:
                     return None
                 time.sleep(0.05)
         except Exception as e:
-            logger.warning(f"Redis sync lock failed, falling back to in-memory: {e}")
+            logger.warning(f"Redis sync lock failed, falling back to file lock: {e}")
 
-    # In-memory fallback
+    if _HAS_FCNTL:
+        try:
+            path = _lock_file_path(olt_id)
+            deadline = time.time() + timeout
+            while True:
+                fh = open(path, 'w')
+                try:
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    fh.close()
+                    if time.time() >= deadline:
+                        logger.debug(f"Sync lock NOT acquired for OLT {olt_id} (already locked)")
+                        return None
+                    time.sleep(0.05)
+                    continue
+                fh.write(f'{token}\n{os.getpid()}\n{time.time()}\n')
+                fh.flush()
+                with _local_meta_lock:
+                    _file_locks[olt_id] = (fh, token)
+                logger.debug(f"Sync lock acquired for OLT {olt_id} (file lock, token={token[:8]})")
+                return token
+        except OSError as e:
+            logger.warning(f"File-based sync lock failed for OLT {olt_id}, falling back to in-memory: {e}")
+
+    # In-memory fallback (no fcntl — e.g. Windows dev; single-process only)
     with _local_meta_lock:
         if olt_id not in _local_locks:
             _local_locks[olt_id] = threading.Lock()
@@ -149,7 +193,24 @@ def release_sync_lock(olt_id: int, token: str) -> bool:
             logger.warning(f"Redis sync lock release failed: {e}")
             return False
 
-    # In-memory fallback
+    if _HAS_FCNTL:
+        with _local_meta_lock:
+            entry = _file_locks.get(olt_id)
+        if not entry or entry[1] != token:
+            logger.warning(f"Sync lock release failed for OLT {olt_id} (token mismatch)")
+            return False
+        fh, _ = entry
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        fh.close()
+        with _local_meta_lock:
+            _file_locks.pop(olt_id, None)
+        logger.debug(f"Sync lock released for OLT {olt_id} (file lock)")
+        return True
+
+    # In-memory fallback (no fcntl)
     with _local_meta_lock:
         holder = _local_lock_holders.get(olt_id)
         if holder != token:
@@ -177,6 +238,23 @@ def is_sync_locked(olt_id: int) -> bool:
             return r.exists(key) > 0
         except Exception:
             pass
+
+    if _HAS_FCNTL:
+        with _local_meta_lock:
+            if olt_id in _file_locks:
+                return True  # held by this process
+        try:
+            fh = open(_lock_file_path(olt_id), 'a+')
+        except OSError:
+            return False
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            return False
+        except OSError:
+            return True  # held by another process
+        finally:
+            fh.close()
 
     with _local_meta_lock:
         return olt_id in _local_lock_holders

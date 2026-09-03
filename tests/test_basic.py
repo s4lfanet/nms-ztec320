@@ -643,6 +643,39 @@ class TestSyncLock:
         release_sync_lock(996, token)
         assert is_sync_locked(996) is False
 
+    @pytest.mark.skipif(os.name != 'posix', reason='file lock (fcntl) only used on POSIX; Windows dev falls back to a single-process lock')
+    def test_lock_blocks_across_separate_processes(self):
+        """Regression test for a bug found live in production: without Redis,
+        the sync lock fell back to a threading.Lock, which only serializes
+        within ONE process. auto_sync.py's cron and the Flask app's own
+        manual-sync route are two separate OS processes, so they never saw
+        each other's lock — a manual "Sync" click could race a running
+        auto-sync cycle undetected and hit the same OLT concurrently.
+        The flock()-based file lock must actually block a second process."""
+        import multiprocessing
+        from sync_lock import acquire_sync_lock, release_sync_lock
+
+        olt_id = 88888
+        token = acquire_sync_lock(olt_id, timeout=0)
+        assert token is not None
+        try:
+            ctx = multiprocessing.get_context('fork')
+            q = ctx.Queue()
+            p = ctx.Process(target=_child_try_acquire_lock, args=(olt_id, q))
+            p.start()
+            p.join(timeout=5)
+            acquired_in_child = q.get(timeout=1)
+            assert acquired_in_child is False, 'a separate process acquired a lock this process already holds'
+        finally:
+            release_sync_lock(olt_id, token)
+
+
+def _child_try_acquire_lock(olt_id, result_queue):
+    """Module-level (picklable) worker for test_lock_blocks_across_separate_processes."""
+    from sync_lock import acquire_sync_lock
+    token = acquire_sync_lock(olt_id, timeout=0)
+    result_queue.put(token is not None)
+
 
 class TestNewOltAutoSync:
     """A newly-created OLT should get an immediate full sync instead of
