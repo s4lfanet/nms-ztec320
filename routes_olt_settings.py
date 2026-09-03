@@ -1220,6 +1220,18 @@ def create_olt():
     db.session.add(olt)
     db.session.commit()
     log_action('olt_create', 'olt', target=olt.name, detail=f'Created OLT {olt.name} ({olt.ip_address})')
+
+    # Kick off a full sync immediately so a newly-added OLT doesn't sit empty
+    # until the next auto-sync cron tick (up to 5 minutes away). auto_sync.py
+    # would force a full sync anyway on its first run for this OLT (last_full_sync
+    # is None), so this just does that same first sync right away instead of
+    # making the admin wait or remember to click "Sync" manually.
+    try:
+        from flask import current_app
+        start_single_sync(current_app._get_current_object(), olt.id, light=False)
+    except Exception as e:
+        logger.warning(f"Could not start initial sync for new OLT {olt.id}: {e}")
+
     return jsonify({'success': True, 'id': olt.id})
 
 

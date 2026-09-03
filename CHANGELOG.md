@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — OLT Baru Langsung Full-Sync, Tidak Nunggu Cron
+
+#### Diaudit — Peran Redis dan Sync Pertama untuk OLT Baru
+- **Konteks**: ditanya apakah masalah sync OLT (khususnya OLT yang pertama kali ditambahkan) berhubungan dengan Redis, karena "harusnya semua data OLT masuk ke Redis". Setelah ditelusuri: **Redis di sistem ini sama sekali tidak menyimpan data OLT/ONU** — grep ke seluruh kode cuma nemu Redis dipakai untuk 2 hal: distributed lock (`sync_lock.py`, cegah 2 proses sync bentrok di OLT yang sama) dan cache pendek (`cache.py`, TTL 15 detik untuk dashboard). Semua data ONU/card/port tetap ke database SQL, bukan Redis
+- **Ditemukan**: `create_olt()` (`routes_olt_settings.py`) cuma insert row OLT ke DB, tidak trigger sync apapun. OLT baru jadi kosong sampai admin klik "Sync" manual, atau nunggu cron 5-menitan (`auto_sync.py`) — yang untungnya sudah benar akan langsung full-sync (bukan light/SNMP-only) untuk OLT yang belum pernah `last_full_sync`, jadi gap-nya cuma maksimal ~5 menit, bukan 6 jam seperti dugaan awal
+
+#### Ditambahkan — Auto Full-Sync Begitu OLT Baru Disimpan
+- `create_olt()` sekarang langsung memanggil `start_single_sync(..., light=False)` setelah OLT tersimpan — data ONU/card/port/uplink langsung mulai ditarik saat itu juga, tidak perlu nunggu cron atau klik manual
+- Kalau trigger sync-nya sendiri gagal (exception), pembuatan OLT tetap sukses — sync awal ini kemudahan tambahan, bukan syarat OLT bisa dibuat
+- **Diverifikasi**: 2 test baru (trigger terpanggil dengan `light=False` + argumen olt_id yang benar; kegagalan trigger tidak menggagalkan pembuatan OLT) — 136/136 total lolos. Dites juga langsung ke server dev sungguhan (bukan cuma mock): buat OLT baru via API, cek record `OLTSyncStatus` — status langsung `running` dengan pesan "Connecting SNMP..." dalam hitungan detik, tanpa nunggu cron
+
+---
+
 ### 2026-09-03 — Audit & Perbaikan Multi-Registrasi ONU (Tipe Modem Sama)
 
 #### Diaudit — Registrasi Banyak ONU Sekaligus Punya 3 Celah
