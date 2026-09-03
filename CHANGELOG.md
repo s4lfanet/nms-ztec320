@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — Redesign Warna: Indigo Slate (dari Teal/Navy)
+
+#### Proses
+- Diminta redesign tampilan UI/UX dan komposisi warna. Sebelum menyentuh kode, dibuatkan dulu mockup preview (Claude Design canvas, terpisah dari aplikasi) untuk 3 halaman kunci (Dashboard, All ONUs, OLT Settings), lalu 3 arah warna berbeda untuk dipilih: **A — Fiber Signal** (teal/navy + glass-blur, identitas lama), **B — Amber Ops** (charcoal + amber, kartu flat industrial), **C — Indigo Slate** (slate gelap + indigo, kartu flat + shadow, kesan SaaS modern). User pilih **C**
+- Setelah dipilih, diterapkan ke kode sungguhan (bukan cuma mockup) lewat token warna terpusat di `frontend/src/index.css` — karena hampir semua halaman memakai class bersama (`.glass-card`, `.btn-primary`, `.badge-*`, dst.) yang diturunkan dari CSS custom properties, satu perubahan token merambat konsisten ke seluruh aplikasi tanpa perlu edit tiap halaman satu-satu
+
+#### Diubah
+- Palet warna: `--bg-primary` navy `#0B1426` → slate nyaris hitam `#0A0C14`; aksen `--color-accent` teal `#00D9C0` → indigo `#818CF8`; status colors (success/warning/danger) disesuaikan ke varian yang serasi dengan latar baru (`#34D399`/`#FBBF24`/`#F87171`) — tetap jelas beda dari warna aksen
+- `.glass-card`: dari kartu semi-transparan dengan `backdrop-filter: blur(16px)` (glass-morphism) menjadi kartu solid flat (`#12141F`) dengan border tipis + `box-shadow`, radius 14px → 10px — lebih ringan dirender dan lebih crisp
+- Signature "fiber-beam" (garis gradient animasi di atas kartu) dipensiunkan — dibuat jadi no-op CSS supaya 3 file yang masih pakai className-nya tidak perlu diedit satu-satu, tapi efeknya sudah tidak tampil, konsisten dengan arah kartu flat yang baru
+- `meta theme-color` di `index.html` disesuaikan ke warna latar baru (status bar browser mobile ikut berubah)
+- **Tidak diubah**: light theme (`html.light` overrides) — di luar scope, belum direview/disetujui user untuk arah indigo; token `--color-rx-purple` sengaja TIDAK disamakan dengan `--color-rx-orange` meski sempat begitu di draft mockup awal — keduanya dipakai sebagai pilihan warna independen di fitur kustomisasi RX power (`Customization.tsx`), menyamakan keduanya akan merusak fitur itu
+- **Diverifikasi**: build production sukses, 0 TypeScript error (murni perubahan CSS/token, tidak menyentuh logic), dicek langsung di browser sungguhan pada 3 halaman yang sama seperti mockup — indigo konsisten di sidebar/tombol/badge/kartu, nol error console
+
+---
+
 ### 2026-09-03 — File Lock Tadi Malah Terkunci Sendiri Antar User (root cron vs salfanet app)
 
 #### Ditemukan Saat Verifikasi Live di Production — Bukan dari Test
