@@ -204,17 +204,18 @@ function ServiceTypeBadge({ type }: { type: string }) {
 
 // ==================== Script Generator ====================
 
-function generateScript(state: WizardState): string {
+function generateScript(state: WizardState, resolvedAutoId: number | null): string {
   const lines: string[] = [];
+  const effectiveId = state.onuIdMode === 'custom' ? state.customOnuId : String(resolvedAutoId ?? '?');
   const onuIf = state.isEpon
-    ? `epon-onu_${state.frame}/${state.slot}/${state.port}:${state.onuIdMode === 'custom' ? state.customOnuId : '1'}`
-    : `gpon-onu_${state.frame}/${state.slot}/${state.port}:${state.onuIdMode === 'custom' ? state.customOnuId : '1'}`;
+    ? `epon-onu_${state.frame}/${state.slot}/${state.port}:${effectiveId}`
+    : `gpon-onu_${state.frame}/${state.slot}/${state.port}:${effectiveId}`;
 
   // Register
   if (state.isEpon) {
-    lines.push(`epon-onu ${state.frame}/${state.slot}/${state.port}:${state.onuIdMode === 'custom' ? state.customOnuId : '1'} type ${state.onuType} mac ${state.serialNumber}`);
+    lines.push(`epon-onu ${state.frame}/${state.slot}/${state.port}:${effectiveId} type ${state.onuType} mac ${state.serialNumber}`);
   } else {
-    lines.push(`gpon-onu ${state.frame}/${state.slot}/${state.port}:${state.onuIdMode === 'custom' ? state.customOnuId : '1'} type ${state.onuType} sn ${state.serialNumber}`);
+    lines.push(`gpon-onu ${state.frame}/${state.slot}/${state.port}:${effectiveId} type ${state.onuType} sn ${state.serialNumber}`);
   }
   if (state.name) lines.push(`  name ${state.name}`);
   if (state.description) lines.push(`  description ${state.description}`);
@@ -363,6 +364,8 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
   const [submitting, setSubmitting] = useState(false);
   const [showScript, setShowScript] = useState(false);
   const [showPass, setShowPass] = useState<Record<string, boolean>>({});
+  const [resolvedAutoId, setResolvedAutoId] = useState<number | null>(null);
+  const [resolvingAutoId, setResolvingAutoId] = useState(false);
 
   const { data: dashData } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard });
   const olts = dashData?.olts || [];
@@ -377,6 +380,25 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
     const navState = location.state as { prefillOnu?: unknown } | null;
     if (navState?.prefillOnu && step === 1) setStep(3);
   }, [location.state, step]);
+
+  // "Auto (next available)" ONU ID mode: resolve the actual next-free ID
+  // from the OLT/DB instead of silently defaulting to 1 (which collided
+  // whenever a port already had ONU #1 registered).
+  useEffect(() => {
+    if (state.onuIdMode !== 'auto' || !state.oltId) { setResolvedAutoId(null); return; }
+    let cancelled = false;
+    setResolvingAutoId(true);
+    const params = new URLSearchParams({
+      olt_id: String(state.oltId), frame: String(state.frame), slot: String(state.slot),
+      port: String(state.port), is_epon: String(state.isEpon),
+    });
+    fetch(`/api/onu/next-id?${params}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setResolvedAutoId(d.success ? d.onu_id : null); })
+      .catch(() => { if (!cancelled) setResolvedAutoId(null); })
+      .finally(() => { if (!cancelled) setResolvingAutoId(false); });
+    return () => { cancelled = true; };
+  }, [state.onuIdMode, state.oltId, state.frame, state.slot, state.port, state.isEpon]);
 
   // Fetch OLT data when OLT selected
   useEffect(() => {
@@ -512,12 +534,16 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
   }, [step, mode, selectedFromScan]);
 
   const submit = async (dryRun: boolean) => {
+    if (!dryRun && state.onuIdMode === 'auto' && !resolvedAutoId) {
+      toast.error('Could not determine the next available ONU ID — pick "Custom" or wait for auto-detect to finish');
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = {
         olt_id: state.oltId,
         frame: state.frame, slot: state.slot, port: state.port,
-        onu_id: state.onuIdMode === 'custom' ? parseInt(state.customOnuId) : 1,
+        onu_id: state.onuIdMode === 'custom' ? parseInt(state.customOnuId) : (resolvedAutoId ?? 1),
         onu_type: state.isEpon && state.onuType === 'All' ? 'ALL-EPON' : state.onuType,
         serial: state.serialNumber,
         vlan: state.services[0]?.vlan_mode === 'untag' ? 0 : parseInt(state.services[0]?.vlans[0] || '100'),
@@ -566,7 +592,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
     setSubmitting(false);
   };
 
-  const script = generateScript(state);
+  const script = generateScript(state, resolvedAutoId);
 
   // ==================== Render ====================
 
@@ -785,7 +811,11 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="onuid" checked={state.onuIdMode === 'auto'} onChange={() => update('onuIdMode', 'auto')} />
-                  <span className="text-sm">Auto (next available)</span>
+                  <span className="text-sm">
+                    Auto (next available{state.onuIdMode === 'auto' && (
+                      resolvingAutoId ? '…' : resolvedAutoId ? `: ${resolvedAutoId}` : ': unavailable'
+                    )})
+                  </span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="onuid" checked={state.onuIdMode === 'custom'} onChange={() => update('onuIdMode', 'custom')} />
@@ -1113,7 +1143,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
               <InfoBox label="ONU Type" value={state.onuType} />
               <InfoBox label="PON Type" value={state.isEpon ? 'EPON' : 'GPON'} />
               <InfoBox label="PON Port" value={`${state.frame}/${state.slot}/${state.port}`} />
-              <InfoBox label="ONU ID" value={state.onuIdMode === 'custom' ? `Custom: ${state.customOnuId}` : 'Auto'} />
+              <InfoBox label="ONU ID" value={state.onuIdMode === 'custom' ? `Custom: ${state.customOnuId}` : `Auto: ${resolvedAutoId ?? '—'}`} />
               <InfoBox label="VEIP" value={state.useVeip ? 'ON' : 'OFF'} />
               <InfoBox label="TCONT" value={state.tcontProfile || '-'} />
               <InfoBox label="Traffic" value={state.trafficProfile || 'None'} />
