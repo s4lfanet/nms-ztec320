@@ -98,6 +98,13 @@ h1, h2, h3, h4, h5, h6,
   transition: box-shadow 0.3s ease;
 }
 
+/* Dark-mode Leaflet basemap: standard OpenStreetMap tiles (no API key) inverted
+   to a dark look. Scoped to this tile layer's own pane only — markers, popups
+   and lines live in separate Leaflet panes and are unaffected. */
+.map-tiles-dark {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.3);
+}
+
 /* ─── Accessibility: Focus Ring ─── */
 *:focus-visible {
   outline: none;

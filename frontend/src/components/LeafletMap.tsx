@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/utils';
 
-// CartoDB dark basemap — matches the app's dark-only theme.
-const TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+// Standard OpenStreetMap tiles — free, no API key. CartoDB's free dark basemap
+// (formerly used here) started requiring a registered API key; this avoids that
+// dependency entirely. Dark look comes from a CSS invert filter (.map-tiles-dark
+// in index.css) applied only to this tile layer's own pane, not to markers/popups.
+const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 /**
  * LeafletMap — reusable interactive Leaflet map component.
@@ -187,8 +190,9 @@ export function LeafletMap({
     });
 
     tileLayerRef.current = L.tileLayer(TILE_URL, {
-      attribution: '© OpenStreetMap contributors © CARTO',
+      attribution: '© OpenStreetMap contributors',
       maxZoom: 19,
+      className: 'map-tiles-dark',
     }).addTo(mapRef.current);
 
     layerRef.current = L.layerGroup().addTo(mapRef.current);

@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — FTTH Map: Ganti Tile dari CartoDB (Butuh API Key) ke OpenStreetMap
+
+#### Diperbaiki
+- User laporkan peta FTTH tiba-tiba muncul watermark "API KEY REQUIRED" di seluruh tile. Ternyata bukan bug — CartoDB baru mewajibkan API key terdaftar untuk basemap gratis mereka (`basemaps.cartocdn.com`), termasuk style dark yang dipakai `LeafletMap.tsx`
+- Daripada gantung ke API key pihak ketiga (dan bisa kena masalah kebijakan serupa lagi ke depannya), diganti ke tile OpenStreetMap standar (`tile.openstreetmap.org`) yang sudah dipakai duluan di `LocationPicker.tsx` — gratis permanen, tanpa registrasi/API key
+- Tampilan dark dipertahankan lewat CSS filter (`invert + hue-rotate + brightness/contrast/saturate`) yang di-scope cuma ke pane tile lewat opsi `className` Leaflet — tidak menyentuh warna marker/popup/garis yang berada di pane terpisah
+- **Diverifikasi**: build sukses, dicek langsung di browser (Playwright) — peta tampil gelap tanpa watermark, atribusi OSM benar, nol error console
+
+---
+
 ### 2026-09-03 — Assign ODP Port (Opsional) Saat Registrasi ONU
 
 #### Ditambahkan
