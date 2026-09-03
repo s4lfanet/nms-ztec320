@@ -4,6 +4,20 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — Sync Lock Tidak Berfungsi Lintas Proses Tanpa Redis (Akar Masalah Race Condition)
+
+#### Ditemukan — Bukti Nyata dari Log Production, Bukan Dugaan
+- Diminta cek ulang log karena dicurigai masih ada race condition antara sync manual dan otomatis. Dicek `ActionLog` + `journalctl` production: sync manual jam **15:25:35** diterima (`200 OK`) — padahal cron `auto_sync.py` **masih jalan** sinkron OLT yang sama sejak 15:25:02 (baru selesai 15:26:15). Seharusnya lock menolak ini
+- **Root cause**: production **tidak punya Redis aktif** (`REDIS_URL` di-comment di `.env`, `redis-server` tidak jalan). `sync_lock.py` didesain fallback ke lock in-memory (`threading.Lock`) kalau Redis tidak ada — tapi lock in-memory itu **cuma berlaku dalam satu proses Python**. `auto_sync.py` (cron, proses baru tiap 5 menit) dan aplikasi web `salfanet-nms` (proses long-running terpisah) adalah **dua proses yang berbeda** — lock mereka tidak pernah saling melihat. Hasilnya: sync manual dari web UI bisa nyelonong nembak SNMP/CLI ke OLT yang sama persis saat cron sedang melakukan hal yang sama — dua sesi SNMP konkuren ke satu OLT dari proses berbeda, kemungkinan besar penyebab anomali "cuma 66 dari 157 ONU" dan `Segmentation fault` yang ditemukan sebelumnya
+
+#### Diperbaiki
+- `sync_lock.py`: fallback tanpa Redis sekarang pakai **file lock (`flock`)** di POSIX/Linux — ini bekerja lintas proses (beda dari `threading.Lock`), memakai teknik yang sama seperti yang sudah dipakai `auto_sync.py` sendiri untuk cegah tumpang-tindih antar cron run. Tidak perlu install Redis untuk memperbaiki ini
+- Windows (dev lokal, tidak ada `fcntl`) tetap pakai lock in-memory lama — tidak ada perubahan perilaku di lokal
+- Lock file otomatis lepas kalau proses pemegangnya mati/crash (bawaan OS untuk `flock`, tidak perlu logic TTL manual seperti fallback in-memory)
+- **Diverifikasi**: test baru `test_lock_blocks_across_separate_processes` — betul-betul spawn proses OS terpisah (bukan cuma thread) dan pastikan proses kedua **gagal** ambil lock yang sudah dipegang proses pertama. Jalan di CI Linux (skip otomatis di Windows dev, sesuai platform lock yang dipakai). 141 test lain tetap lolos (perilaku Windows dev tidak berubah)
+
+---
+
 ### 2026-09-03 — Total ONU di Dashboard Sempat Salah Setelah Auto-Sync yang Terpotong Sebagian
 
 #### Ditemukan Saat Live-Monitoring Production — Bukan dari Audit Kode
