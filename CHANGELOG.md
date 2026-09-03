@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — Audit & Perbaikan Multi-Registrasi ONU (Tipe Modem Sama)
+
+#### Diaudit — Registrasi Banyak ONU Sekaligus Punya 3 Celah
+- **Mode "Auto (next available)" di ONU Wizard ternyata palsu**: apapun yang dipilih user, payload yang dikirim ke backend selalu `onu_id: 1` (`OnuWizard.tsx:520` sebelum fix) — tidak pernah benar-benar mengecek ID mana yang kosong di port itu. Daftarkan 2 ONU tipe sama di port yang sama pakai mode Auto → keduanya coba pakai ID 1
+- **Tabrakan ID di-skip diam-diam**: kalau slot `olt/frame/slot/port/onu_id` itu ternyata sudah ada row di DB, perintah registrasi tetap dikirim ke OLT dan sukses — tapi baris DB baru tidak pernah ditulis, tanpa pesan error apapun ke user. OLT dan database jadi tidak sinkron
+- **Tidak ada pengecekan serial number duplikat sama sekali** — modem fisik yang sama (SN sama) bisa didaftarkan berkali-kali di port/OLT berbeda, `serial_number` di model cuma punya index biasa bukan constraint unik
+- RegisterWizard (alur registrasi massal yang sebenarnya) dicek terpisah dan **aman** — loop registrasi sekuensial tanpa bug shared-state, alokasi ID di `scan-unconfigured` sudah query live ke OLT/DB per-port (bukan counter global)
+
+#### Diperbaiki
+- **API baru** `GET /api/onu/next-id` — resolusi ID kosong sungguhan: coba live-query ke OLT dulu (`get_next_available_onu_id`), fallback ke cek ID terpakai di DB kalau OLT tidak bisa diakses. Dipakai OnuWizard saat mode "Auto" dipilih — radio button sekarang menampilkan angka ID yang benar-benar akan dipakai (`Auto (next available: 2)`), bukan cuma label statis. Submit diblokir dengan pesan jelas kalau resolusi ID gagal, alih-alih diam-diam jatuh balik ke ID 1
+- **Tabrakan slot sekarang di-update, bukan di-skip**: kalau `provision_unified` menemukan row lama di slot yang sama, baris itu di-update mengikuti registrasi baru (serial/nama/tipe/teknisi) plus dicatat sebagai warning di log — DB tidak lagi diam-diam ketinggalan dari kondisi OLT sungguhan
+- **Penolakan serial number duplikat**: registrasi ditolak (`409`) kalau serial itu sudah terdaftar di slot lain manapun (OLT/frame/slot/port/onu_id berbeda), dengan pesan yang menyebutkan lokasi lama supaya user bisa deregister dulu. Re-register ke slot yang sama persis (mis. re-flash modem) tetap diizinkan
+- **Diverifikasi**: 5 test baru (resolusi ID via CLI live-query, fallback ke DB, tolak SN duplikat di slot lain, izinkan re-register slot sama, update-in-place saat tabrakan slot) — 134/134 test lolos total. Dites juga di browser sungguhan: seed ONU di port 1/1/1, buka Pre-config Wizard, isi serial baru di port yang sama → radio "Auto" benar menampilkan "next available: 2", nol error console
+
+---
+
 ### 2026-09-03 — Warna Tube/Core Otomatis (Standar TIA-598) di Diagram OTB/ODC/ODP
 
 #### Ditambahkan — Penentuan Warna Core Ala NetBox Custom Field, Dihitung Otomatis dari Nomor Core

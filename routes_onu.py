@@ -2192,6 +2192,66 @@ def format_speed(bps):
         return f'{bps:.0f} bps'
 
 
+def _duplicate_serial_error(serial, olt_id, frame, slot, port, onu_id):
+    """Reject registration if this physical modem (by serial) is already
+    registered on a different slot — same slot is a legitimate re-register
+    and is left to the normal update-in-place path. Returns an error message
+    string, or None if there's no conflict."""
+    if not serial:
+        return None
+    dup = ONU.query.filter(
+        ONU.serial_number == serial,
+        db.or_(ONU.olt_id != olt_id, ONU.frame != frame, ONU.slot != slot,
+               ONU.port != port, ONU.onu_id != onu_id)
+    ).first()
+    if not dup:
+        return None
+    prefix = 'epon-onu' if dup.card == 'epon' else 'gpon-onu'
+    where = f'{dup.olt.name if dup.olt else dup.olt_id} {prefix}_{dup.frame}/{dup.slot}/{dup.port}:{dup.onu_id}'
+    return (f'Serial {serial} is already registered on {where} ("{dup.name}"). '
+            f'Deregister it there first if you are moving this modem.')
+
+
+def _next_available_onu_id(olt, frame, slot, port, is_epon=False):
+    """Resolve the next free ONU ID (1-128) on a PON port. Prefers a live CLI
+    query (reflects true OLT state) and falls back to the DB's used-ID set
+    when CLI isn't available or the live query fails."""
+    if olt.cli_enabled and olt.cli_username:
+        try:
+            from snmp_collector import create_cli_collector
+            tc = create_cli_collector(olt)
+            next_id = tc.get_next_available_onu_id(frame, slot, port, is_epon=is_epon)
+            if next_id:
+                return next_id
+        except Exception as e:
+            logger.warning(f"_next_available_onu_id: live CLI query failed, falling back to DB: {e}")
+    used = {o.onu_id for o in ONU.query.filter_by(olt_id=olt.id, frame=frame, slot=slot, port=port).all()}
+    for onu_id in range(1, 129):
+        if onu_id not in used:
+            return onu_id
+    return None
+
+
+@bp.route('/api/onu/next-id', methods=['GET'])
+@permission_required('add_onu')
+def onu_next_id():
+    """Next free ONU ID on a PON port — used by the registration wizards'
+    'Auto (next available)' mode so it actually resolves an ID instead of
+    always sending 1."""
+    olt_id = request.args.get('olt_id', type=int)
+    olt = db.session.get(OLT, olt_id) if olt_id else None
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    frame = request.args.get('frame', 1, type=int)
+    slot = request.args.get('slot', 1, type=int)
+    port = request.args.get('port', 1, type=int)
+    is_epon = request.args.get('is_epon', 'false').lower() == 'true'
+    next_id = _next_available_onu_id(olt, frame, slot, port, is_epon=is_epon)
+    if next_id is None:
+        return jsonify({'success': False, 'message': 'No free ONU ID on this port (1-128 all used)'}), 409
+    return jsonify({'success': True, 'onu_id': next_id})
+
+
 @bp.route('/api/provision/unified', methods=['POST'])
 @permission_required('add_onu')
 def provision_unified():
@@ -2235,6 +2295,9 @@ def provision_unified():
         return jsonify({'success': False, 'message': 'Serial number required'})
     if not services:
         return jsonify({'success': False, 'message': 'At least one service required'})
+    dup_msg = _duplicate_serial_error(serial, olt_id, frame, slot, port, onu_id)
+    if dup_msg:
+        return jsonify({'success': False, 'message': dup_msg}), 409
 
     # Detect EPON from pon_port prefix or explicit is_epon flag
     pon_port = data.get('pon_port', '')
@@ -2299,7 +2362,22 @@ def provision_unified():
                     card='epon' if is_epon else '',
                 )
                 db.session.add(onu)
-                db.session.commit()
+            else:
+                # Same rationale as the CLI path below: the SNMP command already
+                # succeeded for this new serial, so don't leave a stale DB row.
+                if existing.serial_number != serial:
+                    logger.warning(f"[provision_unified] Slot {olt.name} {frame}/{slot}/{port}:{onu_id} "
+                                    f"already had SN={existing.serial_number}, overwritten by SN={serial} (SNMP)")
+                existing.serial_number = serial
+                existing.onu_index = computed_index
+                existing.name = name or 'Unnamed'
+                existing.description = description or ''
+                existing.status = 'offline'
+                existing.actual_type = onu_type
+                existing.onu_type = onu_type
+                existing.technician_id = technician_id or None
+                existing.card = 'epon' if is_epon else ''
+            db.session.commit()
 
             # Trigger background sync + auto-write config
             _auto_sync_olt(olt_id)
@@ -2341,7 +2419,23 @@ def provision_unified():
                 card='epon' if is_epon else '',
             )
             db.session.add(onu)
-            db.session.commit()
+        else:
+            # The OLT command above already succeeded for this new serial, so this
+            # slot's DB row is now stale (still holding whatever it had before) —
+            # bring it in line rather than silently leaving OLT and DB disagreeing.
+            if existing.serial_number != serial:
+                logger.warning(f"[provision_unified] Slot {olt.name} {frame}/{slot}/{port}:{onu_id} "
+                                f"already had SN={existing.serial_number}, overwritten by SN={serial}")
+            existing.serial_number = serial
+            existing.onu_index = computed_index
+            existing.name = name or 'Unnamed'
+            existing.description = description or ''
+            existing.status = 'offline'
+            existing.actual_type = onu_type
+            existing.onu_type = onu_type
+            existing.technician_id = technician_id or None
+            existing.card = 'epon' if is_epon else ''
+        db.session.commit()
 
         # Trigger background sync to update status from OLT
         _auto_sync_olt(olt_id)
@@ -2382,6 +2476,10 @@ def pre_register_onu():
 
     # Check register mode from request — SNMP or CLI (SSH/Telnet)
     use_snmp = data.get('register_mode', 'cli') == 'snmp' and olt.snmp_enabled
+
+    dup_msg = _duplicate_serial_error(serial, olt_id, frame, slot, port, onu_id)
+    if dup_msg:
+        return jsonify({'success': False, 'message': dup_msg}), 409
 
     if use_snmp:
         from snmp_collector import create_snmp_collector, get_write_community

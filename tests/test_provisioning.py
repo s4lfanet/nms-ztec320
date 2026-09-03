@@ -461,6 +461,109 @@ class TestSNMPTelnetFallback:
             mock_tc.configure_onu_profile.assert_called_once()
 
 
+# ==================== Multi-Registration Audit Fixes ====================
+# Same physical modem registered twice, "Auto" ONU-ID mode silently sending 1,
+# and DB/OLT going out of sync on an ID collision — see CHANGELOG.
+
+class TestOnuNextId:
+    """GET /api/onu/next-id — 'Auto (next available)' actually resolves an ID
+    instead of the wizard always sending 1."""
+
+    def test_next_id_from_live_cli_query(self, auth_client, test_olt):
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.get_next_available_onu_id.return_value = 7
+            mock_cli.return_value = mock_tc
+            resp = auth_client.get(f'/api/onu/next-id?olt_id={test_olt}&frame=1&slot=1&port=1')
+            data = resp.get_json()
+            assert resp.status_code == 200
+            assert data['success'] is True
+            assert data['onu_id'] == 7
+
+    def test_next_id_falls_back_to_db_when_cli_unavailable(self, auth_client, test_olt):
+        with app.app_context():
+            db.session.add(ONU(olt_id=test_olt, frame=1, slot=1, port=1, onu_id=1, serial_number='SNX1'))
+            db.session.commit()
+        with patch('snmp_collector.create_cli_collector', side_effect=Exception('connect failed')):
+            resp = auth_client.get(f'/api/onu/next-id?olt_id={test_olt}&frame=1&slot=1&port=1')
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert data['onu_id'] == 2  # ID 1 already used on that port in the DB
+
+
+class TestDuplicateSerialRejection:
+    """The same physical modem (same serial) must not be registerable on two
+    different slots — it was previously allowed with no check at all."""
+
+    def test_rejects_same_serial_on_a_different_slot(self, auth_client, test_olt):
+        with app.app_context():
+            db.session.add(ONU(olt_id=test_olt, frame=1, slot=1, port=1, onu_id=5, serial_number='ZTEGDUPE001'))
+            db.session.commit()
+        resp = auth_client.post('/api/provision/unified', json={
+            'olt_id': test_olt, 'frame': 1, 'slot': 1, 'port': 2, 'onu_id': 1,
+            'serial': 'ZTEGDUPE001', 'onu_type': 'ZTE-F609', 'tcont_profile': '1G',
+            'services': [{'service_type': 'internet', 'vlan': 100}],
+            'register_mode': 'telnet',
+        }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        data = resp.get_json()
+        assert resp.status_code == 409
+        assert data['success'] is False
+        assert 'already registered' in data['message']
+
+    def test_allows_reregistering_the_same_slot(self, auth_client, test_olt):
+        """Re-sending the same serial onto its own existing slot (a normal
+        re-register, e.g. after re-flashing) must NOT be blocked — only a
+        genuinely different slot should be rejected."""
+        with app.app_context():
+            db.session.add(ONU(olt_id=test_olt, frame=1, slot=1, port=1, onu_id=5, serial_number='ZTEGSAME001', name='Old'))
+            db.session.commit()
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.register_unified.return_value = (True, 'OK')
+            mock_cli.return_value = mock_tc
+            with patch('routes_onu._auto_sync_olt'), patch('routes_onu._auto_write_config'):
+                resp = auth_client.post('/api/provision/unified', json={
+                    'olt_id': test_olt, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 5,
+                    'serial': 'ZTEGSAME001', 'onu_type': 'ZTE-F609', 'tcont_profile': '1G',
+                    'services': [{'service_type': 'internet', 'vlan': 100}],
+                    'register_mode': 'telnet',
+                }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data['success'] is True
+
+
+class TestDbSyncOnSlotCollision:
+    """If a slot already has a DB row for a different serial, registering a
+    new serial there must update that row instead of silently doing nothing
+    while the OLT-side command already succeeded."""
+
+    def test_slot_collision_updates_existing_row_instead_of_skipping(self, auth_client, test_olt):
+        with app.app_context():
+            db.session.add(ONU(olt_id=test_olt, frame=1, slot=1, port=3, onu_id=9, serial_number='OLDSERIAL', name='OldName'))
+            db.session.commit()
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.register_unified.return_value = (True, 'OK')
+            mock_cli.return_value = mock_tc
+            with patch('routes_onu._auto_sync_olt'), patch('routes_onu._auto_write_config'):
+                resp = auth_client.post('/api/provision/unified', json={
+                    'olt_id': test_olt, 'frame': 1, 'slot': 1, 'port': 3, 'onu_id': 9,
+                    'serial': 'NEWSERIAL', 'onu_type': 'ZTE-F609', 'tcont_profile': '1G',
+                    'services': [{'service_type': 'internet', 'vlan': 100}],
+                    'register_mode': 'telnet', 'name': 'NewName',
+                }, headers={'X-Requested-With': 'XMLHttpRequest'})
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data['success'] is True
+        with app.app_context():
+            onu = ONU.query.filter_by(olt_id=test_olt, frame=1, slot=1, port=3, onu_id=9).first()
+            assert onu is not None
+            assert onu.serial_number == 'NEWSERIAL'
+            assert onu.name == 'NewName'
+
+
 # ==================== CLI Injection Prevention ====================
 
 class TestCLIInjectionPrevention:
