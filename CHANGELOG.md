@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — Assign ODP Port (Opsional) Saat Registrasi ONU
+
+#### Ditambahkan
+- Diminta agar assign port ODP juga bisa dilakukan saat registrasi ONU, bukan cuma lewat "Assign ODP" manual setelahnya. Ditambahkan dropdown opsional per-ONU ("— ODP (optional) —") di step Review pada **Provision Wizard** (mode langsung & Pre-config ONT) dan **Register Wizard**, terisi dari daftar port ODP yang masih `available` (`/api/ftth/tree`)
+- Backend: logika link/unlink port ODP di `update_onu` diekstrak jadi helper bersama `_link_odp_port()` (melepas port lama milik ONU jika ada, dan menggeser ONU lain yang kebetulan sudah menempati port tujuan) — dipakai ulang oleh `provision_unified` (assign langsung setelah ONU dibuat) dan `pre_register_onu` (best-effort, sama seperti penanganan `technician_id` yang sudah ada — cuma jalan kalau baris ONU sudah ada dari sync sebelumnya, karena endpoint ini tidak membuat baris ONU secara sinkron)
+- **Diverifikasi**: 3 test baru (assign untuk ONU baru, tanpa odp_port_id port tidak tersentuh, port lama otomatis digeser saat port tujuan sudah terisi) — full suite 144 passed/2 skipped. Dicek langsung di browser (Playwright) pada kedua wizard — dropdown tampil dan terisi benar di step Review, nol error console
+
+---
+
 ### 2026-09-03 — Warna Tube/Core Dihapus dari ODP, Tetap Ada di ODC/OTB
 
 #### Diperbaiki
