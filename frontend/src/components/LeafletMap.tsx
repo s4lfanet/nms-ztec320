@@ -92,6 +92,7 @@ function loadLeaflet(): Promise<void> {
 
 const MARKER_COLORS: Record<string, string> = {
   otb: '#3b82f6',
+  jc: '#a855f7',
   odc: '#f59e0b',
   odp: '#22c55e',
   onu: '#06b6d4',
@@ -99,6 +100,7 @@ const MARKER_COLORS: Record<string, string> = {
 
 const MARKER_LABELS: Record<string, string> = {
   otb: 'OTB/ODF',
+  jc: 'JC',
   odc: 'ODC',
   odp: 'ODP',
   onu: 'ONU',

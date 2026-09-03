@@ -380,6 +380,14 @@ def migrate_schema():
     # Templates table - add config JSON column
     add_col('templates', 'config', 'TEXT', "''")
 
+    # FTTH ODC/ODP - JC (joint closure) as an alternate feed source
+    add_col('ftth_odc', 'feed_source', 'VARCHAR(10)', "'otb'")
+    add_col('ftth_odc', 'jc_id', 'INTEGER', None)
+    add_col('ftth_odc', 'jc_core_number', 'INTEGER', None)
+    add_col('ftth_odp', 'feed_source', 'VARCHAR(10)', "'odc'")
+    add_col('ftth_odp', 'jc_id', 'INTEGER', None)
+    add_col('ftth_odp', 'jc_core_number', 'INTEGER', None)
+
     # Ensure critical indexes exist (db.create_all only creates indexes for new tables)
     def ensure_index(index_name, table, *columns):
         try:

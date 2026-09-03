@@ -15,8 +15,8 @@ from models import (
     OLTSyncStatus, OLTCard, OLTUplink, ONUVlan, ONUType, SpeedProfile,
     WanIpProfile, OLTPort, AVAILABLE_PERMISSIONS, Notification, AlertRule,
     AlertHistory, BotConfig, FTTHOTB, FTTHOTBPort, FTTHODC, FTTHODP, FTTHODPPort,
-    FTTHPonPort, FTTHFiberPath, SystemConfig, ActionLog, MetricHistory,
-    TrafficLog, TrafficLogHourly, OLTConfigBackup,
+    FTTHPonPort, FTTHFiberPath, FTTHJC, FTTHJCSplice, SystemConfig, ActionLog,
+    MetricHistory, TrafficLog, TrafficLogHourly, OLTConfigBackup,
 )
 from extensions import logger
 from helpers import (
@@ -104,8 +104,8 @@ def ftth_stats():
 
     # Orphan detection
     orphan_onus = sum(1 for o in onus if not any(p.onu_id == o.id for p in all_odp_ports))
-    orphan_odps = sum(1 for odp in odps if not odp.odc_id)
-    orphan_odcs = sum(1 for odc in odcs if not odc.otb_id)
+    orphan_odps = sum(1 for odp in odps if not (odp.jc_id if odp.feed_source == 'jc' else odp.odc_id))
+    orphan_odcs = sum(1 for odc in odcs if not (odc.jc_id if odc.feed_source == 'jc' else odc.otb_id))
     orphan_otbs = sum(1 for otb in otbs if not otb.olt_id)
     # Data completeness checks
     onus_without_technician = sum(1 for o in onus if not o.technician_id)
@@ -160,11 +160,15 @@ def _otb_to_dict(o):
 def _odc_to_dict(o):
     odp_count = FTTHODP.query.filter_by(odc_id=o.id).count()
     total_cores = o.total_cores or 0
+    jc = db.session.get(FTTHJC, o.jc_id) if o.jc_id else None
     return {
         'id': o.id, 'name': o.name, 'model': o.model,
         'location': o.location, 'latitude': o.latitude, 'longitude': o.longitude,
         'otb_id': o.otb_id, 'otb_name': o.otb.name if o.otb else '',
         'otb_core_number': o.otb_core_number,
+        'feed_source': o.feed_source or 'otb',
+        'jc_id': o.jc_id, 'jc_name': jc.name if jc else '',
+        'jc_core_number': o.jc_core_number,
         'total_cores': total_cores, 'fibers_per_tube': o.fibers_per_tube or 12,
         'splitter_model': o.splitter_model,
         'description': o.description or '',
@@ -178,17 +182,59 @@ def _odc_to_dict(o):
 def _odp_to_dict(o):
     used_ports_count = FTTHODPPort.query.filter_by(odp_id=o.id, status='used').count()
     total_ports = o.total_ports or 0
+    jc = db.session.get(FTTHJC, o.jc_id) if o.jc_id else None
     return {
         'id': o.id, 'name': o.name, 'model': o.model,
         'location': o.location, 'latitude': o.latitude, 'longitude': o.longitude,
         'odc_id': o.odc_id, 'odc_name': o.odc.name if o.odc else '',
         'odc_core_number': o.odc_core_number,
+        'feed_source': o.feed_source or 'odc',
+        'jc_id': o.jc_id, 'jc_name': jc.name if jc else '',
+        'jc_core_number': o.jc_core_number,
         'total_ports': total_ports, 'splitter_model': o.splitter_model,
         'description': o.description or '',
         'used_ports': used_ports_count,
         'available_ports': max(0, total_ports - used_ports_count),
         'is_active': used_ports_count > 0,
     }
+
+
+def _jc_to_dict(j):
+    parent_name = ''
+    if j.parent_type and j.parent_id:
+        parent_model = {'otb': FTTHOTB, 'odc': FTTHODC, 'jc': FTTHJC}.get(j.parent_type)
+        if parent_model:
+            p = db.session.get(parent_model, j.parent_id)
+            parent_name = p.name if p else ''
+    splices = FTTHJCSplice.query.filter_by(jc_id=j.id).order_by(FTTHJCSplice.core_out).all()
+    return {
+        'id': j.id, 'name': j.name, 'closure_type': j.closure_type or 'inline',
+        'location': j.location or '', 'latitude': j.latitude, 'longitude': j.longitude,
+        'total_cores': j.total_cores or 0,
+        'parent_type': j.parent_type, 'parent_id': j.parent_id, 'parent_name': parent_name,
+        'description': j.description or '',
+        'splice_count': len(splices),
+        'splices': [_jc_splice_to_dict(s) for s in splices],
+    }
+
+
+def _jc_splice_to_dict(s):
+    return {'id': s.id, 'jc_id': s.jc_id, 'core_in': s.core_in, 'core_out': s.core_out, 'label': s.label or ''}
+
+
+def _jc_creates_cycle(jc_id, start_parent_type, start_parent_id, _max_depth=25):
+    """Would setting jc_id's parent to (start_parent_type, start_parent_id)
+    create a JC->JC cycle? Walk up the proposed parent chain looking for jc_id."""
+    t, i, depth = start_parent_type, start_parent_id, 0
+    while t == 'jc' and i and depth < _max_depth:
+        if i == jc_id:
+            return True
+        parent = db.session.get(FTTHJC, i)
+        if not parent:
+            break
+        t, i = parent.parent_type, parent.parent_id
+        depth += 1
+    return depth >= _max_depth
 
 
 def _odp_port_to_dict(p):
@@ -300,6 +346,8 @@ def ftth_otb_port_update(port_id):
 def ftth_otb_delete(otb_id):
     o = db.session.get(FTTHOTB, otb_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
+    for jc in FTTHJC.query.filter_by(parent_type='otb', parent_id=otb_id).all():
+        jc.parent_type = None; jc.parent_id = None
     db.session.delete(o)
     db.session.commit()
     return jsonify({'success': True})
@@ -320,10 +368,15 @@ def ftth_odc_list():
 @permission_required('settings_ip_olts')
 def ftth_odc_create():
     d = request.get_json() or {}
+    feed_source = d.get('feed_source', 'otb')
     o = FTTHODC(
         name=d.get('name', ''), model=d.get('model', ''),
         location=d.get('location', ''), latitude=d.get('latitude'), longitude=d.get('longitude'),
-        otb_id=d.get('otb_id'), otb_core_number=d.get('otb_core_number', 1),
+        otb_id=d.get('otb_id') if feed_source == 'otb' else None,
+        otb_core_number=d.get('otb_core_number', 1),
+        feed_source=feed_source,
+        jc_id=d.get('jc_id') if feed_source == 'jc' else None,
+        jc_core_number=d.get('jc_core_number') if feed_source == 'jc' else None,
         total_cores=d.get('total_cores', 8), fibers_per_tube=d.get('fibers_per_tube', 12),
         splitter_model=d.get('splitter_model', ''),
         description=d.get('description', ''),
@@ -344,8 +397,21 @@ def ftth_odc_update(odc_id):
         if k in d: setattr(o, k, d[k])
     for k in ['latitude', 'longitude']:
         if k in d: setattr(o, k, d[k])
-    for k in ['otb_id', 'otb_core_number', 'total_cores', 'fibers_per_tube']:
+    for k in ['otb_core_number', 'total_cores', 'fibers_per_tube']:
         if k in d: setattr(o, k, d[k])
+    if 'feed_source' in d:
+        o.feed_source = d['feed_source']
+        if o.feed_source == 'otb':
+            o.jc_id = None; o.jc_core_number = None
+            if 'otb_id' in d: o.otb_id = d['otb_id']
+        elif o.feed_source == 'jc':
+            o.otb_id = None
+            if 'jc_id' in d: o.jc_id = d['jc_id']
+            if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
+    else:
+        if 'otb_id' in d: o.otb_id = d['otb_id']
+        if 'jc_id' in d: o.jc_id = d['jc_id']
+        if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
     db.session.commit()
     return jsonify({'success': True, 'item': _odc_to_dict(o)})
 
@@ -356,6 +422,8 @@ def ftth_odc_update(odc_id):
 def ftth_odc_delete(odc_id):
     o = db.session.get(FTTHODC, odc_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
+    for jc in FTTHJC.query.filter_by(parent_type='odc', parent_id=odc_id).all():
+        jc.parent_type = None; jc.parent_id = None
     db.session.delete(o)
     db.session.commit()
     return jsonify({'success': True})
@@ -376,10 +444,15 @@ def ftth_odp_list():
 @permission_required('settings_ip_olts')
 def ftth_odp_create():
     d = request.get_json() or {}
+    feed_source = d.get('feed_source', 'odc')
     o = FTTHODP(
         name=d.get('name', ''), model=d.get('model', ''),
         location=d.get('location', ''), latitude=d.get('latitude'), longitude=d.get('longitude'),
-        odc_id=d.get('odc_id'), odc_core_number=d.get('odc_core_number', 1),
+        odc_id=d.get('odc_id') if feed_source == 'odc' else None,
+        odc_core_number=d.get('odc_core_number', 1),
+        feed_source=feed_source,
+        jc_id=d.get('jc_id') if feed_source == 'jc' else None,
+        jc_core_number=d.get('jc_core_number') if feed_source == 'jc' else None,
         total_ports=d.get('total_ports', 8), splitter_model=d.get('splitter_model', ''),
         description=d.get('description', ''),
     )
@@ -403,8 +476,21 @@ def ftth_odp_update(odp_id):
         if k in d: setattr(o, k, d[k])
     for k in ['latitude', 'longitude']:
         if k in d: setattr(o, k, d[k])
-    for k in ['odc_id', 'odc_core_number', 'total_ports']:
+    for k in ['odc_core_number', 'total_ports']:
         if k in d: setattr(o, k, d[k])
+    if 'feed_source' in d:
+        o.feed_source = d['feed_source']
+        if o.feed_source == 'odc':
+            o.jc_id = None; o.jc_core_number = None
+            if 'odc_id' in d: o.odc_id = d['odc_id']
+        elif o.feed_source == 'jc':
+            o.odc_id = None
+            if 'jc_id' in d: o.jc_id = d['jc_id']
+            if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
+    else:
+        if 'odc_id' in d: o.odc_id = d['odc_id']
+        if 'jc_id' in d: o.jc_id = d['jc_id']
+        if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
     # Auto-create missing ports if total_ports increased
     if 'total_ports' in d:
         existing = FTTHODPPort.query.filter_by(odp_id=o.id).count()
@@ -460,6 +546,145 @@ def ftth_odp_port_delete(port_id):
     return jsonify({'success': True})
 
 
+@bp.route('/api/ftth/jc', methods=['GET'])
+@login_required
+def ftth_jc_list():
+    items = FTTHJC.query.order_by(FTTHJC.name).all()
+    return jsonify({'success': True, 'items': [_jc_to_dict(j) for j in items]})
+
+
+@bp.route('/api/ftth/jc', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_jc_create():
+    d = request.get_json() or {}
+    j = FTTHJC(
+        name=d.get('name', ''), closure_type=d.get('closure_type', 'inline'),
+        location=d.get('location', ''), latitude=d.get('latitude'), longitude=d.get('longitude'),
+        total_cores=d.get('total_cores', 12),
+        parent_type=d.get('parent_type'), parent_id=d.get('parent_id'),
+        description=d.get('description', ''),
+    )
+    db.session.add(j)
+    db.session.commit()
+    return jsonify({'success': True, 'item': _jc_to_dict(j)})
+
+
+@bp.route('/api/ftth/jc/<int:jc_id>', methods=['PUT'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_jc_update(jc_id):
+    j = db.session.get(FTTHJC, jc_id)
+    if not j: return jsonify({'success': False, 'message': 'Not found'}), 404
+    d = request.get_json() or {}
+    new_parent_type = d.get('parent_type', j.parent_type)
+    new_parent_id = d.get('parent_id', j.parent_id)
+    if new_parent_type == 'jc' and new_parent_id:
+        if new_parent_id == j.id or _jc_creates_cycle(j.id, new_parent_type, new_parent_id):
+            return jsonify({'success': False, 'message': 'This would create a circular JC chain'}), 400
+    for k in ['name', 'closure_type', 'location', 'description']:
+        if k in d: setattr(j, k, d[k])
+    for k in ['latitude', 'longitude']:
+        if k in d: setattr(j, k, d[k])
+    for k in ['total_cores', 'parent_type', 'parent_id']:
+        if k in d: setattr(j, k, d[k])
+    db.session.commit()
+    return jsonify({'success': True, 'item': _jc_to_dict(j)})
+
+
+@bp.route('/api/ftth/jc/<int:jc_id>', methods=['DELETE'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_jc_delete(jc_id):
+    j = db.session.get(FTTHJC, jc_id)
+    if not j: return jsonify({'success': False, 'message': 'Not found'}), 404
+    # Detach (don't cascade-delete) anything fed from this closure — losing
+    # the JC waypoint shouldn't take out real infrastructure downstream.
+    for odc in FTTHODC.query.filter_by(feed_source='jc', jc_id=j.id).all():
+        odc.jc_id = None; odc.jc_core_number = None
+    for odp in FTTHODP.query.filter_by(feed_source='jc', jc_id=j.id).all():
+        odp.jc_id = None; odp.jc_core_number = None
+    for child in FTTHJC.query.filter_by(parent_type='jc', parent_id=j.id).all():
+        child.parent_type = None; child.parent_id = None
+    db.session.delete(j)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@bp.route('/api/ftth/jc/<int:jc_id>/splice', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_jc_splice_create(jc_id):
+    j = db.session.get(FTTHJC, jc_id)
+    if not j: return jsonify({'success': False, 'message': 'JC not found'}), 404
+    d = request.get_json() or {}
+    if not d.get('core_in') or not d.get('core_out'):
+        return jsonify({'success': False, 'message': 'core_in and core_out are required'}), 400
+    if FTTHJCSplice.query.filter_by(jc_id=jc_id, core_out=d['core_out']).first():
+        return jsonify({'success': False, 'message': f"Core out {d['core_out']} is already used by another splice in this JC"}), 400
+    s = FTTHJCSplice(jc_id=jc_id, core_in=d['core_in'], core_out=d['core_out'], label=d.get('label', ''))
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({'success': True, 'splice': _jc_splice_to_dict(s)})
+
+
+@bp.route('/api/ftth/jc/<int:jc_id>/splice/<int:splice_id>', methods=['PUT'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_jc_splice_update(jc_id, splice_id):
+    s = db.session.get(FTTHJCSplice, splice_id)
+    if not s or s.jc_id != jc_id: return jsonify({'success': False, 'message': 'Not found'}), 404
+    d = request.get_json() or {}
+    if 'core_out' in d and d['core_out'] != s.core_out:
+        if FTTHJCSplice.query.filter_by(jc_id=jc_id, core_out=d['core_out']).first():
+            return jsonify({'success': False, 'message': f"Core out {d['core_out']} is already used by another splice in this JC"}), 400
+    for k in ['core_in', 'core_out', 'label']:
+        if k in d: setattr(s, k, d[k])
+    db.session.commit()
+    return jsonify({'success': True, 'splice': _jc_splice_to_dict(s)})
+
+
+@bp.route('/api/ftth/jc/<int:jc_id>/splice/<int:splice_id>', methods=['DELETE'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_jc_splice_delete(jc_id, splice_id):
+    s = db.session.get(FTTHJCSplice, splice_id)
+    if not s or s.jc_id != jc_id: return jsonify({'success': False, 'message': 'Not found'}), 404
+    # Detach anything downstream that was fed from exactly this spliced-out core
+    for odc in FTTHODC.query.filter_by(feed_source='jc', jc_id=jc_id, jc_core_number=s.core_out).all():
+        odc.jc_id = None; odc.jc_core_number = None
+    for odp in FTTHODP.query.filter_by(feed_source='jc', jc_id=jc_id, jc_core_number=s.core_out).all():
+        odp.jc_id = None; odp.jc_core_number = None
+    db.session.delete(s)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+def _build_odp_dict_full(odp):
+    d = _odp_to_dict(odp)
+    ports = FTTHODPPort.query.filter_by(odp_id=odp.id).order_by(FTTHODPPort.port_number).all()
+    d['ports'] = [_odp_port_to_dict(p) for p in ports]
+    return d
+
+
+def _build_odc_dict_full(odc, _depth=0):
+    d = _odc_to_dict(odc)
+    d['odps'] = [_build_odp_dict_full(odp) for odp in FTTHODP.query.filter_by(feed_source='odc', odc_id=odc.id).order_by(FTTHODP.name).all()]
+    d['jcs'] = [_build_jc_dict_full(jc, _depth + 1) for jc in FTTHJC.query.filter_by(parent_type='odc', parent_id=odc.id).order_by(FTTHJC.name).all()] if _depth < 20 else []
+    return d
+
+
+def _build_jc_dict_full(jc, _depth=0):
+    d = _jc_to_dict(jc)  # already includes 'splices'
+    if _depth > 20:  # guard against a pathological/cyclic chain
+        d['odcs'], d['odps'], d['jcs'] = [], [], []
+        return d
+    d['odcs'] = [_build_odc_dict_full(odc, _depth + 1) for odc in FTTHODC.query.filter_by(feed_source='jc', jc_id=jc.id).order_by(FTTHODC.name).all()]
+    d['odps'] = [_build_odp_dict_full(odp) for odp in FTTHODP.query.filter_by(feed_source='jc', jc_id=jc.id).order_by(FTTHODP.name).all()]
+    d['jcs'] = [_build_jc_dict_full(child, _depth + 1) for child in FTTHJC.query.filter_by(parent_type='jc', parent_id=jc.id).order_by(FTTHJC.name).all()]
+    return d
+
+
 @bp.route('/api/ftth/tree', methods=['GET'])
 @login_required
 def ftth_tree():
@@ -467,16 +692,8 @@ def ftth_tree():
     result = []
     for otb in otbs:
         otb_d = _otb_to_dict(otb)
-        otb_d['odcs'] = []
-        for odc in FTTHODC.query.filter_by(otb_id=otb.id).order_by(FTTHODC.name).all():
-            odc_d = _odc_to_dict(odc)
-            odc_d['odps'] = []
-            for odp in FTTHODP.query.filter_by(odc_id=odc.id).order_by(FTTHODP.name).all():
-                odp_d = _odp_to_dict(odp)
-                ports = FTTHODPPort.query.filter_by(odp_id=odp.id).order_by(FTTHODPPort.port_number).all()
-                odp_d['ports'] = [_odp_port_to_dict(p) for p in ports]
-                odc_d['odps'].append(odp_d)
-            otb_d['odcs'].append(odc_d)
+        otb_d['odcs'] = [_build_odc_dict_full(odc) for odc in FTTHODC.query.filter_by(feed_source='otb', otb_id=otb.id).order_by(FTTHODC.name).all()]
+        otb_d['jcs'] = [_build_jc_dict_full(jc) for jc in FTTHJC.query.filter_by(parent_type='otb', parent_id=otb.id).order_by(FTTHJC.name).all()]
         result.append(otb_d)
     return jsonify({'success': True, 'tree': result})
 
@@ -502,6 +719,10 @@ def ftth_map():
     for o in odp_list:
         if o.latitude and o.longitude:
             markers.append({'type': 'odp', 'id': o.id, 'name': o.name, 'lat': o.latitude, 'lng': o.longitude})
+    jc_list = FTTHJC.query.all()
+    for j in jc_list:
+        if j.latitude and j.longitude:
+            markers.append({'type': 'jc', 'id': j.id, 'name': j.name, 'lat': j.latitude, 'lng': j.longitude, 'subtype': j.closure_type})
     # ONU markers with status and details
     onu_query = ONU.query
     for o in onu_query.all():
@@ -514,20 +735,42 @@ def ftth_map():
                             'rx_power': o.rx_power, 'tx_power': o.tx_power,
                             'onu_rx_power': o.onu_rx_power})
     # Build connections (lines) with from_id/to_id for path highlighting
+    def _node_latlng(ntype, nid):
+        model = {'otb': FTTHOTB, 'odc': FTTHODC, 'odp': FTTHODP, 'jc': FTTHJC}.get(ntype)
+        if not model or not nid:
+            return None
+        n = db.session.get(model, nid)
+        return (n.latitude, n.longitude) if n and n.latitude and n.longitude else None
+
     lines = []
     for odc in odc_list:
-        if odc.otb_id:
+        if odc.feed_source == 'otb' and odc.otb_id:
             otb = db.session.get(FTTHOTB, odc.otb_id)
             if otb and otb.latitude and odc.latitude:
                 lines.append({'from_lat': otb.latitude, 'from_lng': otb.longitude, 'to_lat': odc.latitude, 'to_lng': odc.longitude, 'from_type': 'otb', 'to_type': 'odc', 'from_id': otb.id, 'to_id': odc.id, 'label': f'Core {odc.otb_core_number}'})
+        elif odc.feed_source == 'jc' and odc.jc_id:
+            j_ll = _node_latlng('jc', odc.jc_id)
+            if j_ll and odc.latitude:
+                lines.append({'from_lat': j_ll[0], 'from_lng': j_ll[1], 'to_lat': odc.latitude, 'to_lng': odc.longitude, 'from_type': 'jc', 'to_type': 'odc', 'from_id': odc.jc_id, 'to_id': odc.id, 'label': f'Core {odc.jc_core_number}'})
     for odp in odp_list:
-        if odp.odc_id:
+        if odp.feed_source == 'odc' and odp.odc_id:
             odc = db.session.get(FTTHODC, odp.odc_id)
             if odc and odc.latitude and odp.latitude:
                 lines.append({'from_lat': odc.latitude, 'from_lng': odc.longitude, 'to_lat': odp.latitude, 'to_lng': odp.longitude, 'from_type': 'odc', 'to_type': 'odp', 'from_id': odc.id, 'to_id': odp.id, 'label': f'Core {odp.odc_core_number}'})
+        elif odp.feed_source == 'jc' and odp.jc_id:
+            j_ll = _node_latlng('jc', odp.jc_id)
+            if j_ll and odp.latitude:
+                lines.append({'from_lat': j_ll[0], 'from_lng': j_ll[1], 'to_lat': odp.latitude, 'to_lng': odp.longitude, 'from_type': 'jc', 'to_type': 'odp', 'from_id': odp.jc_id, 'to_id': odp.id, 'label': f'Core {odp.jc_core_number}'})
+    # JC ← parent (otb/odc/jc) connection lines
+    for j in jc_list:
+        if j.parent_type and j.parent_id:
+            j_ll = _node_latlng('jc', j.id)
+            p_ll = _node_latlng(j.parent_type, j.parent_id)
+            if j_ll and p_ll:
+                lines.append({'from_lat': p_ll[0], 'from_lng': p_ll[1], 'to_lat': j_ll[0], 'to_lng': j_ll[1], 'from_type': j.parent_type, 'to_type': 'jc', 'from_id': j.parent_id, 'to_id': j.id, 'label': j.name})
     # ODP → ONU connection lines
     for odp in odp_list:
-        if odp.latitude and odp.odc_id:
+        if odp.latitude and (odp.odc_id or odp.jc_id):
             for port in odp.ports:
                 if port.onu_id:
                     onu = db.session.get(ONU, port.onu_id)

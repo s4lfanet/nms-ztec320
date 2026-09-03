@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type ONUData, type AllOnusData, type TechnicianData, type RxColorRange } from '../lib/api';
+import { collectOdpPortOptions } from '../lib/ftthTree';
 import { cn, formatSn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
@@ -80,20 +81,10 @@ export function AllOnus() {
     queryKey: ['ftth-tree'],
     queryFn: async () => { const r = await fetch('/api/ftth/tree', { credentials: 'include' }); return r.json(); },
   });
-  // Flatten ODP ports from tree (guard against non-array response)
-  const odpPorts: Array<{ id: number; label: string }> = [];
+  // Flatten ODP ports from tree (guard against non-array response), walking
+  // through any JC hops between OTB/ODC/ODP too.
   const treeArr = Array.isArray(odpTreeData) ? odpTreeData : (odpTreeData?.tree || []);
-  for (const otb of treeArr) {
-    for (const odc of otb.odcs || []) {
-      for (const odp of odc.odps || []) {
-        for (const port of odp.ports || []) {
-          if (port.status === 'available' || port.id === editOdpPortId) {
-            odpPorts.push({ id: port.id, label: `${odp.name} — Port ${port.port_number}` });
-          }
-        }
-      }
-    }
-  }
+  const odpPorts = collectOdpPortOptions(treeArr, editOdpPortId);
 
   // WebSocket listener — real-time updates: auto-refresh ONU list on alert or
   // status change ('onu_change' also covers sync completion — see ws_bridge.py)
