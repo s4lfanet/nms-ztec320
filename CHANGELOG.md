@@ -13,7 +13,7 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 #### Diperbaiki
 - `sync_lock.py`: file lock sekarang dibuat + `fchmod` eksplisit ke `0o666` (rw untuk semua user) setiap kali dibuka — `fchmod` tidak kena umask seperti mode di `os.open()`, jadi permission-nya konsisten world-writable siapapun yang membuatnya duluan
 - Test baru `test_lock_file_is_world_writable` — pastikan file lock selalu berakhir `0o666`, bukan hanya lolos di user yang sama seperti sebelumnya
-- **Status verifikasi live**: menyusul di entri berikutnya setelah deploy — lihat catatan verifikasi di bawah
+- **Diverifikasi live di production sampai tuntas** (bukan cuma test): hapus file lock lama yang kadung root-only, deploy fix, tunggu cron jalan lagi, lalu coba `acquire_sync_lock` dari proses `salfanet` terpisah persis saat cron (`root`) sedang sinkron OLT yang sama — kali ini `is_sync_locked()` benar melapor `True` dan `acquire_sync_lock()` benar ditolak (`None`), tanpa error permission. File lock dicek langsung: `-rw-rw-rw-` (0o666) sesuai harapan
 
 ---
 
