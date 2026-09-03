@@ -1,43 +1,43 @@
 @import "tailwindcss";
 
-/* ─── Salfanet NMS Theme — Fiber Optic NOC ─── */
+/* ─── Salfanet NMS Theme — Indigo Slate ─── */
 /* Color rationale:
-   #0B1426 deep navy — NOC room ambient, reduces eye strain during long monitoring
-   #00D9C0 fiber teal — the visible color of 1310nm fiber light through jumpers
-   #22D3A0 link green — active equipment LED indicators
-   #FBB040 signal amber — caution indicators on network gear
-   #FF5757 alert coral — critical alerts, less aggressive than pure red
-   #8B9BB8 steel gray — cable sheathing tone for secondary text
+   #0A0C14 near-black slate — crisp NOC dashboard base, less blue cast than the old navy
+   #818CF8 indigo signal — primary accent, distinct from status colors so it never competes with them
+   #34D399 link green — active equipment LED indicators
+   #FBBF24 signal amber — caution indicators on network gear
+   #F87171 alert coral — critical alerts, less aggressive than pure red
+   #9298B0 steel gray — cable sheathing tone for secondary text
 */
 :root {
-  --bg-primary: #0B1426;
-  --bg-surface: #0F1B30;
-  --bg-glass: #142238;
-  --bg-glass-hover: #1A2A44;
-  --bg-card: rgba(15, 27, 48, 0.85);
-  --bg-card-hover: rgba(20, 34, 56, 0.9);
-  --border-color: rgba(0, 217, 192, 0.08);
-  --border-hover: rgba(0, 217, 192, 0.2);
-  --text-1: #E8EEF7;
-  --text-2: #8B9BB8;
-  --text-3: #5A6B8A;
-  --scrollbar-thumb: rgba(0, 217, 192, 0.12);
-  --scrollbar-hover: rgba(0, 217, 192, 0.25);
-  --focus-ring: 0 0 0 2px #0B1426, 0 0 0 4px #00D9C0;
+  --bg-primary: #0A0C14;
+  --bg-surface: #0F1119;
+  --bg-glass: #151827;
+  --bg-glass-hover: #1B1F30;
+  --bg-card: #12141F;
+  --bg-card-hover: #161927;
+  --border-color: rgba(129, 140, 248, 0.10);
+  --border-hover: rgba(129, 140, 248, 0.24);
+  --text-1: #EEF0F7;
+  --text-2: #9298B0;
+  --text-3: #5C6178;
+  --scrollbar-thumb: rgba(129, 140, 248, 0.14);
+  --scrollbar-hover: rgba(129, 140, 248, 0.28);
+  --focus-ring: 0 0 0 2px #0A0C14, 0 0 0 4px #818CF8;
 }
 
 /* Tailwind v4 theme directive */
 @theme extend {
-  --color-accent: #00D9C0;
-  --color-accent-hover: #00B89E;
-  --color-success: #22D3A0;
-  --color-warning: #FBB040;
-  --color-danger: #FF5757;
+  --color-accent: #818CF8;
+  --color-accent-hover: #6366F1;
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-danger: #F87171;
   --color-info: #38BDF8;
-  --color-online: #22D3A0;
-  --color-offline: #6B7A99;
-  --color-los: #FF5757;
-  --color-dyinggasp: #FBB040;
+  --color-online: #34D399;
+  --color-offline: #64748B;
+  --color-los: #F87171;
+  --color-dyinggasp: #FBBF24;
   --color-rx-blue: #38BDF8;
   --color-rx-purple: #C084FC;
   --color-rx-orange: #FB923C;
@@ -71,42 +71,20 @@ h1, h2, h3, h4, h5, h6,
   letter-spacing: -0.02em;
 }
 
-/* ─── Signature: Fiber Beam ─── */
-/* A thin animated gradient line at the top of primary cards,
-   evoking light traveling through a fiber optic strand */
+/* ─── Signature: Fiber Beam (retired with the Indigo Slate redesign) ─── */
+/* Kept as a harmless no-op so existing className="fiber-beam" usages don't
+   need touching — the crisper flat-card direction dropped the animated
+   gradient in favor of a plain shadow (see .glass-card below). */
 .fiber-beam {
   position: relative;
-  overflow: hidden;
-}
-.fiber-beam::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg,
-    transparent 0%,
-    #00D9C0 20%,
-    #22D3A0 50%,
-    #00D9C0 80%,
-    transparent 100%);
-  background-size: 200% 100%;
-  animation: fiberFlow 3s linear infinite;
-  opacity: 0.6;
-}
-@keyframes fiberFlow {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
 }
 
-/* ─── Glass Card ─── */
+/* ─── Card (flat, Indigo Slate) ─── */
 .glass-card {
   background: var(--bg-card);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
-  border-radius: 14px;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   position: relative;
 }
 .glass-card:hover {
@@ -116,7 +94,7 @@ h1, h2, h3, h4, h5, h6,
 
 /* Glow effect for accent elements */
 .glow-accent {
-  box-shadow: 0 0 16px rgba(0, 217, 192, 0.25), 0 0 48px rgba(0, 217, 192, 0.08);
+  box-shadow: 0 0 16px rgba(129, 140, 248, 0.25), 0 0 48px rgba(129, 140, 248, 0.08);
   transition: box-shadow 0.3s ease;
 }
 
@@ -404,7 +382,7 @@ select {
   padding: 8px 16px;
   border-radius: 10px;
   background: var(--color-accent);
-  color: #0B1426;
+  color: #0A0C14;
   font-size: 13px;
   font-weight: 600;
   border: none;
@@ -440,13 +418,13 @@ select {
   background: transparent;
   color: var(--color-danger);
   font-size: 13px;
-  border: 1px solid rgba(255, 87, 87, 0.25);
+  border: 1px solid rgba(248, 113, 113, 0.25);
   cursor: pointer;
   transition: all 0.15s;
 }
 .btn-danger:hover {
-  background: rgba(255, 87, 87, 0.1);
-  border-color: rgba(255, 87, 87, 0.4);
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.4);
 }
 
 .btn-warning {
@@ -456,13 +434,13 @@ select {
   color: var(--color-warning);
   font-size: 13px;
   font-weight: 500;
-  border: 1px solid rgba(251, 176, 64, 0.25);
+  border: 1px solid rgba(251, 191, 36, 0.25);
   cursor: pointer;
   transition: all 0.15s;
 }
 .btn-warning:hover {
-  background: rgba(251, 176, 64, 0.1);
-  border-color: rgba(251, 176, 64, 0.4);
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.4);
 }
 .btn-warning:disabled {
   opacity: 0.4;
@@ -536,11 +514,11 @@ html.light .glow-accent {
   letter-spacing: 0.3px;
   transition: all 0.2s ease;
 }
-.badge-success { background: rgba(34, 211, 160, 0.12); color: var(--color-success); }
-.badge-warning { background: rgba(251, 176, 64, 0.12); color: var(--color-warning); }
-.badge-danger  { background: rgba(255, 87, 87, 0.12); color: var(--color-danger); }
+.badge-success { background: rgba(52, 211, 153, 0.12); color: var(--color-success); }
+.badge-warning { background: rgba(251, 191, 36, 0.12); color: var(--color-warning); }
+.badge-danger  { background: rgba(248, 113, 113, 0.12); color: var(--color-danger); }
 .badge-info    { background: rgba(56, 189, 248, 0.12); color: var(--color-info); }
-.badge-accent  { background: rgba(0, 217, 192, 0.12); color: var(--color-accent); }
+.badge-accent  { background: rgba(129, 140, 248, 0.12); color: var(--color-accent); }
 .badge-neutral { background: var(--bg-glass); color: var(--text-2); }
 
 /* ─── Table ─── */
@@ -672,7 +650,7 @@ html.light .glow-accent {
 }
 .tab-btn-active {
   background: var(--color-accent);
-  color: #0B1426;
+  color: #0A0C14;
 }
 html.light .tab-btn-active {
   color: #FFFFFF;
@@ -703,7 +681,7 @@ html.light .tab-btn-active {
   padding: 6px 14px;
   border-radius: 10px;
   background: var(--color-accent);
-  color: #0B1426;
+  color: #0A0C14;
   font-size: 12px;
   font-weight: 600;
   border: none;
