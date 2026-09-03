@@ -90,6 +90,10 @@ def api_onu_live_detail(onu_id):
     olt = onu.olt
     live_detail = None
     history = []
+    # Distinct from "success but nothing configured": tells the frontend a
+    # refresh genuinely failed (CLI busy/timeout) so it can keep showing the
+    # last good data instead of blanking the service config out.
+    live_detail_error = None
 
     if olt and olt.cli_enabled and olt.cli_username:
         # ZTE: CLI-based live detail (SSH or Telnet)
@@ -97,7 +101,14 @@ def api_onu_live_detail(onu_id):
         try:
             tc = create_cli_collector(olt)
             is_epon = (onu.card or '').lower() == 'epon'
-            live_detail = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+            collected = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+            if not collected:
+                # collect_onu_detail returns {} when the CLI connection itself
+                # failed (Telnet/SSH session busy or refused) — not a real
+                # "this ONU has no config" result.
+                live_detail_error = 'OLT CLI not responding (session busy or timed out) — try again'
+            else:
+                live_detail = collected
             if live_detail and live_detail.get('history_raw'):
                 history = live_detail['history_raw']
             # Update DB with live signal values
@@ -150,6 +161,7 @@ def api_onu_live_detail(onu_id):
                 if updated: db.session.commit()
         except Exception as e:
             logger.warning(f"Failed to collect ONU detail: {e}")
+            live_detail_error = f'Failed to reach OLT: {e}'
 
     # Seed traffic cache from Total Bytes collected during collect_onu_detail
     if live_detail and live_detail.get('input_bytes') and live_detail.get('output_bytes'):
@@ -159,6 +171,7 @@ def api_onu_live_detail(onu_id):
     return jsonify({
         'success': True,
         'live_detail': live_detail,
+        'live_detail_error': live_detail_error,
         'history': history,
         'wan_services_json': _json.dumps(live_detail.get('wan_services', {}), separators=(',', ':')) if live_detail else '{}',
     })

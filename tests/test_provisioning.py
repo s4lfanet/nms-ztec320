@@ -868,3 +868,64 @@ class TestOtbPortDiagram:
         resp = auth_client.put(f'/api/ftth/otb-port/{port_id}', json={'label': 'Hacked'},
                                 headers={'X-Requested-With': 'XMLHttpRequest'})
         assert resp.status_code == 403
+
+
+# ==================== ONU Live Detail — Transient CLI Failure ====================
+# ViewOnu's "Refresh Live" was reported to sometimes blank out the service
+# config that was showing fine a moment ago. Root cause: collect_onu_detail()
+# returns {} when the OLT's Telnet/SSH session is busy or times out, and the
+# endpoint returned that as 'success: true' with no way for the frontend to
+# tell a failed refresh apart from "this ONU genuinely has no config".
+
+class TestOnuLiveDetailTransientFailure:
+    def _make_onu(self, olt_id):
+        with app.app_context():
+            onu = ONU(olt_id=olt_id, frame=1, slot=1, port=1, onu_id=1, serial_number='ZTEGLIVE001')
+            db.session.add(onu)
+            db.session.commit()
+            return onu.id
+
+    def test_successful_collect_has_no_error(self, auth_client, test_olt):
+        onu_id = self._make_onu(test_olt)
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.collect_onu_detail.return_value = {
+                'name': 'Customer A', 'services': ['service-port 1 vport 1'],
+                'wan_services': {'service1': {'mode': 'pppoe'}},
+            }
+            mock_cli.return_value = mock_tc
+            resp = auth_client.get(f'/api/onu/{onu_id}/live-detail')
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert data['live_detail_error'] is None
+        assert data['live_detail']['name'] == 'Customer A'
+
+    def test_busy_cli_connection_reports_error_not_empty_success(self, auth_client, test_olt):
+        """collect_onu_detail returning {} (Telnet/SSH couldn't connect) must
+        surface as live_detail_error, not silently as an empty-but-'successful'
+        live_detail — that's what let the frontend blank out good data."""
+        onu_id = self._make_onu(test_olt)
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.collect_onu_detail.return_value = {}
+            mock_cli.return_value = mock_tc
+            resp = auth_client.get(f'/api/onu/{onu_id}/live-detail')
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data['live_detail'] is None
+        assert data['live_detail_error']
+        assert 'busy' in data['live_detail_error'].lower() or 'timed out' in data['live_detail_error'].lower()
+
+    def test_collect_exception_reports_error(self, auth_client, test_olt):
+        onu_id = self._make_onu(test_olt)
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.collect_onu_detail.side_effect = Exception('connection reset')
+            mock_cli.return_value = mock_tc
+            resp = auth_client.get(f'/api/onu/{onu_id}/live-detail')
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data['live_detail'] is None
+        assert data['live_detail_error']
+        assert 'connection reset' in data['live_detail_error']

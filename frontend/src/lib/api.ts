@@ -75,7 +75,7 @@ export const api = {
   onuReplace: (id: number, newSerial: string) =>
     request<{ success: boolean; message?: string }>(`/api/onu/${id}/replace`, { method: 'POST', body: JSON.stringify({ new_serial: newSerial }) }),
   onuDetail: (id: number) => request<OnuDetailData>(`/api/onu/${id}/detail`),
-  onuLiveDetail: (id: number) => request<{ success: boolean; live_detail: Record<string, unknown> | null; history: Array<{ date: string; event: string }>; wan_services_json: string }>(`/api/onu/${id}/live-detail`),
+  onuLiveDetail: (id: number) => request<{ success: boolean; live_detail: Record<string, unknown> | null; live_detail_error: string | null; history: Array<{ date: string; event: string }>; wan_services_json: string }>(`/api/onu/${id}/live-detail`),
   onuTraffic: (id: number) => request<{ success: boolean; traffic: { downstream_kbps: string; upstream_kbps: string } }>(`/api/onu/${id}/traffic`),
   onuGetStatus: (id: number) => request<{ success: boolean; status?: Record<string, unknown>; data?: Record<string, unknown>; message?: string }>(`/api/onu/${id}/get-status`, { method: 'POST' }),
   onuLiveInfo: (id: number) => request(`/api/onu/${id}/live-info`),

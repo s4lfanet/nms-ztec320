@@ -61,17 +61,28 @@ export function ViewOnu() {
 
   // Live detail from Telnet — lazy, no auto-refetch (manual refresh only)
   const { data: liveData, isFetching: liveFetching, refetch: refetchLive } = useQuery<{
-    success: boolean; live_detail: Record<string, unknown> | null;
+    success: boolean; live_detail: Record<string, unknown> | null; live_detail_error: string | null;
     history: Array<{ date: string; event: string }>;
     wan_services_json: string;
   }>({
     queryKey: ['onu-live-detail', onuId], queryFn: () => api.onuLiveDetail(onuId), enabled: !!onuId, refetchInterval: false,
   });
 
+  // The OLT's Telnet/SSH session is sometimes busy or times out — that fetch
+  // then comes back with no data. Keep showing the last successful result
+  // instead of blanking out the service config, and surface the failure via
+  // toast so "Refresh Live" doesn't look like it silently wiped everything.
+  const [lastGoodLiveDetail, setLastGoodLiveDetail] = useState<Record<string, unknown> | null>(null);
+
   // Invalidate DB detail when live data arrives (replaces React Query v4 onSuccess)
   // Also invalidate all-onus so All ONU page shows updated RX power after returning
   useEffect(() => {
     if (liveData) {
+      if (liveData.live_detail) {
+        setLastGoodLiveDetail(liveData.live_detail);
+      } else if (liveData.live_detail_error) {
+        toast.error(`Refresh Live failed: ${liveData.live_detail_error} — showing last known data`);
+      }
       qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
       qc.invalidateQueries({ queryKey: ['all-onus'] });
     }
@@ -215,7 +226,7 @@ export function ViewOnu() {
   if (!data) return <Skeleton />;
 
   const { onu } = data;
-  const live_detail = liveData?.live_detail ?? null;
+  const live_detail = lastGoodLiveDetail;
   const history = liveData?.history ?? [];
   const ld = live_detail || {};
 
