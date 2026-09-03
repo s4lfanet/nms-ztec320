@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — "Refresh Live" di View ONU Kadang Menghapus Service Config yang Sudah Tampil
+
+#### Diaudit & Ditemukan — Root Cause: Koneksi CLI Sibuk Dikira "Berhasil, Tapi Kosong"
+- **Dilaporkan**: data service (WAN, TCONT, GEM Port, VLAN, dst) di halaman View ONU kadang muncul normal, tapi setelah klik "Refresh Live" kadang malah hilang
+- **Root cause**: `collect_onu_detail()` di `telnet_client.py` mengembalikan dict kosong `{}` kalau koneksi Telnet/SSH ke OLT gagal connect (session sibuk/timeout — umum terjadi di ZTE C320 yang cuma punya slot session CLI terbatas). Endpoint `/api/onu/<id>/live-detail` (`routes_onu.py`) meneruskan hasil kosong ini sebagai `success: true` tanpa pembeda — frontend tidak bisa tahu ini "refresh gagal" vs "ONU ini memang tidak ada service apa-apa", jadi tampilan lama langsung ditimpa jadi kosong
+
+#### Diperbaiki
+- **Backend**: endpoint sekarang membedakan collect yang gagal (koneksi CLI sibuk/timeout, atau exception) dari collect yang sukses-tapi-kosong. Field baru `live_detail_error` diisi pesan jelas kalau refresh gagal; `live_detail` tetap `null` di kasus itu (bukan dict kosong yang menyesatkan)
+- **Frontend**: `ViewOnu.tsx` sekarang menyimpan data live terakhir yang berhasil (`lastGoodLiveDetail`) — hanya di-update kalau fetch baru benar-benar membawa data. Kalau refresh gagal, tampilan **tetap menunjukkan data terakhir yang valid**, sambil toast merah muncul menjelaskan kenapa ("OLT CLI not responding... — showing last known data")
+- **Diverifikasi**: 3 test backend baru (collect sukses, collect gagal karena `{}`, collect exception) — 139/139 total lolos. Dites juga di browser sungguhan dengan network mocking: load pertama sukses (tabel VLAN/TCONT/GEM terisi) → klik "Refresh Live" dengan response gagal yang disimulasikan → toast error muncul, dan tabel-tabel tadi **tetap terisi**, tidak kosong — persis skenario yang dilaporkan, sekarang tidak terjadi lagi
+
+---
+
 ### 2026-09-03 — OLT Baru Langsung Full-Sync, Tidak Nunggu Cron
 
 #### Diaudit — Peran Redis dan Sync Pertama untuk OLT Baru
