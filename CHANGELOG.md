@@ -4,6 +4,17 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-04 — Input Splice JC: Pilih Tube + Core (Bukan Nomor Core Polos)
+
+#### Diubah
+- Diminta agar penentuan splice tidak sekadar input nomor core mentah — kalau JC punya lebih dari 1 tube, saat tambah splice harus jelas "tube berapa, warna apa" dan "core nomor berapa, warna apa" di kedua sisi (masuk maupun keluar), supaya datanya lebih lengkap dan cocok cara kerja teknisi lapangan
+- Form tambah splice diganti dari 2 kolom angka polos ("Core in" / "Core out") jadi 2 picker Tube + Core-dalam-tube (dengan dropdown Tube dibatasi sesuai jumlah tube nyata: `ceil(total_cores / fibers_per_tube)`), masing-masing dengan preview warna langsung (tag Tube+Core TIA-598) — nomor core absolut dihitung otomatis di belakang layar dari (tube, posisi), backend tidak berubah karena tetap cuma perlu core_in/core_out sebagai angka
+- Sisi "Core In" pakai `fibers_per_tube` milik **parent** JC (OTB/ODC/JC lain yang jadi sumbernya — bukan milik JC ini sendiri, karena kabel masuk itu fisiknya bagian dari kabel parent), sisi "Core Out" pakai `fibers_per_tube` milik JC ini sendiri (karena itu penomoran kabel yang diteruskan ke downstream)
+- Daftar splice yang sudah ada juga diperbarui: sekarang tampilkan tag warna Tube+Core lengkap di kedua sisi ("In: Tube 2 Jingga • Abu-abu → Out: Tube 1 Biru • Hijau"), bukan cuma angka mentah "Core 17 → 3"
+- **Diverifikasi**: dicek langsung di browser — seed OTB 24 core (2 tube), JC fed dari situ, pilih Tube 2/posisi 5 di sisi masuk dan Tube 1/posisi 3 di sisi keluar → preview warna langsung benar, setelah disimpan splice list menampilkan "In: Tube 2 Jingga • Abu-abu → Out: Tube 1 Biru • Hijau" sesuai standar TIA-598, nol error console
+
+---
+
 ### 2026-09-04 — JC: Field "Fibers per Tube" Opsional (Bisa Lebih dari 1 Tube)
 
 #### Ditambahkan
