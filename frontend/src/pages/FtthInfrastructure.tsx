@@ -1525,13 +1525,22 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
   };
 
   // Splice management — only meaningful once the JC exists (has an id)
-  const [spliceForm, setSpliceForm] = useState({ core_in: '', core_out: '', label: '' });
+  const parentOptions = form.parent_type === 'otb' ? otbList : form.parent_type === 'odc' ? odcList : jcList.filter(j => j.id !== item?.id);
+  const parentNode: any = form.parent_type ? parentOptions.find((p: any) => p.id === Number(form.parent_id)) : null;
+  const parentFibersPerTube = parentNode?.fibers_per_tube || 12;
+  const parentTubeCount = Math.max(1, Math.ceil((parentNode?.total_cores || 12) / parentFibersPerTube));
+  const ownFibersPerTube = form.fibers_per_tube || 12;
+  const ownTubeCount = Math.max(1, Math.ceil((form.total_cores || 12) / ownFibersPerTube));
+
+  const [spliceForm, setSpliceForm] = useState({ tubeIn: 1, posIn: 1, tubeOut: 1, posOut: 1, label: '' });
+  const spliceCoreIn = (spliceForm.tubeIn - 1) * parentFibersPerTube + spliceForm.posIn;
+  const spliceCoreOut = (spliceForm.tubeOut - 1) * ownFibersPerTube + spliceForm.posOut;
   const currentSplices = item ? (jcList.find(j => j.id === item.id)?.splices || item.splices || []) : [];
   const spliceMut = useMutation({
     mutationFn: () => api.ftthJcSpliceCreate(item!.id, {
-      core_in: parseInt(spliceForm.core_in), core_out: parseInt(spliceForm.core_out), label: spliceForm.label,
+      core_in: spliceCoreIn, core_out: spliceCoreOut, label: spliceForm.label,
     }),
-    onSuccess: () => { toast.success('Splice added'); setSpliceForm({ core_in: '', core_out: '', label: '' }); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
+    onSuccess: () => { toast.success('Splice added'); setSpliceForm({ tubeIn: 1, posIn: 1, tubeOut: 1, posOut: 1, label: '' }); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
     onError: (e: Error) => toast.error(e.message),
   });
   const deleteSpliceMut = useMutation({
@@ -1539,8 +1548,6 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
     onSuccess: () => { toast.success('Splice removed'); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
     onError: (e: Error) => toast.error(e.message),
   });
-
-  const parentOptions = form.parent_type === 'otb' ? otbList : form.parent_type === 'odc' ? odcList : jcList.filter(j => j.id !== item?.id);
 
   return (
     <Modal title={item ? 'Edit JC (Joint Closure)' : 'Add JC (Joint Closure)'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
@@ -1582,25 +1589,47 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
       {item && (
         <div className="pt-3 border-t border-brd">
           <div className="flex items-center gap-1.5 text-sm font-medium mb-2"><Scissors size={14} className="text-purple-400" /> Splices ({currentSplices.length})</div>
-          <p className="text-[11px] text-tx3 mb-2">Core masuk (dari {form.parent_type || 'parent'}) disambung ke core keluar — ODC/ODP downstream memilih core keluar ini sebagai sumbernya.</p>
+          <p className="text-[11px] text-tx3 mb-2">Core masuk (dari {form.parent_type || 'parent'}) disambung ke core keluar — ODC/ODP downstream memilih core keluar ini sebagai sumbernya. Tube dihitung otomatis dari nomor core absolut.</p>
           {currentSplices.length > 0 && (
-            <div className="space-y-1 mb-2 max-h-40 overflow-y-auto">
+            <div className="space-y-1 mb-2 max-h-48 overflow-y-auto">
               {currentSplices.map(s => (
                 <div key={s.id} className="flex items-center gap-2 p-1.5 rounded bg-glass text-xs flex-wrap">
-                  <span className="font-mono">Core {s.core_in} → {s.core_out}</span>
-                  <CoreColorTag coreNumber={s.core_out} fibersPerTube={form.fibers_per_tube} />
+                  <span className="text-tx3 flex-shrink-0">In:</span>
+                  <CoreColorTag coreNumber={s.core_in} fibersPerTube={parentFibersPerTube} />
+                  <span className="text-tx3 flex-shrink-0">→ Out:</span>
+                  <CoreColorTag coreNumber={s.core_out} fibersPerTube={ownFibersPerTube} />
                   {s.label && <span className="text-tx3 truncate flex-1">{s.label}</span>}
-                  <button onClick={() => deleteSpliceMut.mutate(s.id)} className="p-1 rounded hover:bg-danger/15 text-tx3 hover:text-danger flex-shrink-0" title="Remove splice"><Trash2 size={12} /></button>
+                  <button onClick={() => deleteSpliceMut.mutate(s.id)} className="p-1 rounded hover:bg-danger/15 text-tx3 hover:text-danger flex-shrink-0 ml-auto" title="Remove splice"><Trash2 size={12} /></button>
                 </div>
               ))}
             </div>
           )}
-          <div className="grid grid-cols-4 gap-1.5">
-            <input className="input-field !text-xs" type="number" placeholder="Core in" value={spliceForm.core_in} onChange={e => setSpliceForm({ ...spliceForm, core_in: e.target.value })} />
-            <input className="input-field !text-xs" type="number" placeholder="Core out" value={spliceForm.core_out} onChange={e => setSpliceForm({ ...spliceForm, core_out: e.target.value })} />
-            <input className="input-field !text-xs" placeholder="Label (optional)" value={spliceForm.label} onChange={e => setSpliceForm({ ...spliceForm, label: e.target.value })} />
-            <button type="button" onClick={() => spliceMut.mutate()} disabled={!spliceForm.core_in || !spliceForm.core_out || spliceMut.isPending}
-              className="btn-primary text-xs disabled:opacity-50">+ Add</button>
+          <div className="space-y-1.5 p-2 rounded-lg bg-glass/50">
+            <div>
+              <span className="text-[10px] text-tx3 font-medium block mb-1">Core In — dari {form.parent_type ? `${form.parent_type.toUpperCase()}${parentNode ? ` (${parentNode.name})` : ''}` : 'parent'}</span>
+              <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 items-center">
+                <select className="input-field !text-xs" value={spliceForm.tubeIn} onChange={e => setSpliceForm({ ...spliceForm, tubeIn: parseInt(e.target.value) })}>
+                  {Array.from({ length: parentTubeCount }, (_, i) => i + 1).map(t => <option key={t} value={t}>Tube {t}</option>)}
+                </select>
+                <input className="input-field !text-xs" type="number" min={1} max={parentFibersPerTube} placeholder="Core in tube" value={spliceForm.posIn} onChange={e => setSpliceForm({ ...spliceForm, posIn: parseInt(e.target.value) || 1 })} />
+                <CoreColorTag coreNumber={spliceCoreIn} fibersPerTube={parentFibersPerTube} />
+              </div>
+            </div>
+            <div>
+              <span className="text-[10px] text-tx3 font-medium block mb-1">Core Out — ke downstream (JC ini)</span>
+              <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 items-center">
+                <select className="input-field !text-xs" value={spliceForm.tubeOut} onChange={e => setSpliceForm({ ...spliceForm, tubeOut: parseInt(e.target.value) })}>
+                  {Array.from({ length: ownTubeCount }, (_, i) => i + 1).map(t => <option key={t} value={t}>Tube {t}</option>)}
+                </select>
+                <input className="input-field !text-xs" type="number" min={1} max={ownFibersPerTube} placeholder="Core in tube" value={spliceForm.posOut} onChange={e => setSpliceForm({ ...spliceForm, posOut: parseInt(e.target.value) || 1 })} />
+                <CoreColorTag coreNumber={spliceCoreOut} fibersPerTube={ownFibersPerTube} />
+              </div>
+            </div>
+            <div className="grid grid-cols-[1fr_auto] gap-1.5">
+              <input className="input-field !text-xs" placeholder="Label (optional)" value={spliceForm.label} onChange={e => setSpliceForm({ ...spliceForm, label: e.target.value })} />
+              <button type="button" onClick={() => spliceMut.mutate()} disabled={spliceMut.isPending}
+                className="btn-primary text-xs disabled:opacity-50">+ Add Splice</button>
+            </div>
           </div>
         </div>
       )}
