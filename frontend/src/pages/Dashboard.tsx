@@ -57,10 +57,11 @@ export function Dashboard() {
   const showRefreshSpinner = isFetching || refreshing;
   const olts = (data as DashboardData)?.olts ?? [];
 
-  // WebSocket listener — real-time updates: refresh dashboard on alert, ONU status change, or sync complete
+  // WebSocket listener — real-time updates: refresh dashboard on alert or
+  // ONU status change ('onu_change' also covers sync completion — see ws_bridge.py)
   const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
   useEffect(() => {
-    if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change' || alertWsMsg.event === 'sync_complete')) {
+    if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change')) {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     }
   }, [alertWsMsg, queryClient]);
@@ -136,13 +137,15 @@ export function Dashboard() {
         const s = await api.syncStatus(syncingOlt);
         setSyncProgress(s.progress || 0);
         setSyncMessage(s.message || '');
-        if (s.status === 'completed' || s.status === 'error') {
+        if (s.status === 'completed' || s.status === 'error' || s.status === 'skipped') {
           clearInterval(interval);
           setSyncingOlt(null);
           if (s.status === 'completed') {
             toast.success('Sync completed!');
-          } else {
+          } else if (s.status === 'error') {
             toast.error('Sync failed: ' + (s.message || ''));
+          } else {
+            toast.info(s.message || 'Sync skipped — already running for this OLT');
           }
           queryClient.invalidateQueries({ queryKey: ['dashboard'] });
           queryClient.invalidateQueries({ queryKey: ['olts'] });
