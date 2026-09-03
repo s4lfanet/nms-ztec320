@@ -817,6 +817,7 @@ class FTTHJC(db.Model):
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     total_cores = db.Column(db.Integer, default=12)
+    fibers_per_tube = db.Column(db.Integer, default=12, nullable=False)  # TIA-598 tube grouping — a JC can hold several tubes
     parent_type = db.Column(db.String(10), nullable=True)  # otb, odc, jc
     parent_id = db.Column(db.Integer, nullable=True)
     description = db.Column(db.Text, default='')

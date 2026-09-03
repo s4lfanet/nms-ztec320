@@ -873,6 +873,7 @@ export interface FTTHJc {
   latitude: number | null;
   longitude: number | null;
   total_cores: number;
+  fibers_per_tube: number;
   parent_type: 'otb' | 'odc' | 'jc' | null;
   parent_id: number | null;
   parent_name: string;

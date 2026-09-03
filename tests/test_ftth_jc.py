@@ -96,6 +96,21 @@ class TestJcCrud:
         assert item['parent_type'] == 'otb'
         assert item['parent_name'] == 'OTB-1'
         assert item['splice_count'] == 0
+        assert item['fibers_per_tube'] == 12  # default when not specified
+
+    def test_fibers_per_tube_optional_multi_tube(self, auth_client, test_otb):
+        """A JC can span multiple tubes (e.g. 2 tubes x 12 cores = 24 cores) —
+        fibers_per_tube is settable independently of total_cores."""
+        resp = auth_client.post('/api/ftth/jc', json={
+            'name': 'JC-multitube', 'parent_type': 'otb', 'parent_id': test_otb,
+            'total_cores': 24, 'fibers_per_tube': 12,
+        }, headers=H)
+        item = resp.get_json()['item']
+        assert item['total_cores'] == 24
+        assert item['fibers_per_tube'] == 12
+
+        upd = auth_client.put(f'/api/ftth/jc/{item["id"]}', json={'fibers_per_tube': 6}, headers=H)
+        assert upd.get_json()['item']['fibers_per_tube'] == 6
 
     def test_delete_jc_detaches_but_does_not_cascade(self, auth_client, test_otb):
         jc_resp = auth_client.post('/api/ftth/jc', json={
