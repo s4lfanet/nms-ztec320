@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — Total ONU di Dashboard Sempat Salah Setelah Auto-Sync yang Terpotong Sebagian
+
+#### Ditemukan Saat Live-Monitoring Production — Bukan dari Audit Kode
+- User lapor "auto sync seperti tidak update". Cek langsung log production (`/var/log/salfanet-sync.log`): satu siklus cron (5-menitan) yang biasanya dapat 156-157 ONU tiba-tiba cuma dapat **66**, langsung diikuti `Segmentation fault` di proses Python-nya. Siklus berikutnya pulih sendiri (157/157)
+- **Root cause count drop**: `_collect_onus_light_async` (`snmp_core.py`) jalankan 8 SNMP bulk-walk konkuren (`asyncio.gather`) untuk kolom berbeda (name, serial, oper-state, dereg-reason, rx, tx, olt-rx, description). Pada siklus bermasalah, walk `serial`/`name`/`desc`/`rx` cuma dapat sebagian (66/23) sementara walk lain dapat penuh (157) — OLT/jaringan sesaat tidak sanggup layani 8 walk sekaligus. Kode sudah benar skip ONU tanpa serial number (`if not sn: continue`), jadi 91 ONU yang datanya cuma separuh otomatis tidak diproses siklus itu — ini sudah benar, mencegah data korup
+- **Bug yang baru ketemu**: `sync_helper.py` sudah punya proteksi "jangan hapus ONU yang hilang dari sync light" (baris tidak dihapus dari database) — TAPI counter agregat OLT (`total_onu`, `online_onu`, dst — yang muncul di tile Dashboard) tetap ditimpa pakai `len(onus_data)` dari hasil parsial itu. Jadi walau data detail 91 ONU yang "hilang" tetap aman di database, tile ringkasan di Dashboard sempat menampilkan angka yang salah/rendah selama ~5 menit sampai siklus berikutnya berhasil penuh dan mengoreksi sendiri
+- **Segmentation fault**: muncul di **setiap** siklus cron (baik yang lengkap maupun parsial), selalu setelah "Auto-sync complete" ter-log — artinya crash terjadi saat proses Python exit, setelah semua kerja nyata (collect + simpan DB) sudah selesai. Tidak ditemukan proses yang macet/zombie. Kemungkinan besar terkait pysnmp async (`Slim` v1arch) yang tidak bersih saat cleanup, tapi tanpa traceback C-level, ini baru dugaan
+
+#### Diperbaiki
+- `sync_helper.py`: counter agregat OLT (`total_onu` dan status breakdown) di mode light sekarang ikut menghitung ONU yang "terlewat" di siklus itu pakai status terakhir yang diketahui — bukan cuma `len(hasil-parsial)`. Tile Dashboard tidak akan lagi salah lapor angka rendah gara-gara satu siklus SNMP yang kebetulan tidak lengkap
+- `auto_sync.py`: aktifkan `faulthandler` (bawaan Python) supaya kalau segfault terjadi lagi, log cron akan berisi traceback C-level yang sesungguhnya alih-alih cuma baris "Segmentation fault" tanpa info — diagnostik murni, tidak mengubah perilaku sync
+- **Diverifikasi**: 2 test baru mensimulasikan persis skenario ini (3 ONU di DB, hasil sync light cuma laporkan 1) — pastikan 2 ONU yang "hilang" tidak terhapus DAN `total_onu` tetap 3 (bukan 1). Test full-sync (`light=False`) dipastikan masih menghapus ONU basi seperti sebelumnya (tidak ada regresi). 141/141 test lolos total
+- **Belum diperbaiki** (butuh traceback dulu dari `faulthandler`): akar penyebab segfault itu sendiri — akan ditelusuri begitu traceback pertama tertangkap di production
+
+---
+
 ### 2026-09-03 — Progress Bar Sync Macet Selamanya Kalau Kalah Race dengan Auto-Sync
 
 #### Diaudit — Live Status Sync di Semua Halaman

@@ -409,14 +409,31 @@ def save_sync_result(olt, result, sync, light=False):
             db.session.commit()
 
     stale_count = 0
+    missed_count = 0
     # In light mode, don't delete stale ONUs — SNMP walk might miss some in a single pass
     if not light:
         for idx, onu in existing_onus.items():
             if idx not in seen_indices:
                 db.session.delete(onu)
                 stale_count += 1
+    else:
+        # A partial SNMP walk (concurrent bulk-walks in
+        # snmp_core.py:_collect_onus_light_async can time out unevenly) can
+        # return far fewer ONUs than actually exist. Rows for the missed ones
+        # are correctly left untouched above, but they must still count
+        # toward the totals below — otherwise the OLT's dashboard tile
+        # briefly reports a wrong, too-low total until the next (hopefully
+        # complete) light sync corrects it 5 minutes later.
+        for idx, onu in existing_onus.items():
+            if idx not in seen_indices:
+                missed_count += 1
+                if onu.status == 'online': online += 1
+                elif onu.status == 'los': los += 1
+                elif onu.status == 'dyinggasp': dyinggasp += 1
+                elif onu.status == 'offline': offline += 1
+                else: other += 1
 
-    olt.total_onu = len(onus_data)
+    olt.total_onu = len(onus_data) + missed_count
     olt.online_onu = online
     olt.los_onu = los
     olt.dyinggasp_onu = dyinggasp

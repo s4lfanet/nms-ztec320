@@ -15,6 +15,13 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 import fcntl
 import time
+import faulthandler
+# A native crash ("Segmentation fault", no Python traceback) has been observed
+# at the end of every cron run — this dumps the C-level stack of whichever
+# thread is running when it happens to stderr (captured by the cron log
+# redirect) instead of a bare "Segmentation fault" line, so the next
+# occurrence is actually diagnosable.
+faulthandler.enable()
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import (ThreadPoolExecutor, as_completed,
                                 TimeoutError as FuturesTimeoutError)
