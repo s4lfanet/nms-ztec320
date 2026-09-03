@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-04 — Audit & Update Panduan In-App (FTTH, Provision/Register Wizard)
+
+#### Diperbaiki
+- Diminta audit halaman Panduan karena sudah banyak fitur baru yang belum terdokumentasi. Ditemukan: panduan FTTH Infrastructure masih versi lama (sebelum JC ditambahkan) — belum menyebutkan tab **Tree**, tab **JC**, splice, toggle "Fed From", "Draw Fiber Path"/"Auto Route" sama sekali; panduan Provision Wizard & Register Wizard belum menyebutkan dropdown assign ODP opsional saat registrasi
+- Panduan FTTH ditulis ulang: tambah langkah Tree Tab, JC (Joint Closure) Tab (penjelasan konsep titik sambungan, Fibers per Tube opsional, cara isi splice), Draw Fiber Path & Auto Route, serta catatan bahwa warna tube/core cuma sampai ODC (bukan ODP) dan toggle Fed From di form ODC/ODP — plus 3 tips baru soal JC
+- Panduan Provision Wizard & Register Wizard: tambah catatan dropdown "— ODP (optional) —" di step Review
+- **Diverifikasi**: dicek langsung di browser — halaman Panduan menampilkan 7 langkah + tips baru untuk FTTH, dan catatan ODP opsional muncul di kedua panduan wizard, nol error console
+
+---
+
 ### 2026-09-04 — Input Splice JC: Pilih Tube + Core (Bukan Nomor Core Polos)
 
 #### Diubah
