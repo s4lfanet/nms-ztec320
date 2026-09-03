@@ -65,9 +65,10 @@ export function FtthInfrastructure() {
   });
 
   // WebSocket: realtime refresh on ONU status changes
+  // ('onu_change' also covers sync completion — see ws_bridge.py)
   const { lastMessage: mapWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
   useEffect(() => {
-    if (mapWsMsg && (mapWsMsg.event === 'onu_change' || mapWsMsg.event === 'alert' || mapWsMsg.event === 'sync_complete')) {
+    if (mapWsMsg && (mapWsMsg.event === 'onu_change' || mapWsMsg.event === 'alert')) {
       qc.invalidateQueries({ queryKey: ['ftth-map'] });
       qc.invalidateQueries({ queryKey: ['ftth-stats'] });
       qc.invalidateQueries({ queryKey: ['ftth-tree'] });

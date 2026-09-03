@@ -346,9 +346,10 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   });
 
   // WebSocket listener — real-time alert push from backend
+  // ('onu_change' also covers sync completion — see ws_bridge.py)
   const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
   useEffect(() => {
-    if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change' || alertWsMsg.event === 'sync_complete')) {
+    if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change')) {
       qc.invalidateQueries({ queryKey: ['notifications'] });
       qc.invalidateQueries({ queryKey: ['unregistered-count'] });
     }

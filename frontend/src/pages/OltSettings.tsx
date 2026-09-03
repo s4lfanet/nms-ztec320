@@ -149,9 +149,11 @@ export function OltSettings() {
         const s = await api.syncStatus(syncingId);
         setSyncProgress(s.progress || 0);
         setSyncMessage(s.message || '');
-        if (s.status === 'completed' || s.status === 'error') {
+        if (s.status === 'completed' || s.status === 'error' || s.status === 'skipped') {
           clearInterval(interval); setSyncingId(null);
-          s.status === 'completed' ? toast.success('Sync completed!') : toast.error('Sync failed: ' + (s.message || ''));
+          if (s.status === 'completed') toast.success('Sync completed!');
+          else if (s.status === 'error') toast.error('Sync failed: ' + (s.message || ''));
+          else toast.info(s.message || 'Sync skipped — already running for this OLT');
           qc.invalidateQueries({ queryKey: ['olts'] });
         }
       } catch { /* ignore */ }

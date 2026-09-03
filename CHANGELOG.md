@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — Progress Bar Sync Macet Selamanya Kalau Kalah Race dengan Auto-Sync
+
+#### Diaudit — Live Status Sync di Semua Halaman
+- Diminta audit ulang menyeluruh: apakah live status auto-sync dan tombol Sync di semua halaman (OLT Settings, Dashboard, All ONUs, FTTH Infrastructure, OLT Logs, wizard registrasi ONU) sudah benar
+- **Backend**: WebSocket broadcast cuma pakai 2 event nyata di channel `/ws/dashboard` — `onu_change` dan `alert`. Event `sync_complete` sebagai nama event **tidak pernah** dikirim (yang ada `onu_change` dengan `data.action = 'sync_complete'`)
+- **Ditemukan bug nyata**: tombol "Sync" per-OLT di **OLT Settings** dan **Dashboard** melakukan polling status tiap 2 detik, tapi cuma berhenti kalau status `'completed'` atau `'error'`. Ada status ketiga, `'skipped'` — dikirim backend kalau sync manual kalah race lock dengan cron `auto_sync.py` (jalan tiap 5 menit) yang kebetulan mulai sync OLT yang sama nyaris bersamaan. Kalau ini terjadi, progress bar/spinner **macet selamanya** di halaman itu (tidak pernah hilang) sampai user pindah halaman — padahal sync-nya sendiri tidak pernah error, cuma di-skip
+- Ditemukan juga: kode cek `event === 'sync_complete'` di 4 file (Dashboard, All ONUs, FTTH Infrastructure, Topbar) itu mati/tidak pernah kena karena event itu memang tidak pernah dikirim — tidak berbahaya (kondisi `onu_change` yang asli tetap jalan), tapi menyesatkan dibaca
+- Halaman lain (All ONUs, FTTH Infrastructure, Topbar) sudah benar — subscribe ke event WebSocket yang sungguhan dikirim backend, invalidate query key yang tepat
+
+#### Diperbaiki
+- `OltSettings.tsx` dan `Dashboard.tsx`: polling status sekarang juga berhenti pada status `'skipped'`, dengan toast info yang jelas ("Sync already in progress — skipped") alih-alih progress bar macet tanpa penjelasan
+- Hapus pengecekan `event === 'sync_complete'` yang mati di 4 file (Dashboard, All ONUs, FTTH Infrastructure, Topbar) — event asli yang dipakai (`onu_change`) tetap dipertahankan
+- **Diverifikasi**: dites di browser sungguhan dengan network mocking (simulasi race: response sync-status langsung `status: 'skipped'`) di kedua halaman — sebelum fix, progress bar akan macet selamanya; sekarang toast info muncul dan tampilan langsung kembali normal dalam &lt;3 detik (satu siklus poll)
+
+---
+
 ### 2026-09-03 — "Refresh Live" di View ONU Kadang Menghapus Service Config yang Sudah Tampil
 
 #### Diaudit & Ditemukan — Root Cause: Koneksi CLI Sibuk Dikira "Berhasil, Tapi Kosong"
