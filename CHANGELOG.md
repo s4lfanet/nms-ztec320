@@ -4,6 +4,17 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-03 — Titik JC (Joint Closure / Sambungan) di Rantai FTTH
+
+#### Ditambahkan
+- Diminta agar jalur fiber tidak cuma OTB→ODC langsung, tapi bisa lewat titik sambungan (JC) di mana saja sepanjang rantai — OTB→JC→ODC, ODC→JC→ODP, bahkan JC berantai (JC→JC) — supaya data core lengkap sampai ke pelanggan, termasuk detail per-splice (core masuk disambung ke core berapa keluar)
+- **Entitas baru** `FTTHJC` (nama, tipe closure inline/dome/dead-end, lokasi/koordinat, total core, dan "fed from" generik — bisa dari OTB, ODC, atau JC lain) + `FTTHJCSplice` (core_in → core_out per splice, dengan label opsional). ODC dan ODP dapat kolom baru `feed_source` ('otb'/'jc' untuk ODC, 'odc'/'jc' untuk ODP) + `jc_id`/`jc_core_number` — kolom lama (`otb_id`/`otb_core_number`, `odc_id`/`odc_core_number`) tetap dipakai persis seperti sebelumnya untuk jalur langsung (tanpa JC), jadi data production yang sudah ada otomatis tetap `feed_source='otb'/'odc'` tanpa migrasi data
+- **Backend**: tab baru + CRUD penuh untuk JC dan splice-nya (`/api/ftth/jc`, `/api/ftth/jc/<id>/splice`), termasuk pencegahan siklus (JC tidak boleh jadi induk dirinya sendiri secara langsung maupun berantai) dan penghapusan yang "melepas" (bukan cascade-delete) apa pun yang tersambung ke JC yang dihapus, supaya infrastruktur riil di baliknya tidak ikut hilang. Endpoint `/api/ftth/tree` ditulis ulang jadi rekursif supaya ODC/ODP yang lewat JC tetap tampil bersarang di bawah JC-nya — untuk jalur langsung (tanpa JC), bentuk JSON-nya persis sama seperti sebelumnya sehingga Provision Wizard/Register Wizard/All ONUs (yang menjelajahi tree ini untuk pilihan assign ODP) tidak perlu berubah kecuali menambah langkah menjelajahi cabang JC — dipusatkan lewat helper `lib/ftthTree.ts` yang dipakai ulang di ketiga tempat itu
+- **Frontend**: tab "JC" baru (list + form tambah/edit dengan manajemen splice inline), toggle "Fed From" (OTB/ODC vs JC) di form ODC dan ODP, Tree view menampilkan JC bersarang dengan ikon dan warna berbeda, peta FTTH menampilkan marker JC dan garis sambungannya — fitur "Draw Fiber Path" dan "Auto Route (OSRM)" yang sudah ada otomatis berfungsi untuk JC juga karena keduanya sudah generik terhadap tipe titik
+- **Diverifikasi**: 9 test baru (CRUD JC, splice dengan core_out duplikat ditolak, pencegahan siklus langsung & tidak langsung, bentuk tree untuk jalur JC vs jalur langsung) — full suite 153 passed/2 skipped. Dicek langsung di browser: buat JC dari OTB, tambah splice, buat ODC yang fed dari splice itu (core dropdown otomatis terisi dari splice JC), verifikasi ODC bersarang di bawah JC (bukan di bawah OTB) baik di Tree view maupun label "From JC:" di list ODC — nol error console di setiap langkah
+
+---
+
 ### 2026-09-03 — FTTH Map: Ganti Tile dari CartoDB (Butuh API Key) ke OpenStreetMap
 
 #### Diperbaiki

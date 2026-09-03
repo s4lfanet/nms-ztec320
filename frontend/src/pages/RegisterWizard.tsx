@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, type TechnicianData } from '../lib/api';
+import { collectOdpPortOptions } from '../lib/ftthTree';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import {
@@ -440,19 +441,8 @@ export function RegisterWizard() {
     queryKey: ['ftth-tree'],
     queryFn: async () => { const r = await fetch('/api/ftth/tree', { credentials: 'include' }); return r.json(); },
   });
-  const odpPorts: Array<{ id: number; label: string }> = [];
-  {
-    const treeArr = Array.isArray(odpTreeData) ? odpTreeData : (odpTreeData?.tree || []);
-    for (const otb of treeArr) {
-      for (const odc of otb.odcs || []) {
-        for (const odp of odc.odps || []) {
-          for (const port of odp.ports || []) {
-            if (port.status === 'available') odpPorts.push({ id: port.id, label: `${odp.name} — Port ${port.port_number}` });
-          }
-        }
-      }
-    }
-  }
+  const treeArr = Array.isArray(odpTreeData) ? odpTreeData : (odpTreeData?.tree || []);
+  const odpPorts = collectOdpPortOptions(treeArr);
 
   // Fetch DB templates
   useEffect(() => {

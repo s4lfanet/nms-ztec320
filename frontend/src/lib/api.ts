@@ -135,6 +135,13 @@ export const api = {
   ftthOdpPorts: (odpId: number) => request<{ success: boolean; ports: FTTHOdpPort[] }>(`/api/ftth/odp/${odpId}/ports`),
   ftthOdpPortUpdate: (id: number, data: Partial<FTTHOdpPort>) => request<{ success: boolean; port: FTTHOdpPort }>(`/api/ftth/odp-port/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthOdpPortDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/odp-port/${id}`, { method: 'DELETE' }),
+  ftthJcList: () => request<{ success: boolean; items: FTTHJc[] }>('/api/ftth/jc'),
+  ftthJcCreate: (data: Partial<FTTHJc>) => request<{ success: boolean; item: FTTHJc }>('/api/ftth/jc', { method: 'POST', body: JSON.stringify(data) }),
+  ftthJcUpdate: (id: number, data: Partial<FTTHJc>) => request<{ success: boolean; item: FTTHJc }>(`/api/ftth/jc/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  ftthJcDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/jc/${id}`, { method: 'DELETE' }),
+  ftthJcSpliceCreate: (jcId: number, data: { core_in: number; core_out: number; label?: string }) => request<{ success: boolean; splice: FTTHJcSplice }>(`/api/ftth/jc/${jcId}/splice`, { method: 'POST', body: JSON.stringify(data) }),
+  ftthJcSpliceUpdate: (jcId: number, spliceId: number, data: Partial<{ core_in: number; core_out: number; label: string }>) => request<{ success: boolean; splice: FTTHJcSplice }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  ftthJcSpliceDelete: (jcId: number, spliceId: number) => request<{ success: boolean }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'DELETE' }),
   ftthAvailableOnus: (oltId?: number) => request<{ success: boolean; onus: FTTHAvailableOnu[] }>(`/api/ftth/available-onus${oltId ? '?olt_id=' + oltId : ''}`),
   ftthPonList: () => request<{ success: boolean; items: FTTHPonPort[] }>('/api/ftth/pon'),
   ftthPonCreate: (data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>('/api/ftth/pon', { method: 'POST', body: JSON.stringify(data) }),
@@ -822,6 +829,10 @@ export interface FTTHOdc {
   otb_id: number | null;
   otb_name: string;
   otb_core_number: number;
+  feed_source: 'otb' | 'jc';
+  jc_id: number | null;
+  jc_name: string;
+  jc_core_number: number | null;
   total_cores: number;
   fibers_per_tube: number;
   splitter_model: string;
@@ -842,12 +853,40 @@ export interface FTTHOdp {
   odc_id: number | null;
   odc_name: string;
   odc_core_number: number;
+  feed_source: 'odc' | 'jc';
+  jc_id: number | null;
+  jc_name: string;
+  jc_core_number: number | null;
   total_ports: number;
   splitter_model: string;
   description: string;
   used_ports: number;
   available_ports: number;
   is_active: boolean;
+}
+
+export interface FTTHJc {
+  id: number;
+  name: string;
+  closure_type: string;
+  location: string;
+  latitude: number | null;
+  longitude: number | null;
+  total_cores: number;
+  parent_type: 'otb' | 'odc' | 'jc' | null;
+  parent_id: number | null;
+  parent_name: string;
+  description: string;
+  splice_count: number;
+  splices: FTTHJcSplice[];
+}
+
+export interface FTTHJcSplice {
+  id: number;
+  jc_id: number;
+  core_in: number;
+  core_out: number;
+  label: string;
 }
 
 export interface FTTHOdpPort {
@@ -874,8 +913,13 @@ export interface FTTHAvailableOnu {
   olt_name: string;
 }
 
+export interface FTTHOdpTree extends FTTHOdp { ports: FTTHOdpPort[] }
+export interface FTTHOdcTree extends FTTHOdc { odps: FTTHOdpTree[]; jcs: FTTHJcTree[] }
+export interface FTTHJcTree extends FTTHJc { splices: FTTHJcSplice[]; odcs: FTTHOdcTree[]; odps: FTTHOdpTree[]; jcs: FTTHJcTree[] }
+
 export interface FTTHItem extends FTTHOtb {
-  odcs: (FTTHOdc & { odps: (FTTHOdp & { ports: FTTHOdpPort[] })[] })[];
+  odcs: FTTHOdcTree[];
+  jcs: FTTHJcTree[];
 }
 
 export interface FTTHMarker {

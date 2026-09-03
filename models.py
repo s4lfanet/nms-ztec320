@@ -755,7 +755,9 @@ class FTTHOTB(db.Model):
 
 
 class FTTHODC(db.Model):
-    """ODC (Optical Distribution Cabinet) — fed by core from OTB/ODF"""
+    """ODC (Optical Distribution Cabinet) — fed by core from OTB/ODF, or from a
+    FTTHJC splice (feed_source='jc') when the run passes through a joint
+    closure first."""
     __tablename__ = 'ftth_odc'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), nullable=False)
@@ -764,17 +766,22 @@ class FTTHODC(db.Model):
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     otb_id = db.Column(db.Integer, db.ForeignKey('ftth_otb.id'), nullable=True)
-    otb_core_number = db.Column(db.Integer, default=1)  # which core from OTB
+    otb_core_number = db.Column(db.Integer, default=1)  # which core from OTB (feed_source='otb')
+    feed_source = db.Column(db.String(10), default='otb', nullable=False)  # 'otb' or 'jc'
+    jc_id = db.Column(db.Integer, db.ForeignKey('ftth_jc.id'), nullable=True)
+    jc_core_number = db.Column(db.Integer, nullable=True)  # which spliced-out core from the JC (feed_source='jc')
     total_cores = db.Column(db.Integer, default=8)
     fibers_per_tube = db.Column(db.Integer, default=12, nullable=False)  # TIA-598 tube grouping for the ODC's own outgoing cable
     splitter_model = db.Column(db.String(50), default='')  # e.g. 1:8, 1:16
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     otb = db.relationship('FTTHOTB', backref=db.backref('odcs', lazy=True, cascade='all, delete-orphan'))
+    jc = db.relationship('FTTHJC', foreign_keys=[jc_id], backref=db.backref('fed_odcs', lazy=True))
 
 
 class FTTHODP(db.Model):
-    """ODP (Optical Distribution Point) — fed by core from ODC, has splitter + ports for ONUs"""
+    """ODP (Optical Distribution Point) — fed by core from ODC, or from a
+    FTTHJC splice (feed_source='jc'). Has splitter + ports for ONUs."""
     __tablename__ = 'ftth_odp'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), nullable=False)
@@ -783,12 +790,55 @@ class FTTHODP(db.Model):
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     odc_id = db.Column(db.Integer, db.ForeignKey('ftth_odc.id'), nullable=True)
-    odc_core_number = db.Column(db.Integer, default=1)  # which core from ODC
+    odc_core_number = db.Column(db.Integer, default=1)  # which core from ODC (feed_source='odc')
+    feed_source = db.Column(db.String(10), default='odc', nullable=False)  # 'odc' or 'jc'
+    jc_id = db.Column(db.Integer, db.ForeignKey('ftth_jc.id'), nullable=True)
+    jc_core_number = db.Column(db.Integer, nullable=True)  # which spliced-out core from the JC (feed_source='jc')
     total_ports = db.Column(db.Integer, default=8)
     splitter_model = db.Column(db.String(50), default='')  # e.g. 1:4, 1:8, 1:16, 1:32
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     odc = db.relationship('FTTHODC', backref=db.backref('odps', lazy=True, cascade='all, delete-orphan'))
+    jc = db.relationship('FTTHJC', foreign_keys=[jc_id], backref=db.backref('fed_odps', lazy=True))
+
+
+class FTTHJC(db.Model):
+    """JC (Joint Closure / titik sambungan) — a splice closure along a fiber
+    run. Can sit anywhere in the chain (OTB→ODC, ODC→ODP, or chained
+    JC→JC): its own incoming cable comes from `parent_type`/`parent_id`
+    (otb, odc, or another jc), and each downstream node (ODC/ODP/another JC)
+    that is fed from this closure picks one of its FTTHJCSplice rows —
+    identified by that splice's core_out — as its feed core."""
+    __tablename__ = 'ftth_jc'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    closure_type = db.Column(db.String(20), default='inline')  # inline, dome, dead-end
+    location = db.Column(db.String(256), default='')
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
+    total_cores = db.Column(db.Integer, default=12)
+    parent_type = db.Column(db.String(10), nullable=True)  # otb, odc, jc
+    parent_id = db.Column(db.Integer, nullable=True)
+    description = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class FTTHJCSplice(db.Model):
+    """One splice inside a JC: an incoming core number (on the JC's parent
+    cable) spliced through to an outgoing core number (which downstream
+    nodes reference as their feed core)."""
+    __tablename__ = 'ftth_jc_splice'
+    id = db.Column(db.Integer, primary_key=True)
+    jc_id = db.Column(db.Integer, db.ForeignKey('ftth_jc.id'), nullable=False)
+    core_in = db.Column(db.Integer, nullable=False)
+    core_out = db.Column(db.Integer, nullable=False)
+    label = db.Column(db.String(150), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    jc = db.relationship('FTTHJC', backref=db.backref('splices', lazy=True, cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('jc_id', 'core_out', name='uq_jc_core_out'),
+    )
 
 
 class FTTHODPPort(db.Model):

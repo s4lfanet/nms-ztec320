@@ -5,9 +5,9 @@ import {
   Map as MapIcon, TreePine, Plus, Edit2, Trash2, ChevronDown, ChevronRight,
   Server, Box, Network, Split, X, MapPin, Link2, Unlink, Phone, Download, Upload, Cable,
   Activity, AlertTriangle, Wifi, WifiOff, Zap, CircleDashed, Gauge, RefreshCw,
-  UserX, LayoutGrid, List
+  UserX, LayoutGrid, List, GitMerge, Scissors
 } from 'lucide-react';
-import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath } from '../lib/api';
+import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath, type FTTHJc, type FTTHOdcTree, type FTTHOdpTree, type FTTHJcTree } from '../lib/api';
 import { cn } from '../lib/utils';
 import { coreColorInfo } from '../lib/fiberColor';
 import { toast } from '../components/Toast';
@@ -17,8 +17,9 @@ import { LeafletMap } from '../components/LeafletMap';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useWebSocket } from '../hooks/useWebSocket';
 
-type Tab = 'overview' | 'tree' | 'map' | 'otb' | 'odc' | 'odp' | 'pon';
-type ModalType = 'otb' | 'odc' | 'odp' | 'port' | 'pon' | null;
+type Tab = 'overview' | 'tree' | 'map' | 'otb' | 'jc' | 'odc' | 'odp' | 'pon';
+type ModalType = 'otb' | 'jc' | 'odc' | 'odp' | 'port' | 'pon' | null;
+type ParentKind = 'otb' | 'odc' | 'jc' | null;
 
 const FTTH_REFRESH_INTERVAL = 10;
 
@@ -38,6 +39,7 @@ export function FtthInfrastructure() {
   const [modal, setModal] = useState<ModalType>(null);
   const [editItem, setEditItem] = useState<any>(null);
   const [parentCtx, setParentCtx] = useState<any>(null);
+  const [parentKind, setParentKind] = useState<ParentKind>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedOdp, setSelectedOdp] = useState<FTTHOdp | null>(null);
   const [selectedOtb, setSelectedOtb] = useState<FTTHOtb | null>(null);
@@ -99,6 +101,7 @@ export function FtthInfrastructure() {
   }, [statsFetching]);
 
   const { data: otbList } = useQuery({ queryKey: ['ftth-otb'], queryFn: api.ftthOtbList });
+  const { data: jcList } = useQuery({ queryKey: ['ftth-jc'], queryFn: api.ftthJcList });
   const { data: odcList } = useQuery({ queryKey: ['ftth-odc'], queryFn: () => api.ftthOdcList() });
   const { data: odpList } = useQuery({ queryKey: ['ftth-odp'], queryFn: () => api.ftthOdpList() });
   const { data: odpPorts } = useQuery({
@@ -120,6 +123,7 @@ export function FtthInfrastructure() {
     qc.invalidateQueries({ queryKey: ['ftth-stats'] });
     qc.invalidateQueries({ queryKey: ['ftth-map'] });
     qc.invalidateQueries({ queryKey: ['ftth-otb'] });
+    qc.invalidateQueries({ queryKey: ['ftth-jc'] });
     qc.invalidateQueries({ queryKey: ['ftth-odc'] });
     qc.invalidateQueries({ queryKey: ['ftth-odp'] });
     qc.invalidateQueries({ queryKey: ['ftth-odp-ports'] });
@@ -131,6 +135,7 @@ export function FtthInfrastructure() {
   const delMut = useMutation({
     mutationFn: async ({ type, id }: { type: ModalType; id: number }) => {
       if (type === 'otb') return api.ftthOtbDelete(id);
+      if (type === 'jc') return api.ftthJcDelete(id);
       if (type === 'odc') return api.ftthOdcDelete(id);
       if (type === 'odp') return api.ftthOdpDelete(id);
       if (type === 'pon') return api.ftthPonDelete(id);
@@ -141,14 +146,16 @@ export function FtthInfrastructure() {
 
   const toggleExpand = (key: string) => setExpanded(p => ({ ...p, [key]: !p[key] }));
 
-  const openAdd = (type: ModalType, parent?: any) => {
+  const openAdd = (type: ModalType, parent?: any, kind?: ParentKind) => {
     setEditItem(null);
     setParentCtx(parent || null);
+    setParentKind(kind || null);
     setModal(type);
   };
   const openEdit = (type: ModalType, item: any) => {
     setEditItem(item);
     setParentCtx(null);
+    setParentKind(null);
     setModal(type);
   };
 
@@ -175,6 +182,7 @@ export function FtthInfrastructure() {
             <button onClick={() => setTab('tree')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'tree' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><TreePine size={14} /> Tree</button>
             <button onClick={() => setTab('pon')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'pon' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Cable size={14} /> PON</button>
             <button onClick={() => setTab('otb')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'otb' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Server size={14} /> OTB</button>
+            <button onClick={() => setTab('jc')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'jc' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><GitMerge size={14} /> JC</button>
             <button onClick={() => setTab('odc')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'odc' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Box size={14} /> ODC</button>
             <button onClick={() => setTab('odp')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'odp' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Split size={14} /> ODP</button>
             <button onClick={() => setTab('map')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'map' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><MapIcon size={14} /> Map</button>
@@ -183,6 +191,7 @@ export function FtthInfrastructure() {
             {canEdit && tab === 'tree' && <button onClick={() => openAdd('otb')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add OTB</button>}
             {canEdit && tab === 'pon' && <button onClick={() => openAdd('pon')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add PON</button>}
             {canEdit && tab === 'otb' && <button onClick={() => openAdd('otb')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add OTB</button>}
+            {canEdit && tab === 'jc' && <button onClick={() => openAdd('jc')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add JC</button>}
             {canEdit && tab === 'odc' && <button onClick={() => openAdd('odc')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add ODC</button>}
             {canEdit && tab === 'odp' && <button onClick={() => openAdd('odp')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add ODP</button>}
             <button onClick={() => window.open(api.ftthExport(), '_blank')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass text-tx2 text-xs md:text-sm hover:text-tx1 transition-colors" title="Export CSV"><Download size={13} /> Export</button>
@@ -219,11 +228,13 @@ export function FtthInfrastructure() {
           )}
           {tree.map(otb => (
             <OtbNode key={otb.id} otb={otb} expanded={expanded} toggleExpand={toggleExpand} canEdit={canEdit}
-              onAddOdc={() => openAdd('odc', otb)} onEditOtb={() => openEdit('otb', otb)}
+              onAddOdc={(parent, kind) => openAdd('odc', parent, kind)} onEditOtb={() => openEdit('otb', otb)}
               onDeleteOtb={() => handleDelete('otb', otb.id, otb.name)}
-              onAddOdp={(odc) => openAdd('odp', odc)} onEditOdc={(odc) => openEdit('odc', odc)}
+              onAddOdp={(parent, kind) => openAdd('odp', parent, kind)} onEditOdc={(odc) => openEdit('odc', odc)}
               onDeleteOdc={(odc) => handleDelete('odc', odc.id, odc.name)}
               onEditOdp={(odp) => { setSelectedOdp(odp); }} onDeleteOdp={(odp) => handleDelete('odp', odp.id, odp.name)}
+              onAddJc={(parent, kind) => openAdd('jc', parent, kind)} onEditJc={(jc) => openEdit('jc', jc)}
+              onDeleteJc={(jc) => handleDelete('jc', jc.id, jc.name)}
             />
           ))}
         </div>
@@ -315,6 +326,38 @@ export function FtthInfrastructure() {
         </div>
       )}
 
+      {/* JC List View */}
+      {tab === 'jc' && (
+        <div className="space-y-2">
+          {(jcList?.items || []).length === 0 && (
+            <div className="glass-card p-8 text-center"><GitMerge size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm mb-1">No JC (Joint Closure) added yet</p><p className="text-tx3 text-xs mb-3">Titik sambungan opsional di sepanjang jalur OTB → ODC → ODP</p>{canEdit && <button onClick={() => openAdd('jc')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First JC</button>}</div>
+          )}
+          {(jcList?.items || []).map(j => (
+            <div key={j.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
+              <div className="flex items-center gap-3">
+                <GitMerge size={18} className="text-purple-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm truncate">{j.name}</span>
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0 bg-glass text-tx3 uppercase">{j.closure_type}</span>
+                  </div>
+                  <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
+                    {j.parent_name && <span>• From: {j.parent_name} ({j.parent_type?.toUpperCase()})</span>}
+                    <span>• {j.splice_count} splice{j.splice_count === 1 ? '' : 's'}</span>
+                    <span>• {j.total_cores} cores</span>
+                    {j.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {j.latitude.toFixed(4)}, {j.longitude?.toFixed(4)}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {canEdit && <button onClick={() => openEdit('jc', j)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit / Manage Splices"><Edit2 size={15} /></button>}
+                  {canEdit && <button onClick={() => handleDelete('jc', j.id, j.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ODC List View */}
       {tab === 'odc' && (
         <div className="space-y-2">
@@ -333,8 +376,9 @@ export function FtthInfrastructure() {
                     <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? 'ACTIVE' : 'IDLE'}</span>
                   </div>
                   <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
-                    {o.otb_name && <span>• From: {o.otb_name} (Core {o.otb_core_number})</span>}
-                    {o.otb_name && <CoreColorTag coreNumber={o.otb_core_number} fibersPerTube={otbList?.items?.find(x => x.id === o.otb_id)?.fibers_per_tube} />}
+                    {o.feed_source === 'jc' && o.jc_name && <span>• From JC: {o.jc_name} (core {o.jc_core_number})</span>}
+                    {o.feed_source !== 'jc' && o.otb_name && <span>• From: {o.otb_name} (Core {o.otb_core_number})</span>}
+                    {o.feed_source !== 'jc' && o.otb_name && <CoreColorTag coreNumber={o.otb_core_number} fibersPerTube={otbList?.items?.find(x => x.id === o.otb_id)?.fibers_per_tube} />}
                     {o.splitter_model && <span>• Splitter: {o.splitter_model}</span>}
                     {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
                   </div>
@@ -372,7 +416,8 @@ export function FtthInfrastructure() {
                     <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? 'ACTIVE' : 'IDLE'}</span>
                   </div>
                   <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
-                    {o.odc_name && <span>• From: {o.odc_name} (Core {o.odc_core_number})</span>}
+                    {o.feed_source === 'jc' && o.jc_name && <span>• From JC: {o.jc_name} (core {o.jc_core_number})</span>}
+                    {o.feed_source !== 'jc' && o.odc_name && <span>• From: {o.odc_name} (Core {o.odc_core_number})</span>}
                     {o.splitter_model && <span>• Splitter: {o.splitter_model}</span>}
                     {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
                   </div>
@@ -466,8 +511,9 @@ export function FtthInfrastructure() {
 
       {/* Modals */}
       {modal === 'otb' && <OtbModal item={editItem} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
-      {modal === 'odc' && <OdcModal item={editItem} parent={parentCtx} otbList={otbList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
-      {modal === 'odp' && <OdpModal item={editItem} parent={parentCtx} odcList={odcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
+      {modal === 'jc' && <JcModal item={editItem} parent={parentCtx} parentKind={parentKind} otbList={otbList?.items || []} odcList={odcList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
+      {modal === 'odc' && <OdcModal item={editItem} parent={parentCtx} parentKind={parentKind} otbList={otbList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
+      {modal === 'odp' && <OdpModal item={editItem} parent={parentCtx} parentKind={parentKind} odcList={odcList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'pon' && <PonModal item={editItem} otbList={otbList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
     </div>
   );
@@ -661,15 +707,30 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
   );
 }
 
+// ─── Shared callbacks passed down the recursive tree ───
+interface TreeCallbacks {
+  expanded: Record<string, boolean>;
+  toggleExpand: (k: string) => void;
+  canEdit: boolean;
+  onAddOdc: (parent: any, kind: 'otb' | 'jc') => void;
+  onEditOdc: (odc: FTTHOdcTree) => void;
+  onDeleteOdc: (odc: FTTHOdcTree) => void;
+  onAddOdp: (parent: any, kind: 'odc' | 'jc') => void;
+  onEditOdp: (odp: FTTHOdpTree) => void;
+  onDeleteOdp: (odp: FTTHOdpTree) => void;
+  onAddJc: (parent: any, kind: 'otb' | 'odc' | 'jc') => void;
+  onEditJc: (jc: FTTHJcTree) => void;
+  onDeleteJc: (jc: FTTHJcTree) => void;
+}
+
 // ─── OTB Tree Node ───
-function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, onDeleteOtb, onAddOdp, onEditOdc, onDeleteOdc, onEditOdp, onDeleteOdp }: {
-  otb: FTTHItem; expanded: Record<string, boolean>; toggleExpand: (k: string) => void; canEdit: boolean;
-  onAddOdc: () => void; onEditOtb: () => void; onDeleteOtb: () => void;
-  onAddOdp: (odc: any) => void; onEditOdc: (odc: any) => void; onDeleteOdc: (odc: any) => void;
-  onEditOdp: (odp: any) => void; onDeleteOdp: (odp: any) => void;
-}) {
+function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, onDeleteOtb, onAddOdp, onEditOdc, onDeleteOdc, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc }: {
+  otb: FTTHItem;
+  onEditOtb: () => void; onDeleteOtb: () => void;
+} & TreeCallbacks) {
   const key = `otb-${otb.id}`;
   const isOpen = expanded[key] ?? false;
+  const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc };
   return (
     <div className="glass-card overflow-hidden">
       <div className="flex items-center gap-2 p-3 hover:bg-glass/50 transition-colors">
@@ -689,66 +750,142 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {canEdit && <button onClick={onAddOdc} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODC"><Plus size={15} /></button>}
+          {canEdit && <button onClick={() => onAddJc(otb, 'otb')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title="Add JC (Joint Closure)"><GitMerge size={15} /></button>}
+          {canEdit && <button onClick={() => onAddOdc(otb, 'otb')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODC"><Plus size={15} /></button>}
           {canEdit && <button onClick={onEditOtb} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
           {canEdit && <button onClick={onDeleteOtb} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
         </div>
       </div>
       {isOpen && (
         <div className="ml-4 md:ml-6 border-l border-brd/50">
-          {otb.odcs.length === 0 && <div className="p-3 text-xs text-tx3">No ODCs. Click + to add one.</div>}
-          {otb.odcs.map(odc => {
-            const odcKey = `odc-${odc.id}`;
-            const odcOpen = expanded[odcKey] ?? false;
-            return (
-              <div key={odc.id}>
-                <div className="flex items-center gap-2 p-2.5 hover:bg-glass/50 transition-colors border-t border-brd/30">
-                  <button onClick={() => toggleExpand(odcKey)} className="p-1 rounded hover:bg-glass">
-                    {odcOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  </button>
-                  <Box size={16} className="text-warning" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">{odc.name}</div>
-                    <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
-                      <span>Core {odc.otb_core_number} from {odc.otb_name}</span>
-                      <CoreColorTag coreNumber={odc.otb_core_number} fibersPerTube={otb.fibers_per_tube} />
-                      {odc.splitter_model && <span>• Splitter: {odc.splitter_model}</span>}
-                      <span>• {odc.odp_count} ODPs</span>
-                      {odc.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {odc.latitude.toFixed(4)}, {odc.longitude?.toFixed(4)}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {canEdit && <button onClick={() => onAddOdp(odc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODP"><Plus size={15} /></button>}
-                    {canEdit && <button onClick={() => onEditOdc(odc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-                    {canEdit && <button onClick={() => onDeleteOdc(odc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
-                  </div>
-                </div>
-                {odcOpen && (
-                  <div className="ml-4 md:ml-6 border-l border-brd/50">
-                    {odc.odps.length === 0 && <div className="p-2.5 text-xs text-tx3">No ODPs. Click + to add one.</div>}
-                    {odc.odps.map(odp => (
-                      <div key={odp.id} className="flex items-center gap-2 p-2.5 hover:bg-glass/50 transition-colors border-t border-brd/30">
-                        <Split size={16} className="text-success" />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">{odp.name}</div>
-                          <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
-                            <span>Core {odp.odc_core_number} from {odp.odc_name}</span>
-                            {odp.splitter_model && <span>• Splitter: {odp.splitter_model}</span>}
-                            <span>• {odp.used_ports}/{odp.total_ports} ports used</span>
-                            {odp.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {odp.latitude.toFixed(4)}, {odp.longitude?.toFixed(4)}</span>}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {canEdit && <button onClick={() => onEditOdp(odp)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Manage Ports"><Network size={15} /></button>}
-                          {canEdit && <button onClick={() => onDeleteOdp(odp)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {otb.odcs.length === 0 && otb.jcs.length === 0 && <div className="p-3 text-xs text-tx3">No ODCs or JCs yet. Click + to add one.</div>}
+          {otb.odcs.map(odc => (
+            <OdcRow key={`odc-${odc.id}`} odc={odc} fibersPerTube={otb.fibers_per_tube} sourceLabel={`Core ${odc.otb_core_number} from ${odc.otb_name}`} {...cb} />
+          ))}
+          {otb.jcs.map(jc => (
+            <JcRow key={`jc-${jc.id}`} jc={jc} {...cb} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ODC Tree Row (recursive: can nest child JCs) ───
+function OdcRow({ odc, fibersPerTube, sourceLabel, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc }: {
+  odc: FTTHOdcTree; fibersPerTube?: number; sourceLabel: string;
+} & TreeCallbacks) {
+  const odcKey = `odc-${odc.id}`;
+  const odcOpen = expanded[odcKey] ?? false;
+  const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc };
+  return (
+    <div>
+      <div className="flex items-center gap-2 p-2.5 hover:bg-glass/50 transition-colors border-t border-brd/30">
+        <button onClick={() => toggleExpand(odcKey)} className="p-1 rounded hover:bg-glass">
+          {odcOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+        <Box size={16} className="text-warning" />
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-sm truncate">{odc.name}</div>
+          <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
+            <span>{sourceLabel}</span>
+            {odc.feed_source !== 'jc' && <CoreColorTag coreNumber={odc.otb_core_number} fibersPerTube={fibersPerTube} />}
+            {odc.splitter_model && <span>• Splitter: {odc.splitter_model}</span>}
+            <span>• {odc.odp_count} ODPs</span>
+            {odc.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {odc.latitude.toFixed(4)}, {odc.longitude?.toFixed(4)}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {canEdit && <button onClick={() => onAddJc(odc, 'odc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title="Add JC (Joint Closure)"><GitMerge size={15} /></button>}
+          {canEdit && <button onClick={() => onAddOdp(odc, 'odc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODP"><Plus size={15} /></button>}
+          {canEdit && <button onClick={() => onEditOdc(odc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
+          {canEdit && <button onClick={() => onDeleteOdc(odc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+        </div>
+      </div>
+      {odcOpen && (
+        <div className="ml-4 md:ml-6 border-l border-brd/50">
+          {odc.odps.length === 0 && odc.jcs.length === 0 && <div className="p-2.5 text-xs text-tx3">No ODPs or JCs yet. Click + to add one.</div>}
+          {odc.odps.map(odp => (
+            <OdpRow key={`odp-${odp.id}`} odp={odp} sourceLabel={`Core ${odp.odc_core_number} from ${odp.odc_name}`} {...cb} />
+          ))}
+          {odc.jcs.map(jc => (
+            <JcRow key={`jc-${jc.id}`} jc={jc} {...cb} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ODP Tree Row (leaf) ───
+function OdpRow({ odp, sourceLabel, canEdit, onEditOdp, onDeleteOdp }: {
+  odp: FTTHOdpTree; sourceLabel: string;
+} & Pick<TreeCallbacks, 'canEdit' | 'onEditOdp' | 'onDeleteOdp'>) {
+  return (
+    <div className="flex items-center gap-2 p-2.5 hover:bg-glass/50 transition-colors border-t border-brd/30">
+      <Split size={16} className="text-success" />
+      <div className="flex-1 min-w-0">
+        <div className="font-medium text-sm truncate">{odp.name}</div>
+        <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
+          <span>{sourceLabel}</span>
+          {odp.splitter_model && <span>• Splitter: {odp.splitter_model}</span>}
+          <span>• {odp.used_ports}/{odp.total_ports} ports used</span>
+          {odp.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {odp.latitude.toFixed(4)}, {odp.longitude?.toFixed(4)}</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        {canEdit && <button onClick={() => onEditOdp(odp)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Manage Ports"><Network size={15} /></button>}
+        {canEdit && <button onClick={() => onDeleteOdp(odp)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+      </div>
+    </div>
+  );
+}
+
+// ─── JC (Joint Closure) Tree Row — recursive: can feed ODCs, ODPs, or chain to another JC ───
+function JcRow({ jc, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc }: {
+  jc: FTTHJcTree;
+} & TreeCallbacks) {
+  const jcKey = `jc-${jc.id}`;
+  const jcOpen = expanded[jcKey] ?? false;
+  const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc };
+  const childCount = jc.odcs.length + jc.odps.length + jc.jcs.length;
+  return (
+    <div>
+      <div className="flex items-center gap-2 p-2.5 hover:bg-glass/50 transition-colors border-t border-brd/30 bg-purple-500/[0.03]">
+        <button onClick={() => toggleExpand(jcKey)} className="p-1 rounded hover:bg-glass">
+          {jcOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+        <GitMerge size={16} className="text-purple-400" />
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-sm truncate flex items-center gap-1.5">
+            {jc.name}
+            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-glass text-tx3 uppercase">{jc.closure_type}</span>
+          </div>
+          <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
+            <span>• {jc.splice_count} splice{jc.splice_count === 1 ? '' : 's'}</span>
+            {jc.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {jc.latitude.toFixed(4)}, {jc.longitude?.toFixed(4)}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {canEdit && <button onClick={() => onAddJc(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title="Chain another JC"><GitMerge size={15} /></button>}
+          {canEdit && <button onClick={() => onAddOdc(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODC fed from this JC"><Box size={15} /></button>}
+          {canEdit && <button onClick={() => onAddOdp(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-success" title="Add ODP fed from this JC"><Split size={15} /></button>}
+          {canEdit && <button onClick={() => onEditJc(jc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit / Manage Splices"><Edit2 size={15} /></button>}
+          {canEdit && <button onClick={() => onDeleteJc(jc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+        </div>
+      </div>
+      {jcOpen && (
+        <div className="ml-4 md:ml-6 border-l border-brd/50">
+          {childCount === 0 && <div className="p-2.5 text-xs text-tx3">Nothing fed from this JC yet. Click an icon above to add an ODC, ODP, or chained JC.</div>}
+          {jc.odcs.map(odc => (
+            <OdcRow key={`odc-${odc.id}`} odc={odc} sourceLabel={`Core ${odc.jc_core_number} from JC ${jc.name}`} {...cb} />
+          ))}
+          {jc.odps.map(odp => (
+            <OdpRow key={`odp-${odp.id}`} odp={odp} sourceLabel={`Core ${odp.jc_core_number} from JC ${jc.name}`} {...cb} />
+          ))}
+          {jc.jcs.map(child => (
+            <JcRow key={`jc-${child.id}`} jc={child} {...cb} />
+          ))}
         </div>
       )}
     </div>
@@ -1184,12 +1321,38 @@ function OtbModal({ item, onClose, onSaved }: { item: FTTHOtb | null; onClose: (
   );
 }
 
+// ─── Fed-from toggle (OTB/ODC vs JC), shared by ODC + ODP modals ───
+function FeedSourceToggle({ value, directValue, onChange, directLabel, directIcon }: {
+  value: 'otb' | 'odc' | 'jc'; directValue: 'otb' | 'odc'; onChange: (v: 'otb' | 'odc' | 'jc') => void;
+  directLabel: string; directIcon: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <button type="button" onClick={() => onChange(directValue)}
+        className={cn('flex items-center gap-2 p-2 rounded-lg border text-left transition text-xs',
+          value !== 'jc' ? 'border-accent bg-accent/10' : 'border-brd hover:border-tx3')}>
+        {directIcon} {directLabel}
+      </button>
+      <button type="button" onClick={() => onChange('jc')}
+        className={cn('flex items-center gap-2 p-2 rounded-lg border text-left transition text-xs',
+          value === 'jc' ? 'border-accent bg-accent/10' : 'border-brd hover:border-tx3')}>
+        <GitMerge size={14} className={value === 'jc' ? 'text-accent' : 'text-tx3'} /> JC (Joint Closure)
+      </button>
+    </div>
+  );
+}
+
 // ─── ODC Modal ───
-function OdcModal({ item, parent, otbList, onClose, onSaved }: { item: FTTHOdc | null; parent: any; otbList: FTTHOtb[]; onClose: () => void; onSaved: () => void }) {
+function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved }: {
+  item: FTTHOdc | null; parent: any; parentKind?: ParentKind; otbList: FTTHOtb[]; jcList: FTTHJc[]; onClose: () => void; onSaved: () => void;
+}) {
+  const initialFeedSource: 'otb' | 'jc' = item?.feed_source || (parentKind === 'jc' ? 'jc' : 'otb');
   const [form, setForm] = useState({
     name: item?.name || '', model: item?.model || '',
     location: item?.location || '', latitude: item?.latitude || '', longitude: item?.longitude || '',
-    otb_id: item?.otb_id || parent?.id || '', otb_core_number: item?.otb_core_number || 1,
+    feed_source: initialFeedSource,
+    otb_id: item?.otb_id || (parentKind === 'otb' ? parent?.id : '') || '', otb_core_number: item?.otb_core_number || 1,
+    jc_id: item?.jc_id || (parentKind === 'jc' ? parent?.id : '') || '', jc_core_number: item?.jc_core_number || '',
     total_cores: item?.total_cores || 8, fibers_per_tube: item?.fibers_per_tube || 12,
     splitter_model: item?.splitter_model || '',
     description: item?.description || '',
@@ -1204,12 +1367,15 @@ function OdcModal({ item, parent, otbList, onClose, onSaved }: { item: FTTHOdc |
     d.latitude = form.latitude === '' ? null : parseFloat(String(form.latitude));
     d.longitude = form.longitude === '' ? null : parseFloat(String(form.longitude));
     d.otb_id = form.otb_id === '' ? null : parseInt(String(form.otb_id));
-    d.otb_core_number = parseInt(String(form.otb_core_number));
+    d.otb_core_number = parseInt(String(form.otb_core_number)) || 1;
+    d.jc_id = form.jc_id === '' ? null : parseInt(String(form.jc_id));
+    d.jc_core_number = form.jc_core_number === '' ? null : parseInt(String(form.jc_core_number));
     d.total_cores = parseInt(String(form.total_cores));
     d.fibers_per_tube = parseInt(String(form.fibers_per_tube));
     mut.mutate(d);
   };
   const selectedOtb = otbList.find(x => x.id === Number(form.otb_id));
+  const selectedJc = jcList.find(x => x.id === Number(form.jc_id));
   return (
     <Modal title={item ? 'Edit ODC' : 'Add ODC'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
       <FormField label="Name"><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="ODC-01" /></FormField>
@@ -1225,23 +1391,45 @@ function OdcModal({ item, parent, otbList, onClose, onSaved }: { item: FTTHOdc |
           onChange={(lat, lng) => setForm({ ...form, latitude: lat, longitude: lng })}
         />
       </FormField>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <FormField label="OTB/ODF"><select className="input-field" value={form.otb_id} onChange={e => setForm({ ...form, otb_id: e.target.value })}><option value="">— None —</option>{otbList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
-        <FormField label="Core from OTB"><input className="input-field" type="number" value={form.otb_core_number} onChange={e => setForm({ ...form, otb_core_number: parseInt(e.target.value) || 1 })} /></FormField>
-        <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
-      </div>
-      {selectedOtb && <p className="text-xs -mt-1"><CoreColorTag coreNumber={form.otb_core_number} fibersPerTube={selectedOtb.fibers_per_tube} /></p>}
+      <FormField label="Fed From">
+        <FeedSourceToggle value={form.feed_source} directValue="otb" onChange={v => setForm({ ...form, feed_source: v as 'otb' | 'jc' })} directLabel="OTB/ODF" directIcon={<Server size={14} className={form.feed_source !== 'jc' ? 'text-accent' : 'text-tx3'} />} />
+      </FormField>
+      {form.feed_source === 'jc' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <FormField label="JC (Joint Closure)"><select className="input-field" value={form.jc_id} onChange={e => setForm({ ...form, jc_id: e.target.value, jc_core_number: '' })}><option value="">— Select JC —</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
+          <FormField label="Core from JC">
+            <select className="input-field" value={form.jc_core_number} onChange={e => setForm({ ...form, jc_core_number: e.target.value })}>
+              <option value="">— Select splice —</option>
+              {(selectedJc?.splices || []).map(s => <option key={s.id} value={s.core_out}>Core {s.core_out} (in: {s.core_in}{s.label ? ` — ${s.label}` : ''})</option>)}
+            </select>
+          </FormField>
+          <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
+          {selectedJc && selectedJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">This JC has no splices yet — add one first (Edit JC → Splices) so there's a core to feed from.</p>}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <FormField label="OTB/ODF"><select className="input-field" value={form.otb_id} onChange={e => setForm({ ...form, otb_id: e.target.value })}><option value="">— None —</option>{otbList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
+          <FormField label="Core from OTB"><input className="input-field" type="number" value={form.otb_core_number} onChange={e => setForm({ ...form, otb_core_number: parseInt(e.target.value) || 1 })} /></FormField>
+          <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
+        </div>
+      )}
+      {form.feed_source !== 'jc' && selectedOtb && <p className="text-xs -mt-1"><CoreColorTag coreNumber={form.otb_core_number} fibersPerTube={selectedOtb.fibers_per_tube} /></p>}
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
 }
 
 // ─── ODP Modal ───
-function OdpModal({ item, parent, odcList, onClose, onSaved }: { item: FTTHOdp | null; parent: any; odcList: FTTHOdc[]; onClose: () => void; onSaved: () => void }) {
+function OdpModal({ item, parent, parentKind, odcList, jcList, onClose, onSaved }: {
+  item: FTTHOdp | null; parent: any; parentKind?: ParentKind; odcList: FTTHOdc[]; jcList: FTTHJc[]; onClose: () => void; onSaved: () => void;
+}) {
+  const initialFeedSource: 'odc' | 'jc' = item?.feed_source || (parentKind === 'jc' ? 'jc' : 'odc');
   const [form, setForm] = useState({
     name: item?.name || '', model: item?.model || '',
     location: item?.location || '', latitude: item?.latitude || '', longitude: item?.longitude || '',
-    odc_id: item?.odc_id || parent?.id || '', odc_core_number: item?.odc_core_number || 1,
+    feed_source: initialFeedSource,
+    odc_id: item?.odc_id || (parentKind === 'odc' ? parent?.id : '') || '', odc_core_number: item?.odc_core_number || 1,
+    jc_id: item?.jc_id || (parentKind === 'jc' ? parent?.id : '') || '', jc_core_number: item?.jc_core_number || '',
     total_ports: item?.total_ports || 8, splitter_model: item?.splitter_model || '',
     description: item?.description || '',
   });
@@ -1255,10 +1443,13 @@ function OdpModal({ item, parent, odcList, onClose, onSaved }: { item: FTTHOdp |
     d.latitude = form.latitude === '' ? null : parseFloat(String(form.latitude));
     d.longitude = form.longitude === '' ? null : parseFloat(String(form.longitude));
     d.odc_id = form.odc_id === '' ? null : parseInt(String(form.odc_id));
-    d.odc_core_number = parseInt(String(form.odc_core_number));
+    d.odc_core_number = parseInt(String(form.odc_core_number)) || 1;
+    d.jc_id = form.jc_id === '' ? null : parseInt(String(form.jc_id));
+    d.jc_core_number = form.jc_core_number === '' ? null : parseInt(String(form.jc_core_number));
     d.total_ports = parseInt(String(form.total_ports));
     mut.mutate(d);
   };
+  const selectedJc = jcList.find(x => x.id === Number(form.jc_id));
   return (
     <Modal title={item ? 'Edit ODP' : 'Add ODP'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
       <FormField label="Name"><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="ODP-01" /></FormField>
@@ -1274,12 +1465,139 @@ function OdpModal({ item, parent, odcList, onClose, onSaved }: { item: FTTHOdp |
           onChange={(lat, lng) => setForm({ ...form, latitude: lat, longitude: lng })}
         />
       </FormField>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <FormField label="ODC"><select className="input-field" value={form.odc_id} onChange={e => setForm({ ...form, odc_id: e.target.value })}><option value="">— None —</option>{odcList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
-        <FormField label="Core from ODC"><input className="input-field" type="number" value={form.odc_core_number} onChange={e => setForm({ ...form, odc_core_number: parseInt(e.target.value) || 1 })} /></FormField>
-        <FormField label="Total Ports"><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
+      <FormField label="Fed From">
+        <FeedSourceToggle value={form.feed_source} directValue="odc" onChange={v => setForm({ ...form, feed_source: v as 'odc' | 'jc' })} directLabel="ODC" directIcon={<Box size={14} className={form.feed_source !== 'jc' ? 'text-accent' : 'text-tx3'} />} />
+      </FormField>
+      {form.feed_source === 'jc' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <FormField label="JC (Joint Closure)"><select className="input-field" value={form.jc_id} onChange={e => setForm({ ...form, jc_id: e.target.value, jc_core_number: '' })}><option value="">— Select JC —</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
+          <FormField label="Core from JC">
+            <select className="input-field" value={form.jc_core_number} onChange={e => setForm({ ...form, jc_core_number: e.target.value })}>
+              <option value="">— Select splice —</option>
+              {(selectedJc?.splices || []).map(s => <option key={s.id} value={s.core_out}>Core {s.core_out} (in: {s.core_in}{s.label ? ` — ${s.label}` : ''})</option>)}
+            </select>
+          </FormField>
+          <FormField label="Total Ports"><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
+          {selectedJc && selectedJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">This JC has no splices yet — add one first (Edit JC → Splices) so there's a core to feed from.</p>}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <FormField label="ODC"><select className="input-field" value={form.odc_id} onChange={e => setForm({ ...form, odc_id: e.target.value })}><option value="">— None —</option>{odcList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
+          <FormField label="Core from ODC"><input className="input-field" type="number" value={form.odc_core_number} onChange={e => setForm({ ...form, odc_core_number: parseInt(e.target.value) || 1 })} /></FormField>
+          <FormField label="Total Ports"><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
+        </div>
+      )}
+      <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
+    </Modal>
+  );
+}
+
+// ─── JC (Joint Closure) Modal — includes inline splice management once saved ───
+function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, onSaved }: {
+  item: FTTHJc | null; parent: any; parentKind?: ParentKind; otbList: FTTHOtb[]; odcList: FTTHOdc[]; jcList: FTTHJc[]; onClose: () => void; onSaved: () => void;
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    name: item?.name || '', closure_type: item?.closure_type || 'inline',
+    location: item?.location || '', latitude: item?.latitude || '', longitude: item?.longitude || '',
+    total_cores: item?.total_cores || 12,
+    parent_type: item?.parent_type || parentKind || '',
+    parent_id: item?.parent_id || parent?.id || '',
+    description: item?.description || '',
+  });
+  const mut = useMutation({
+    mutationFn: (data: any) => item ? api.ftthJcUpdate(item.id, data) : api.ftthJcCreate(data),
+    onSuccess: () => { toast.success(item ? 'Updated' : 'Created'); onSaved(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const submit = () => {
+    const d: any = { ...form };
+    d.latitude = form.latitude === '' ? null : parseFloat(String(form.latitude));
+    d.longitude = form.longitude === '' ? null : parseFloat(String(form.longitude));
+    d.total_cores = parseInt(String(form.total_cores));
+    d.parent_type = form.parent_type || null;
+    d.parent_id = form.parent_id === '' ? null : parseInt(String(form.parent_id));
+    mut.mutate(d);
+  };
+
+  // Splice management — only meaningful once the JC exists (has an id)
+  const [spliceForm, setSpliceForm] = useState({ core_in: '', core_out: '', label: '' });
+  const currentSplices = item ? (jcList.find(j => j.id === item.id)?.splices || item.splices || []) : [];
+  const spliceMut = useMutation({
+    mutationFn: () => api.ftthJcSpliceCreate(item!.id, {
+      core_in: parseInt(spliceForm.core_in), core_out: parseInt(spliceForm.core_out), label: spliceForm.label,
+    }),
+    onSuccess: () => { toast.success('Splice added'); setSpliceForm({ core_in: '', core_out: '', label: '' }); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const deleteSpliceMut = useMutation({
+    mutationFn: (spliceId: number) => api.ftthJcSpliceDelete(item!.id, spliceId),
+    onSuccess: () => { toast.success('Splice removed'); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const parentOptions = form.parent_type === 'otb' ? otbList : form.parent_type === 'odc' ? odcList : jcList.filter(j => j.id !== item?.id);
+
+  return (
+    <Modal title={item ? 'Edit JC (Joint Closure)' : 'Add JC (Joint Closure)'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
+      <FormField label="Name"><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="JC-01" /></FormField>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label="Closure Type">
+          <select className="input-field" value={form.closure_type} onChange={e => setForm({ ...form, closure_type: e.target.value })}>
+            <option value="inline">Inline</option>
+            <option value="dome">Dome</option>
+            <option value="dead-end">Dead-end</option>
+          </select>
+        </FormField>
+        <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
+      </div>
+      <FormField label="Location"><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Pole number, manhole, address" /></FormField>
+      <FormField label="Coordinates (GPS / Map)">
+        <LocationPicker latitude={form.latitude} longitude={form.longitude} onChange={(lat, lng) => setForm({ ...form, latitude: lat, longitude: lng })} />
+      </FormField>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label="Fed From (parent)">
+          <select className="input-field" value={form.parent_type} onChange={e => setForm({ ...form, parent_type: e.target.value, parent_id: '' })}>
+            <option value="">— None —</option>
+            <option value="otb">OTB/ODF</option>
+            <option value="odc">ODC</option>
+            <option value="jc">Another JC</option>
+          </select>
+        </FormField>
+        <FormField label="Parent">
+          <select className="input-field" value={form.parent_id} onChange={e => setForm({ ...form, parent_id: e.target.value })} disabled={!form.parent_type}>
+            <option value="">— Select —</option>
+            {parentOptions.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </FormField>
       </div>
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
+
+      {item && (
+        <div className="pt-3 border-t border-brd">
+          <div className="flex items-center gap-1.5 text-sm font-medium mb-2"><Scissors size={14} className="text-purple-400" /> Splices ({currentSplices.length})</div>
+          <p className="text-[11px] text-tx3 mb-2">Core masuk (dari {form.parent_type || 'parent'}) disambung ke core keluar — ODC/ODP downstream memilih core keluar ini sebagai sumbernya.</p>
+          {currentSplices.length > 0 && (
+            <div className="space-y-1 mb-2 max-h-40 overflow-y-auto">
+              {currentSplices.map(s => (
+                <div key={s.id} className="flex items-center gap-2 p-1.5 rounded bg-glass text-xs">
+                  <span className="font-mono">Core {s.core_in} → {s.core_out}</span>
+                  {s.label && <span className="text-tx3 truncate flex-1">{s.label}</span>}
+                  <button onClick={() => deleteSpliceMut.mutate(s.id)} className="p-1 rounded hover:bg-danger/15 text-tx3 hover:text-danger flex-shrink-0" title="Remove splice"><Trash2 size={12} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="grid grid-cols-4 gap-1.5">
+            <input className="input-field !text-xs" type="number" placeholder="Core in" value={spliceForm.core_in} onChange={e => setSpliceForm({ ...spliceForm, core_in: e.target.value })} />
+            <input className="input-field !text-xs" type="number" placeholder="Core out" value={spliceForm.core_out} onChange={e => setSpliceForm({ ...spliceForm, core_out: e.target.value })} />
+            <input className="input-field !text-xs" placeholder="Label (optional)" value={spliceForm.label} onChange={e => setSpliceForm({ ...spliceForm, label: e.target.value })} />
+            <button type="button" onClick={() => spliceMut.mutate()} disabled={!spliceForm.core_in || !spliceForm.core_out || spliceMut.isPending}
+              className="btn-primary text-xs disabled:opacity-50">+ Add</button>
+          </div>
+        </div>
+      )}
+      {!item && <p className="text-[11px] text-tx3">Save this JC first, then reopen it to add splices (core in → core out).</p>}
     </Modal>
   );
 }
