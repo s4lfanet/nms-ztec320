@@ -1528,9 +1528,7 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
   const parentOptions = form.parent_type === 'otb' ? otbList : form.parent_type === 'odc' ? odcList : jcList.filter(j => j.id !== item?.id);
   const parentNode: any = form.parent_type ? parentOptions.find((p: any) => p.id === Number(form.parent_id)) : null;
   const parentFibersPerTube = parentNode?.fibers_per_tube || 12;
-  const parentTubeCount = Math.max(1, Math.ceil((parentNode?.total_cores || 12) / parentFibersPerTube));
   const ownFibersPerTube = form.fibers_per_tube || 12;
-  const ownTubeCount = Math.max(1, Math.ceil((form.total_cores || 12) / ownFibersPerTube));
 
   const [spliceForm, setSpliceForm] = useState({ tubeIn: 1, posIn: 1, tubeOut: 1, posOut: 1, label: '' });
   const spliceCoreIn = (spliceForm.tubeIn - 1) * parentFibersPerTube + spliceForm.posIn;
@@ -1608,20 +1606,16 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
             <div>
               <span className="text-[10px] text-tx3 font-medium block mb-1">Core In — dari {form.parent_type ? `${form.parent_type.toUpperCase()}${parentNode ? ` (${parentNode.name})` : ''}` : 'parent'}</span>
               <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 items-center">
-                <select className="input-field !text-xs" value={spliceForm.tubeIn} onChange={e => setSpliceForm({ ...spliceForm, tubeIn: parseInt(e.target.value) })}>
-                  {Array.from({ length: parentTubeCount }, (_, i) => i + 1).map(t => <option key={t} value={t}>Tube {t}</option>)}
-                </select>
-                <input className="input-field !text-xs" type="number" min={1} max={parentFibersPerTube} placeholder="Core in tube" value={spliceForm.posIn} onChange={e => setSpliceForm({ ...spliceForm, posIn: parseInt(e.target.value) || 1 })} />
+                <input className="input-field !text-xs" type="number" min={1} placeholder="Tube" title="Nomor tube — isi bebas, mis. untuk drop core / kabel non-tube bisa dibiarkan 1" value={spliceForm.tubeIn} onChange={e => setSpliceForm({ ...spliceForm, tubeIn: parseInt(e.target.value) || 1 })} />
+                <input className="input-field !text-xs" type="number" min={1} placeholder="Core in tube" value={spliceForm.posIn} onChange={e => setSpliceForm({ ...spliceForm, posIn: parseInt(e.target.value) || 1 })} />
                 <CoreColorTag coreNumber={spliceCoreIn} fibersPerTube={parentFibersPerTube} />
               </div>
             </div>
             <div>
               <span className="text-[10px] text-tx3 font-medium block mb-1">Core Out — ke downstream (JC ini)</span>
               <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 items-center">
-                <select className="input-field !text-xs" value={spliceForm.tubeOut} onChange={e => setSpliceForm({ ...spliceForm, tubeOut: parseInt(e.target.value) })}>
-                  {Array.from({ length: ownTubeCount }, (_, i) => i + 1).map(t => <option key={t} value={t}>Tube {t}</option>)}
-                </select>
-                <input className="input-field !text-xs" type="number" min={1} max={ownFibersPerTube} placeholder="Core in tube" value={spliceForm.posOut} onChange={e => setSpliceForm({ ...spliceForm, posOut: parseInt(e.target.value) || 1 })} />
+                <input className="input-field !text-xs" type="number" min={1} placeholder="Tube" title="Nomor tube — isi bebas, mis. untuk drop core / kabel non-tube bisa dibiarkan 1" value={spliceForm.tubeOut} onChange={e => setSpliceForm({ ...spliceForm, tubeOut: parseInt(e.target.value) || 1 })} />
+                <input className="input-field !text-xs" type="number" min={1} placeholder="Core in tube" value={spliceForm.posOut} onChange={e => setSpliceForm({ ...spliceForm, posOut: parseInt(e.target.value) || 1 })} />
                 <CoreColorTag coreNumber={spliceCoreOut} fibersPerTube={ownFibersPerTube} />
               </div>
             </div>
