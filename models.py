@@ -834,6 +834,12 @@ class FTTHJCSplice(db.Model):
     core_in = db.Column(db.Integer, nullable=False)
     core_out = db.Column(db.Integer, nullable=False)
     label = db.Column(db.String(150), default='')
+    # Free-text tube name/color override per side — a splice core isn't always
+    # part of a standard 12-color TIA-598 tube (drop cores, non-ADSS cable),
+    # so the auto-computed tube color can be overridden with what's physically
+    # on the cable. Blank means "use the computed TIA-598 color" as before.
+    tube_in_label = db.Column(db.String(50), default='')
+    tube_out_label = db.Column(db.String(50), default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     jc = db.relationship('FTTHJC', backref=db.backref('splices', lazy=True, cascade='all, delete-orphan'))
 

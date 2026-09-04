@@ -219,7 +219,10 @@ def _jc_to_dict(j):
 
 
 def _jc_splice_to_dict(s):
-    return {'id': s.id, 'jc_id': s.jc_id, 'core_in': s.core_in, 'core_out': s.core_out, 'label': s.label or ''}
+    return {
+        'id': s.id, 'jc_id': s.jc_id, 'core_in': s.core_in, 'core_out': s.core_out, 'label': s.label or '',
+        'tube_in_label': s.tube_in_label or '', 'tube_out_label': s.tube_out_label or '',
+    }
 
 
 def _jc_creates_cycle(jc_id, start_parent_type, start_parent_id, _max_depth=25):
@@ -622,7 +625,8 @@ def ftth_jc_splice_create(jc_id):
         return jsonify({'success': False, 'message': 'core_in and core_out are required'}), 400
     if FTTHJCSplice.query.filter_by(jc_id=jc_id, core_out=d['core_out']).first():
         return jsonify({'success': False, 'message': f"Core out {d['core_out']} is already used by another splice in this JC"}), 400
-    s = FTTHJCSplice(jc_id=jc_id, core_in=d['core_in'], core_out=d['core_out'], label=d.get('label', ''))
+    s = FTTHJCSplice(jc_id=jc_id, core_in=d['core_in'], core_out=d['core_out'], label=d.get('label', ''),
+                      tube_in_label=d.get('tube_in_label', ''), tube_out_label=d.get('tube_out_label', ''))
     db.session.add(s)
     db.session.commit()
     return jsonify({'success': True, 'splice': _jc_splice_to_dict(s)})
@@ -638,7 +642,7 @@ def ftth_jc_splice_update(jc_id, splice_id):
     if 'core_out' in d and d['core_out'] != s.core_out:
         if FTTHJCSplice.query.filter_by(jc_id=jc_id, core_out=d['core_out']).first():
             return jsonify({'success': False, 'message': f"Core out {d['core_out']} is already used by another splice in this JC"}), 400
-    for k in ['core_in', 'core_out', 'label']:
+    for k in ['core_in', 'core_out', 'label', 'tube_in_label', 'tube_out_label']:
         if k in d: setattr(s, k, d[k])
     db.session.commit()
     return jsonify({'success': True, 'splice': _jc_splice_to_dict(s)})

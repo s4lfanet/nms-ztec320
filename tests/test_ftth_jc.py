@@ -134,6 +134,26 @@ class TestJcCrud:
 
 
 class TestSpliceCrud:
+    def test_tube_label_optional_override(self, auth_client, test_otb):
+        """A splice core isn't always part of a standard TIA-598 tube (drop
+        cores, non-ADSS cable) — tube_in_label/tube_out_label let the free-text
+        name on the physical cable be recorded instead of relying purely on
+        the computed 12-color rotation."""
+        jc_id = auth_client.post('/api/ftth/jc', json={
+            'name': 'JC-A', 'parent_type': 'otb', 'parent_id': test_otb,
+        }, headers=H).get_json()['item']['id']
+        resp = auth_client.post(f'/api/ftth/jc/{jc_id}/splice', json={
+            'core_in': 3, 'core_out': 5, 'tube_in_label': 'Drop Core', 'tube_out_label': 'Tube Custom A',
+        }, headers=H)
+        assert resp.status_code == 200
+        splice = resp.get_json()['splice']
+        assert splice['tube_in_label'] == 'Drop Core'
+        assert splice['tube_out_label'] == 'Tube Custom A'
+
+        upd = auth_client.put(f'/api/ftth/jc/{jc_id}/splice/{splice["id"]}', json={'tube_in_label': 'Renamed'}, headers=H)
+        assert upd.get_json()['splice']['tube_in_label'] == 'Renamed'
+        assert upd.get_json()['splice']['tube_out_label'] == 'Tube Custom A'  # untouched field stays
+
     def test_duplicate_core_out_rejected(self, auth_client, test_otb):
         jc_resp = auth_client.post('/api/ftth/jc', json={
             'name': 'JC-A', 'parent_type': 'otb', 'parent_id': test_otb,

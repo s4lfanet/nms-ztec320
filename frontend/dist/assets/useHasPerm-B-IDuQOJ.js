@@ -1,1 +1,0 @@
-import{n as e}from"./index-CUmDAcXm.js";function t(){let{user:t}=e(),n=new Set(t?.permissions||[]);return e=>t?.is_super_admin||n.has(`all_olt`)?!0:n.has(e)}export{t};

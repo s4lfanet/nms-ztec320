@@ -139,8 +139,8 @@ export const api = {
   ftthJcCreate: (data: Partial<FTTHJc>) => request<{ success: boolean; item: FTTHJc }>('/api/ftth/jc', { method: 'POST', body: JSON.stringify(data) }),
   ftthJcUpdate: (id: number, data: Partial<FTTHJc>) => request<{ success: boolean; item: FTTHJc }>(`/api/ftth/jc/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthJcDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/jc/${id}`, { method: 'DELETE' }),
-  ftthJcSpliceCreate: (jcId: number, data: { core_in: number; core_out: number; label?: string }) => request<{ success: boolean; splice: FTTHJcSplice }>(`/api/ftth/jc/${jcId}/splice`, { method: 'POST', body: JSON.stringify(data) }),
-  ftthJcSpliceUpdate: (jcId: number, spliceId: number, data: Partial<{ core_in: number; core_out: number; label: string }>) => request<{ success: boolean; splice: FTTHJcSplice }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  ftthJcSpliceCreate: (jcId: number, data: { core_in: number; core_out: number; label?: string; tube_in_label?: string; tube_out_label?: string }) => request<{ success: boolean; splice: FTTHJcSplice }>(`/api/ftth/jc/${jcId}/splice`, { method: 'POST', body: JSON.stringify(data) }),
+  ftthJcSpliceUpdate: (jcId: number, spliceId: number, data: Partial<{ core_in: number; core_out: number; label: string; tube_in_label: string; tube_out_label: string }>) => request<{ success: boolean; splice: FTTHJcSplice }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthJcSpliceDelete: (jcId: number, spliceId: number) => request<{ success: boolean }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'DELETE' }),
   ftthAvailableOnus: (oltId?: number) => request<{ success: boolean; onus: FTTHAvailableOnu[] }>(`/api/ftth/available-onus${oltId ? '?olt_id=' + oltId : ''}`),
   ftthPonList: () => request<{ success: boolean; items: FTTHPonPort[] }>('/api/ftth/pon'),
@@ -888,6 +888,8 @@ export interface FTTHJcSplice {
   core_in: number;
   core_out: number;
   label: string;
+  tube_in_label: string;
+  tube_out_label: string;
 }
 
 export interface FTTHOdpPort {
