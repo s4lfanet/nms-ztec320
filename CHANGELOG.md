@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-05 — Splice JC: Bisa Edit Splice yang Sudah Ada (Bukan Cuma Tambah/Hapus)
+
+#### Ditambahkan
+- User laporkan "tube masih tidak bisa tulis manual" — setelah dicek, kode di production sudah benar (input angka bebas, bukan dropdown), tapi ternyata maksud user adalah: splice yang **sudah ada** di daftar cuma bisa dihapus, tidak bisa diedit. Endpoint update splice (`ftthJcSpliceUpdate`) sudah ada di `lib/api.ts` sejak awal tapi belum pernah dipakai di UI
+- Ditambahkan ikon **Edit** (pensil) di tiap baris splice, di sebelah ikon Hapus. Klik Edit akan menguraikan nomor core absolut splice itu kembali jadi (tube, posisi) — baik untuk sisi masuk maupun keluar — lalu mengisi form yang sama dipakai untuk tambah splice, sehingga tube/core bisa dikoreksi
+- Saat mode edit aktif: baris splice yang sedang diedit ditandai highlight, tombol berubah jadi "Save Changes" + "Cancel", dan label form berubah jadi "Mengedit splice"
+- **Diverifikasi**: dicek langsung di browser — klik edit pada splice core 3→5, form terisi otomatis (Tube 1/Core 3 → Tube 1/Core 5), ubah ke Tube 2/Core 7, simpan → toast "Splice updated", daftar splice ter-update dengan benar, form kembali ke mode tambah, nol error console
+
+---
+
 ### 2026-09-04 — Splice JC: Nomor Tube Bisa Diisi Bebas (Custom)
 
 #### Diubah
