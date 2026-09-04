@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-05 — Splice JC: Nama/Warna Tube Bisa Diisi Manual (Bukan Cuma Auto TIA-598)
+
+#### Ditambahkan
+- User klarifikasi: nomor tube sudah bisa ditulis bebas, tapi **nama warnanya** (mis. "Biru", "Jingga") masih dihitung otomatis dari standar TIA-598 berdasarkan nomor itu — untuk drop core/kabel non-tube, nama warna otomatis ini seringkali tidak sesuai kondisi fisik
+- Kolom baru `tube_in_label`/`tube_out_label` (opsional, teks bebas) di tiap splice JC — kalau diisi, menggantikan nama warna otomatis pada tampilan (titik warna tetap dari perhitungan TIA-598 sebagai referensi visual, tapi teksnya jadi nama custom); kalau dikosongkan, tetap seperti sebelumnya (nama warna otomatis)
+- Field teks "Nama/warna tube manual (opsional)" ditambahkan di bawah tiap sisi (masuk & keluar) pada form tambah/edit splice, preview langsung berubah saat diketik
+- **Diverifikasi**: 1 test baru (isi custom label, update sebagian field tidak menghapus field lain) — full suite 155 passed/2 skipped. Dicek langsung di browser: isi "Drop Core" di sisi masuk dan "Tube Custom A" di sisi keluar → preview langsung berubah, tersimpan dan tampil benar di daftar splice, nol error console
+
+---
+
 ### 2026-09-05 — Splice JC: Bisa Edit Splice yang Sudah Ada (Bukan Cuma Tambah/Hapus)
 
 #### Ditambahkan

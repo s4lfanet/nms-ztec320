@@ -1221,13 +1221,14 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
 }
 
 // ─── Core color tag — TIA-598 tube + core color for a given core number ───
-function CoreColorTag({ coreNumber, fibersPerTube }: { coreNumber: number; fibersPerTube?: number }) {
+function CoreColorTag({ coreNumber, fibersPerTube, tubeLabel }: { coreNumber: number; fibersPerTube?: number; tubeLabel?: string }) {
   const c = coreColorInfo(coreNumber, fibersPerTube || 12);
+  const tubeName = tubeLabel?.trim() || c.tubeColor;
   return (
-    <span className="inline-flex items-center gap-1" title={`Tube ${c.tubeNumber} (${c.tubeColor}) • Core ${c.positionInTube} (${c.coreColor})`}>
+    <span className="inline-flex items-center gap-1" title={`Tube ${c.tubeNumber} (${tubeName}${tubeLabel?.trim() ? ` — auto: ${c.tubeColor}` : ''}) • Core ${c.positionInTube} (${c.coreColor})`}>
       <span className="w-2 h-2 rounded-full border border-brd/50 flex-shrink-0" style={{ backgroundColor: c.tubeColorHex }} />
       <span className="w-2 h-2 rounded-full border border-brd/50 flex-shrink-0" style={{ backgroundColor: c.coreColorHex }} />
-      <span className="text-tx3">Tube {c.tubeNumber} {c.tubeColor} • {c.coreColor}</span>
+      <span className="text-tx3">Tube {c.tubeNumber} {tubeName} • {c.coreColor}</span>
     </span>
   );
 }
@@ -1530,7 +1531,7 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
   const parentFibersPerTube = parentNode?.fibers_per_tube || 12;
   const ownFibersPerTube = form.fibers_per_tube || 12;
 
-  const emptySpliceForm = { tubeIn: 1, posIn: 1, tubeOut: 1, posOut: 1, label: '' };
+  const emptySpliceForm = { tubeIn: 1, posIn: 1, tubeOut: 1, posOut: 1, tubeInLabel: '', tubeOutLabel: '', label: '' };
   const [spliceForm, setSpliceForm] = useState(emptySpliceForm);
   const [editingSpliceId, setEditingSpliceId] = useState<number | null>(null);
   const spliceCoreIn = (spliceForm.tubeIn - 1) * parentFibersPerTube + spliceForm.posIn;
@@ -1539,14 +1540,14 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
   const startEditSplice = (s: FTTHJcSplice) => {
     const inInfo = coreColorInfo(s.core_in, parentFibersPerTube);
     const outInfo = coreColorInfo(s.core_out, ownFibersPerTube);
-    setSpliceForm({ tubeIn: inInfo.tubeNumber, posIn: inInfo.positionInTube, tubeOut: outInfo.tubeNumber, posOut: outInfo.positionInTube, label: s.label || '' });
+    setSpliceForm({ tubeIn: inInfo.tubeNumber, posIn: inInfo.positionInTube, tubeOut: outInfo.tubeNumber, posOut: outInfo.positionInTube, tubeInLabel: s.tube_in_label || '', tubeOutLabel: s.tube_out_label || '', label: s.label || '' });
     setEditingSpliceId(s.id);
   };
   const cancelEditSplice = () => { setSpliceForm(emptySpliceForm); setEditingSpliceId(null); };
   const spliceMut = useMutation({
     mutationFn: () => editingSpliceId
-      ? api.ftthJcSpliceUpdate(item!.id, editingSpliceId, { core_in: spliceCoreIn, core_out: spliceCoreOut, label: spliceForm.label })
-      : api.ftthJcSpliceCreate(item!.id, { core_in: spliceCoreIn, core_out: spliceCoreOut, label: spliceForm.label }),
+      ? api.ftthJcSpliceUpdate(item!.id, editingSpliceId, { core_in: spliceCoreIn, core_out: spliceCoreOut, label: spliceForm.label, tube_in_label: spliceForm.tubeInLabel, tube_out_label: spliceForm.tubeOutLabel })
+      : api.ftthJcSpliceCreate(item!.id, { core_in: spliceCoreIn, core_out: spliceCoreOut, label: spliceForm.label, tube_in_label: spliceForm.tubeInLabel, tube_out_label: spliceForm.tubeOutLabel }),
     onSuccess: () => { toast.success(editingSpliceId ? 'Splice updated' : 'Splice added'); setSpliceForm(emptySpliceForm); setEditingSpliceId(null); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1596,15 +1597,15 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
       {item && (
         <div className="pt-3 border-t border-brd">
           <div className="flex items-center gap-1.5 text-sm font-medium mb-2"><Scissors size={14} className="text-purple-400" /> Splices ({currentSplices.length})</div>
-          <p className="text-[11px] text-tx3 mb-2">Core masuk (dari {form.parent_type || 'parent'}) disambung ke core keluar — ODC/ODP downstream memilih core keluar ini sebagai sumbernya. Tube dihitung otomatis dari nomor core absolut.</p>
+          <p className="text-[11px] text-tx3 mb-2">Core masuk (dari {form.parent_type || 'parent'}) disambung ke core keluar — ODC/ODP downstream memilih core keluar ini sebagai sumbernya. Tube dihitung otomatis dari nomor core absolut, atau isi nama/warna tube sendiri kalau bukan kabel bertube standar (mis. drop core).</p>
           {currentSplices.length > 0 && (
             <div className="space-y-1 mb-2 max-h-48 overflow-y-auto">
               {currentSplices.map(s => (
                 <div key={s.id} className={cn('flex items-center gap-2 p-1.5 rounded bg-glass text-xs flex-wrap', editingSpliceId === s.id && 'ring-1 ring-accent')}>
                   <span className="text-tx3 flex-shrink-0">In:</span>
-                  <CoreColorTag coreNumber={s.core_in} fibersPerTube={parentFibersPerTube} />
+                  <CoreColorTag coreNumber={s.core_in} fibersPerTube={parentFibersPerTube} tubeLabel={s.tube_in_label} />
                   <span className="text-tx3 flex-shrink-0">→ Out:</span>
-                  <CoreColorTag coreNumber={s.core_out} fibersPerTube={ownFibersPerTube} />
+                  <CoreColorTag coreNumber={s.core_out} fibersPerTube={ownFibersPerTube} tubeLabel={s.tube_out_label} />
                   {s.label && <span className="text-tx3 truncate flex-1">{s.label}</span>}
                   <button onClick={() => startEditSplice(s)} className="p-1 rounded hover:bg-glass text-tx3 hover:text-accent flex-shrink-0 ml-auto" title="Edit splice"><Edit2 size={12} /></button>
                   <button onClick={() => deleteSpliceMut.mutate(s.id)} className="p-1 rounded hover:bg-danger/15 text-tx3 hover:text-danger flex-shrink-0" title="Remove splice"><Trash2 size={12} /></button>
@@ -1618,16 +1619,18 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
               <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 items-center">
                 <input className="input-field !text-xs" type="number" min={1} placeholder="Tube" title="Nomor tube — isi bebas, mis. untuk drop core / kabel non-tube bisa dibiarkan 1" value={spliceForm.tubeIn} onChange={e => setSpliceForm({ ...spliceForm, tubeIn: parseInt(e.target.value) || 1 })} />
                 <input className="input-field !text-xs" type="number" min={1} placeholder="Core in tube" value={spliceForm.posIn} onChange={e => setSpliceForm({ ...spliceForm, posIn: parseInt(e.target.value) || 1 })} />
-                <CoreColorTag coreNumber={spliceCoreIn} fibersPerTube={parentFibersPerTube} />
+                <CoreColorTag coreNumber={spliceCoreIn} fibersPerTube={parentFibersPerTube} tubeLabel={spliceForm.tubeInLabel} />
               </div>
+              <input className="input-field !text-xs mt-1.5" placeholder="Nama/warna tube manual (opsional, mis. Drop Core)" value={spliceForm.tubeInLabel} onChange={e => setSpliceForm({ ...spliceForm, tubeInLabel: e.target.value })} />
             </div>
             <div>
               <span className="text-[10px] text-tx3 font-medium block mb-1">Core Out — ke downstream (JC ini)</span>
               <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 items-center">
                 <input className="input-field !text-xs" type="number" min={1} placeholder="Tube" title="Nomor tube — isi bebas, mis. untuk drop core / kabel non-tube bisa dibiarkan 1" value={spliceForm.tubeOut} onChange={e => setSpliceForm({ ...spliceForm, tubeOut: parseInt(e.target.value) || 1 })} />
                 <input className="input-field !text-xs" type="number" min={1} placeholder="Core in tube" value={spliceForm.posOut} onChange={e => setSpliceForm({ ...spliceForm, posOut: parseInt(e.target.value) || 1 })} />
-                <CoreColorTag coreNumber={spliceCoreOut} fibersPerTube={ownFibersPerTube} />
+                <CoreColorTag coreNumber={spliceCoreOut} fibersPerTube={ownFibersPerTube} tubeLabel={spliceForm.tubeOutLabel} />
               </div>
+              <input className="input-field !text-xs mt-1.5" placeholder="Nama/warna tube manual (opsional, mis. Drop Core)" value={spliceForm.tubeOutLabel} onChange={e => setSpliceForm({ ...spliceForm, tubeOutLabel: e.target.value })} />
             </div>
             {editingSpliceId && <p className="text-[11px] text-accent">Mengedit splice — ubah tube/core di atas lalu simpan, atau batal.</p>}
             <div className={cn('grid gap-1.5', editingSpliceId ? 'grid-cols-[1fr_auto_auto]' : 'grid-cols-[1fr_auto]')}>
