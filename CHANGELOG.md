@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-04 — Splice JC: Nomor Tube Bisa Diisi Bebas (Custom)
+
+#### Diubah
+- Diminta agar nomor tube pada form splice JC bisa diisi bebas — sebelumnya dropdown Tube dibatasi cuma sejumlah `ceil(total_cores / fibers_per_tube)`, padahal core yang disambung di JC belum tentu bagian dari kabel bertube (mis. drop core, atau kabel lain selain ADSS yang tidak punya struktur tube standar)
+- Dropdown Tube pada kedua sisi splice (Core In & Core Out) diganti jadi input angka bebas — bisa diisi nomor tube berapa saja (termasuk di luar hitungan tube normal JC), preview warna tetap dihitung otomatis dari nomor tube + posisi core yang diisi
+- **Diverifikasi**: dicek langsung di browser — isi Tube 99 (di luar rentang 1 tube normal untuk JC 12 core), preview warna langsung muncul benar ("Tube 99 Hijau • Biru"), splice tersimpan dan tampil benar di daftar, nol error console
+
+---
+
 ### 2026-09-04 — Audit & Update Panduan In-App (FTTH, Provision/Register Wizard)
 
 #### Diperbaiki
