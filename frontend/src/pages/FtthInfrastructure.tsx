@@ -7,7 +7,7 @@ import {
   Activity, AlertTriangle, Wifi, WifiOff, Zap, CircleDashed, Gauge, RefreshCw,
   UserX, LayoutGrid, List, GitMerge, Scissors
 } from 'lucide-react';
-import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath, type FTTHJc, type FTTHOdcTree, type FTTHOdpTree, type FTTHJcTree } from '../lib/api';
+import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath, type FTTHJc, type FTTHJcSplice, type FTTHOdcTree, type FTTHOdpTree, type FTTHJcTree } from '../lib/api';
 import { cn } from '../lib/utils';
 import { coreColorInfo } from '../lib/fiberColor';
 import { toast } from '../components/Toast';
@@ -1530,20 +1530,29 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
   const parentFibersPerTube = parentNode?.fibers_per_tube || 12;
   const ownFibersPerTube = form.fibers_per_tube || 12;
 
-  const [spliceForm, setSpliceForm] = useState({ tubeIn: 1, posIn: 1, tubeOut: 1, posOut: 1, label: '' });
+  const emptySpliceForm = { tubeIn: 1, posIn: 1, tubeOut: 1, posOut: 1, label: '' };
+  const [spliceForm, setSpliceForm] = useState(emptySpliceForm);
+  const [editingSpliceId, setEditingSpliceId] = useState<number | null>(null);
   const spliceCoreIn = (spliceForm.tubeIn - 1) * parentFibersPerTube + spliceForm.posIn;
   const spliceCoreOut = (spliceForm.tubeOut - 1) * ownFibersPerTube + spliceForm.posOut;
   const currentSplices = item ? (jcList.find(j => j.id === item.id)?.splices || item.splices || []) : [];
+  const startEditSplice = (s: FTTHJcSplice) => {
+    const inInfo = coreColorInfo(s.core_in, parentFibersPerTube);
+    const outInfo = coreColorInfo(s.core_out, ownFibersPerTube);
+    setSpliceForm({ tubeIn: inInfo.tubeNumber, posIn: inInfo.positionInTube, tubeOut: outInfo.tubeNumber, posOut: outInfo.positionInTube, label: s.label || '' });
+    setEditingSpliceId(s.id);
+  };
+  const cancelEditSplice = () => { setSpliceForm(emptySpliceForm); setEditingSpliceId(null); };
   const spliceMut = useMutation({
-    mutationFn: () => api.ftthJcSpliceCreate(item!.id, {
-      core_in: spliceCoreIn, core_out: spliceCoreOut, label: spliceForm.label,
-    }),
-    onSuccess: () => { toast.success('Splice added'); setSpliceForm({ tubeIn: 1, posIn: 1, tubeOut: 1, posOut: 1, label: '' }); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
+    mutationFn: () => editingSpliceId
+      ? api.ftthJcSpliceUpdate(item!.id, editingSpliceId, { core_in: spliceCoreIn, core_out: spliceCoreOut, label: spliceForm.label })
+      : api.ftthJcSpliceCreate(item!.id, { core_in: spliceCoreIn, core_out: spliceCoreOut, label: spliceForm.label }),
+    onSuccess: () => { toast.success(editingSpliceId ? 'Splice updated' : 'Splice added'); setSpliceForm(emptySpliceForm); setEditingSpliceId(null); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
     onError: (e: Error) => toast.error(e.message),
   });
   const deleteSpliceMut = useMutation({
     mutationFn: (spliceId: number) => api.ftthJcSpliceDelete(item!.id, spliceId),
-    onSuccess: () => { toast.success('Splice removed'); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
+    onSuccess: () => { toast.success('Splice removed'); if (editingSpliceId) cancelEditSplice(); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -1591,13 +1600,14 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
           {currentSplices.length > 0 && (
             <div className="space-y-1 mb-2 max-h-48 overflow-y-auto">
               {currentSplices.map(s => (
-                <div key={s.id} className="flex items-center gap-2 p-1.5 rounded bg-glass text-xs flex-wrap">
+                <div key={s.id} className={cn('flex items-center gap-2 p-1.5 rounded bg-glass text-xs flex-wrap', editingSpliceId === s.id && 'ring-1 ring-accent')}>
                   <span className="text-tx3 flex-shrink-0">In:</span>
                   <CoreColorTag coreNumber={s.core_in} fibersPerTube={parentFibersPerTube} />
                   <span className="text-tx3 flex-shrink-0">→ Out:</span>
                   <CoreColorTag coreNumber={s.core_out} fibersPerTube={ownFibersPerTube} />
                   {s.label && <span className="text-tx3 truncate flex-1">{s.label}</span>}
-                  <button onClick={() => deleteSpliceMut.mutate(s.id)} className="p-1 rounded hover:bg-danger/15 text-tx3 hover:text-danger flex-shrink-0 ml-auto" title="Remove splice"><Trash2 size={12} /></button>
+                  <button onClick={() => startEditSplice(s)} className="p-1 rounded hover:bg-glass text-tx3 hover:text-accent flex-shrink-0 ml-auto" title="Edit splice"><Edit2 size={12} /></button>
+                  <button onClick={() => deleteSpliceMut.mutate(s.id)} className="p-1 rounded hover:bg-danger/15 text-tx3 hover:text-danger flex-shrink-0" title="Remove splice"><Trash2 size={12} /></button>
                 </div>
               ))}
             </div>
@@ -1619,10 +1629,12 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
                 <CoreColorTag coreNumber={spliceCoreOut} fibersPerTube={ownFibersPerTube} />
               </div>
             </div>
-            <div className="grid grid-cols-[1fr_auto] gap-1.5">
+            {editingSpliceId && <p className="text-[11px] text-accent">Mengedit splice — ubah tube/core di atas lalu simpan, atau batal.</p>}
+            <div className={cn('grid gap-1.5', editingSpliceId ? 'grid-cols-[1fr_auto_auto]' : 'grid-cols-[1fr_auto]')}>
               <input className="input-field !text-xs" placeholder="Label (optional)" value={spliceForm.label} onChange={e => setSpliceForm({ ...spliceForm, label: e.target.value })} />
+              {editingSpliceId && <button type="button" onClick={cancelEditSplice} className="btn-cancel text-xs">Cancel</button>}
               <button type="button" onClick={() => spliceMut.mutate()} disabled={spliceMut.isPending}
-                className="btn-primary text-xs disabled:opacity-50">+ Add Splice</button>
+                className="btn-primary text-xs disabled:opacity-50">{editingSpliceId ? 'Save Changes' : '+ Add Splice'}</button>
             </div>
           </div>
         </div>
