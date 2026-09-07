@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-05 — Migrasi Schema Kadang Gagal Diam-Diam Saat Update (Root Cause: Lock Tanpa Retry)
+
+#### Ditemukan Saat Investigasi — Direproduksi Langsung, Bukan Dugaan
+- User laporkan: kadang setelah update, dan saat menghapus OLT, muncul error — dicurigai skema SQL "kadang belum lengkap"
+- Diaudit: installer (`install-vps.sh`) tidak punya file SQL statis sama sekali — instalasi baru selalu lengkap otomatis lewat `db.create_all()` dari `models.py` saat pertama kali start. Yang jadi pertanyaan adalah jalur **update** (self-update via System Update page: `git pull` + restart service)
+- **Root cause ditemukan**: `migrate_schema()`'s `add_col()` (jalan tiap server start untuk nambah kolom baru ke tabel lama) membungkus `ALTER TABLE` dalam `try/except` yang **diam total** (`logger.debug`, tanpa retry) kalau gagal. `ALTER TABLE` butuh lock eksklusif sesaat ke seluruh file SQLite — kalau pas momen itu `auto_sync.py` (cron tiap 5 menit, full sync bisa 1-2 menit) sedang nulis, `ALTER TABLE` gagal dengan "database is locked", gagalnya **tidak pernah terlihat**, dan kolom itu permanen hilang sampai restart berikutnya kebetulan tidak bentrok lock
+- **Direproduksi nyata**: dibuat salinan DB dengan kolom `ftth_odc.feed_source` dihapus manual (simulasi migrasi yang gagal diam-diam), lalu diakses `/api/ftth/tree` — hasilnya betul 500 Internal Server Error (`no such column: ftth_odc.feed_source`). Ini persis kelas bug yang muncul di halaman FTTH manapun (termasuk sesaat setelah hapus OLT, kalau frontend refetch data FTTH) kalau satu kolom saja gagal ter-migrasi
+- **Diperbaiki**: `add_col()` sekarang retry sampai 10x dengan backoff (~14 detik total) khusus untuk error "locked"/"busy", dan kalau tetap gagal setelah semua retry, di-log sebagai **WARNING** (bukan debug yang nyaris tidak pernah terlihat) supaya kegagalan asli langsung ketahuan di log production, bukan diam-diam dan baru ketahuan user lewat error di halaman lain
+- **Status production `.131` saat ini**: dicek langsung, semua kolom FTTH/JC terkini sudah lengkap (karena selama ini di-deploy manual lewat SSH tiap fitur) — bug ini murni risiko ke depan untuk update otomatis, bukan masalah aktif sekarang
+- **Diverifikasi**: 3 test baru untuk `add_col()` (nambah kolom hilang, tabel belum ada tidak error, jalan 2x tidak duplikat) — full suite 158 passed/2 skipped
+
+---
+
 ### 2026-09-05 — Splice JC: Nama/Warna Tube Bisa Diisi Manual (Bukan Cuma Auto TIA-598)
 
 #### Ditambahkan
