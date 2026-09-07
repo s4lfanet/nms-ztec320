@@ -263,7 +263,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Tree Tab',
-        content: 'Tampilan pohon (hierarki) dari seluruh rantai fiber: OTB/ODF → (opsional lewat JC) → ODC → (opsional lewat JC) → ODP → port pelanggan.\n\nKlik panah untuk expand/collapse tiap node. Ikon di setiap baris untuk tambah ODC, tambah JC, tambah ODP, edit, atau hapus — tergantung jenis node-nya. Node JC ditandai warna ungu dengan ikon sambungan.',
+        content: 'Tampilan pohon (hierarki) dari seluruh rantai fiber: OLT/PON → (opsional lewat JC) → OTB/ODF → (opsional lewat JC) → ODC → (opsional lewat JC) → ODP → (opsional lewat JC) → port pelanggan. Setiap segmen bisa punya JC di tengahnya, termasuk sebelum OTB (feeder trunk) dan sebelum pelanggan (kabel drop).\n\nKlik panah untuk expand/collapse tiap node. Ikon di setiap baris untuk tambah ODC, tambah JC, tambah ODP, edit, atau hapus — tergantung jenis node-nya. Node JC ditandai warna ungu dengan ikon sambungan. Baris OTB yang di-feed dari JC (bukan langsung dari PON) menampilkan anotasi "Fed by JC" menggantikan info OLT.',
       },
       {
         title: 'PON Ports Tab',
@@ -271,11 +271,11 @@ export const guides: Guide[] = [
       },
       {
         title: 'OTB/ODF, ODC, ODP Tabs',
-        content: '**OTB/ODF**: Optical Terminal Box / Optical Distribution Frame — titik koneksi fiber dari OLT.\n\n**ODC**: Optical Distribution Cabinet — distribusi fiber ke area.\n\n**ODP**: Optical Distribution Point — distribusi fiber ke rumah pelanggan.\n\nKelola (tambah/edit/hapus) dan lihat port utilization. Warna tube/core (standar TIA-598) ditampilkan sampai level ODC (core dari OTB) — di level ODP warna tube/core tidak lagi relevan sehingga tidak ditampilkan.\n\nSaat tambah/edit ODC atau ODP, ada toggle **"Fed From"**: pilih apakah node ini disambung langsung dari OTB/ODC, atau lewat titik sambungan **JC** (lihat langkah berikutnya).',
+        content: '**OTB/ODF**: Optical Terminal Box / Optical Distribution Frame — titik koneksi fiber dari OLT.\n\n**ODC**: Optical Distribution Cabinet — distribusi fiber ke area.\n\n**ODP**: Optical Distribution Point — distribusi fiber ke rumah pelanggan.\n\nKelola (tambah/edit/hapus) dan lihat port utilization. Warna tube/core (standar TIA-598) ditampilkan sampai level ODC (core dari OTB) — di level ODP warna tube/core tidak lagi relevan sehingga tidak ditampilkan.\n\nSaat tambah/edit OTB, ODC, atau ODP, ada toggle **"Fed From"**: pilih apakah node ini disambung langsung (OTB dari PON, ODC dari OTB, ODP dari ODC), atau lewat titik sambungan **JC** (lihat langkah berikutnya).',
       },
       {
         title: 'JC (Joint Closure / Titik Sambungan) Tab',
-        content: 'JC adalah titik sambungan (closure) di sepanjang jalur fiber — dipakai kalau kabel dari OTB ke ODC (atau ODC ke ODP) melewati titik splice di lapangan, bukan sambungan langsung.\n\nJC bisa diletakkan di mana saja: OTB→JC→ODC, ODC→JC→ODP, bahkan JC berantai (JC→JC). Setiap JC punya "Fed From (parent)" sendiri (OTB, ODC, atau JC lain).\n\n**Fibers per Tube** (opsional): isi kalau closure ini terdiri dari lebih dari 1 tube (mis. 2 tube × 12 core) — dipakai untuk menghitung warna tube/core TIA-598 pada splice.\n\n**Splices**: setelah JC tersimpan, buka **Edit / Manage Splices** untuk mencatat sambungan core — pilih Tube + posisi core di sisi masuk (dari parent) dan sisi keluar (ke downstream), warna tube/core langsung ditampilkan di kedua sisi. Core keluar inilah yang muncul sebagai pilihan saat membuat ODC/ODP dengan "Fed From" = JC.',
+        content: 'JC adalah titik sambungan (closure) di sepanjang jalur fiber — dipakai kalau kabel di segmen manapun (OLT/PON→OTB, OTB→ODC, ODC→ODP, atau ODP→pelanggan) melewati titik splice di lapangan, bukan sambungan langsung.\n\nJC bisa diletakkan di mana saja: PON→JC→OTB, OTB→JC→ODC, ODC→JC→ODP, ODP→JC→pelanggan (kabel drop), bahkan JC berantai (JC→JC). Setiap JC punya "Fed From (parent)" sendiri (PON Port, OTB, ODC, ODP Port, atau JC lain) — untuk "ODP Port (Drop Cable)", parent dipilih 2 langkah: ODP dulu, baru port pelanggannya.\n\n**Fibers per Tube** (opsional): isi kalau closure ini terdiri dari lebih dari 1 tube (mis. 2 tube × 12 core) — dipakai untuk menghitung warna tube/core TIA-598 pada splice.\n\n**Splices**: setelah JC tersimpan, buka **Edit / Manage Splices** untuk mencatat sambungan core — pilih Tube + posisi core di sisi masuk (dari parent) dan sisi keluar (ke downstream), warna tube/core langsung ditampilkan di kedua sisi. Core keluar inilah yang muncul sebagai pilihan saat mengatur "Fed From" = JC di OTB/ODC/ODP/port pelanggan.',
       },
       {
         title: 'Draw Fiber Path & Auto Route',
@@ -292,7 +292,8 @@ export const guides: Guide[] = [
     ],
     tips: [
       'JC bersifat opsional — kalau jalur fiber memang langsung tanpa titik sambungan, tidak perlu dibuat JC sama sekali, cukup OTB → ODC → ODP seperti biasa',
-      'Menghapus JC tidak menghapus ODC/ODP/JC yang tersambung ke situ — mereka cuma "dilepas" (feed source-nya jadi kosong), supaya data infrastruktur riil tidak ikut hilang',
+      'JC di segmen OLT→OTB dan ODP→pelanggan jarang dipakai (biasanya OLT-OTB satu lokasi, drop cable langsung) — tapi kalau memang ada sambungan fisik di situ, sekarang bisa dicatat juga, bukan cuma di OTB→ODC / ODC→ODP',
+      'Menghapus JC tidak menghapus OTB/ODC/ODP/port pelanggan/JC lain yang tersambung ke situ — mereka cuma "dilepas" (feed source-nya jadi kosong), supaya data infrastruktur riil tidak ikut hilang',
       'Nomor core "in" pada splice pakai penomoran tube milik parent (OTB/ODC/JC sumbernya), nomor core "out" pakai penomoran tube milik JC itu sendiri',
       'Dampak downstream dan Jalur FTTH sama-sama jalan lewat berapa pun hop JC di tengahnya, tidak terbatas satu tingkat saja',
     ],

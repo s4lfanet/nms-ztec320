@@ -803,6 +803,10 @@ export interface FTTHOtb {
   pon_port: string;
   total_cores: number;
   fibers_per_tube: number;
+  feed_source: 'pon' | 'jc';
+  jc_id: number | null;
+  jc_name: string;
+  jc_core_number: number | null;
   description: string;
   odc_count: number;
   used_cores: number;
@@ -876,7 +880,7 @@ export interface FTTHJc {
   longitude: number | null;
   total_cores: number;
   fibers_per_tube: number;
-  parent_type: 'otb' | 'odc' | 'jc' | null;
+  parent_type: 'pon' | 'otb' | 'odc' | 'odp_port' | 'jc' | null;
   parent_id: number | null;
   parent_name: string;
   description: string;
@@ -903,6 +907,10 @@ export interface FTTHOdpPort {
   customer_name: string;
   customer_phone: string;
   description: string;
+  feed_source: 'direct' | 'jc';
+  jc_id: number | null;
+  jc_name: string;
+  jc_core_number: number | null;
   onu_name: string;
   onu_serial: string;
   onu_status: string;

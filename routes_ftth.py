@@ -106,7 +106,7 @@ def ftth_stats():
     orphan_onus = sum(1 for o in onus if not any(p.onu_id == o.id for p in all_odp_ports))
     orphan_odps = sum(1 for odp in odps if not (odp.jc_id if odp.feed_source == 'jc' else odp.odc_id))
     orphan_odcs = sum(1 for odc in odcs if not (odc.jc_id if odc.feed_source == 'jc' else odc.otb_id))
-    orphan_otbs = sum(1 for otb in otbs if not otb.olt_id)
+    orphan_otbs = sum(1 for otb in otbs if not ((otb.jc_id if otb.feed_source == 'jc' else otb.olt_id)))
     # Data completeness checks
     onus_without_technician = sum(1 for o in onus if not o.technician_id)
     onus_without_coordinates = sum(1 for o in onus if o.latitude is None or o.longitude is None)
@@ -143,12 +143,16 @@ def ftth_stats():
 def _otb_to_dict(o):
     odc_count = FTTHODC.query.filter_by(otb_id=o.id).count()
     total_cores = o.total_cores or 0
+    jc = db.session.get(FTTHJC, o.jc_id) if o.jc_id else None
     return {
         'id': o.id, 'name': o.name, 'type': o.type, 'model': o.model,
         'location': o.location, 'latitude': o.latitude, 'longitude': o.longitude,
         'olt_id': o.olt_id, 'olt_name': o.olt.name if o.olt else '',
         'pon_port': o.pon_port, 'total_cores': total_cores,
         'fibers_per_tube': o.fibers_per_tube or 12,
+        'feed_source': o.feed_source or 'pon',
+        'jc_id': o.jc_id, 'jc_name': jc.name if jc else '',
+        'jc_core_number': o.jc_core_number,
         'description': o.description or '',
         'odc_count': odc_count,
         'used_cores': odc_count,
@@ -202,10 +206,17 @@ def _odp_to_dict(o):
 def _jc_to_dict(j):
     parent_name = ''
     if j.parent_type and j.parent_id:
-        parent_model = {'otb': FTTHOTB, 'odc': FTTHODC, 'jc': FTTHJC}.get(j.parent_type)
-        if parent_model:
-            p = db.session.get(parent_model, j.parent_id)
-            parent_name = p.name if p else ''
+        if j.parent_type == 'pon':
+            p = db.session.get(FTTHPonPort, j.parent_id)
+            parent_name = (p.pon_name or f'{p.frame}/{p.slot}/{p.port}') if p else ''
+        elif j.parent_type == 'odp_port':
+            p = db.session.get(FTTHODPPort, j.parent_id)
+            parent_name = f'{p.odp.name} Port {p.port_number}' if p and p.odp else ''
+        else:
+            parent_model = {'otb': FTTHOTB, 'odc': FTTHODC, 'jc': FTTHJC}.get(j.parent_type)
+            if parent_model:
+                p = db.session.get(parent_model, j.parent_id)
+                parent_name = p.name if p else ''
     splices = FTTHJCSplice.query.filter_by(jc_id=j.id).order_by(FTTHJCSplice.core_out).all()
     return {
         'id': j.id, 'name': j.name, 'closure_type': j.closure_type or 'inline',
@@ -242,11 +253,15 @@ def _jc_creates_cycle(jc_id, start_parent_type, start_parent_id, _max_depth=25):
 
 def _odp_port_to_dict(p):
     onu = ONU.query.get(p.onu_id) if p.onu_id else None
+    jc = db.session.get(FTTHJC, p.jc_id) if p.jc_id else None
     return {
         'id': p.id, 'odp_id': p.odp_id, 'port_number': p.port_number,
         'onu_id': p.onu_id, 'status': p.status,
         'customer_name': p.customer_name, 'customer_phone': p.customer_phone,
         'description': p.description or '',
+        'feed_source': p.feed_source or 'direct',
+        'jc_id': p.jc_id, 'jc_name': jc.name if jc else '',
+        'jc_core_number': p.jc_core_number,
         'onu_name': onu.name if onu else '',
         'onu_serial': onu.serial_number if onu else '',
         'onu_status': onu.status if onu else '',
@@ -285,11 +300,16 @@ def ftth_otb_list():
 @permission_required('settings_ip_olts')
 def ftth_otb_create():
     d = request.get_json() or {}
+    feed_source = d.get('feed_source', 'pon')
     o = FTTHOTB(
         name=d.get('name', ''), type=d.get('type', 'otb'), model=d.get('model', ''),
         location=d.get('location', ''), latitude=d.get('latitude'), longitude=d.get('longitude'),
-        olt_id=d.get('olt_id'), pon_port=d.get('pon_port', ''),
+        olt_id=d.get('olt_id') if feed_source == 'pon' else None,
+        pon_port=d.get('pon_port', '') if feed_source == 'pon' else '',
         total_cores=d.get('total_cores', 12), fibers_per_tube=d.get('fibers_per_tube', 12),
+        feed_source=feed_source,
+        jc_id=d.get('jc_id') if feed_source == 'jc' else None,
+        jc_core_number=d.get('jc_core_number') if feed_source == 'jc' else None,
         description=d.get('description', ''),
     )
     db.session.add(o)
@@ -310,8 +330,21 @@ def ftth_otb_update(otb_id):
         if k in d: setattr(o, k, d[k])
     for k in ['latitude', 'longitude']:
         if k in d: setattr(o, k, d[k])
-    for k in ['olt_id', 'total_cores', 'fibers_per_tube']:
+    for k in ['total_cores', 'fibers_per_tube']:
         if k in d: setattr(o, k, d[k])
+    if 'feed_source' in d:
+        o.feed_source = d['feed_source']
+        if o.feed_source == 'pon':
+            o.jc_id = None; o.jc_core_number = None
+            if 'olt_id' in d: o.olt_id = d['olt_id']
+        elif o.feed_source == 'jc':
+            o.olt_id = None
+            if 'jc_id' in d: o.jc_id = d['jc_id']
+            if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
+    else:
+        if 'olt_id' in d: o.olt_id = d['olt_id']
+        if 'jc_id' in d: o.jc_id = d['jc_id']
+        if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
     if 'total_cores' in d:
         _ensure_otb_ports(o)
     db.session.commit()
@@ -530,6 +563,16 @@ def ftth_odp_port_update(port_id):
     d = request.get_json() or {}
     for k in ['port_number', 'onu_id', 'status', 'customer_name', 'customer_phone', 'description']:
         if k in d: setattr(p, k, d[k])
+    if 'feed_source' in d:
+        p.feed_source = d['feed_source']
+        if p.feed_source == 'jc':
+            if 'jc_id' in d: p.jc_id = d['jc_id']
+            if 'jc_core_number' in d: p.jc_core_number = d['jc_core_number']
+        else:
+            p.jc_id = None; p.jc_core_number = None
+    else:
+        if 'jc_id' in d: p.jc_id = d['jc_id']
+        if 'jc_core_number' in d: p.jc_core_number = d['jc_core_number']
     if p.onu_id:
         p.status = 'used'
     elif p.status == 'used':
@@ -544,6 +587,8 @@ def ftth_odp_port_update(port_id):
 def ftth_odp_port_delete(port_id):
     p = db.session.get(FTTHODPPort, port_id)
     if not p: return jsonify({'success': False, 'message': 'Not found'}), 404
+    for jc in FTTHJC.query.filter_by(parent_type='odp_port', parent_id=port_id).all():
+        jc.parent_type = None; jc.parent_id = None
     db.session.delete(p)
     db.session.commit()
     return jsonify({'success': True})
@@ -607,6 +652,10 @@ def ftth_jc_delete(jc_id):
         odc.jc_id = None; odc.jc_core_number = None
     for odp in FTTHODP.query.filter_by(feed_source='jc', jc_id=j.id).all():
         odp.jc_id = None; odp.jc_core_number = None
+    for otb in FTTHOTB.query.filter_by(feed_source='jc', jc_id=j.id).all():
+        otb.jc_id = None; otb.jc_core_number = None
+    for port in FTTHODPPort.query.filter_by(feed_source='jc', jc_id=j.id).all():
+        port.jc_id = None; port.jc_core_number = None
     for child in FTTHJC.query.filter_by(parent_type='jc', parent_id=j.id).all():
         child.parent_type = None; child.parent_id = None
     db.session.delete(j)
@@ -659,6 +708,10 @@ def ftth_jc_splice_delete(jc_id, splice_id):
         odc.jc_id = None; odc.jc_core_number = None
     for odp in FTTHODP.query.filter_by(feed_source='jc', jc_id=jc_id, jc_core_number=s.core_out).all():
         odp.jc_id = None; odp.jc_core_number = None
+    for otb in FTTHOTB.query.filter_by(feed_source='jc', jc_id=jc_id, jc_core_number=s.core_out).all():
+        otb.jc_id = None; otb.jc_core_number = None
+    for port in FTTHODPPort.query.filter_by(feed_source='jc', jc_id=jc_id, jc_core_number=s.core_out).all():
+        port.jc_id = None; port.jc_core_number = None
     db.session.delete(s)
     db.session.commit()
     return jsonify({'success': True})
@@ -719,10 +772,23 @@ def _trace_upstream_from_odp(odp, _depth=0):
             if not otb:
                 return
             hops.insert(0, {'type': 'otb', 'id': otb.id, 'name': otb.name, 'core': core_number})
-            pon = FTTHPonPort.query.filter_by(otb_id=otb.id).first()
-            if pon:
-                olt = db.session.get(OLT, pon.olt_id) if pon.olt_id else None
-                hops.insert(0, {'type': 'olt', 'id': pon.olt_id, 'name': (olt.name if olt else pon.olt_name) or '', 'detail': pon.pon_name or f'{pon.frame}/{pon.slot}/{pon.port}'})
+            if otb.feed_source == 'jc' and otb.jc_id:
+                climb('jc', otb.jc_id, otb.jc_core_number, depth + 1)
+            else:
+                pon = FTTHPonPort.query.filter_by(otb_id=otb.id).first()
+                if pon:
+                    olt = db.session.get(OLT, pon.olt_id) if pon.olt_id else None
+                    hops.insert(0, {'type': 'olt', 'id': pon.olt_id, 'name': (olt.name if olt else pon.olt_name) or '', 'detail': pon.pon_name or f'{pon.frame}/{pon.slot}/{pon.port}'})
+                elif otb.olt_id:
+                    olt = db.session.get(OLT, otb.olt_id)
+                    hops.insert(0, {'type': 'olt', 'id': otb.olt_id, 'name': olt.name if olt else '', 'detail': otb.pon_port or ''})
+            return
+        if node_type == 'pon':
+            pon = db.session.get(FTTHPonPort, node_id)
+            if not pon:
+                return
+            olt = db.session.get(OLT, pon.olt_id) if pon.olt_id else None
+            hops.insert(0, {'type': 'olt', 'id': pon.olt_id, 'name': (olt.name if olt else pon.olt_name) or '', 'detail': pon.pon_name or f'{pon.frame}/{pon.slot}/{pon.port}'})
             return
         if node_type == 'odc':
             odc = db.session.get(FTTHODC, node_id)
@@ -782,6 +848,19 @@ def ftth_trace_onu(onu_id):
     hops = _trace_upstream_from_odp(odp) if odp else [{'type': 'gap', 'message': 'ODP untuk port ini tidak ditemukan'}]
     if hops and hops[-1].get('type') == 'odp':
         hops[-1]['port'] = port.port_number
+    if port.feed_source == 'jc' and port.jc_id:
+        jc = db.session.get(FTTHJC, port.jc_id)
+        if jc:
+            splice = FTTHJCSplice.query.filter_by(jc_id=jc.id, core_out=port.jc_core_number).first() if port.jc_core_number else None
+            hops.append({
+                'type': 'jc', 'id': jc.id, 'name': jc.name,
+                'core_out': port.jc_core_number, 'core_in': splice.core_in if splice else None,
+                'splice_label': splice.label if splice else '',
+            })
+            if not splice:
+                hops.append({'type': 'gap', 'message': f'{jc.name} tidak punya splice untuk core {port.jc_core_number}'})
+        else:
+            hops.append({'type': 'gap', 'message': 'JC drop cable untuk port ini tidak ditemukan'})
     hops.append({'type': 'onu', 'id': onu.id, 'name': onu.name or onu.serial_number or '', 'serial': onu.serial_number or '', 'status': onu.status or ''})
     complete = not any(h.get('type') == 'gap' for h in hops)
     return jsonify({'success': True, 'complete': complete, 'hops': hops})
@@ -814,10 +893,17 @@ def _collect_downstream_onus(node_type, node_id, _depth=0, _seen=None):
         for jc in FTTHJC.query.filter_by(parent_type='otb', parent_id=node_id).all():
             onus.extend(_collect_downstream_onus('jc', jc.id, _depth + 1, _seen))
     elif node_type == 'jc':
+        for otb in FTTHOTB.query.filter_by(feed_source='jc', jc_id=node_id).all():
+            onus.extend(_collect_downstream_onus('otb', otb.id, _depth + 1, _seen))
         for odc in FTTHODC.query.filter_by(feed_source='jc', jc_id=node_id).all():
             onus.extend(_collect_downstream_onus('odc', odc.id, _depth + 1, _seen))
         for odp in FTTHODP.query.filter_by(feed_source='jc', jc_id=node_id).all():
             onus.extend(_collect_downstream_onus('odp', odp.id, _depth + 1, _seen))
+        for port in FTTHODPPort.query.filter_by(feed_source='jc', jc_id=node_id).all():
+            if port.onu_id:
+                onu = db.session.get(ONU, port.onu_id)
+                if onu:
+                    onus.append(onu)
         for child in FTTHJC.query.filter_by(parent_type='jc', parent_id=node_id).all():
             onus.extend(_collect_downstream_onus('jc', child.id, _depth + 1, _seen))
     return onus
@@ -888,6 +974,11 @@ def ftth_map():
         return (n.latitude, n.longitude) if n and n.latitude and n.longitude else None
 
     lines = []
+    for otb in FTTHOTB.query.all():
+        if otb.feed_source == 'jc' and otb.jc_id and otb.latitude:
+            j_ll = _node_latlng('jc', otb.jc_id)
+            if j_ll:
+                lines.append({'from_lat': j_ll[0], 'from_lng': j_ll[1], 'to_lat': otb.latitude, 'to_lng': otb.longitude, 'from_type': 'jc', 'to_type': 'otb', 'from_id': otb.jc_id, 'to_id': otb.id, 'label': f'Core {otb.jc_core_number}'})
     for odc in odc_list:
         if odc.feed_source == 'otb' and odc.otb_id:
             otb = db.session.get(FTTHOTB, odc.otb_id)
@@ -913,18 +1004,28 @@ def ftth_map():
             p_ll = _node_latlng(j.parent_type, j.parent_id)
             if j_ll and p_ll:
                 lines.append({'from_lat': p_ll[0], 'from_lng': p_ll[1], 'to_lat': j_ll[0], 'to_lng': j_ll[1], 'from_type': j.parent_type, 'to_type': 'jc', 'from_id': j.parent_id, 'to_id': j.id, 'label': j.name})
-    # ODP → ONU connection lines
+    # ODP → ONU connection lines (or JC → ONU when the drop cable routes through a JC)
     for odp in odp_list:
         if odp.latitude and (odp.odc_id or odp.jc_id):
             for port in odp.ports:
                 if port.onu_id:
                     onu = db.session.get(ONU, port.onu_id)
-                    if onu and onu.latitude:
-                        lines.append({'from_lat': odp.latitude, 'from_lng': odp.longitude,
-                                      'to_lat': onu.latitude, 'to_lng': onu.longitude,
-                                      'from_type': 'odp', 'to_type': 'onu',
-                                      'from_id': odp.id, 'to_id': onu.id,
-                                      'label': f'Port {port.port_number}'})
+                    if not (onu and onu.latitude):
+                        continue
+                    if port.feed_source == 'jc' and port.jc_id:
+                        j_ll = _node_latlng('jc', port.jc_id)
+                        if j_ll:
+                            lines.append({'from_lat': j_ll[0], 'from_lng': j_ll[1],
+                                          'to_lat': onu.latitude, 'to_lng': onu.longitude,
+                                          'from_type': 'jc', 'to_type': 'onu',
+                                          'from_id': port.jc_id, 'to_id': onu.id,
+                                          'label': f'Core {port.jc_core_number}'})
+                            continue
+                    lines.append({'from_lat': odp.latitude, 'from_lng': odp.longitude,
+                                  'to_lat': onu.latitude, 'to_lng': onu.longitude,
+                                  'from_type': 'odp', 'to_type': 'onu',
+                                  'from_id': odp.id, 'to_id': onu.id,
+                                  'label': f'Port {port.port_number}'})
     return jsonify({'success': True, 'markers': markers, 'lines': lines})
 
 
@@ -1101,6 +1202,8 @@ def ftth_pon_update(pon_id):
 def ftth_pon_delete(pon_id):
     o = db.session.get(FTTHPonPort, pon_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
+    for jc in FTTHJC.query.filter_by(parent_type='pon', parent_id=pon_id).all():
+        jc.parent_type = None; jc.parent_id = None
     db.session.delete(o)
     db.session.commit()
     return jsonify({'success': True})
