@@ -287,18 +287,42 @@ def migrate_schema():
         except:
             return set()
 
+    existing_tables = set(inspector.get_table_names())
+
     def add_col(table, col, coltype, default=None):
+        if table not in existing_tables:
+            return  # brand-new table — db.create_all() right after this will create it complete, nothing to add here
         if col not in table_cols(table):
             stmt = f"ALTER TABLE {table} ADD COLUMN {col} {coltype}"
             if default is not None:
                 stmt += f" DEFAULT {default}"
-            try:
-                with db.engine.connect() as conn:
-                    conn.execute(sqla_text(stmt))
-                    conn.commit()
-                logger.info(f"  Migration: added {table}.{col}")
-            except Exception as e:
-                logger.debug(f"  Migration skip {table}.{col}: {e}")
+            # Retry on transient "database is locked" errors — this runs at
+            # every server start, racing auto_sync.py's cron process (every
+            # 5 min, can hold a write transaction open for 1-2 min on a full
+            # sync). A schema-changing ALTER TABLE needs a lock that a
+            # concurrent writer can block; without a retry, one unlucky
+            # restart silently leaves the column missing until the next
+            # restart happens to land lock-free — the "sometimes incomplete
+            # schema" bug reported by users hitting missing-column errors
+            # on unrelated pages after an update.
+            last_err = None
+            for attempt in range(10):
+                try:
+                    with db.engine.connect() as conn:
+                        conn.execute(sqla_text(stmt))
+                        conn.commit()
+                    logger.info(f"  Migration: added {table}.{col}")
+                    return
+                except Exception as e:
+                    last_err = e
+                    if 'locked' in str(e).lower() or 'busy' in str(e).lower():
+                        time.sleep(min(2.0, 0.3 * (attempt + 1)))
+                        continue
+                    break  # some other error — retrying won't help
+            # Still failed after retries — this is NOT a silent no-op: the app
+            # will hit "no such column" errors on this table until it's fixed.
+            # Log loud (not debug) so it's actually visible in production logs.
+            logger.warning(f"  Migration FAILED for {table}.{col} after retries: {last_err}")
 
     # OLT table - add new columns
     add_col('olts', 'snmp_status', 'VARCHAR(20)', "'disconnected'")
