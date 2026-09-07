@@ -4,6 +4,21 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-07 — Trace Kabel: Jalur FTTH per Pelanggan & Dampak Downstream
+
+#### Ditemukan Saat Audit
+- Diminta audit struktur FTTH supaya lebih mudah trace kabel/jalur putus (OLT → OTB → JC → ODC → ODP → pelanggan). Ditemukan: data model sudah lengkap dan Tree/Map sudah bisa di-browse, tapi ada 3 gap nyata — (1) halaman detail ONU sama sekali tidak menampilkan jalur ke atasnya, (2) tidak ada breakdown teks jalur di manapun (peta cuma highlight visual), (3) tidak ada hitung dampak downstream kalau satu titik putus
+
+#### Ditambahkan
+- **Endpoint baru** `GET /api/ftth/trace/onu/<id>`: jalur lengkap satu pelanggan dari OLT sampai ke ONU-nya (urut: OLT → PON → OTB+core → [splice JC, bisa berantai] → ODC+core → ODP+port → pelanggan). Kalau ada titik yang datanya belum lengkap (mis. ODP belum di-assign), jalur berhenti di situ dengan penanda "gap" alih-alih error — supaya langsung ketahuan bagian mana yang kurang
+- **Endpoint baru** `GET /api/ftth/impact/<otb|jc|odc|odp>/<id>`: hitung rekursif semua pelanggan downstream dari satu titik (lewat berapa pun hop JC di tengahnya) — buat prioritas perbaikan kalau kabel utama putus
+- **Kartu "Jalur FTTH" di halaman View ONU**: breadcrumb visual OLT→OTB→JC→ODC→ODP→pelanggan lengkap dengan nomor core/splice/port di tiap titik
+- **Ikon "Dampak" (orang) di tiap baris Tree view** (OTB/JC/ODC/ODP): klik untuk modal berisi jumlah pelanggan terdampak (total/online/offline) + daftar nama
+- Panduan FTTH dan View ONU diperbarui dengan langkah baru untuk kedua fitur ini
+- **Diverifikasi**: 8 test baru (urutan hop benar melewati 2 JC, ONU tanpa ODP port dilaporkan incomplete, rantai putus menghasilkan gap bukan crash, dampak konsisten di semua level termasuk lewat JC berantai, node tanpa downstream = 0) — full suite 166 passed/2 skipped. Dicek langsung di browser: kartu Jalur FTTH tampil benar dengan chain OLT→OTB(core 5)→JC(5→3)→ODC(core 2)→ODP(port 1)→pelanggan, modal dampak dari Tree view menampilkan 1 pelanggan terdampak dengan benar, nol error console
+
+---
+
 ### 2026-09-05 — Migrasi Schema Kadang Gagal Diam-Diam Saat Update (Root Cause: Lock Tanpa Retry)
 
 #### Ditemukan Saat Investigasi — Direproduksi Langsung, Bukan Dugaan

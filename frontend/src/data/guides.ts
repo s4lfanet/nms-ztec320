@@ -106,11 +106,16 @@ export const guides: Guide[] = [
         title: 'Actions',
         content: '**Reboot**: restart ONU (ZTE: OMCI reboot, non-ZTE: shutdown/no-shutdown fallback). **Get Status**: fetch status lengkap dari OLT (interface info, optical, history, MAC table). **Show Config**: tampilkan running-config ONU. **Resync Config**: re-collect config dari OLT. **Clear Config**: hapus config ONU. **Reset WiFi**: reset WiFi SSID config. **Reset Factory**: factory reset ONU. **Delete**: deregister ONU dari OLT.\n\n**Replace ONU (Swap SN/MAC)**: Ganti perangkat ONU rusak dengan SN/MAC baru tanpa konfigurasi ulang. Sistem akan: backup config lama → delete ONU lama → register ONU baru → re-apply config. Vendor harus sama (ZTE→ZTE, FiberHome→FiberHome).',
       },
+      {
+        title: 'Jalur FTTH (Trace Kabel ke Pelanggan)',
+        content: 'Kartu **Jalur FTTH** menampilkan rute lengkap dari OLT sampai ke ONU ini: OLT → PON → OTB (core) → JC (splice, kalau ada) → ODC (core) → ODP (port) → pelanggan.\n\nBerguna saat ada komplain pelanggan — langsung kelihatan titik fisik mana saja yang dilewati tanpa perlu buka Tree view manual.\n\nKalau ada bagian rantai yang belum lengkap datanya (mis. ODP belum di-assign ke ODC/JC), muncul kotak merah menandai persis di titik mana data yang kurang.',
+      },
     ],
     tips: [
       'EPON ONUs memiliki keterbatasan CLI — beberapa section mungkin tidak tersedia',
       'WiFi config untuk EPON diambil dari DB (tidak dari OLT running-config)',
       'Save Config untuk menyimpan perubahan ke startup-config OLT',
+      'Kalau ONU belum di-assign ke ODP manapun, kartu Jalur FTTH akan bilang begitu — assign lewat halaman FTTH Infrastructure',
     ],
   },
   {
@@ -280,11 +285,16 @@ export const guides: Guide[] = [
         title: 'FTTH Map',
         content: 'Peta interaktif (OpenStreetMap) menampilkan lokasi OLT, JC, ODC, ODP pada peta dengan warna berbeda per jenis (lihat legenda di atas peta).\n\nKlik marker untuk detail dan highlight jalur koneksinya. Garis menampilkan koneksi fiber (OLT → [JC] → ODC → [JC] → ODP → ONU).',
       },
+      {
+        title: 'Dampak Downstream (Trace Kabel Putus)',
+        content: 'Di Tree view, tiap baris OTB/JC/ODC/ODP punya ikon **orang (Users)** — klik untuk lihat berapa pelanggan yang terdampak kalau titik itu putus/bermasalah, lengkap dengan daftar nama dan status online/offline mereka.\n\nBerguna untuk prioritas perbaikan: kalau kabel utama (OTB atau JC awal) putus, langsung kelihatan berapa banyak pelanggan yang kena dibanding kalau cuma satu ODC/ODP yang bermasalah.\n\nUntuk trace jalur satu pelanggan spesifik (bukan sebaliknya), buka halaman **View ONU** pelanggan tersebut — ada kartu **Jalur FTTH** yang menampilkan rute lengkap dari OLT sampai ke pelanggan itu.',
+      },
     ],
     tips: [
       'JC bersifat opsional — kalau jalur fiber memang langsung tanpa titik sambungan, tidak perlu dibuat JC sama sekali, cukup OTB → ODC → ODP seperti biasa',
       'Menghapus JC tidak menghapus ODC/ODP/JC yang tersambung ke situ — mereka cuma "dilepas" (feed source-nya jadi kosong), supaya data infrastruktur riil tidak ikut hilang',
       'Nomor core "in" pada splice pakai penomoran tube milik parent (OTB/ODC/JC sumbernya), nomor core "out" pakai penomoran tube milik JC itu sendiri',
+      'Dampak downstream dan Jalur FTTH sama-sama jalan lewat berapa pun hop JC di tengahnya, tidak terbatas satu tingkat saja',
     ],
   },
   {

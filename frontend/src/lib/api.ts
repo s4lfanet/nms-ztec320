@@ -143,6 +143,8 @@ export const api = {
   ftthJcSpliceUpdate: (jcId: number, spliceId: number, data: Partial<{ core_in: number; core_out: number; label: string; tube_in_label: string; tube_out_label: string }>) => request<{ success: boolean; splice: FTTHJcSplice }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthJcSpliceDelete: (jcId: number, spliceId: number) => request<{ success: boolean }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'DELETE' }),
   ftthAvailableOnus: (oltId?: number) => request<{ success: boolean; onus: FTTHAvailableOnu[] }>(`/api/ftth/available-onus${oltId ? '?olt_id=' + oltId : ''}`),
+  ftthTraceOnu: (onuId: number) => request<{ success: boolean; complete: boolean; hops: FTTHTraceHop[]; message?: string }>(`/api/ftth/trace/onu/${onuId}`),
+  ftthImpact: (nodeType: 'otb' | 'jc' | 'odc' | 'odp', nodeId: number) => request<{ success: boolean; total: number; online: number; offline: number; customers: Array<{ id: number; name: string; serial: string; status: string }>; truncated: boolean }>(`/api/ftth/impact/${nodeType}/${nodeId}`),
   ftthPonList: () => request<{ success: boolean; items: FTTHPonPort[] }>('/api/ftth/pon'),
   ftthPonCreate: (data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>('/api/ftth/pon', { method: 'POST', body: JSON.stringify(data) }),
   ftthPonUpdate: (id: number, data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>(`/api/ftth/pon/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -914,6 +916,21 @@ export interface FTTHAvailableOnu {
   onu_id_str: string;
   olt_id: number;
   olt_name: string;
+}
+
+export interface FTTHTraceHop {
+  type: 'olt' | 'otb' | 'jc' | 'odc' | 'odp' | 'onu' | 'gap';
+  id?: number;
+  name?: string;
+  detail?: string;      // olt: PON identifier
+  core?: number;        // otb / odc: which core is used
+  core_in?: number;     // jc: incoming core
+  core_out?: number;    // jc: outgoing core
+  splice_label?: string;
+  port?: number;        // odp: port number
+  serial?: string;      // onu
+  status?: string;      // onu
+  message?: string;     // gap: what's missing
 }
 
 export interface FTTHOdpTree extends FTTHOdp { ports: FTTHOdpPort[] }
