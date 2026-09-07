@@ -4,6 +4,29 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-07 — JC Fleksibel di Segmen OLT→OTB dan ODP→Pelanggan (Drop Cable)
+
+#### Konteks
+- Setelah fitur trace kabel, ditanyakan apakah JC (Joint Closure) sudah bisa disisipkan di *semua* segmen kabel (OLT→OTB, OTB→ODC, ODC→ODP, ODP→pelanggan) — sebelumnya hanya OTB→ODC dan ODC→ODP yang punya opsi "Fed From: JC" (lewat `feed_source` di `FTTHODC`/`FTTHODP`). Segmen OLT→OTB (feeder trunk) dan ODP→pelanggan (drop cable) masih kaku: harus langsung, tidak bisa dicatat kalau ada sambungan JC di tengah jalan
+- User pilih implementasi di kedua segmen sekaligus
+
+#### Ditambahkan
+- Kolom baru `feed_source`/`jc_id`/`jc_core_number` di `FTTHOTB` (default `'pon'`, bisa `'jc'`) dan `FTTHODPPort` (default `'direct'`, bisa `'jc'`) — pola yang sama persis dengan yang sudah ada di ODC/ODP
+- `FTTHJC.parent_type` diperluas: selain `otb`/`odc`/`jc`, sekarang juga terima `pon` (JC disambung langsung dari port PON OLT, sebelum OTB manapun ada) dan `odp_port` (JC disisipkan di kabel drop, sebelum ke pelanggan)
+- Form "Edit OTB/ODF" dapat toggle "Fed From": PON Langsung (seperti biasa, diatur lewat tab PON Ports) atau JC (pilih JC + core splice, dengan preview warna core TIA-598)
+- Form "Edit Port" di panel ODP dapat toggle "Kabel Drop": Langsung atau JC — port dengan drop-JC ditandai badge ungu kecil di semua tampilan (diagram, tabel, mobile)
+- Form Add/Edit JC: dropdown "Fed From (parent)" sekarang punya opsi "PON Port (OLT)" dan "ODP Port (Drop Cable)" — untuk ODP Port, dipilih lewat 2 langkah (ODP dulu, baru port-nya) karena tidak ada daftar port datar per-ODP
+- Tree view: baris OTB yang di-feed dari JC menampilkan anotasi "Fed by JC: <nama> (Core N)" menggantikan info OLT/PON — tree tetap berakar di OTB (bukan direstrukturisasi ke level OLT), karena OLT dan OTB biasanya satu lokasi dan segmen ini jarang dipakai
+- Trace kabel (`/api/ftth/trace/onu/<id>`) dan dampak downstream (`/api/ftth/impact/...`) diperluas untuk menembus kedua segmen baru ini — satu ONU bisa lewat sampai 2 JC ekstra (feeder + drop) di luar 2 JC yang sudah ada di tengah (OTB→ODC, ODC→ODP)
+- Detach otomatis saat hapus: hapus JC/splice/PON-port/ODP-port melepas (bukan cascade-delete) apa pun yang terhubung lewatnya, konsisten dengan pola yang sudah ada untuk ODC/ODP
+
+#### Diverifikasi
+- Migrasi Alembic baru dibuat & diverifikasi upgrade+downgrade+re-upgrade bersih di DB kosong; `migrate_schema()` auto-heal juga sudah menambahkan kolom yang sama di DB dev lokal
+- 8 test baru (trace lewat kedua segmen baru berurutan benar, OTB dengan feed PON langsung tidak kena regresi, dampak konsisten di semua level, detach saat hapus JC/splice/PON-port/ODP-port) — full suite 174 passed/2 skipped
+- Dicek langsung di browser: chain OLT→JC-feeder→OTB→ODC→ODP→JC-drop→pelanggan (7 hop) tampil benar di kartu Jalur FTTH View ONU; form Edit OTB, Edit Port ODP, dan Add JC (opsi PON Port & ODP Port) semuanya berfungsi sesuai desain, nol error console
+
+---
+
 ### 2026-09-07 — Trace Kabel: Jalur FTTH per Pelanggan & Dampak Downstream
 
 #### Ditemukan Saat Audit

@@ -5,7 +5,7 @@ import {
   Map as MapIcon, TreePine, Plus, Edit2, Trash2, ChevronDown, ChevronRight,
   Server, Box, Network, Split, X, MapPin, Link2, Unlink, Phone, Download, Upload, Cable,
   Activity, AlertTriangle, Wifi, WifiOff, Zap, CircleDashed, Gauge, RefreshCw,
-  UserX, LayoutGrid, List, GitMerge, Scissors, Users
+  UserX, LayoutGrid, List, GitMerge, Scissors, Users, Cpu, Home
 } from 'lucide-react';
 import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath, type FTTHJc, type FTTHJcSplice, type FTTHOdcTree, type FTTHOdpTree, type FTTHJcTree } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -495,6 +495,7 @@ export function FtthInfrastructure() {
           odp={selectedOdp}
           ports={odpPorts?.ports || []}
           availableOnus={availableOnus?.onus || []}
+          jcList={jcList?.items || []}
           onClose={() => setSelectedOdp(null)}
           onUpdated={() => { invalidate(); }}
         />
@@ -512,8 +513,8 @@ export function FtthInfrastructure() {
       )}
 
       {/* Modals */}
-      {modal === 'otb' && <OtbModal item={editItem} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
-      {modal === 'jc' && <JcModal item={editItem} parent={parentCtx} parentKind={parentKind} otbList={otbList?.items || []} odcList={odcList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
+      {modal === 'otb' && <OtbModal item={editItem} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
+      {modal === 'jc' && <JcModal item={editItem} parent={parentCtx} parentKind={parentKind} otbList={otbList?.items || []} odcList={odcList?.items || []} jcList={jcList?.items || []} ponList={ponList?.items || []} odpList={odpList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'odc' && <OdcModal item={editItem} parent={parentCtx} parentKind={parentKind} otbList={otbList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'odp' && <OdpModal item={editItem} parent={parentCtx} parentKind={parentKind} odcList={odcList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'pon' && <PonModal item={editItem} otbList={otbList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
@@ -746,8 +747,14 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
           <div className="font-medium text-sm truncate">{otb.name}</div>
           <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
             <span className="uppercase">{otb.type}</span>
-            {otb.olt_name && <span>• OLT: {otb.olt_name}</span>}
-            {otb.pon_port && <span>• PON: {otb.pon_port}</span>}
+            {otb.feed_source === 'jc' ? (
+              <span className="flex items-center gap-1 text-purple-400"><GitMerge size={10} /> Fed by JC: {otb.jc_name || '—'}{otb.jc_core_number ? ` (Core ${otb.jc_core_number})` : ''}</span>
+            ) : (
+              <>
+                {otb.olt_name && <span>• OLT: {otb.olt_name}</span>}
+                {otb.pon_port && <span>• PON: {otb.pon_port}</span>}
+              </>
+            )}
             <span>• {otb.total_cores} cores</span>
             <span>• {otb.odc_count} ODCs</span>
             {otb.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {otb.latitude.toFixed(4)}, {otb.longitude?.toFixed(4)}</span>}
@@ -924,13 +931,20 @@ function MapView({ markers, lines, fiberPaths, drawMode, onDrawComplete, onMarke
 }
 
 // ─── ODP Port Panel ───
-function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
-  odp: FTTHOdp; ports: FTTHOdpPort[]; availableOnus: FTTHAvailableOnu[]; onClose: () => void; onUpdated: () => void;
+function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }: {
+  odp: FTTHOdp; ports: FTTHOdpPort[]; availableOnus: FTTHAvailableOnu[]; jcList: FTTHJc[]; onClose: () => void; onUpdated: () => void;
 }) {
   const qc = useQueryClient();
   const [editingPort, setEditingPort] = useState<FTTHOdpPort | null>(null);
+  const [portFeed, setPortFeed] = useState({ feed_source: 'direct' as 'direct' | 'jc', jc_id: '' as string | number, jc_core_number: '' as string | number });
   const [showLink, setShowLink] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'diagram' | 'list'>('diagram');
+
+  const openEditPort = (p: FTTHOdpPort) => {
+    setEditingPort(p);
+    setPortFeed({ feed_source: p.feed_source || 'direct', jc_id: p.jc_id || '', jc_core_number: p.jc_core_number || '' });
+  };
+  const selectedPortJc = jcList.find(j => j.id === Number(portFeed.jc_id));
 
   const saveMut = useMutation({
     mutationFn: (data: Partial<FTTHOdpPort> & { id: number }) => api.ftthOdpPortUpdate(data.id, data),
@@ -974,13 +988,14 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
                 {ports.map(p => (
                   <div
                     key={p.id}
-                    title={p.customer_name ? `Port ${p.port_number} — ${p.customer_name}` : `Port ${p.port_number}`}
+                    title={(p.customer_name ? `Port ${p.port_number} — ${p.customer_name}` : `Port ${p.port_number}`) + (p.feed_source === 'jc' ? ` (via JC ${p.jc_name})` : '')}
                     className={cn(
                       'relative aspect-square rounded-lg border-2 transition-all hover:scale-[1.06] hover:shadow-md',
                       p.status === 'used' ? 'border-success bg-success/10' : 'border-brd bg-glass/40',
                     )}
                   >
-                    <button onClick={() => setEditingPort(p)} className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 p-1">
+                    {p.feed_source === 'jc' && <GitMerge size={10} className="absolute top-0.5 left-0.5 text-purple-400" />}
+                    <button onClick={() => openEditPort(p)} className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 p-1">
                       <span className="text-[10px] font-mono text-tx3 leading-none">#{p.port_number}</span>
                       <span className={cn('text-[11px] font-semibold leading-tight text-center line-clamp-2 px-0.5', p.customer_name ? 'text-tx1' : 'text-tx3 italic font-normal')}>
                         {p.customer_name || 'Available'}
@@ -1011,7 +1026,10 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
             <tbody>
               {ports.map(p => (
                 <tr key={p.id} className="border-b border-brd/50 hover:bg-glass/30">
-                  <td className="px-2 py-2.5 font-medium">Port {p.port_number}</td>
+                  <td className="px-2 py-2.5 font-medium">
+                    Port {p.port_number}
+                    {p.feed_source === 'jc' && <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] text-purple-400" title={`via JC ${p.jc_name}`}><GitMerge size={10} /> JC</span>}
+                  </td>
                   <td className="px-2 py-2.5"><span className={cn('px-2 py-0.5 rounded text-xs font-medium', p.status === 'used' ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{p.status}</span></td>
                   <td className="px-2 py-2.5">
                     {p.customer_name ? <div><div className="font-medium text-xs">{p.customer_name}</div>{p.customer_phone && <div className="text-tx3 text-xs flex items-center gap-1"><Phone size={10} /> {p.customer_phone}</div>}</div> : <span className="text-tx3 text-xs">—</span>}
@@ -1026,7 +1044,7 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
                       ) : (
                         <button onClick={() => setShowLink(p.id)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Link ONU"><Link2 size={14} /></button>
                       )}
-                      <button onClick={() => setEditingPort(p)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={14} /></button>
+                      <button onClick={() => openEditPort(p)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -1038,7 +1056,10 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
             {ports.map(p => (
               <div key={p.id} className="py-2.5 space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-sm">Port {p.port_number}</span>
+                  <span className="font-medium text-sm flex items-center gap-1.5">
+                    Port {p.port_number}
+                    {p.feed_source === 'jc' && <span className="inline-flex items-center gap-0.5 text-[10px] text-purple-400"><GitMerge size={10} /> JC</span>}
+                  </span>
                   <span className={cn('px-2 py-0.5 rounded text-[10px] font-medium', p.status === 'used' ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{p.status}</span>
                 </div>
                 {p.customer_name && (
@@ -1059,7 +1080,7 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
                   ) : (
                     <button onClick={() => setShowLink(p.id)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-glass text-xs text-tx2 hover:text-accent transition-colors"><Link2 size={12} /> Link</button>
                   )}
-                  <button onClick={() => setEditingPort(p)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-glass text-xs text-tx2 hover:text-tx1 transition-colors ml-auto"><Edit2 size={12} /> Edit</button>
+                  <button onClick={() => openEditPort(p)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-glass text-xs text-tx2 hover:text-tx1 transition-colors ml-auto"><Edit2 size={12} /> Edit</button>
                 </div>
               </div>
             ))}
@@ -1074,9 +1095,30 @@ function OdpPortPanel({ odp, ports, availableOnus, onClose, onUpdated }: {
                 <FormField label="Customer Name"><input className="input-field" defaultValue={editingPort.customer_name} onChange={e => editingPort.customer_name = e.target.value} /></FormField>
                 <FormField label="Customer Phone"><input className="input-field" defaultValue={editingPort.customer_phone} onChange={e => editingPort.customer_phone = e.target.value} /></FormField>
                 <FormField label="Description"><input className="input-field" defaultValue={editingPort.description} onChange={e => editingPort.description = e.target.value} /></FormField>
+                <FormField label="Kabel Drop">
+                  <FeedSourceToggle value={portFeed.feed_source} directValue="direct" onChange={v => setPortFeed({ ...portFeed, feed_source: v as 'direct' | 'jc' })} directLabel="Langsung" directIcon={<Home size={14} className={portFeed.feed_source !== 'jc' ? 'text-accent' : 'text-tx3'} />} />
+                </FormField>
+                {portFeed.feed_source === 'jc' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <FormField label="JC (Joint Closure)"><select className="input-field" value={portFeed.jc_id} onChange={e => setPortFeed({ ...portFeed, jc_id: e.target.value, jc_core_number: '' })}><option value="">— Select JC —</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
+                    <FormField label="Core from JC">
+                      <select className="input-field" value={portFeed.jc_core_number} onChange={e => setPortFeed({ ...portFeed, jc_core_number: e.target.value })}>
+                        <option value="">— Select splice —</option>
+                        {(selectedPortJc?.splices || []).map(s => <option key={s.id} value={s.core_out}>Core {s.core_out} (in: {s.core_in}{s.label ? ` — ${s.label}` : ''})</option>)}
+                      </select>
+                    </FormField>
+                    {selectedPortJc && selectedPortJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">This JC has no splices yet — add one first (Edit JC → Splices) so there's a core to feed from.</p>}
+                    {selectedPortJc && portFeed.jc_core_number !== '' && <p className="text-xs col-span-full"><CoreColorTag coreNumber={Number(portFeed.jc_core_number)} fibersPerTube={selectedPortJc.fibers_per_tube} /></p>}
+                  </div>
+                )}
                 <div className="flex justify-end gap-2 pt-2">
                   <button onClick={() => setEditingPort(null)} className="btn-cancel text-sm">Cancel</button>
-                  <button onClick={() => saveMut.mutate({ id: editingPort.id, customer_name: editingPort.customer_name, customer_phone: editingPort.customer_phone, description: editingPort.description })} className="btn-primary text-sm">Save</button>
+                  <button onClick={() => saveMut.mutate({
+                    id: editingPort.id, customer_name: editingPort.customer_name, customer_phone: editingPort.customer_phone, description: editingPort.description,
+                    feed_source: portFeed.feed_source,
+                    jc_id: portFeed.jc_id === '' ? null : Number(portFeed.jc_id),
+                    jc_core_number: portFeed.jc_core_number === '' ? null : Number(portFeed.jc_core_number),
+                  })} className="btn-primary text-sm">Save</button>
                 </div>
               </div>
             </div>
@@ -1284,12 +1326,15 @@ function PonModal({ item, otbList, onClose, onSaved }: { item: FTTHPonPort | nul
 }
 
 // ─── OTB Modal ───
-function OtbModal({ item, onClose, onSaved }: { item: FTTHOtb | null; onClose: () => void; onSaved: () => void }) {
+function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jcList: FTTHJc[]; onClose: () => void; onSaved: () => void }) {
+  const initialFeedSource: 'pon' | 'jc' = item?.feed_source || 'pon';
   const [form, setForm] = useState({
     name: item?.name || '', type: item?.type || 'otb', model: item?.model || '',
     location: item?.location || '', latitude: item?.latitude || '', longitude: item?.longitude || '',
     total_cores: item?.total_cores || 12,
     fibers_per_tube: item?.fibers_per_tube || 12,
+    feed_source: initialFeedSource,
+    jc_id: item?.jc_id || '', jc_core_number: item?.jc_core_number || '',
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1303,8 +1348,11 @@ function OtbModal({ item, onClose, onSaved }: { item: FTTHOtb | null; onClose: (
     d.longitude = form.longitude === '' ? null : parseFloat(String(form.longitude));
     d.total_cores = parseInt(String(form.total_cores));
     d.fibers_per_tube = parseInt(String(form.fibers_per_tube));
+    d.jc_id = form.jc_id === '' ? null : parseInt(String(form.jc_id));
+    d.jc_core_number = form.jc_core_number === '' ? null : parseInt(String(form.jc_core_number));
     mut.mutate(d);
   };
+  const selectedJc = jcList.find(x => x.id === Number(form.jc_id));
   return (
     <Modal title={item ? 'Edit OTB/ODF' : 'Add OTB/ODF'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
       <FormField label="Name"><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="OTB-01" /></FormField>
@@ -1320,6 +1368,24 @@ function OtbModal({ item, onClose, onSaved }: { item: FTTHOtb | null; onClose: (
           onChange={(lat, lng) => setForm({ ...form, latitude: lat, longitude: lng })}
         />
       </FormField>
+      <FormField label="Fed From">
+        <FeedSourceToggle value={form.feed_source} directValue="pon" onChange={v => setForm({ ...form, feed_source: v as 'pon' | 'jc' })} directLabel="PON Langsung" directIcon={<Cpu size={14} className={form.feed_source !== 'jc' ? 'text-accent' : 'text-tx3'} />} />
+      </FormField>
+      {form.feed_source === 'jc' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField label="JC (Joint Closure)"><select className="input-field" value={form.jc_id} onChange={e => setForm({ ...form, jc_id: e.target.value, jc_core_number: '' })}><option value="">— Select JC —</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
+          <FormField label="Core from JC">
+            <select className="input-field" value={form.jc_core_number} onChange={e => setForm({ ...form, jc_core_number: e.target.value })}>
+              <option value="">— Select splice —</option>
+              {(selectedJc?.splices || []).map(s => <option key={s.id} value={s.core_out}>Core {s.core_out} (in: {s.core_in}{s.label ? ` — ${s.label}` : ''})</option>)}
+            </select>
+          </FormField>
+          {selectedJc && selectedJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">This JC has no splices yet — add one first (Edit JC → Splices) so there's a core to feed from.</p>}
+        </div>
+      ) : (
+        <p className="text-[11px] text-tx3 -mt-1">Sambungan langsung ke port PON diatur dari tab "PON Ports" (pilih OTB ini sebagai tujuan core).</p>
+      )}
+      {form.feed_source === 'jc' && selectedJc && form.jc_core_number !== '' && <p className="text-xs -mt-1"><CoreColorTag coreNumber={Number(form.jc_core_number)} fibersPerTube={selectedJc.fibers_per_tube} /></p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
         <FormField label="Fibers per Tube"><input className="input-field" type="number" min={1} value={form.fibers_per_tube} onChange={e => setForm({ ...form, fibers_per_tube: parseInt(e.target.value) || 12 })} /></FormField>
@@ -1330,9 +1396,9 @@ function OtbModal({ item, onClose, onSaved }: { item: FTTHOtb | null; onClose: (
   );
 }
 
-// ─── Fed-from toggle (OTB/ODC vs JC), shared by ODC + ODP modals ───
+// ─── Fed-from toggle (direct parent vs JC), shared by OTB/ODC/ODP/ODP-port modals ───
 function FeedSourceToggle({ value, directValue, onChange, directLabel, directIcon }: {
-  value: 'otb' | 'odc' | 'jc'; directValue: 'otb' | 'odc'; onChange: (v: 'otb' | 'odc' | 'jc') => void;
+  value: string; directValue: string; onChange: (v: string) => void;
   directLabel: string; directIcon: React.ReactNode;
 }) {
   return (
@@ -1504,10 +1570,16 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, onClose, onSaved 
 }
 
 // ─── JC (Joint Closure) Modal — includes inline splice management once saved ───
-function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, onSaved }: {
-  item: FTTHJc | null; parent: any; parentKind?: ParentKind; otbList: FTTHOtb[]; odcList: FTTHOdc[]; jcList: FTTHJc[]; onClose: () => void; onSaved: () => void;
+function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, odpList, onClose, onSaved }: {
+  item: FTTHJc | null; parent: any; parentKind?: ParentKind; otbList: FTTHOtb[]; odcList: FTTHOdc[]; jcList: FTTHJc[]; ponList: FTTHPonPort[]; odpList: FTTHOdp[]; onClose: () => void; onSaved: () => void;
 }) {
   const qc = useQueryClient();
+  const [selectedOdpForPort, setSelectedOdpForPort] = useState('');
+  const { data: odpPortsForPicker } = useQuery({
+    queryKey: ['ftth-odp-ports-picker', selectedOdpForPort],
+    queryFn: () => api.ftthOdpPorts(Number(selectedOdpForPort)),
+    enabled: !!selectedOdpForPort,
+  });
   const [form, setForm] = useState({
     name: item?.name || '', closure_type: item?.closure_type || 'inline',
     location: item?.location || '', latitude: item?.latitude || '', longitude: item?.longitude || '',
@@ -1534,7 +1606,13 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
   };
 
   // Splice management — only meaningful once the JC exists (has an id)
-  const parentOptions = form.parent_type === 'otb' ? otbList : form.parent_type === 'odc' ? odcList : jcList.filter(j => j.id !== item?.id);
+  const odpPortOptions = (odpPortsForPicker?.ports || []).map(p => ({ id: p.id, name: `Port ${p.port_number}${p.customer_name ? ' — ' + p.customer_name : ''}` }));
+  const parentOptions: any[] = form.parent_type === 'otb' ? otbList
+    : form.parent_type === 'odc' ? odcList
+    : form.parent_type === 'jc' ? jcList.filter(j => j.id !== item?.id)
+    : form.parent_type === 'pon' ? ponList.map(p => ({ id: p.id, name: p.pon_name || `${p.frame}/${p.slot}/${p.port}` }))
+    : form.parent_type === 'odp_port' ? odpPortOptions
+    : [];
   const parentNode: any = form.parent_type ? parentOptions.find((p: any) => p.id === Number(form.parent_id)) : null;
   const parentFibersPerTube = parentNode?.fibers_per_tube || 12;
   const ownFibersPerTube = form.fibers_per_tube || 12;
@@ -1586,20 +1664,42 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
       </FormField>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Fed From (parent)">
-          <select className="input-field" value={form.parent_type} onChange={e => setForm({ ...form, parent_type: e.target.value, parent_id: '' })}>
+          <select className="input-field" value={form.parent_type} onChange={e => { setForm({ ...form, parent_type: e.target.value, parent_id: '' }); setSelectedOdpForPort(''); }}>
             <option value="">— None —</option>
+            <option value="pon">PON Port (OLT)</option>
             <option value="otb">OTB/ODF</option>
             <option value="odc">ODC</option>
+            <option value="odp_port">ODP Port (Drop Cable)</option>
             <option value="jc">Another JC</option>
           </select>
         </FormField>
-        <FormField label="Parent">
-          <select className="input-field" value={form.parent_id} onChange={e => setForm({ ...form, parent_id: e.target.value })} disabled={!form.parent_type}>
-            <option value="">— Select —</option>
-            {parentOptions.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </FormField>
+        {form.parent_type === 'odp_port' ? (
+          <FormField label="ODP">
+            <select className="input-field" value={selectedOdpForPort} onChange={e => { setSelectedOdpForPort(e.target.value); setForm({ ...form, parent_id: '' }); }}>
+              <option value="">— Select ODP —</option>
+              {odpList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </FormField>
+        ) : (
+          <FormField label="Parent">
+            <select className="input-field" value={form.parent_id} onChange={e => setForm({ ...form, parent_id: e.target.value })} disabled={!form.parent_type}>
+              <option value="">— Select —</option>
+              {parentOptions.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </FormField>
+        )}
       </div>
+      {form.parent_type === 'odp_port' && (
+        <FormField label="Port">
+          <select className="input-field" value={form.parent_id} onChange={e => setForm({ ...form, parent_id: e.target.value })} disabled={!selectedOdpForPort}>
+            <option value="">— Select Port —</option>
+            {odpPortOptions.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          {!selectedOdpForPort && item?.parent_type === 'odp_port' && item.parent_name && (
+            <p className="text-[11px] text-tx3 mt-1">Saat ini: {item.parent_name} — pilih ODP di atas untuk mengganti.</p>
+          )}
+        </FormField>
+      )}
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
 
       {item && (

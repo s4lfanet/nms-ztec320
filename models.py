@@ -736,7 +736,9 @@ class TrafficLogHourly(db.Model):
 # ==================== FTTH INFRASTRUCTURE ====================
 
 class FTTHOTB(db.Model):
-    """OTB/ODF at server room — top of FTTH chain, fed by OLT PON port"""
+    """OTB/ODF at server room — top of FTTH chain, fed by OLT PON port
+    (feed_source='pon', via FTTHPonPort.otb_id) or, on a distributed feeder
+    run, by a JC on the OLT->OTB trunk (feed_source='jc')."""
     __tablename__ = 'ftth_otb'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), nullable=False)
@@ -749,9 +751,13 @@ class FTTHOTB(db.Model):
     pon_port = db.Column(db.String(50), default='')  # e.g. gpon-olt_1/1/1
     total_cores = db.Column(db.Integer, default=12)
     fibers_per_tube = db.Column(db.Integer, default=12, nullable=False)  # TIA-598 tube grouping for this cable
+    feed_source = db.Column(db.String(10), default='pon', nullable=False)  # 'pon' (direct, via FTTHPonPort) or 'jc'
+    jc_id = db.Column(db.Integer, db.ForeignKey('ftth_jc.id'), nullable=True)
+    jc_core_number = db.Column(db.Integer, nullable=True)
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('ftth_otbs', lazy=True))
+    jc = db.relationship('FTTHJC', foreign_keys=[jc_id], backref=db.backref('fed_otbs', lazy=True))
 
 
 class FTTHODC(db.Model):
@@ -804,11 +810,12 @@ class FTTHODP(db.Model):
 
 class FTTHJC(db.Model):
     """JC (Joint Closure / titik sambungan) — a splice closure along a fiber
-    run. Can sit anywhere in the chain (OTB→ODC, ODC→ODP, or chained
-    JC→JC): its own incoming cable comes from `parent_type`/`parent_id`
-    (otb, odc, or another jc), and each downstream node (ODC/ODP/another JC)
-    that is fed from this closure picks one of its FTTHJCSplice rows —
-    identified by that splice's core_out — as its feed core."""
+    run. Can sit anywhere in the chain (OLT/PON→OTB, OTB→ODC, ODC→ODP,
+    ODP→client, or chained JC→JC): its own incoming cable comes from
+    `parent_type`/`parent_id` (pon, otb, odc, odp_port, or another jc), and
+    each downstream node (OTB/ODC/ODP/ODP port/another JC) that is fed from
+    this closure picks one of its FTTHJCSplice rows — identified by that
+    splice's core_out — as its feed core."""
     __tablename__ = 'ftth_jc'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), nullable=False)
@@ -818,7 +825,7 @@ class FTTHJC(db.Model):
     longitude = db.Column(db.Float, nullable=True)
     total_cores = db.Column(db.Integer, default=12)
     fibers_per_tube = db.Column(db.Integer, default=12, nullable=False)  # TIA-598 tube grouping — a JC can hold several tubes
-    parent_type = db.Column(db.String(10), nullable=True)  # otb, odc, jc
+    parent_type = db.Column(db.String(10), nullable=True)  # pon, otb, odc, odp_port, jc
     parent_id = db.Column(db.Integer, nullable=True)
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
@@ -849,7 +856,10 @@ class FTTHJCSplice(db.Model):
 
 
 class FTTHODPPort(db.Model):
-    """Individual port on an ODP — links to a customer ONU"""
+    """Individual port on an ODP — links to a customer ONU. Normally fed
+    directly by a drop cable off the ODP (feed_source='direct'); on a longer
+    drop run a JC can be spliced in between the ODP and the customer
+    (feed_source='jc')."""
     __tablename__ = 'ftth_odp_port'
     id = db.Column(db.Integer, primary_key=True)
     odp_id = db.Column(db.Integer, db.ForeignKey('ftth_odp.id'), nullable=False)
@@ -859,9 +869,13 @@ class FTTHODPPort(db.Model):
     customer_name = db.Column(db.String(150), default='')
     customer_phone = db.Column(db.String(50), default='')
     description = db.Column(db.String(256), default='')
+    feed_source = db.Column(db.String(10), default='direct', nullable=False)  # 'direct' (drop cable) or 'jc'
+    jc_id = db.Column(db.Integer, db.ForeignKey('ftth_jc.id'), nullable=True)
+    jc_core_number = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     odp = db.relationship('FTTHODP', backref=db.backref('ports', lazy=True, cascade='all, delete-orphan'))
     onu = db.relationship('ONU', backref=db.backref('odp_port', uselist=False))
+    jc = db.relationship('FTTHJC', foreign_keys=[jc_id], backref=db.backref('fed_odp_ports', lazy=True))
 
 
 class FTTHOTBPort(db.Model):

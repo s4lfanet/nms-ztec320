@@ -414,6 +414,12 @@ def migrate_schema():
     add_col('ftth_jc', 'fibers_per_tube', 'INTEGER', '12')
     add_col('ftth_jc_splice', 'tube_in_label', "VARCHAR(50)", "''")
     add_col('ftth_jc_splice', 'tube_out_label', "VARCHAR(50)", "''")
+    add_col('ftth_otb', 'feed_source', 'VARCHAR(10)', "'pon'")
+    add_col('ftth_otb', 'jc_id', 'INTEGER', None)
+    add_col('ftth_otb', 'jc_core_number', 'INTEGER', None)
+    add_col('ftth_odp_port', 'feed_source', 'VARCHAR(10)', "'direct'")
+    add_col('ftth_odp_port', 'jc_id', 'INTEGER', None)
+    add_col('ftth_odp_port', 'jc_core_number', 'INTEGER', None)
 
     # Ensure critical indexes exist (db.create_all only creates indexes for new tables)
     def ensure_index(index_name, table, *columns):
