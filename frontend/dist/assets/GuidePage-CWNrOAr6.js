@@ -72,7 +72,9 @@ Klik area untuk drill-down ke detail infrastruktur.`},{title:`Tree Tab`,content:
 
 Klik panah untuk expand/collapse tiap node. Ikon di setiap baris untuk tambah ODC, tambah JC, tambah ODP, edit, atau hapus — tergantung jenis node-nya. Node JC ditandai warna ungu dengan ikon sambungan. Baris OTB yang di-feed dari JC (bukan langsung dari PON) menampilkan anotasi "Fed by JC" menggantikan info OLT.`},{title:`PON Ports Tab`,content:`Lihat semua PON port di semua OLT. Menampilkan: OLT, slot/port, ONU count, capacity, utilization.
 
-Klik PON port untuk lihat ONU terkait dan ODP yang terhubung.`},{title:`OTB/ODF, ODC, ODP Tabs`,content:`**OTB/ODF**: Optical Terminal Box / Optical Distribution Frame — titik koneksi fiber dari OLT.
+Klik PON port untuk lihat ONU terkait dan ODP yang terhubung.
+
+Saat **Add PON Port**: pilih dulu **OLT**-nya (dari OLT yang sudah terdaftar) — muncul dropdown **PON Port (dari OLT nyata)** berisi port asli hasil sync OLT tersebut (bukan ketik manual), lengkap dengan jumlah ONU di tiap port. Pilih salah satu untuk isi otomatis PON Name/Frame/Slot/Port. Kalau OLT-nya belum terdaftar atau belum pernah sync, tetap bisa isi manual seperti biasa.`},{title:`OTB/ODF, ODC, ODP Tabs`,content:`**OTB/ODF**: Optical Terminal Box / Optical Distribution Frame — titik koneksi fiber dari OLT.
 
 **ODC**: Optical Distribution Cabinet — distribusi fiber ke area.
 

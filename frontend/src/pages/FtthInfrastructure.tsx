@@ -517,7 +517,7 @@ export function FtthInfrastructure() {
       {modal === 'jc' && <JcModal item={editItem} parent={parentCtx} parentKind={parentKind} otbList={otbList?.items || []} odcList={odcList?.items || []} jcList={jcList?.items || []} ponList={ponList?.items || []} odpList={odpList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'odc' && <OdcModal item={editItem} parent={parentCtx} parentKind={parentKind} otbList={otbList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'odp' && <OdpModal item={editItem} parent={parentCtx} parentKind={parentKind} odcList={odcList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
-      {modal === 'pon' && <PonModal item={editItem} otbList={otbList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
+      {modal === 'pon' && <PonModal item={editItem} otbList={otbList?.items || []} olts={statsData?.per_olt || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {impactTarget && <ImpactModal target={impactTarget} onClose={() => setImpactTarget(null)} />}
     </div>
   );
@@ -1284,12 +1284,17 @@ function CoreColorTag({ coreNumber, fibersPerTube, tubeLabel }: { coreNumber: nu
 }
 
 // ─── PON Modal ───
-function PonModal({ item, otbList, onClose, onSaved }: { item: FTTHPonPort | null; otbList: FTTHOtb[]; onClose: () => void; onSaved: () => void }) {
+function PonModal({ item, otbList, olts, onClose, onSaved }: { item: FTTHPonPort | null; otbList: FTTHOtb[]; olts: { olt_id: number; olt_name: string }[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({
-    olt_name: item?.olt_name || '', frame: item?.frame || 1, slot: item?.slot || 1,
+    olt_id: item?.olt_id || '', olt_name: item?.olt_name || '', frame: item?.frame || 1, slot: item?.slot || 1,
     port: item?.port || 1, pon_name: item?.pon_name || '',
     otb_id: item?.otb_id || '', otb_core_number: item?.otb_core_number || 1,
     description: item?.description || '',
+  });
+  const { data: realPortsData, isFetching: realPortsLoading } = useQuery({
+    queryKey: ['ftth-pon-real', form.olt_id],
+    queryFn: () => api.ftthPonRealPorts(Number(form.olt_id)),
+    enabled: !!form.olt_id,
   });
   const mut = useMutation({
     mutationFn: (data: any) => item ? api.ftthPonUpdate(item.id, data) : api.ftthPonCreate(data),
@@ -1298,6 +1303,7 @@ function PonModal({ item, otbList, onClose, onSaved }: { item: FTTHPonPort | nul
   });
   const submit = () => {
     const d: any = { ...form };
+    d.olt_id = form.olt_id === '' ? null : parseInt(String(form.olt_id));
     d.otb_id = form.otb_id === '' ? null : parseInt(String(form.otb_id));
     d.frame = parseInt(String(form.frame));
     d.slot = parseInt(String(form.slot));
@@ -1306,10 +1312,37 @@ function PonModal({ item, otbList, onClose, onSaved }: { item: FTTHPonPort | nul
     mut.mutate(d);
   };
   const selectedOtb = otbList.find(o => o.id === Number(form.otb_id));
+  const pickRealPort = (portName: string) => {
+    const p = realPortsData?.ports.find(rp => rp.port_name === portName);
+    if (!p) return;
+    setForm({ ...form, pon_name: p.port_name, frame: p.frame, slot: p.slot, port: p.port });
+  };
   return (
     <Modal title={item ? 'Edit PON Port' : 'Add PON Port'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
+      <FormField label="OLT">
+        <select className="input-field" value={form.olt_id} onChange={e => {
+          const olt = olts.find(o => o.olt_id === Number(e.target.value));
+          setForm({ ...form, olt_id: e.target.value, olt_name: olt?.olt_name || '' });
+        }}>
+          <option value="">— Pilih OLT (opsional, manual di bawah) —</option>
+          {olts.map(o => <option key={o.olt_id} value={o.olt_id}>{o.olt_name}</option>)}
+        </select>
+      </FormField>
+      {form.olt_id !== '' && (
+        <FormField label="PON Port (dari OLT nyata)">
+          <select className="input-field" value="" onChange={e => pickRealPort(e.target.value)} disabled={realPortsLoading}>
+            <option value="">{realPortsLoading ? 'Memuat port...' : (realPortsData?.ports.length ? '— Pilih port —' : 'Tidak ada port terdeteksi dari sync OLT ini')}</option>
+            {(realPortsData?.ports || []).map(p => (
+              <option key={p.port_name} value={p.port_name}>
+                {p.port_name} — {p.onu_count} ONU{p.already_mapped ? ' (sudah dipetakan)' : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-[11px] text-tx3 mt-1">Pilih untuk isi otomatis PON Name/Frame/Slot/Port di bawah dari data sync OLT — atau isi manual kalau OLT/port-nya belum ada/belum sync.</p>
+        </FormField>
+      )}
       <FormField label="PON Name"><input className="input-field" value={form.pon_name} onChange={e => setForm({ ...form, pon_name: e.target.value })} placeholder="gpon-olt_1/1/1" /></FormField>
-      <FormField label="OLT Name"><input className="input-field" value={form.olt_name} onChange={e => setForm({ ...form, olt_name: e.target.value })} placeholder="OLT-01" /></FormField>
+      {form.olt_id === '' && <FormField label="OLT Name (manual)"><input className="input-field" value={form.olt_name} onChange={e => setForm({ ...form, olt_name: e.target.value })} placeholder="OLT-01" /></FormField>}
       <div className="grid grid-cols-3 gap-2 md:gap-3">
         <FormField label="Frame"><input className="input-field" type="number" value={form.frame} onChange={e => setForm({ ...form, frame: parseInt(e.target.value) || 1 })} /></FormField>
         <FormField label="Slot"><input className="input-field" type="number" value={form.slot} onChange={e => setForm({ ...form, slot: parseInt(e.target.value) || 1 })} /></FormField>

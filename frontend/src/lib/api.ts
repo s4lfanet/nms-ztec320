@@ -146,6 +146,7 @@ export const api = {
   ftthTraceOnu: (onuId: number) => request<{ success: boolean; complete: boolean; hops: FTTHTraceHop[]; message?: string }>(`/api/ftth/trace/onu/${onuId}`),
   ftthImpact: (nodeType: 'otb' | 'jc' | 'odc' | 'odp', nodeId: number) => request<{ success: boolean; total: number; online: number; offline: number; customers: Array<{ id: number; name: string; serial: string; status: string }>; truncated: boolean }>(`/api/ftth/impact/${nodeType}/${nodeId}`),
   ftthPonList: () => request<{ success: boolean; items: FTTHPonPort[] }>('/api/ftth/pon'),
+  ftthPonRealPorts: (oltId: number) => request<{ success: boolean; olt_name: string; ports: FTTHRealPonPort[] }>(`/api/ftth/pon/real/${oltId}`),
   ftthPonCreate: (data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>('/api/ftth/pon', { method: 'POST', body: JSON.stringify(data) }),
   ftthPonUpdate: (id: number, data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>(`/api/ftth/pon/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthPonDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/pon/${id}`, { method: 'DELETE' }),
@@ -1004,6 +1005,16 @@ export interface FTTHPonPort {
   total_onu: number;
   online_onu: number;
   offline_onu: number;
+}
+
+export interface FTTHRealPonPort {
+  port_name: string;
+  frame: number;
+  slot: number;
+  port: number;
+  onu_count: number;
+  onu_online: number;
+  already_mapped: boolean;
 }
 
 export interface PublicPackage {
