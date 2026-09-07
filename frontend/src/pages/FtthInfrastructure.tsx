@@ -5,7 +5,7 @@ import {
   Map as MapIcon, TreePine, Plus, Edit2, Trash2, ChevronDown, ChevronRight,
   Server, Box, Network, Split, X, MapPin, Link2, Unlink, Phone, Download, Upload, Cable,
   Activity, AlertTriangle, Wifi, WifiOff, Zap, CircleDashed, Gauge, RefreshCw,
-  UserX, LayoutGrid, List, GitMerge, Scissors
+  UserX, LayoutGrid, List, GitMerge, Scissors, Users
 } from 'lucide-react';
 import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath, type FTTHJc, type FTTHJcSplice, type FTTHOdcTree, type FTTHOdpTree, type FTTHJcTree } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -40,6 +40,7 @@ export function FtthInfrastructure() {
   const [editItem, setEditItem] = useState<any>(null);
   const [parentCtx, setParentCtx] = useState<any>(null);
   const [parentKind, setParentKind] = useState<ParentKind>(null);
+  const [impactTarget, setImpactTarget] = useState<{ type: 'otb' | 'jc' | 'odc' | 'odp'; id: number; name: string } | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedOdp, setSelectedOdp] = useState<FTTHOdp | null>(null);
   const [selectedOtb, setSelectedOtb] = useState<FTTHOtb | null>(null);
@@ -235,6 +236,7 @@ export function FtthInfrastructure() {
               onEditOdp={(odp) => { setSelectedOdp(odp); }} onDeleteOdp={(odp) => handleDelete('odp', odp.id, odp.name)}
               onAddJc={(parent, kind) => openAdd('jc', parent, kind)} onEditJc={(jc) => openEdit('jc', jc)}
               onDeleteJc={(jc) => handleDelete('jc', jc.id, jc.name)}
+              onShowImpact={(type, id, name) => setImpactTarget({ type, id, name })}
             />
           ))}
         </div>
@@ -515,6 +517,7 @@ export function FtthInfrastructure() {
       {modal === 'odc' && <OdcModal item={editItem} parent={parentCtx} parentKind={parentKind} otbList={otbList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'odp' && <OdpModal item={editItem} parent={parentCtx} parentKind={parentKind} odcList={odcList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'pon' && <PonModal item={editItem} otbList={otbList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
+      {impactTarget && <ImpactModal target={impactTarget} onClose={() => setImpactTarget(null)} />}
     </div>
   );
 }
@@ -721,16 +724,17 @@ interface TreeCallbacks {
   onAddJc: (parent: any, kind: 'otb' | 'odc' | 'jc') => void;
   onEditJc: (jc: FTTHJcTree) => void;
   onDeleteJc: (jc: FTTHJcTree) => void;
+  onShowImpact: (type: 'otb' | 'jc' | 'odc' | 'odp', id: number, name: string) => void;
 }
 
 // ─── OTB Tree Node ───
-function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, onDeleteOtb, onAddOdp, onEditOdc, onDeleteOdc, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc }: {
+function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, onDeleteOtb, onAddOdp, onEditOdc, onDeleteOdc, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact }: {
   otb: FTTHItem;
   onEditOtb: () => void; onDeleteOtb: () => void;
 } & TreeCallbacks) {
   const key = `otb-${otb.id}`;
   const isOpen = expanded[key] ?? false;
-  const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc };
+  const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact };
   return (
     <div className="glass-card overflow-hidden">
       <div className="flex items-center gap-2 p-3 hover:bg-glass/50 transition-colors">
@@ -750,6 +754,7 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button onClick={() => onShowImpact('otb', otb.id, otb.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Lihat dampak (pelanggan downstream)"><Users size={15} /></button>
           {canEdit && <button onClick={() => onAddJc(otb, 'otb')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title="Add JC (Joint Closure)"><GitMerge size={15} /></button>}
           {canEdit && <button onClick={() => onAddOdc(otb, 'otb')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODC"><Plus size={15} /></button>}
           {canEdit && <button onClick={onEditOtb} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
@@ -772,12 +777,12 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
 }
 
 // ─── ODC Tree Row (recursive: can nest child JCs) ───
-function OdcRow({ odc, fibersPerTube, sourceLabel, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc }: {
+function OdcRow({ odc, fibersPerTube, sourceLabel, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact }: {
   odc: FTTHOdcTree; fibersPerTube?: number; sourceLabel: string;
 } & TreeCallbacks) {
   const odcKey = `odc-${odc.id}`;
   const odcOpen = expanded[odcKey] ?? false;
-  const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc };
+  const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact };
   return (
     <div>
       <div className="flex items-center gap-2 p-2.5 hover:bg-glass/50 transition-colors border-t border-brd/30">
@@ -796,6 +801,7 @@ function OdcRow({ odc, fibersPerTube, sourceLabel, expanded, toggleExpand, canEd
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button onClick={() => onShowImpact('odc', odc.id, odc.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Lihat dampak (pelanggan downstream)"><Users size={15} /></button>
           {canEdit && <button onClick={() => onAddJc(odc, 'odc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title="Add JC (Joint Closure)"><GitMerge size={15} /></button>}
           {canEdit && <button onClick={() => onAddOdp(odc, 'odc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODP"><Plus size={15} /></button>}
           {canEdit && <button onClick={() => onEditOdc(odc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
@@ -818,9 +824,9 @@ function OdcRow({ odc, fibersPerTube, sourceLabel, expanded, toggleExpand, canEd
 }
 
 // ─── ODP Tree Row (leaf) ───
-function OdpRow({ odp, sourceLabel, canEdit, onEditOdp, onDeleteOdp }: {
+function OdpRow({ odp, sourceLabel, canEdit, onEditOdp, onDeleteOdp, onShowImpact }: {
   odp: FTTHOdpTree; sourceLabel: string;
-} & Pick<TreeCallbacks, 'canEdit' | 'onEditOdp' | 'onDeleteOdp'>) {
+} & Pick<TreeCallbacks, 'canEdit' | 'onEditOdp' | 'onDeleteOdp' | 'onShowImpact'>) {
   return (
     <div className="flex items-center gap-2 p-2.5 hover:bg-glass/50 transition-colors border-t border-brd/30">
       <Split size={16} className="text-success" />
@@ -834,6 +840,7 @@ function OdpRow({ odp, sourceLabel, canEdit, onEditOdp, onDeleteOdp }: {
         </div>
       </div>
       <div className="flex items-center gap-1">
+        <button onClick={() => onShowImpact('odp', odp.id, odp.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Lihat pelanggan di ODP ini"><Users size={15} /></button>
         {canEdit && <button onClick={() => onEditOdp(odp)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Manage Ports"><Network size={15} /></button>}
         {canEdit && <button onClick={() => onDeleteOdp(odp)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
       </div>
@@ -842,12 +849,12 @@ function OdpRow({ odp, sourceLabel, canEdit, onEditOdp, onDeleteOdp }: {
 }
 
 // ─── JC (Joint Closure) Tree Row — recursive: can feed ODCs, ODPs, or chain to another JC ───
-function JcRow({ jc, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc }: {
+function JcRow({ jc, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact }: {
   jc: FTTHJcTree;
 } & TreeCallbacks) {
   const jcKey = `jc-${jc.id}`;
   const jcOpen = expanded[jcKey] ?? false;
-  const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc };
+  const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact };
   const childCount = jc.odcs.length + jc.odps.length + jc.jcs.length;
   return (
     <div>
@@ -867,6 +874,7 @@ function JcRow({ jc, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDel
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button onClick={() => onShowImpact('jc', jc.id, jc.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Lihat dampak (pelanggan downstream)"><Users size={15} /></button>
           {canEdit && <button onClick={() => onAddJc(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title="Chain another JC"><GitMerge size={15} /></button>}
           {canEdit && <button onClick={() => onAddOdc(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODC fed from this JC"><Box size={15} /></button>}
           {canEdit && <button onClick={() => onAddOdp(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-success" title="Add ODP fed from this JC"><Split size={15} /></button>}
@@ -1644,6 +1652,52 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, onClose, 
       )}
       {!item && <p className="text-[11px] text-tx3">Save this JC first, then reopen it to add splices (core in → core out).</p>}
     </Modal>
+  );
+}
+
+// ─── Impact Modal — "if this breaks, who's affected" downstream customer list ───
+function ImpactModal({ target, onClose }: { target: { type: 'otb' | 'jc' | 'odc' | 'odp'; id: number; name: string }; onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['ftth-impact', target.type, target.id],
+    queryFn: () => api.ftthImpact(target.type, target.id),
+  });
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="modal-overlay" onClick={onClose} />
+      <div className="relative glass-card w-full max-w-md max-h-[85vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
+        <div className="px-4 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between sticky top-0 bg-surface z-10 rounded-t-2xl">
+          <h2 className="text-sm font-semibold flex items-center gap-2"><Users size={16} /> Dampak: {target.name}</h2>
+          <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
+        </div>
+        <div className="p-4 md:p-5 overflow-y-auto flex-1 space-y-3">
+          {isLoading && <div className="text-center py-8 text-tx3 text-sm">Menghitung...</div>}
+          {data && (
+            <>
+              <p className="text-xs text-tx3">Kalau titik ini putus/bermasalah, pelanggan berikut akan terdampak:</p>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2.5 rounded-lg bg-glass"><div className="text-lg font-bold">{data.total}</div><div className="text-[10px] text-tx3 uppercase">Total</div></div>
+                <div className="p-2.5 rounded-lg bg-success/10"><div className="text-lg font-bold text-success">{data.online}</div><div className="text-[10px] text-tx3 uppercase">Online</div></div>
+                <div className="p-2.5 rounded-lg bg-danger/10"><div className="text-lg font-bold text-danger">{data.offline}</div><div className="text-[10px] text-tx3 uppercase">Offline</div></div>
+              </div>
+              {data.total === 0 ? (
+                <p className="text-xs text-tx3 text-center py-4">Belum ada pelanggan downstream dari titik ini.</p>
+              ) : (
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {data.customers.map(c => (
+                    <div key={c.id} className="flex items-center gap-2 p-2 rounded-lg bg-glass text-xs">
+                      <span className={cn('w-2 h-2 rounded-full flex-shrink-0', c.status?.toLowerCase() === 'online' ? 'bg-success' : 'bg-tx3')} />
+                      <span className="font-medium truncate flex-1">{c.name}</span>
+                      <span className="text-tx3 font-mono">{c.serial}</span>
+                    </div>
+                  ))}
+                  {data.truncated && <p className="text-[11px] text-tx3 text-center pt-1">...dan {data.total - 200} lainnya (dipotong untuk performa)</p>}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -702,6 +702,147 @@ def ftth_tree():
     return jsonify({'success': True, 'tree': result})
 
 
+def _trace_upstream_from_odp(odp, _depth=0):
+    """Walk from an ODP up through its feed (ODC or JC — possibly several JC
+    hops) to the root OTB and the OLT PON port that lights it, returning
+    hops ordered OLT-first / ODP-last. A break in the chain (a node whose
+    feed isn't set) stops the climb and adds a 'gap' hop instead of raising,
+    since an incomplete chain is itself useful troubleshooting information —
+    it points at exactly which piece of data entry is missing."""
+    hops = []
+
+    def climb(node_type, node_id, core_number, depth):
+        if depth > 25 or not node_type or not node_id:
+            return
+        if node_type == 'otb':
+            otb = db.session.get(FTTHOTB, node_id)
+            if not otb:
+                return
+            hops.insert(0, {'type': 'otb', 'id': otb.id, 'name': otb.name, 'core': core_number})
+            pon = FTTHPonPort.query.filter_by(otb_id=otb.id).first()
+            if pon:
+                olt = db.session.get(OLT, pon.olt_id) if pon.olt_id else None
+                hops.insert(0, {'type': 'olt', 'id': pon.olt_id, 'name': (olt.name if olt else pon.olt_name) or '', 'detail': pon.pon_name or f'{pon.frame}/{pon.slot}/{pon.port}'})
+            return
+        if node_type == 'odc':
+            odc = db.session.get(FTTHODC, node_id)
+            if not odc:
+                return
+            hops.insert(0, {'type': 'odc', 'id': odc.id, 'name': odc.name, 'core': core_number})
+            if odc.feed_source == 'otb' and odc.otb_id:
+                climb('otb', odc.otb_id, odc.otb_core_number, depth + 1)
+            elif odc.feed_source == 'jc' and odc.jc_id:
+                climb('jc', odc.jc_id, odc.jc_core_number, depth + 1)
+            else:
+                hops.insert(0, {'type': 'gap', 'message': f'{odc.name} belum tersambung ke OTB/JC manapun'})
+            return
+        if node_type == 'jc':
+            jc = db.session.get(FTTHJC, node_id)
+            if not jc:
+                return
+            splice = FTTHJCSplice.query.filter_by(jc_id=jc.id, core_out=core_number).first() if core_number else None
+            hops.insert(0, {
+                'type': 'jc', 'id': jc.id, 'name': jc.name,
+                'core_out': core_number, 'core_in': splice.core_in if splice else None,
+                'splice_label': splice.label if splice else '',
+            })
+            if not splice:
+                hops.insert(0, {'type': 'gap', 'message': f'{jc.name} tidak punya splice untuk core {core_number}'})
+                return
+            if jc.parent_type and jc.parent_id:
+                climb(jc.parent_type, jc.parent_id, splice.core_in, depth + 1)
+            else:
+                hops.insert(0, {'type': 'gap', 'message': f'{jc.name} belum ada "Fed From" (parent)'})
+            return
+
+    hops.append({'type': 'odp', 'id': odp.id, 'name': odp.name, 'port': None})
+    if odp.feed_source == 'odc' and odp.odc_id:
+        climb('odc', odp.odc_id, odp.odc_core_number, _depth)
+    elif odp.feed_source == 'jc' and odp.jc_id:
+        climb('jc', odp.jc_id, odp.jc_core_number, _depth)
+    else:
+        hops.insert(0, {'type': 'gap', 'message': f'{odp.name} belum tersambung ke ODC/JC manapun'})
+    return hops
+
+
+@bp.route('/api/ftth/trace/onu/<int:onu_id>', methods=['GET'])
+@login_required
+def ftth_trace_onu(onu_id):
+    """Full upstream path for one ONU/customer: OLT -> PON -> OTB(core) ->
+    [JC splices] -> ODC(core) -> [JC splices] -> ODP(port) -> customer.
+    Used by the ONU detail page so staff can see exactly which physical
+    segment a customer sits on without manually browsing the Tree view."""
+    onu = db.session.get(ONU, onu_id)
+    if not onu:
+        return jsonify({'success': False, 'message': 'ONU not found'}), 404
+    port = onu.odp_port
+    if not port:
+        return jsonify({'success': True, 'complete': False, 'hops': [], 'message': 'ONU ini belum di-assign ke port ODP manapun'})
+    odp = db.session.get(FTTHODP, port.odp_id)
+    hops = _trace_upstream_from_odp(odp) if odp else [{'type': 'gap', 'message': 'ODP untuk port ini tidak ditemukan'}]
+    if hops and hops[-1].get('type') == 'odp':
+        hops[-1]['port'] = port.port_number
+    hops.append({'type': 'onu', 'id': onu.id, 'name': onu.name or onu.serial_number or '', 'serial': onu.serial_number or '', 'status': onu.status or ''})
+    complete = not any(h.get('type') == 'gap' for h in hops)
+    return jsonify({'success': True, 'complete': complete, 'hops': hops})
+
+
+def _collect_downstream_onus(node_type, node_id, _depth=0, _seen=None):
+    """Recursively collect every ONU reachable downstream of a node (OTB,
+    JC, ODC, or ODP) — used to answer "if this breaks, who's affected"."""
+    if _seen is None:
+        _seen = set()
+    key = (node_type, node_id)
+    if _depth > 25 or key in _seen:
+        return []
+    _seen.add(key)
+    onus = []
+    if node_type == 'odp':
+        for p in FTTHODPPort.query.filter_by(odp_id=node_id).all():
+            if p.onu_id:
+                onu = db.session.get(ONU, p.onu_id)
+                if onu:
+                    onus.append(onu)
+    elif node_type == 'odc':
+        for odp in FTTHODP.query.filter_by(feed_source='odc', odc_id=node_id).all():
+            onus.extend(_collect_downstream_onus('odp', odp.id, _depth + 1, _seen))
+        for jc in FTTHJC.query.filter_by(parent_type='odc', parent_id=node_id).all():
+            onus.extend(_collect_downstream_onus('jc', jc.id, _depth + 1, _seen))
+    elif node_type == 'otb':
+        for odc in FTTHODC.query.filter_by(feed_source='otb', otb_id=node_id).all():
+            onus.extend(_collect_downstream_onus('odc', odc.id, _depth + 1, _seen))
+        for jc in FTTHJC.query.filter_by(parent_type='otb', parent_id=node_id).all():
+            onus.extend(_collect_downstream_onus('jc', jc.id, _depth + 1, _seen))
+    elif node_type == 'jc':
+        for odc in FTTHODC.query.filter_by(feed_source='jc', jc_id=node_id).all():
+            onus.extend(_collect_downstream_onus('odc', odc.id, _depth + 1, _seen))
+        for odp in FTTHODP.query.filter_by(feed_source='jc', jc_id=node_id).all():
+            onus.extend(_collect_downstream_onus('odp', odp.id, _depth + 1, _seen))
+        for child in FTTHJC.query.filter_by(parent_type='jc', parent_id=node_id).all():
+            onus.extend(_collect_downstream_onus('jc', child.id, _depth + 1, _seen))
+    return onus
+
+
+@bp.route('/api/ftth/impact/<node_type>/<int:node_id>', methods=['GET'])
+@login_required
+def ftth_impact(node_type, node_id):
+    """How many customers sit downstream of this OTB/JC/ODC/ODP — for
+    triaging a cut trunk cable: which node's break affects the most people."""
+    if node_type not in ('otb', 'jc', 'odc', 'odp'):
+        return jsonify({'success': False, 'message': 'Invalid node_type'}), 400
+    model = {'otb': FTTHOTB, 'jc': FTTHJC, 'odc': FTTHODC, 'odp': FTTHODP}[node_type]
+    node = db.session.get(model, node_id)
+    if not node:
+        return jsonify({'success': False, 'message': 'Not found'}), 404
+    onus = _collect_downstream_onus(node_type, node_id)
+    online = sum(1 for u in onus if (u.status or '').lower() == 'online')
+    return jsonify({
+        'success': True, 'total': len(onus), 'online': online, 'offline': len(onus) - online,
+        'customers': [{'id': u.id, 'name': u.name or u.serial_number or '', 'serial': u.serial_number or '', 'status': u.status or ''} for u in onus[:200]],
+        'truncated': len(onus) > 200,
+    })
+
+
 @bp.route('/api/ftth/map', methods=['GET'])
 @login_required
 def ftth_map():

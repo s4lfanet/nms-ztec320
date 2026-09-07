@@ -7,7 +7,8 @@ import { confirm } from '../components/ConfirmDialog';
 import {
   Wifi, Clock, RefreshCw, RotateCcw, Trash2, Ban, Eraser,
   FileText, Radio, Globe, Shield, Key, Plug, Database, Layers,
-  Edit3, X, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff, ChevronDown, Replace
+  Edit3, X, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff, ChevronDown, Replace,
+  Cable, Cpu, Server, GitMerge, Box, Split, Home, AlertTriangle, ChevronRight,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -497,6 +498,9 @@ export function ViewOnu() {
         {hasPerm('delete_onu') && <ActBtn icon={<Trash2 size={14} />} label="Delete" onClick={() => doAction('delete', 'Delete')} variant="danger" loading={pendingAction === 'delete'} />}
         {hasPerm('configure_onu') && <ActBtn icon={<Replace size={14} />} label="Replace ONU" onClick={() => setModal({ type: 'replaceOnu' })} variant="warning" loading={pendingAction === 'replace'} />}
       </div>
+
+      {/* FTTH cable path — trace this customer back to the OLT */}
+      <FtthPathCard onuId={onuId} />
 
       {/* WAN */}
       <Card title="WAN" icon={<Globe size={16} />}>
@@ -1598,6 +1602,69 @@ function GetStatusModal({ status, onClose }: { status: Record<string, unknown> |
 
 function Card({ title, icon, children, action }: { title: string; icon: React.ReactNode; children: React.ReactNode; action?: React.ReactNode }) {
   return (<div className="glass-card"><div className="px-3 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between"><h2 className="text-sm font-semibold flex items-center gap-2">{icon} {title}</h2>{action}</div><div className="p-3 md:p-5">{children}</div></div>);
+}
+
+const FTTH_HOP_ICON: Record<string, React.ReactNode> = {
+  olt: <Cpu size={16} />, otb: <Server size={16} />, jc: <GitMerge size={16} />,
+  odc: <Box size={16} />, odp: <Split size={16} />, onu: <Home size={16} />,
+};
+const FTTH_HOP_COLOR: Record<string, string> = {
+  olt: 'text-tx1 bg-glass', otb: 'text-accent bg-accent/10', jc: 'text-purple-400 bg-purple-500/10',
+  odc: 'text-warning bg-warning/10', odp: 'text-success bg-success/10', onu: 'text-accent bg-accent/10',
+};
+
+function FtthPathCard({ onuId }: { onuId: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['ftth-trace-onu', onuId], queryFn: () => api.ftthTraceOnu(onuId), enabled: !!onuId,
+  });
+
+  if (isLoading) return null;
+  if (!data?.success) return null;
+
+  if (data.hops.length === 0) {
+    return (
+      <Card title="Jalur FTTH" icon={<Cable size={16} />}>
+        <p className="text-xs text-tx3">{data.message || 'ONU ini belum di-assign ke port ODP manapun.'} Assign lewat halaman <strong className="text-tx2">FTTH Infrastructure</strong>.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card title="Jalur FTTH" icon={<Cable size={16} />}>
+      {!data.complete && (
+        <div className="mb-3 flex items-start gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20 text-xs text-warning">
+          <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+          <span>Jalur belum lengkap — ada titik yang datanya belum disambungkan di FTTH Infrastructure (lihat tanda merah di bawah).</span>
+        </div>
+      )}
+      <div className="flex items-stretch gap-1 overflow-x-auto scrollbar-thin pb-1">
+        {data.hops.map((h, i) => (
+          <div key={i} className="flex items-center flex-shrink-0">
+            {h.type === 'gap' ? (
+              <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-lg bg-danger/10 border border-danger/30 text-danger min-w-[110px]">
+                <AlertTriangle size={16} />
+                <span className="text-[10px] text-center leading-tight">{h.message}</span>
+              </div>
+            ) : (
+              <div className={cn('flex flex-col items-center gap-1 px-3 py-2 rounded-lg min-w-[110px]', FTTH_HOP_COLOR[h.type])}>
+                {FTTH_HOP_ICON[h.type]}
+                <span className="text-xs font-medium text-center leading-tight truncate max-w-[110px]" title={h.name}>{h.name || '-'}</span>
+                <span className="text-[10px] text-tx3 text-center leading-tight">
+                  {h.type === 'olt' && h.detail}
+                  {h.type === 'otb' && `Core ${h.core}`}
+                  {h.type === 'jc' && `${h.core_in ?? '?'} → ${h.core_out}`}
+                  {h.type === 'odc' && `Core ${h.core}`}
+                  {h.type === 'odp' && `Port ${h.port}`}
+                  {h.type === 'onu' && h.serial}
+                </span>
+              </div>
+            )}
+            {i < data.hops.length - 1 && <ChevronRight size={16} className="text-tx3 flex-shrink-0 mx-0.5" />}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
 }
 function DetailField({ label, value, mono, onEdit }: { label: string; value: string; mono?: boolean; onEdit?: () => void }) {
   return (<div><div className="label-sm flex items-center gap-1">{label}{onEdit && <button onClick={onEdit} className="text-tx3 hover:text-accent"><Edit3 size={10} /></button>}</div><div className={cn('text-sm font-medium', mono && 'font-mono')}>{value || '-'}</div></div>);
