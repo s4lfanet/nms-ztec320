@@ -267,7 +267,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'PON Ports Tab',
-        content: 'Lihat semua PON port di semua OLT. Menampilkan: OLT, slot/port, ONU count, capacity, utilization.\n\nKlik PON port untuk lihat ONU terkait dan ODP yang terhubung.',
+        content: 'Lihat semua PON port di semua OLT. Menampilkan: OLT, slot/port, ONU count, capacity, utilization.\n\nKlik PON port untuk lihat ONU terkait dan ODP yang terhubung.\n\nSaat **Add PON Port**: pilih dulu **OLT**-nya (dari OLT yang sudah terdaftar) — muncul dropdown **PON Port (dari OLT nyata)** berisi port asli hasil sync OLT tersebut (bukan ketik manual), lengkap dengan jumlah ONU di tiap port. Pilih salah satu untuk isi otomatis PON Name/Frame/Slot/Port. Kalau OLT-nya belum terdaftar atau belum pernah sync, tetap bisa isi manual seperti biasa.',
       },
       {
         title: 'OTB/ODF, ODC, ODP Tabs',

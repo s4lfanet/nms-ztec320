@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-08 — Form "Add PON Port" Bisa Pilih dari Data Sync OLT Nyata
+
+#### Ditemukan
+- User laporkan: form "Add PON Port" di tab PON Ports masih murni isian manual (ketik OLT Name/Frame/Slot/Port sendiri) — padahal sistem sudah tahu port PON asli tiap OLT dari hasil sync (SNMP/telnet), tersimpan di tabel `olt_pon_ports` (dipakai buat statistik per-PON dan diagram chassis)
+
+#### Ditambahkan
+- Endpoint baru `GET /api/ftth/pon/real/<olt_id>`: daftar PON port nyata hasil sync OLT tsb (nama port, frame/slot/port, jumlah ONU total/online), tiap port ditandai `already_mapped` kalau sudah ada entry FTTH untuk situ
+- Form "Add/Edit PON Port": dropdown **OLT** (dari daftar OLT yang sudah terdaftar di sistem) — begitu dipilih, muncul dropdown **PON Port (dari OLT nyata)** berisi port hasil sync sungguhan. Pilih salah satu → PON Name/Frame/Slot/Port di bawah otomatis terisi
+- Isian manual tetap tersedia sebagai fallback (OLT belum ditambahkan ke sistem, atau OLT belum pernah sync) — tidak memaksa pakai picker
+
+#### Diverifikasi
+- 4 test baru (parsing port real dari `olt_pon_ports`, penandaan `already_mapped`, OLT tidak ditemukan → 404, OLT belum pernah sync → list kosong) — full suite 178 passed/2 skipped
+- Dicek langsung di browser: pilih OLT → pilih port `gpon-olt_1/1/2` dari data sync → field PON Name/Frame/Slot/Port terisi otomatis (`gpon-olt_1/1/2`, 1/1/2) sesuai data asli, nol error console
+
+---
+
 ### 2026-09-07 — JC Fleksibel di Segmen OLT→OTB dan ODP→Pelanggan (Drop Cable)
 
 #### Konteks

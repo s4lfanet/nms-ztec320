@@ -1154,6 +1154,32 @@ def _pon_to_dict(p):
     }
 
 
+@bp.route('/api/ftth/pon/real/<int:olt_id>', methods=['GET'])
+@login_required
+def ftth_pon_real_ports(olt_id):
+    """Real PON ports already discovered from this OLT (via SNMP/telnet sync,
+    stored in OLTPort) — used to populate the "Add PON Port" picker instead
+    of making staff type frame/slot/port by hand. Only ports not yet mapped
+    into FTTHPonPort are flagged as `already_mapped: false`."""
+    import re as _re
+    olt = db.session.get(OLT, olt_id)
+    if not olt:
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    mapped_names = {p.pon_name for p in FTTHPonPort.query.filter_by(olt_id=olt_id).all() if p.pon_name}
+    ports = OLTPort.query.filter_by(olt_id=olt_id).order_by(OLTPort.port_number).all()
+    result = []
+    for p in ports:
+        m = _re.match(r'(?:gpon|epon)-olt_(\d+)/(\d+)/(\d+)', p.port_name or '')
+        frame, slot, port = (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else (1, 1, p.port_number)
+        result.append({
+            'port_name': p.port_name or f'gpon-olt_{frame}/{slot}/{port}',
+            'frame': frame, 'slot': slot, 'port': port,
+            'onu_count': p.onu_count or 0, 'onu_online': p.onu_online or 0,
+            'already_mapped': (p.port_name or '') in mapped_names,
+        })
+    return jsonify({'success': True, 'olt_name': olt.name, 'ports': result})
+
+
 @bp.route('/api/ftth/pon', methods=['GET'])
 @login_required
 def ftth_pon_list():
