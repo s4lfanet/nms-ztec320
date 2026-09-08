@@ -2,7 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, useCallback } from 'react';
 import { cn } from '../lib/utils';
 import { api } from '../lib/api';
-import { Search, ChevronLeft, ChevronRight, ChevronFirst, ChevronLast, User, Server, Radio, Shield, KeyRound, Activity } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronFirst, ChevronLast, User, Server, Radio, Shield, KeyRound, Activity } from 'lucide-react';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState, Select } from '../components/ui';
+import { FilterBar, SearchBar } from '../components/shared';
 
 const categoryIcons: Record<string, React.ReactNode> = {
   auth: <KeyRound size={14} />,
@@ -52,43 +56,39 @@ export function ActionLogs() {
   const categories = data?.categories || [];
 
   return (
-    <div className="space-y-4 md:space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">Action Logs</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">Audit trail of all user activities</p>
-        </div>
-      </div>
+    <PageContainer className="animate-fade-in">
+      <PageHeader title="Action Logs" description="Audit trail of all user activities" />
 
       {/* Filters */}
-      <div className="glass-card p-3 md:p-4 flex flex-col sm:flex-row gap-2 sm:items-center">
-        <div className="flex-1 flex items-center gap-2">
-          <Search size={16} className="text-tx3 flex-shrink-0" />
-          <input
+      <Card bodyClassName="p-3 md:p-4">
+        <FilterBar className="flex-nowrap flex-col sm:flex-row items-stretch sm:items-center">
+          <SearchBar
             value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
+            onChange={setSearchInput}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
             placeholder="Search action, target, detail..."
-            className="flex-1 bg-glass border border-brd rounded-lg px-3 py-1.5 text-sm focus:border-accent/50 outline-none"
+            className="flex-1"
           />
-        </div>
-        <select
-          value={category}
-          onChange={e => { setCategory(e.target.value); setPage(1); }}
-          className="bg-glass border border-brd rounded-lg px-3 py-1.5 text-sm focus:border-accent/50 outline-none"
-        >
-          <option value="">All categories</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        {(search || category) && (
-          <button
-            onClick={() => { setSearch(''); setSearchInput(''); setCategory(''); setPage(1); }}
-            className="px-3 py-1.5 rounded-lg bg-glass border border-brd text-xs text-tx3 hover:text-tx1 transition-all"
-          >
-            Clear
-          </button>
-        )}
-      </div>
+          <Select
+            value={category}
+            onChange={e => { setCategory(e.target.value); setPage(1); }}
+            className="w-auto flex-shrink-0"
+            aria-label="Filter category"
+            options={[
+              { value: '', label: 'All categories' },
+              ...categories.map(c => ({ value: c, label: c })),
+            ]}
+          />
+          {(search || category) && (
+            <Button
+              variant="ghost"
+              onClick={() => { setSearch(''); setSearchInput(''); setCategory(''); setPage(1); }}
+            >
+              Clear
+            </Button>
+          )}
+        </FilterBar>
+      </Card>
 
       {/* Stats */}
       <div className="flex items-center justify-between text-xs text-tx3">
@@ -97,7 +97,7 @@ export function ActionLogs() {
       </div>
 
       {/* Desktop table */}
-      <div className="glass-card overflow-hidden">
+      <Card bodyClassName="p-0">
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -116,7 +116,7 @@ export function ActionLogs() {
               {isLoading ? (
                 <tr><td colSpan={8} className="px-4 py-8 text-center text-tx3">Loading...</td></tr>
               ) : logs.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-tx3">No log entries found</td></tr>
+                <tr><td colSpan={8}><EmptyState icon={Activity} title="No log entries found" /></td></tr>
               ) : logs.map((l, i) => (
                 <tr key={l.id} className="border-b border-brd/50 hover:bg-glass/50 transition-colors">
                   <td className="px-3 py-2.5 text-center text-xs text-tx3 font-mono">{(page - 1) * perPage + i + 1}</td>
@@ -147,7 +147,7 @@ export function ActionLogs() {
           {isLoading ? (
             <div className="p-6 text-center text-tx3 text-sm">Loading...</div>
           ) : logs.length === 0 ? (
-            <div className="p-6 text-center text-tx3 text-sm">No log entries found</div>
+            <EmptyState icon={Activity} title="No log entries found" />
           ) : logs.map((l, i) => (
             <div key={l.id} className="p-3.5 space-y-1.5">
               <div className="flex items-center justify-between">
@@ -170,7 +170,7 @@ export function ActionLogs() {
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* Pagination */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -230,6 +230,6 @@ export function ActionLogs() {
           </button>
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

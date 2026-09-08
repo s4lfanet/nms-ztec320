@@ -1,12 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import { api, type RoleData } from '../lib/api';
 import { useAuth } from '../stores/auth';
 import { useHasPerm } from '../hooks/useHasPerm';
-import { Users, Trash2, Shield, User, Plus, Edit3, X, Save, Phone } from 'lucide-react';
+import { Users, Trash2, Shield, User, Plus, Edit3, Save, Phone } from 'lucide-react';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, Tabs, Modal, Input, Select } from '../components/ui';
 
 export function UserManagement() {
   const queryClient = useQueryClient();
@@ -80,38 +82,36 @@ export function UserManagement() {
   });
 
   return (
-    <div className="space-y-4 md:space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">User Management</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">Manage users and roles</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {tab === 'users' ? (
-            canManage && <button onClick={() => setUserModal({ mode: 'add' })}
-              className="flex items-center gap-1.5 px-3 md:px-4 py-2 md:py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all">
-              <Plus size={16} /> Add User
-            </button>
-          ) : (
-            canManage && <button onClick={() => setRoleModal({ mode: 'add' })}
-              className="flex items-center gap-1.5 px-3 md:px-4 py-2 md:py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all">
-              <Plus size={16} /> Add Role
-            </button>
-          )}
-        </div>
-      </div>
+    <PageContainer className="animate-fade-in">
+      <PageHeader
+        title="User Management"
+        description="Manage users and roles"
+        action={
+          canManage && (
+            tab === 'users' ? (
+              <Button variant="primary" icon={<Plus size={16} />} onClick={() => setUserModal({ mode: 'add' })}>
+                Add User
+              </Button>
+            ) : (
+              <Button variant="primary" icon={<Plus size={16} />} onClick={() => setRoleModal({ mode: 'add' })}>
+                Add Role
+              </Button>
+            )
+          )
+        }
+      />
 
-      <div className="flex gap-1 p-1 rounded-xl bg-glass border border-brd w-fit">
-        <button onClick={() => setTab('users')} className={cn('px-4 py-2 rounded-lg text-sm font-medium transition-all', tab === 'users' ? 'bg-accent text-white' : 'text-tx2 hover:bg-glass')}>
-          <Users size={14} className="inline mr-2" /> Users
-        </button>
-        <button onClick={() => setTab('roles')} className={cn('px-4 py-2 rounded-lg text-sm font-medium transition-all', tab === 'roles' ? 'bg-accent text-white' : 'text-tx2 hover:bg-glass')}>
-          <Shield size={14} className="inline mr-2" /> Roles
-        </button>
-      </div>
+      <Tabs
+        tabs={[
+          { key: 'users', label: 'Users', icon: <Users size={14} /> },
+          { key: 'roles', label: 'Roles', icon: <Shield size={14} /> },
+        ]}
+        active={tab}
+        onChange={key => setTab(key as 'users' | 'roles')}
+      />
 
       {tab === 'users' && (
-        <div className="glass-card overflow-hidden">
+        <Card bodyClassName="p-0">
           {/* Desktop table */}
           <table className="hidden md:table w-full text-sm">
             <thead>
@@ -187,7 +187,7 @@ export function UserManagement() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {tab === 'roles' && (
@@ -195,7 +195,7 @@ export function UserManagement() {
           {roleList.map(r => {
             const permList = r.permissions ? r.permissions.split(',').map(p => p.trim()).filter(Boolean) : [];
             return (
-              <div key={r.id} className="glass-card p-4 md:p-5">
+              <Card key={r.id}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-sm md:text-base">{r.name}</h3>
@@ -223,7 +223,7 @@ export function UserManagement() {
                     <span className="px-2 py-0.5 rounded text-xs bg-glass text-tx3">+{permList.length - 5} more</span>
                   )}
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
@@ -257,7 +257,7 @@ export function UserManagement() {
           loading={createRoleMut.isPending || updateRoleMut.isPending}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -300,56 +300,43 @@ function UserModal({ mode, id, roles, onClose, onSave, loading }: {
   if (!loaded) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="modal-overlay" />
-      <div className="relative glass-card w-full max-w-md p-5 md:p-6" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-base flex items-center gap-2">
-            <User size={18} className="text-accent" /> {mode === 'add' ? 'Add User' : 'Edit User'}
-          </h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-glass transition-colors"><X size={18} /></button>
-        </div>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-tx3 mb-1 block">Full Name *</label>
-            <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Enter full name"
-              className="w-full px-3 py-2 rounded-xl bg-glass border border-brd text-sm focus:border-accent/50 outline-none" />
-          </div>
-          <div>
-            <label className="text-xs text-tx3 mb-1 block">Username *</label>
-            <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Enter username"
-              disabled={mode === 'edit'}
-              className="w-full px-3 py-2 rounded-xl bg-glass border border-brd text-sm focus:border-accent/50 outline-none disabled:opacity-50" />
-          </div>
-          <div>
-            <label className="text-xs text-tx3 mb-1 block">Password {mode === 'add' ? '*' : '(leave blank to keep)'}</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder={mode === 'add' ? 'Enter password' : 'Leave blank to keep current'}
-              className="w-full px-3 py-2 rounded-xl bg-glass border border-brd text-sm focus:border-accent/50 outline-none" />
-          </div>
-          <div>
-            <label className="text-xs text-tx3 mb-1 block">Role</label>
-            <select value={roleId ?? ''} onChange={e => setRoleId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full px-3 py-2 rounded-xl bg-glass border border-brd text-sm focus:border-accent/50 outline-none">
-              <option value="">— Select role —</option>
-              {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-tx3 mb-1 block">Phone Number <span className="text-tx3/60">(for WA alerts)</span></label>
-            <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 628123456789"
-              className="w-full px-3 py-2 rounded-xl bg-glass border border-brd text-sm focus:border-accent/50 outline-none" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl bg-glass border border-brd text-sm hover:bg-glass/80 transition-all">Cancel</button>
-          <button onClick={handleSubmit} disabled={loading}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all disabled:opacity-50">
-            <Save size={14} /> {loading ? 'Saving...' : 'Save'}
-          </button>
-        </div>
+    <Modal
+      open
+      onClose={onClose}
+      title={mode === 'add' ? 'Add User' : 'Edit User'}
+      icon={<User size={18} className="text-accent mr-2" />}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" icon={<Save size={14} />} onClick={handleSubmit} loading={loading}>
+            {loading ? 'Saving...' : 'Save'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Input label="Full Name *" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Enter full name" />
+        <Input label="Username *" value={username} onChange={e => setUsername(e.target.value)} placeholder="Enter username" disabled={mode === 'edit'} />
+        <Input
+          label={`Password ${mode === 'add' ? '*' : '(leave blank to keep)'}`}
+          type="password" value={password} onChange={e => setPassword(e.target.value)}
+          placeholder={mode === 'add' ? 'Enter password' : 'Leave blank to keep current'}
+        />
+        <Select
+          label="Role"
+          value={roleId ?? ''}
+          onChange={e => setRoleId(e.target.value ? Number(e.target.value) : null)}
+          options={[
+            { value: '', label: '— Select role —' },
+            ...roles.map(r => ({ value: String(r.id), label: r.name })),
+          ]}
+        />
+        <Input
+          label={<>Phone Number <span className="text-tx3/60">(for WA alerts)</span></>}
+          value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 628123456789"
+        />
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -384,48 +371,37 @@ function RoleModal({ mode, id, roles, permissions, onClose, onSave, loading }: {
   const isSystem = role?.is_system ?? false;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="modal-overlay" />
-      <div className="relative glass-card w-full max-w-lg p-5 md:p-6 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-base flex items-center gap-2">
-            <Shield size={18} className="text-accent" /> {mode === 'add' ? 'Add Role' : 'Edit Role'}
-          </h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-glass transition-colors"><X size={18} /></button>
-        </div>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-tx3 mb-1 block">Role Name *</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Enter role name"
-              disabled={isSystem}
-              className="w-full px-3 py-2 rounded-xl bg-glass border border-brd text-sm focus:border-accent/50 outline-none disabled:opacity-50" />
+    <Modal
+      open
+      onClose={onClose}
+      title={mode === 'add' ? 'Add Role' : 'Edit Role'}
+      icon={<Shield size={18} className="text-accent mr-2" />}
+      size="lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" icon={<Save size={14} />} onClick={handleSubmit} loading={loading}>
+            {loading ? 'Saving...' : 'Save'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Input label="Role Name *" value={name} onChange={e => setName(e.target.value)} placeholder="Enter role name" disabled={isSystem} />
+        <Input label="Description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Enter description" />
+        <div>
+          <label className="label-sm block">Permissions</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+            {Object.entries(permissions).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-glass border border-brd cursor-pointer hover:border-accent/30 transition-all">
+                <input type="checkbox" checked={selectedPerms.includes(key)} onChange={() => togglePerm(key)}
+                  className="accent-accent" />
+                <span className="text-xs text-tx2">{label}</span>
+              </label>
+            ))}
           </div>
-          <div>
-            <label className="text-xs text-tx3 mb-1 block">Description</label>
-            <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Enter description"
-              className="w-full px-3 py-2 rounded-xl bg-glass border border-brd text-sm focus:border-accent/50 outline-none" />
-          </div>
-          <div>
-            <label className="text-xs text-tx3 mb-2 block">Permissions</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {Object.entries(permissions).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-glass border border-brd cursor-pointer hover:border-accent/30 transition-all">
-                  <input type="checkbox" checked={selectedPerms.includes(key)} onChange={() => togglePerm(key)}
-                    className="accent-accent" />
-                  <span className="text-xs text-tx2">{label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl bg-glass border border-brd text-sm hover:bg-glass/80 transition-all">Cancel</button>
-          <button onClick={handleSubmit} disabled={loading}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all disabled:opacity-50">
-            <Save size={14} /> {loading ? 'Saving...' : 'Save'}
-          </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

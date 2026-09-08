@@ -8,6 +8,9 @@ import {
   Server, Search, RefreshCw, Loader2, Radio, Plus, Copy,
   ChevronDown, ChevronRight, Zap, AlertCircle, Wrench,
 } from 'lucide-react';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState } from '../components/ui';
 
 interface UnconfiguredOnu {
   pon_port: string;
@@ -139,39 +142,37 @@ export function UnconfiguredOnus() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4 md:space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 md:gap-3 min-w-0">
+    <PageContainer className="max-w-5xl mx-auto animate-fade-in">
+      <PageHeader
+        icon={
           <button onClick={() => navigate('/dashboard/onus')}
             className="p-2 rounded-lg hover:bg-glass transition-colors text-tx2 hover:text-tx1 flex-shrink-0">
             <Server size={18} />
           </button>
-          <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold truncate">Unconfigured ONUs</h1>
-            <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">
-              Discover and register ONUs across all OLTs
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2 flex-shrink-0">
-          <button onClick={handleScanAll} disabled={scanning || olts.length === 0}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-accent text-white text-xs md:text-sm font-medium hover:bg-accent-hover disabled:opacity-50 transition-all">
-            {scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-            <span className="hidden sm:inline">{scanning ? 'Scanning...' : 'Scan All'}</span>
-            <span className="sm:hidden">{scanning ? '...' : 'Scan'}</span>
-          </button>
-          <button onClick={goToPreRegister}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-glass border border-brd text-xs md:text-sm font-medium hover:border-accent/30 transition-all">
-            <Plus size={14} />
-            <span className="hidden sm:inline">Pre-Register</span>
-            <span className="sm:hidden">Manual</span>
-          </button>
-        </div>
-      </div>
+        }
+        title="Unconfigured ONUs"
+        description="Discover and register ONUs across all OLTs"
+        action={
+          <>
+            <Button
+              variant="primary"
+              icon={scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+              onClick={handleScanAll}
+              disabled={scanning || olts.length === 0}
+            >
+              <span className="hidden sm:inline">{scanning ? 'Scanning...' : 'Scan All'}</span>
+              <span className="sm:hidden">{scanning ? '...' : 'Scan'}</span>
+            </Button>
+            <Button variant="secondary" icon={<Plus size={14} />} onClick={goToPreRegister}>
+              <span className="hidden sm:inline">Pre-Register</span>
+              <span className="sm:hidden">Manual</span>
+            </Button>
+          </>
+        }
+      />
 
       {/* Registration Mode Selector */}
-      <div className="glass-card p-3 flex items-center gap-3 flex-wrap">
+      <Card bodyClassName="p-3 flex items-center gap-3 flex-wrap">
         <span className="text-xs md:text-sm font-semibold text-tx2">Scan Mode:</span>
         <div className="flex gap-2">
           <button type="button" onClick={() => setRegisterMode('cli')}
@@ -185,7 +186,7 @@ export function UnconfiguredOnus() {
             <Radio size={14} /> SNMP
           </button>
         </div>
-      </div>
+      </Card>
 
       {/* Stats Bar */}
       <div className="grid grid-cols-3 gap-2 md:gap-3">
@@ -207,29 +208,26 @@ export function UnconfiguredOnus() {
 
       {/* Empty State */}
       {results.length === 0 && !scanning && (
-        <div className="glass-card p-8 md:p-12 text-center">
-          <Radio size={48} className="mx-auto text-tx3 mb-4 opacity-30" />
-          <p className="text-tx2 text-sm md:text-base mb-2">No scan results yet</p>
-          <p className="text-tx3 text-xs md:text-sm mb-4">
-            Click <strong className="text-accent">Scan All</strong> to discover unconfigured ONUs across all OLTs,
-            or <strong className="text-accent">Pre-Register</strong> for manual entry without scanning.
-          </p>
-          <div className="flex gap-2 justify-center flex-wrap">
-            <button onClick={handleScanAll} disabled={olts.length === 0}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50">
-              <Search size={16} /> Scan All OLTs
-            </button>
-            <button onClick={goToPreRegister}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-glass border border-brd text-sm hover:border-accent/30">
-              <Plus size={16} /> Pre-Register Manual
-            </button>
-          </div>
-        </div>
+        <EmptyState
+          icon={Radio}
+          title="No scan results yet"
+          description="Click Scan All to discover unconfigured ONUs across all OLTs, or Pre-Register for manual entry without scanning."
+          action={
+            <div className="flex gap-2 justify-center flex-wrap">
+              <Button variant="primary" icon={<Search size={16} />} onClick={handleScanAll} disabled={olts.length === 0}>
+                Scan All OLTs
+              </Button>
+              <Button variant="secondary" icon={<Plus size={16} />} onClick={goToPreRegister}>
+                Pre-Register Manual
+              </Button>
+            </div>
+          }
+        />
       )}
 
       {/* Scanning Progress */}
       {scanAll && (
-        <div className="glass-card p-4 flex items-center gap-3">
+        <Card bodyClassName="p-4 flex items-center gap-3">
           <Loader2 size={20} className="animate-spin text-accent flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium">Scanning all OLTs...</div>
@@ -237,7 +235,7 @@ export function UnconfiguredOnus() {
               {results.length}/{olts.length} OLTs scanned • {totalOnus} ONUs found so far
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Results per OLT */}
@@ -246,7 +244,7 @@ export function UnconfiguredOnus() {
           const isCollapsed = collapsedOlt[r.oltId];
           const isScanningThis = scanningOltIds.has(r.oltId);
           return (
-            <div key={r.oltId} className="glass-card overflow-hidden">
+            <Card key={r.oltId} bodyClassName="p-0" className="overflow-hidden">
               {/* OLT Header */}
               <div className="flex items-center gap-3 p-3 md:p-4 hover:bg-glass/50 transition-colors cursor-pointer"
                 onClick={() => toggleOlt(r.oltId)}>
@@ -352,10 +350,10 @@ export function UnconfiguredOnus() {
                   No unconfigured ONUs found on this OLT
                 </div>
               )}
-            </div>
+            </Card>
           );
         })}
       </div>
-    </div>
+    </PageContainer>
   );
 }

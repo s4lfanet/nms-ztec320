@@ -4,11 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type OltInfo } from '../lib/api';
 import {
   Blocks, Wifi, Radio, Server, Network, Router,
-  Layers, ArrowRight, Check, Plus, Edit3, Trash2, X, Loader2
+  Layers, ArrowRight, Check, Plus, Edit3, Trash2, Loader2
 } from 'lucide-react';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import { cn } from '../lib/utils';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState, Modal, Select } from '../components/ui';
 
 interface TemplateInfo {
   id: string;
@@ -284,33 +287,36 @@ export default function Templates() {
   };
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">Templates</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">ONU configuration templates for automatic provisioning</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={openAdd} className="btn-primary flex items-center gap-2 text-sm">
-            <Plus size={16} />
-            Add Template
-          </button>
-          <Link to="/dashboard/onus/register" className="btn-secondary flex items-center gap-2 text-sm">
-            <ArrowRight size={16} />
-            Register ONU
-          </Link>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Templates"
+        description="ONU configuration templates for automatic provisioning"
+        action={
+          <>
+            <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>
+              Add Template
+            </Button>
+            <Link to="/dashboard/onus/register" className="btn-cancel border border-brd flex items-center gap-2 text-sm">
+              <ArrowRight size={16} />
+              Register ONU
+            </Link>
+          </>
+        }
+      />
 
       {/* Built-in Template Cards */}
       <div>
         <h2 className="text-sm font-semibold text-tx3 uppercase tracking-wider mb-3">Built-in Templates</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
           {templates.map(t => (
-            <div
+            <Card
               key={t.id}
               onClick={() => setSelected(selected === t.id ? null : t.id)}
-              className={`cursor-pointer rounded-xl border p-3 md:p-4 transition-all hover:border-accent/40 hover:bg-glass/50 ${selected === t.id ? 'border-accent bg-accent/5' : 'border-brd bg-glass/30'}`}
+              className={cn(
+                'cursor-pointer transition-all hover:border-accent/40',
+                selected === t.id ? 'border-accent bg-accent/5' : '',
+              )}
+              bodyClassName="p-3 md:p-4"
             >
               <div className="flex items-start gap-2.5 md:gap-3">
                 <div className={`p-2 rounded-lg bg-glass flex-shrink-0 ${t.color}`}>{t.icon}</div>
@@ -326,7 +332,7 @@ export default function Templates() {
                   </div>
                 </div>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       </div>
@@ -337,13 +343,11 @@ export default function Templates() {
         {loadingDb ? (
           <div className="flex items-center gap-2 text-tx3 text-sm py-4"><Loader2 size={16} className="animate-spin" /> Loading...</div>
         ) : dbTemplates.length === 0 ? (
-          <div className="text-center py-8 rounded-xl border border-dashed border-brd">
-            <p className="text-tx3 text-sm">No custom templates yet. Click "Add Template" to create one.</p>
-          </div>
+          <EmptyState title="No custom templates yet" description='Click "Add Template" to create one.' />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
             {dbTemplates.map(t => (
-              <div key={t.id} className="rounded-xl border border-brd bg-glass/30 p-3 md:p-4">
+              <Card key={t.id} bodyClassName="p-3 md:p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-sm truncate">{t.name}</h3>
@@ -360,7 +364,7 @@ export default function Templates() {
                     <button onClick={() => doDelete(t)} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-danger transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         )}
@@ -368,7 +372,7 @@ export default function Templates() {
 
       {/* Detail Panel */}
       {selectedTemplate && (
-        <div className="rounded-xl border border-accent/20 bg-glass p-4 md:p-6 space-y-4 animate-fade-in">
+        <Card className="border-accent/20 animate-fade-in" bodyClassName="p-4 md:p-6 space-y-4">
           <div className="flex items-center gap-2.5 md:gap-3">
             <div className={`p-2.5 md:p-3 rounded-lg bg-glass flex-shrink-0 ${selectedTemplate.color}`}>{selectedTemplate.icon}</div>
             <div className="min-w-0">
@@ -428,19 +432,25 @@ export default function Templates() {
               <ArrowRight size={16} />
             </Link>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Add/Edit Template Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-          <div className="modal-overlay" onClick={() => setShowModal(false)} />
-          <div className="relative glass-card w-full max-w-2xl max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in" onClick={e => e.stopPropagation()}>
-            <div className="px-4 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between sticky top-0 bg-surface z-10 rounded-t-2xl md:rounded-t-2xl">
-              <h2 className="text-base font-semibold">{editingId ? 'Edit Template' : 'Add Template'}</h2>
-              <button onClick={() => setShowModal(false)} className="p-1 rounded-lg hover:bg-glass text-tx3"><X size={18} /></button>
-            </div>
-            <div className="overflow-y-auto p-4 md:p-5 space-y-4">
+      <Modal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        title={editingId ? 'Edit Template' : 'Add Template'}
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button variant="primary" icon={<Check size={14} />} onClick={doSave} loading={saving}>
+              {editingId ? 'Update' : 'Create'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
               {/* Basic Info */}
               <div>
                 <label className="label-sm mb-1">Template Name *</label>
@@ -467,11 +477,15 @@ export default function Templates() {
 
               {/* OLT Selector — fetch actual data */}
               <div>
-                <label className="label-sm mb-1.5">Source OLT (for actual data) <span className="text-tx3 text-xs">— optional</span></label>
-                <select value={selectedOltId} onChange={e => setSelectedOltId(Number(e.target.value))} className="input-field">
-                  <option value={0}>— Select OLT to load profiles —</option>
-                  {olts.map(o => <option key={o.id} value={o.id}>{o.name} ({o.ip_address})</option>)}
-                </select>
+                <Select
+                  label={<>Source OLT (for actual data) <span className="text-tx3 text-xs font-normal normal-case">— optional</span></>}
+                  value={selectedOltId}
+                  onChange={e => setSelectedOltId(Number(e.target.value))}
+                  options={[
+                    { value: '0', label: '— Select OLT to load profiles —' },
+                    ...olts.map(o => ({ value: String(o.id), label: `${o.name} (${o.ip_address})` })),
+                  ]}
+                />
                 {fetchingOltData && <p className="text-xs text-tx3 mt-1 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Loading OLT data...</p>}
                 {selectedOltId > 0 && !fetchingOltData && (
                   <p className="text-xs text-tx3 mt-1">{onuTypes.length} ONU types, {tcontProfiles.length} TCONT, {trafficProfiles.length} traffic, {vlanList.length} VLANs</p>
@@ -497,53 +511,81 @@ export default function Templates() {
 
               {/* ONU Type */}
               <div>
-                <label className="label-sm mb-1.5">ONU Type</label>
                 {onuTypes.length > 0 ? (
-                  <select value={cfg.onu_type} onChange={e => setCfg({ ...cfg, onu_type: e.target.value })} className="input-field">
-                    <option value="All">All (auto-detect)</option>
-                    {onuTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
+                  <Select
+                    label="ONU Type"
+                    value={cfg.onu_type}
+                    onChange={e => setCfg({ ...cfg, onu_type: e.target.value })}
+                    options={[
+                      { value: 'All', label: 'All (auto-detect)' },
+                      ...onuTypes.map(t => ({ value: t, label: t })),
+                    ]}
+                  />
                 ) : (
-                  <input value={cfg.onu_type} onChange={e => setCfg({ ...cfg, onu_type: e.target.value })} className="input-field" placeholder="ZTE-F609, All, etc." />
+                  <>
+                    <label className="label-sm mb-1.5">ONU Type</label>
+                    <input value={cfg.onu_type} onChange={e => setCfg({ ...cfg, onu_type: e.target.value })} className="input-field" placeholder="ZTE-F609, All, etc." />
+                  </>
                 )}
               </div>
 
               {/* TCONT + Traffic Profiles */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label-sm mb-1.5">TCONT Profile <span className="text-tx3 text-xs">(Upload)</span></label>
                   {tcontProfiles.length > 0 ? (
-                    <select value={cfg.tcont_profile} onChange={e => setCfg({ ...cfg, tcont_profile: e.target.value })} className="input-field">
-                      <option value="">Select profile...</option>
-                      {tcontProfiles.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
+                    <Select
+                      label={<>TCONT Profile <span className="text-tx3 text-xs font-normal normal-case">(Upload)</span></>}
+                      value={cfg.tcont_profile}
+                      onChange={e => setCfg({ ...cfg, tcont_profile: e.target.value })}
+                      options={[
+                        { value: '', label: 'Select profile...' },
+                        ...tcontProfiles.map(p => ({ value: p, label: p })),
+                      ]}
+                    />
                   ) : (
-                    <input value={cfg.tcont_profile} onChange={e => setCfg({ ...cfg, tcont_profile: e.target.value })} className="input-field" placeholder="1G, 500M, etc." />
+                    <>
+                      <label className="label-sm mb-1.5">TCONT Profile <span className="text-tx3 text-xs">(Upload)</span></label>
+                      <input value={cfg.tcont_profile} onChange={e => setCfg({ ...cfg, tcont_profile: e.target.value })} className="input-field" placeholder="1G, 500M, etc." />
+                    </>
                   )}
                 </div>
                 <div>
-                  <label className="label-sm mb-1.5">Traffic Profile <span className="text-tx3 text-xs">(Download)</span></label>
                   {trafficProfiles.length > 0 ? (
-                    <select value={cfg.traffic_profile} onChange={e => setCfg({ ...cfg, traffic_profile: e.target.value })} className="input-field">
-                      <option value="">None (no DL limit)</option>
-                      {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
+                    <Select
+                      label={<>Traffic Profile <span className="text-tx3 text-xs font-normal normal-case">(Download)</span></>}
+                      value={cfg.traffic_profile}
+                      onChange={e => setCfg({ ...cfg, traffic_profile: e.target.value })}
+                      options={[
+                        { value: '', label: 'None (no DL limit)' },
+                        ...trafficProfiles.map(p => ({ value: p, label: p })),
+                      ]}
+                    />
                   ) : (
-                    <input value={cfg.traffic_profile} onChange={e => setCfg({ ...cfg, traffic_profile: e.target.value })} className="input-field" placeholder="100M, etc." />
+                    <>
+                      <label className="label-sm mb-1.5">Traffic Profile <span className="text-tx3 text-xs">(Download)</span></label>
+                      <input value={cfg.traffic_profile} onChange={e => setCfg({ ...cfg, traffic_profile: e.target.value })} className="input-field" placeholder="100M, etc." />
+                    </>
                   )}
                 </div>
               </div>
 
               {/* VLAN */}
               <div>
-                <label className="label-sm mb-1.5">VLAN ID</label>
                 {vlanList.length > 0 ? (
-                  <select value={cfg.vlan} onChange={e => setCfg({ ...cfg, vlan: parseInt(e.target.value) || 100 })} className="input-field">
-                    <option value={100}>100 (default)</option>
-                    {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
-                  </select>
+                  <Select
+                    label="VLAN ID"
+                    value={cfg.vlan}
+                    onChange={e => setCfg({ ...cfg, vlan: parseInt(e.target.value) || 100 })}
+                    options={[
+                      { value: '100', label: '100 (default)' },
+                      ...vlanList.map(v => ({ value: String(v.vlan_id), label: `${v.vlan_id} — ${v.name || '(unnamed)'}` })),
+                    ]}
+                  />
                 ) : (
-                  <input type="number" min={1} max={4094} value={cfg.vlan} onChange={e => setCfg({ ...cfg, vlan: parseInt(e.target.value) || 100 })} className="input-field" placeholder="100" />
+                  <>
+                    <label className="label-sm mb-1.5">VLAN ID</label>
+                    <input type="number" min={1} max={4094} value={cfg.vlan} onChange={e => setCfg({ ...cfg, vlan: parseInt(e.target.value) || 100 })} className="input-field" placeholder="100" />
+                  </>
                 )}
               </div>
 
@@ -691,17 +733,8 @@ export default function Templates() {
                   )}
                 </div>
               )}
-            </div>
-            <div className="flex justify-end gap-2 p-4 border-t border-brd sticky bottom-0 bg-surface rounded-b-2xl md:rounded-b-2xl">
-              <button onClick={() => setShowModal(false)} className="btn-secondary text-sm">Cancel</button>
-              <button onClick={doSave} disabled={saving} className="btn-primary text-sm flex items-center gap-2">
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                {editingId ? 'Update' : 'Create'}
-              </button>
-            </div>
-          </div>
         </div>
-      )}
-    </div>
+      </Modal>
+    </PageContainer>
   );
 }

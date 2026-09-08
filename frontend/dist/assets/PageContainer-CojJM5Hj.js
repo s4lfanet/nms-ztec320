@@ -1,0 +1,1 @@
+import{x as e}from"./vendor-query-Cdf_3kqg.js";import{t}from"./utils-DI4U3qni.js";var n=e();function r({children:e,className:r}){return(0,n.jsx)(`div`,{className:t(`space-y-4 md:space-y-5`,r),children:e})}export{r as t};

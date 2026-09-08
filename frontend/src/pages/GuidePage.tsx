@@ -1,6 +1,10 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Search, HelpCircle, ChevronDown, ChevronRight, Lightbulb, AlertTriangle, BookOpen } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { HelpCircle, ChevronDown, ChevronRight, Lightbulb, AlertTriangle, BookOpen } from 'lucide-react';
 import { guides, guideCategories, searchGuides, type Guide } from '../data/guides';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState } from '../components/ui';
+import { FilterBar, SearchBar } from '../components/shared';
 
 function renderRichText(text: string) {
   const parts = text.split(/(\*\*[^*]+\*\*|\n)/g);
@@ -17,7 +21,7 @@ function GuideAccordion({ guide, defaultOpen }: { guide: Guide; defaultOpen?: bo
   const [open, setOpen] = useState(defaultOpen ?? false);
 
   return (
-    <div className="glass-card overflow-hidden">
+    <Card bodyClassName="p-0">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 p-4 text-left hover:bg-glass/50 transition-colors"
@@ -66,7 +70,7 @@ function GuideAccordion({ guide, defaultOpen }: { guide: Guide; defaultOpen?: bo
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -107,41 +111,21 @@ export function GuidePage() {
     });
   }, []);
 
-  const clearSearch = useCallback(() => setQuery(''), []);
-
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-          <BookOpen size={22} className="text-accent" /> Panduan
-        </h1>
-        <p className="text-tx2 text-xs md:text-sm mt-1">
-          Pusat panduan penggunaan Salfanet NMS — {guides.length} panduan tersedia
-        </p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={<BookOpen size={22} className="text-accent" />}
+        title="Panduan"
+        description={`Pusat panduan penggunaan Salfanet NMS — ${guides.length} panduan tersedia`}
+      />
 
-      <div className="flex flex-col md:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-tx3" />
-          <input
-            type="text"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Cari panduan... (mis: ONU, VLAN, traffic, alert)"
-            className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-glass border border-brd text-sm text-tx1 placeholder:text-tx3 focus:outline-none focus:border-accent/30 transition-colors"
-          />
-          {query && (
-            <button
-              onClick={clearSearch}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1 text-sm"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      </div>
+      <SearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder="Cari panduan... (mis: ONU, VLAN, traffic, alert)"
+      />
 
-      <div className="flex flex-wrap gap-1.5">
+      <FilterBar className="gap-1.5">
         <button
           onClick={() => setActiveCategory('All')}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
@@ -165,16 +149,14 @@ export function GuidePage() {
             {cat} ({count})
           </button>
         ))}
-      </div>
+      </FilterBar>
 
       {filtered.length === 0 ? (
-        <div className="glass-card p-8 text-center">
-          <HelpCircle size={32} className="text-tx3 mx-auto mb-2" />
-          <p className="text-tx2 text-sm">Tidak ada panduan yang cocok dengan "{query}"</p>
-          <button onClick={() => { setQuery(''); setActiveCategory('All'); }} className="mt-3 text-xs text-accent hover:underline">
-            Reset filter
-          </button>
-        </div>
+        <EmptyState
+          icon={HelpCircle}
+          title={`Tidak ada panduan yang cocok dengan "${query}"`}
+          action={<Button variant="ghost" onClick={() => { setQuery(''); setActiveCategory('All'); }}>Reset filter</Button>}
+        />
       ) : (
         <div className="space-y-4">
           {grouped.map(([category, items]) => (
@@ -191,6 +173,6 @@ export function GuidePage() {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
