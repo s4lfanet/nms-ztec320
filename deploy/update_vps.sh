@@ -87,12 +87,34 @@ echo "=== Setup cron jobs (auto-backup + auto-sync + traffic poller) ==="
 BACKUP_CRON="0 * * * * cd /opt/salfanet-nms && /opt/salfanet-nms/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
 SYNC_CRON="*/5 * * * * cd /opt/salfanet-nms && /opt/salfanet-nms/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
 TRAFFIC_CRON="*/5 * * * * cd /opt/salfanet-nms && /opt/salfanet-nms/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
-( crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|traffic_poller\|salfanet-nms' || true ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ; echo "$TRAFFIC_CRON" ) | crontab -
+# Write to a temp file and verify afterward, rather than piping straight
+# into `crontab -` — a bare pipe can silently install an EMPTY crontab if
+# the subshell is interrupted (e.g. a flaky SSH session mid-update),
+# leaving auto-sync/backups permanently not running with no error anywhere.
+# Retries once, then falls through to a loud failure message instead.
+CRON_TMP=$(mktemp)
+CRON_COUNT=0
+for attempt in 1 2; do
+    { crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|traffic_poller\|salfanet-nms'; echo "$BACKUP_CRON"; echo "$SYNC_CRON"; echo "$TRAFFIC_CRON"; } > "$CRON_TMP"
+    crontab "$CRON_TMP"
+    CRON_COUNT=$(crontab -l 2>/dev/null | grep -c 'auto_sync\.py\|auto_backup\.py\|traffic_poller\.py' || true)
+    [ "$CRON_COUNT" -ge 3 ] && break
+    echo "Cron install looked incomplete ($CRON_COUNT/3 jobs) — retrying..."
+done
+rm -f "$CRON_TMP"
 touch /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log
 chown salfanet:salfanet /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log 2>/dev/null || true
-echo "Cron: auto_backup set to run hourly"
-echo "Cron: auto_sync set to run every 5 minutes"
-echo "Cron: traffic_poller set to run every 5 minutes"
+if [ "$CRON_COUNT" -ge 3 ]; then
+    echo "Cron: auto_backup set to run hourly"
+    echo "Cron: auto_sync set to run every 5 minutes"
+    echo "Cron: traffic_poller set to run every 5 minutes"
+else
+    echo "FAILED to install cron jobs ($CRON_COUNT/3 found) — auto-sync/backups will NOT run automatically."
+    echo "Fix manually: crontab -e (as root) and add:"
+    echo "  $BACKUP_CRON"
+    echo "  $SYNC_CRON"
+    echo "  $TRAFFIC_CRON"
+fi
 
 echo "=== Verify ==="
 systemctl is-active salfanet-nms && echo "Service: ACTIVE" || echo "Service: FAILED"
