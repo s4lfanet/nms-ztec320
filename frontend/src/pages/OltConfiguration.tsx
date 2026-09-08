@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn, formatDate } from '../lib/utils';
 import { toast } from '../components/Toast';
@@ -14,6 +14,8 @@ import {
 import { RackDiagramRouter } from '../components/rack/RackDiagramRouter';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { api } from '../lib/api';
+import { Breadcrumb } from '../components/layout/Breadcrumb';
+import { Button, EmptyState, Input, Modal, Select, Tabs } from '../components/ui';
 
 const TABS = [
   { id: 'uplinks', label: 'Uplinks', icon: <Network size={15} /> },
@@ -27,7 +29,6 @@ const TABS = [
 
 export function OltConfiguration() {
   const { oltId } = useParams();
-  const navigate = useNavigate();
   const id = Number(oltId);
   const [activeTab, setActiveTab] = useState('uplinks');
   const hasPerm = useHasPerm();
@@ -37,11 +38,11 @@ export function OltConfiguration() {
   if (!olt) return <div className="text-center py-20 text-tx3">OLT not found</div>;
   return (
     <div className="space-y-4 md:space-y-5 animate-fade-in">
-      <div className="flex items-center gap-2 text-xs md:text-sm text-tx3 overflow-x-auto whitespace-nowrap">
-        <button onClick={() => navigate('/dashboard')} className="hover:text-accent">Home</button><span>/</span>
-        <button onClick={() => navigate('/dashboard/settings/olts')} className="hover:text-accent">Settings</button><span>/</span>
-        <span className="text-tx1">Configurations</span>
-      </div>
+      <Breadcrumb items={[
+        { label: 'Home', path: '/dashboard' },
+        { label: 'Settings', path: '/dashboard/settings/olts' },
+        { label: 'Configurations' },
+      ]} />
 
       {/* OLT Header */}
       <div className="glass-card p-4 md:p-5">
@@ -96,14 +97,12 @@ export function OltConfiguration() {
 
       {/* Configuration Tabs */}
       <div className="glass-card">
-        <div className="flex gap-2 p-3 md:p-4 border-b border-brd overflow-x-auto scrollbar-thin">
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={cn('flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-xl text-[11px] md:text-sm font-medium whitespace-nowrap transition-all flex-shrink-0',
-                activeTab === tab.id ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1 border border-brd')}>
-              {tab.icon} <span className="hidden sm:inline">{tab.label}</span><span className="sm:hidden">{tab.label.split(' ')[0]}</span>
-            </button>
-          ))}
+        <div className="p-3 md:p-4 border-b border-brd overflow-x-auto scrollbar-thin">
+          <Tabs
+            tabs={TABS.map(t => ({ key: t.id, label: t.label, icon: t.icon }))}
+            active={activeTab}
+            onChange={setActiveTab}
+          />
         </div>
         <div className="p-3 md:p-5">
           {activeTab === 'uplinks' && <UplinksTab oltId={id} canManage={canManage} />}
@@ -277,7 +276,7 @@ function UplinksTab({ oltId, canManage }: { oltId: number; canManage: boolean })
         return m && m[1] === slotFilter;
       });
 
-  if (uplinks.length === 0) return <EmptyTab message="No uplink ports found. Run Sync to collect." />;
+  if (uplinks.length === 0) return <EmptyState icon={Settings} title="No uplink ports found. Run Sync to collect." />;
 
   return (
     <div className="space-y-3">
@@ -629,52 +628,42 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
 
       {/* Port Configuration Modal */}
       {showPortConfig && (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-          <div className="modal-overlay" onClick={() => setShowPortConfig(false)} />
-          <div className="relative glass-card w-full md:max-w-lg md:mx-4 animate-slide-up md:animate-fade-in rounded-t-2xl md:rounded-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-brd sticky top-0 bg-surface">
-              <h5 className="font-semibold flex items-center gap-2 text-sm md:text-base"><Settings size={16} /> Port Config: {String(uplink.port_name)}</h5>
-              <button onClick={() => setShowPortConfig(false)} className="text-tx3 hover:text-tx1">✕</button>
-            </div>
-            <div className="p-4 space-y-4">
-              {/* Admin Toggle */}
-              <div className="flex items-center justify-between p-3 rounded-lg bg-glass border border-brd">
-                <div>
-                  <div className="text-sm font-bold">Port Admin Status</div>
-                  <div className="text-xs text-tx3">Enable or disable (shutdown / no shutdown)</div>
-                </div>
-                <button onClick={() => setCfgForm({ ...cfgForm, admin: cfgForm.admin === 'up' ? 'down' : 'up' })}
-                  className={cn('w-12 h-6 rounded-full relative transition-colors', cfgForm.admin === 'up' ? 'bg-success' : 'bg-danger')}>
-                  <div className={cn('w-4 h-4 rounded-full bg-white absolute top-1 transition-all', cfgForm.admin === 'up' ? 'left-7' : 'left-1')} />
-                </button>
+        <Modal open onClose={() => setShowPortConfig(false)} icon={<Settings size={16} />} title={`Port Config: ${String(uplink.port_name)}`}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setShowPortConfig(false)}>Cancel</Button>
+              <Button variant="primary" onClick={() => { onConfig.mutate({ uplinkId: Number(uplink.id), speed: cfgForm.speed, duplex: cfgForm.duplex, negotiation: cfgForm.negotiation, flowcontrol: cfgForm.flowcontrol, description: cfgForm.description, admin: cfgForm.admin }); setShowPortConfig(false); }}>
+                Apply
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            {/* Admin Toggle */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-glass border border-brd">
+              <div>
+                <div className="text-sm font-bold">Port Admin Status</div>
+                <div className="text-xs text-tx3">Enable or disable (shutdown / no shutdown)</div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs text-tx3 block mb-1">Speed</label>
-                  <select value={cfgForm.speed} onChange={e => setCfgForm({ ...cfgForm, speed: e.target.value })} className="w-full h-8 px-3 rounded-lg bg-glass border border-brd text-sm">
-                    <option value="">— No Change —</option><option value="100">100 Mbps</option><option value="1000">1 Gbps</option><option value="10000">10 Gbps</option>
-                  </select></div>
-                <div><label className="text-xs text-tx3 block mb-1">Duplex</label>
-                  <select value={cfgForm.duplex} onChange={e => setCfgForm({ ...cfgForm, duplex: e.target.value })} className="w-full h-8 px-3 rounded-lg bg-glass border border-brd text-sm">
-                    <option value="full">Full</option><option value="half">Half</option>
-                  </select></div>
-                <div><label className="text-xs text-tx3 block mb-1">Negotiation</label>
-                  <select value={cfgForm.negotiation} onChange={e => setCfgForm({ ...cfgForm, negotiation: e.target.value })} className="w-full h-8 px-3 rounded-lg bg-glass border border-brd text-sm">
-                    <option value="auto">Auto</option><option value="disable">Disable</option>
-                  </select></div>
-                <div><label className="text-xs text-tx3 block mb-1">Flow Control</label>
-                  <select value={cfgForm.flowcontrol} onChange={e => setCfgForm({ ...cfgForm, flowcontrol: e.target.value })} className="w-full h-8 px-3 rounded-lg bg-glass border border-brd text-sm">
-                    <option value="enable">Enable</option><option value="disable">Disable</option>
-                  </select></div>
-              </div>
-              <div><label className="text-xs text-tx3 block mb-1">Description</label>
-                <input value={cfgForm.description} onChange={e => setCfgForm({ ...cfgForm, description: e.target.value })} className="w-full h-8 px-3 rounded-lg bg-glass border border-brd text-sm" placeholder="Leave empty to keep current" /></div>
+              <button onClick={() => setCfgForm({ ...cfgForm, admin: cfgForm.admin === 'up' ? 'down' : 'up' })}
+                className={cn('w-12 h-6 rounded-full relative transition-colors', cfgForm.admin === 'up' ? 'bg-success' : 'bg-danger')}>
+                <div className={cn('w-4 h-4 rounded-full bg-white absolute top-1 transition-all', cfgForm.admin === 'up' ? 'left-7' : 'left-1')} />
+              </button>
             </div>
-            <div className="flex justify-end gap-2 p-4 border-t border-brd sticky bottom-0 bg-surface">
-              <button onClick={() => setShowPortConfig(false)} className="px-4 py-1.5 rounded-lg bg-glass text-xs">Cancel</button>
-              <button onClick={() => { onConfig.mutate({ uplinkId: Number(uplink.id), speed: cfgForm.speed, duplex: cfgForm.duplex, negotiation: cfgForm.negotiation, flowcontrol: cfgForm.flowcontrol, description: cfgForm.description, admin: cfgForm.admin }); setShowPortConfig(false); }} className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium">Apply</button>
+            <div className="grid grid-cols-2 gap-3">
+              <Select label="Speed" value={cfgForm.speed} onChange={e => setCfgForm({ ...cfgForm, speed: e.target.value })}
+                options={[{ value: '', label: '— No Change —' }, { value: '100', label: '100 Mbps' }, { value: '1000', label: '1 Gbps' }, { value: '10000', label: '10 Gbps' }]} />
+              <Select label="Duplex" value={cfgForm.duplex} onChange={e => setCfgForm({ ...cfgForm, duplex: e.target.value })}
+                options={[{ value: 'full', label: 'Full' }, { value: 'half', label: 'Half' }]} />
+              <Select label="Negotiation" value={cfgForm.negotiation} onChange={e => setCfgForm({ ...cfgForm, negotiation: e.target.value })}
+                options={[{ value: 'auto', label: 'Auto' }, { value: 'disable', label: 'Disable' }]} />
+              <Select label="Flow Control" value={cfgForm.flowcontrol} onChange={e => setCfgForm({ ...cfgForm, flowcontrol: e.target.value })}
+                options={[{ value: 'enable', label: 'Enable' }, { value: 'disable', label: 'Disable' }]} />
             </div>
+            <Input label="Description" value={cfgForm.description} onChange={e => setCfgForm({ ...cfgForm, description: e.target.value })}
+              placeholder="Leave empty to keep current" />
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -701,7 +690,7 @@ function PonCardsTab({ oltId, canManage }: { oltId: number; canManage: boolean }
 
   if (isLoading) return <TabSkeleton />;
   const ports: Array<Record<string, unknown>> = ponData?.ports || [];
-  if (ports.length === 0) return <EmptyTab message="No PON ports found. Run Sync to collect." />;
+  if (ports.length === 0) return <EmptyState icon={Settings} title="No PON ports found. Run Sync to collect." />;
 
   const totalOnu = ports.reduce((s: number, p: Record<string, unknown>) => s + Number(p.onu_count || 0), 0);
   const totalOnline = ports.reduce((s: number, p: Record<string, unknown>) => s + Number(p.onu_online || 0), 0);
@@ -1010,7 +999,7 @@ function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
       )}
 
       {vlans.length === 0 ? (
-        <EmptyTab message="No VLAN data. Run Sync to collect or click 'Add VLAN' to create one." />
+        <EmptyState icon={Settings} title="No VLAN data. Run Sync to collect or click 'Add VLAN' to create one." />
       ) : (
       <>
       {/* Desktop Table */}
@@ -1181,7 +1170,7 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
           {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> Create</button>}
         </div>
       </div>
-      <EmptyTab message="No ONU types found. Run Sync or click Create." />
+      <EmptyState icon={Settings} title="No ONU types found. Run Sync or click Create." />
     </div>
   );
 
@@ -1458,7 +1447,7 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
         </div>
         </>
       ) : (
-        <EmptyTab message="No WAN IP profiles configured. Click 'Add Profile' to create one." />
+        <EmptyState icon={Settings} title="No WAN IP profiles configured. Click 'Add Profile' to create one." />
       )}
     </div>
   );
@@ -1617,78 +1606,57 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
       </div>
 
       {/* ================= EPON SLA PROFILES SECTION ================= */}
-      <div className="mt-8 bg-surface dark:bg-[#111C30] rounded-xl border border-border dark:border-gray-800 overflow-hidden">
-        <div className="p-4 border-b border-border dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-[#152238] fiber-beam">
-          <h3 className="font-bold text-text dark:text-gray-100 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-accent dark:bg-[#00D9C0]"></span>
-            EPON SLA Profiles
-          </h3>
+      <div className="mt-8 rounded-xl bg-glass border border-brd overflow-hidden">
+        <div className="p-4 border-b border-brd flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-accent" />
+          <h3 className="font-semibold text-sm">EPON SLA Profiles</h3>
         </div>
 
         <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <form onSubmit={handleAddSla} className="flex flex-col gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Profile Name</label>
-                <input type="text" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-text dark:text-white focus:outline-none focus:ring-2 focus:ring-accent" placeholder="e.g. 50M-SLA" value={slaName} onChange={(e) => setSlaName(e.target.value)} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Up CIR (Kbps)</label>
-                  <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-text dark:text-white focus:outline-none focus:ring-2 focus:ring-accent" value={upCir} onChange={(e) => setUpCir(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Up PIR (Kbps)</label>
-                  <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-text dark:text-white focus:outline-none focus:ring-2 focus:ring-accent" value={upPir} onChange={(e) => setUpPir(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Down CIR (Kbps)</label>
-                  <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-text dark:text-white focus:outline-none focus:ring-2 focus:ring-accent" value={downCir} onChange={(e) => setDownCir(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Down PIR (Kbps)</label>
-                  <input type="number" className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-text dark:text-white focus:outline-none focus:ring-2 focus:ring-accent" value={downPir} onChange={(e) => setDownPir(e.target.value)} />
-                </div>
-              </div>
-              <button type="submit" disabled={!canManage} className="mt-2 w-full bg-accent hover:bg-teal-500 text-white dark:text-gray-900 font-medium py-2 rounded-lg transition-colors text-sm disabled:opacity-50">
-                Add SLA Profile
-              </button>
-            </form>
-          </div>
+          <form onSubmit={handleAddSla} className="lg:col-span-1 flex flex-col gap-3">
+            <Input label="Profile Name" type="text" placeholder="e.g. 50M-SLA" value={slaName} onChange={(e) => setSlaName(e.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Up CIR (Kbps)" type="number" value={upCir} onChange={(e) => setUpCir(e.target.value)} />
+              <Input label="Up PIR (Kbps)" type="number" value={upPir} onChange={(e) => setUpPir(e.target.value)} />
+              <Input label="Down CIR (Kbps)" type="number" value={downCir} onChange={(e) => setDownCir(e.target.value)} />
+              <Input label="Down PIR (Kbps)" type="number" value={downPir} onChange={(e) => setDownPir(e.target.value)} />
+            </div>
+            <Button type="submit" variant="primary" className="mt-2 w-full justify-center" disabled={!canManage}>
+              Add SLA Profile
+            </Button>
+          </form>
 
           <div className="lg:col-span-2 overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-gray-100 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400">
-                <tr>
-                  <th className="px-4 py-3 font-medium rounded-tl-lg">Name</th>
-                  <th className="px-4 py-3 font-medium">Upstream (CIR/PIR)</th>
-                  <th className="px-4 py-3 font-medium">Downstream (CIR/PIR)</th>
-                  <th className="px-4 py-3 font-medium text-right rounded-tr-lg">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                {profiles.filter((p: any) => p.profile_type === 'sla').length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500">No EPON SLA profiles configured.</td>
+            {profiles.filter((p: any) => p.profile_type === 'sla').length === 0 ? (
+              <EmptyState icon={Settings} title="No EPON SLA profiles configured." />
+            ) : (
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead>
+                  <tr className="border-b border-brd">
+                    <th className="px-4 py-3 text-xs font-medium text-tx3 uppercase">Name</th>
+                    <th className="px-4 py-3 text-xs font-medium text-tx3 uppercase">Upstream (CIR/PIR)</th>
+                    <th className="px-4 py-3 text-xs font-medium text-tx3 uppercase">Downstream (CIR/PIR)</th>
+                    <th className="px-4 py-3 text-xs font-medium text-tx3 uppercase text-right">Action</th>
                   </tr>
-                ) : (
-                  profiles.filter((p: any) => p.profile_type === 'sla').map((p: any) => (
-                    <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                      <td className="px-4 py-3 font-medium text-text dark:text-white">{p.name}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.sir || 0} / {p.pir || 0} Kbps</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.assured_bandwidth || 0} / {p.max_bandwidth || 0} Kbps</td>
+                </thead>
+                <tbody className="[&>tr]:border-b [&>tr]:border-brd/50 [&>tr:hover]:bg-glass/50 [&>tr]:transition-colors">
+                  {profiles.filter((p: any) => p.profile_type === 'sla').map((p: any) => (
+                    <tr key={p.id}>
+                      <td className="px-4 py-3 font-medium">{p.name}</td>
+                      <td className="px-4 py-3 text-tx3">{p.sir || 0} / {p.pir || 0} Kbps</td>
+                      <td className="px-4 py-3 text-tx3">{p.assured_bandwidth || 0} / {p.max_bandwidth || 0} Kbps</td>
                       <td className="px-4 py-3 text-right">
                         {canManage && (
-                          <button onClick={() => handleDeleteSla(Number(p.id))} className="text-red-500 hover:text-red-600 dark:hover:text-red-400 text-sm font-medium transition-colors">
+                          <button onClick={() => handleDeleteSla(Number(p.id))} className="text-danger hover:text-danger/70 text-sm font-medium transition-colors">
                             Delete
                           </button>
                         )}
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>
@@ -2060,15 +2028,6 @@ function TabSkeleton() {
   return (
     <div className="space-y-3 animate-pulse">
       {[1, 2, 3].map(i => <div key={i} className="h-20 rounded-xl bg-glass" />)}
-    </div>
-  );
-}
-
-function EmptyTab({ message }: { message: string }) {
-  return (
-    <div className="text-center py-12 text-tx3">
-      <Settings size={40} className="mx-auto mb-3 text-tx3/30" />
-      <p>{message}</p>
     </div>
   );
 }
