@@ -13,6 +13,9 @@ import {
   Activity, Network, Terminal, X, Save, Download, ArrowRightLeft, CheckSquare, Square, Package,
   History, ToggleLeft, ToggleRight, HardDriveDownload, Globe, Minus,
 } from 'lucide-react';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState, Modal, Input, Select } from '../components/ui';
 
 export function OltSettings() {
   const qc = useQueryClient();
@@ -202,32 +205,32 @@ export function OltSettings() {
   if (isLoading) return <div className="animate-pulse glass-card h-64" />;
 
   return (
-    <div className="space-y-4 md:space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">{isSuperAdmin ? 'OLT Overview' : 'OLT Settings'}</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">{isSuperAdmin ? 'View all tenant OLT devices' : 'Manage OLT devices and connections'}</p>
-        </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          {canManage && (
-            <button onClick={() => syncAllMutation.mutate()} disabled={syncingAll || syncingId !== null}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-sm font-medium transition-all disabled:opacity-50 flex-1 sm:flex-none justify-center">
-              <RefreshCw size={16} className={syncingAll ? 'animate-spin' : ''} /> Sync All
-            </button>
-          )}
-          {canManage && (
-            <button onClick={() => setModal({ mode: 'add' })}
-              className="flex items-center gap-1.5 px-3 md:px-4 py-2 md:py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all flex-1 sm:flex-none justify-center">
-              <Plus size={16} /> Add OLT
-            </button>
-          )}
-        </div>
-      </div>
+    <PageContainer className="animate-fade-in">
+      <PageHeader
+        title={isSuperAdmin ? 'OLT Overview' : 'OLT Settings'}
+        description={isSuperAdmin ? 'View all tenant OLT devices' : 'Manage OLT devices and connections'}
+        action={
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {canManage && (
+              <Button variant="accent" className="flex-1 sm:flex-none justify-center"
+                icon={<RefreshCw size={16} className={syncingAll ? 'animate-spin' : ''} />}
+                disabled={syncingAll || syncingId !== null} onClick={() => syncAllMutation.mutate()}>
+                Sync All
+              </Button>
+            )}
+            {canManage && (
+              <Button variant="primary" className="flex-1 sm:flex-none justify-center"
+                icon={<Plus size={16} />} onClick={() => setModal({ mode: 'add' })}>
+                Add OLT
+              </Button>
+            )}
+          </div>
+        }
+      />
 
       {/* OLT Limit Info for tenant users */}
       {canManage && subInfo && (
-        <div className={cn('glass-card p-3 md:p-4 border', subInfo.remaining_olts === 0 ? 'border-danger/30' : 'border-accent/20')}>
+        <Card className={subInfo.remaining_olts === 0 ? 'border-danger/30' : 'border-accent/20'} bodyClassName="p-3 md:p-4">
           <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
               <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0',
@@ -259,12 +262,12 @@ export function OltSettings() {
               </div>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Sync Progress Banner */}
       {syncingId && (
-        <div className="glass-card p-3 md:p-4 border border-accent/30 animate-fade-in">
+        <Card className="border-accent/30 animate-fade-in" bodyClassName="p-3 md:p-4">
           <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-3">
             <Loader2 size={18} className="text-accent animate-spin flex-shrink-0" />
             <div className="flex-1 min-w-0">
@@ -276,14 +279,11 @@ export function OltSettings() {
           <div className="h-2 rounded-full overflow-hidden bg-glass">
             <div className="h-full bg-accent rounded-full transition-all duration-500" style={{ width: `${syncProgress}%` }} />
           </div>
-        </div>
+        </Card>
       )}
 
       {/* OLT Table */}
-      <div className="glass-card overflow-hidden">
-        <div className="px-4 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between">
-          <h2 className="text-sm font-semibold flex items-center gap-2"><Server size={16} /> OLT Management</h2>
-        </div>
+      <Card title="OLT Management" icon={<Server size={16} />} bodyClassName="p-0" className="overflow-hidden">
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
@@ -372,10 +372,9 @@ export function OltSettings() {
                 </tr>
               ))}
               {olts.length === 0 && (
-                <tr><td colSpan={6} className="text-center py-12 text-tx3">
-                  <Server size={40} className="mx-auto mb-3 opacity-30" />
-                  <p>No OLTs configured</p>
-                  {canManage && <p className="text-xs mt-1">Click "Add OLT" to add your first device</p>}
+                <tr><td colSpan={6}>
+                  <EmptyState icon={Server} title="No OLTs configured"
+                    description={canManage ? 'Click "Add OLT" to add your first device' : undefined} />
                 </td></tr>
               )}
             </tbody>
@@ -434,14 +433,11 @@ export function OltSettings() {
             </div>
           ))}
           {olts.length === 0 && (
-            <div className="text-center py-12 text-tx3">
-              <Server size={40} className="mx-auto mb-3 opacity-30" />
-              <p>No OLTs configured</p>
-              {canManage && <p className="text-xs mt-1">Click "Add OLT" to add your first device</p>}
-            </div>
+            <EmptyState icon={Server} title="No OLTs configured"
+              description={canManage ? 'Click "Add OLT" to add your first device' : undefined} />
           )}
         </div>
-      </div>
+      </Card>
 
       {/* Backup History Modal */}
       {backupOlt && <BackupHistoryModal oltId={backupOlt.id} oltName={backupOlt.name} onClose={() => setBackupOlt(null)} />}
@@ -457,7 +453,7 @@ export function OltSettings() {
       {/* Cross-OLT Migrate Modal */}
       {crossMigrateOlt && <CrossOltMigrateModal sourceOltId={crossMigrateOlt.oltId} sourceOltName={crossMigrateOlt.oltName} allOlts={olts} onClose={() => setCrossMigrateOlt(null)}
         onSuccess={() => { setCrossMigrateOlt(null); qc.invalidateQueries({ queryKey: ['olts'] }); toast.success('Cross-OLT migration completed!'); }} />}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -559,14 +555,17 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="modal-overlay" onClick={onClose} />
-      <div className="relative glass-card w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
-        <div className="modal-header">
-          <h2 className="text-sm font-semibold flex items-center gap-2"><ArrowRightLeft size={16} /> Migrate ONU — {oltName}</h2>
-          <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
-        </div>
-        <div className="p-3 md:p-5 overflow-y-auto space-y-4 flex-1">
+    <Modal open onClose={onClose} icon={<ArrowRightLeft size={16} />} title={`Migrate ONU — ${oltName}`} size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" icon={<ArrowRightLeft size={14} />} loading={loading} disabled={selectedIds.size === 0 || !targetPon} onClick={doMigrate}>
+            {loading ? `Migrating ${progress?.done ?? 0}/${progress?.total ?? 0}...` : `Migrate ${selectedIds.size > 0 ? `(${selectedIds.size})` : 'ONUs'}`}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
           {fetchingStruct ? (
             <div className="flex items-center justify-center py-8"><Loader2 size={20} className="animate-spin text-accent" /></div>
           ) : structure.length === 0 ? (
@@ -575,21 +574,19 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
             <>
               {/* Step 1: Select source PON */}
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label-sm mb-2">1. Source Card</label>
-                  <select value={sourceCard} onChange={e => { setSourceCard(e.target.value); setSourcePon(''); setOnus([]); setSelectedIds(new Set()); }} className="input-field">
-                    <option value="">-- Select --</option>
-                    {structure.map(s => <option key={s.card} value={s.card}>Card {s.card}</option>)}
-                  </select>
-                </div>
+                <Select
+                  label="1. Source Card"
+                  value={sourceCard}
+                  onChange={e => { setSourceCard(e.target.value); setSourcePon(''); setOnus([]); setSelectedIds(new Set()); }}
+                  options={[{ value: '', label: '-- Select --' }, ...structure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
+                />
                 {sourceCard && (
-                  <div>
-                    <label className="label-sm mb-2">Source PON</label>
-                    <select value={sourcePon} onChange={e => { setSourcePon(e.target.value); loadOnus(sourceCard, e.target.value); }} className="input-field">
-                      <option value="">-- Select --</option>
-                      {sourcePorts.map(p => <option key={p} value={p}>PON {p}</option>)}
-                    </select>
-                  </div>
+                  <Select
+                    label="Source PON"
+                    value={sourcePon}
+                    onChange={e => { setSourcePon(e.target.value); loadOnus(sourceCard, e.target.value); }}
+                    options={[{ value: '', label: '-- Select --' }, ...sourcePorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
+                  />
                 )}
               </div>
 
@@ -633,21 +630,19 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
               {selectedIds.size > 0 && (
                 <>
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="label-sm mb-2">3. Target Card</label>
-                      <select value={targetCard} onChange={e => { setTargetCard(e.target.value); setTargetPon(''); }} className="input-field">
-                        <option value="">-- Select --</option>
-                        {structure.map(s => <option key={s.card} value={s.card}>Card {s.card}</option>)}
-                      </select>
-                    </div>
+                    <Select
+                      label="3. Target Card"
+                      value={targetCard}
+                      onChange={e => { setTargetCard(e.target.value); setTargetPon(''); }}
+                      options={[{ value: '', label: '-- Select --' }, ...structure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
+                    />
                     {targetCard && (
-                      <div>
-                        <label className="label-sm mb-2">Target PON</label>
-                        <select value={targetPon} onChange={e => setTargetPon(e.target.value)} className="input-field">
-                          <option value="">-- Select --</option>
-                          {targetPorts.map(p => <option key={p} value={p}>PON {p}</option>)}
-                        </select>
-                      </div>
+                      <Select
+                        label="Target PON"
+                        value={targetPon}
+                        onChange={e => setTargetPon(e.target.value)}
+                        options={[{ value: '', label: '-- Select --' }, ...targetPorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
+                      />
                     )}
                   </div>
 
@@ -693,16 +688,8 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
               )}
             </>
           )}
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn-cancel">Cancel</button>
-          <button onClick={doMigrate} disabled={loading || selectedIds.size === 0 || !targetPon} className="btn-primary">
-            {loading ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <ArrowRightLeft size={14} className="inline mr-1" />}
-            {loading ? `Migrating ${progress?.done ?? 0}/${progress?.total ?? 0}...` : `Migrate ${selectedIds.size > 0 ? `(${selectedIds.size})` : 'ONUs'}`}
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -849,14 +836,17 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="modal-overlay" onClick={onClose} />
-      <div className="relative glass-card w-full max-w-lg max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
-        <div className="modal-header">
-          <h2 className="text-sm font-semibold flex items-center gap-2"><Globe size={16} /> Cross-OLT Migration — {sourceOltName}</h2>
-          <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
-        </div>
-        <div className="p-3 md:p-5 overflow-y-auto space-y-4 flex-1">
+    <Modal open onClose={onClose} icon={<Globe size={16} />} title={`Cross-OLT Migration — ${sourceOltName}`} size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" icon={<Globe size={14} />} loading={loading} disabled={selectedIds.size === 0 || !targetPon} onClick={doMigrate}>
+            {loading ? `Migrating ${progress?.done ?? 0}/${progress?.total ?? 0}...` : `Migrate ${selectedIds.size > 0 ? `(${selectedIds.size})` : 'ONUs'}`}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
           {fetchingStruct ? (
             <div className="flex items-center justify-center py-8"><Loader2 size={20} className="animate-spin text-accent" /></div>
           ) : sourceStructure.length === 0 ? (
@@ -865,21 +855,19 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
             <>
               {/* Step 1: Select source PON */}
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label-sm mb-2">1. Source Card</label>
-                  <select value={sourceCard} onChange={e => { setSourceCard(e.target.value); setSourcePon(''); setOnus([]); setSelectedIds(new Set()); }} className="input-field">
-                    <option value="">-- Select --</option>
-                    {sourceStructure.map(s => <option key={s.card} value={s.card}>Card {s.card}</option>)}
-                  </select>
-                </div>
+                <Select
+                  label="1. Source Card"
+                  value={sourceCard}
+                  onChange={e => { setSourceCard(e.target.value); setSourcePon(''); setOnus([]); setSelectedIds(new Set()); }}
+                  options={[{ value: '', label: '-- Select --' }, ...sourceStructure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
+                />
                 {sourceCard && (
-                  <div>
-                    <label className="label-sm mb-2">Source PON</label>
-                    <select value={sourcePon} onChange={e => { setSourcePon(e.target.value); loadOnus(sourceCard, e.target.value); }} className="input-field">
-                      <option value="">-- Select --</option>
-                      {sourcePorts.map(p => <option key={p} value={p}>PON {p}</option>)}
-                    </select>
-                  </div>
+                  <Select
+                    label="Source PON"
+                    value={sourcePon}
+                    onChange={e => { setSourcePon(e.target.value); loadOnus(sourceCard, e.target.value); }}
+                    options={[{ value: '', label: '-- Select --' }, ...sourcePorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
+                  />
                 )}
               </div>
 
@@ -922,15 +910,15 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
               {/* Step 3: Select target OLT */}
               {selectedIds.size > 0 && (
                 <>
-                  <div>
-                    <label className="label-sm mb-2">3. Target OLT</label>
-                    <select value={targetOltId} onChange={e => { setTargetOltId(e.target.value); setTargetCard(''); setTargetPon(''); }} className="input-field">
-                      <option value="">-- Select Target OLT --</option>
-                      {allOlts.filter(o => o.id !== sourceOltId).map(o => (
-                        <option key={o.id} value={o.id}>{o.name} ({o.ip_address})</option>
-                      ))}
-                    </select>
-                  </div>
+                  <Select
+                    label="3. Target OLT"
+                    value={targetOltId}
+                    onChange={e => { setTargetOltId(e.target.value); setTargetCard(''); setTargetPon(''); }}
+                    options={[
+                      { value: '', label: '-- Select Target OLT --' },
+                      ...allOlts.filter(o => o.id !== sourceOltId).map(o => ({ value: String(o.id), label: `${o.name} (${o.ip_address})` })),
+                    ]}
+                  />
 
                   {/* Step 4: Select target PON on target OLT */}
                   {targetOltId && (
@@ -941,21 +929,19 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
                         <div className="text-center py-4 text-tx3 text-xs">No PON ports found on target OLT. Sync target OLT first.</div>
                       ) : (
                         <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="label-sm mb-2">4. Target Card</label>
-                            <select value={targetCard} onChange={e => { setTargetCard(e.target.value); setTargetPon(''); }} className="input-field">
-                              <option value="">-- Select --</option>
-                              {targetStructure.map(s => <option key={s.card} value={s.card}>Card {s.card}</option>)}
-                            </select>
-                          </div>
+                          <Select
+                            label="4. Target Card"
+                            value={targetCard}
+                            onChange={e => { setTargetCard(e.target.value); setTargetPon(''); }}
+                            options={[{ value: '', label: '-- Select --' }, ...targetStructure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
+                          />
                           {targetCard && (
-                            <div>
-                              <label className="label-sm mb-2">Target PON</label>
-                              <select value={targetPon} onChange={e => setTargetPon(e.target.value)} className="input-field">
-                                <option value="">-- Select --</option>
-                                {targetPorts.map(p => <option key={p} value={p}>PON {p}</option>)}
-                              </select>
-                            </div>
+                            <Select
+                              label="Target PON"
+                              value={targetPon}
+                              onChange={e => setTargetPon(e.target.value)}
+                              options={[{ value: '', label: '-- Select --' }, ...targetPorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
+                            />
                           )}
                         </div>
                       )}
@@ -1021,16 +1007,8 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
               )}
             </>
           )}
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn-cancel">Cancel</button>
-          <button onClick={doMigrate} disabled={loading || selectedIds.size === 0 || !targetPon} className="btn-primary">
-            {loading ? <Loader2 size={14} className="animate-spin inline mr-1" /> : <Globe size={14} className="inline mr-1" />}
-            {loading ? `Migrating ${progress?.done ?? 0}/${progress?.total ?? 0}...` : `Migrate ${selectedIds.size > 0 ? `(${selectedIds.size})` : 'ONUs'}`}
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1199,37 +1177,35 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="modal-overlay" onClick={onClose} />
-      <div className="relative glass-card w-full md:max-w-xl animate-slide-up md:animate-fade-in max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-2xl">
-        <div className="modal-header sticky top-0">
-          <h2 className="text-sm font-semibold flex items-center gap-2">
-            <Settings size={16} /> {mode === 'add' ? 'Add OLT Connection' : 'OLT Connection Settings'}
-          </h2>
-          <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
+    <Modal open onClose={onClose} icon={<Settings size={16} />}
+      title={mode === 'add' ? 'Add OLT Connection' : 'OLT Connection Settings'} size="lg"
+      footer={
+        <div className="w-full flex items-center justify-between gap-2">
+          <Button variant="secondary" className="text-xs md:text-sm" icon={<X size={14} />} onClick={onClose}>Close</Button>
+          <div className="flex gap-2">
+            <Button variant="warning" icon={<Activity size={14} className={testing ? 'animate-spin' : ''} />}
+              loading={testing} disabled={!form.ip_address} onClick={testConnection}>
+              Test Connection
+            </Button>
+            <Button variant="primary" loading={saving} onClick={save}>Submit</Button>
+          </div>
         </div>
-
-        <div className="p-4 md:p-5 overflow-y-auto space-y-4 flex-1">
+      }
+    >
+      <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label-sm mb-1.5">OLT Name</label>
-              <input type="text" value={form.name} onChange={e => update('name', e.target.value)}
-                placeholder="e.g. OLT-Singapore" className="input-field" />
-            </div>
-            <div>
-              <label className="label-sm mb-1.5">IP Address</label>
-              <input type="text" value={form.ip_address} onChange={e => update('ip_address', e.target.value)}
-                placeholder="e.g. 172.16.1.1" className="input-field" />
-            </div>
+            <Input label="OLT Name" type="text" value={form.name} onChange={e => update('name', e.target.value)}
+              placeholder="e.g. OLT-Singapore" />
+            <Input label="IP Address" type="text" value={form.ip_address} onChange={e => update('ip_address', e.target.value)}
+              placeholder="e.g. 172.16.1.1" />
           </div>
 
-          <div>
-            <label className="label-sm mb-1.5">Type</label>
-            <select value={form.type} onChange={e => update('type', e.target.value)} className="input-field">
-              <option value="">Select Type</option>
-              {OLT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
+          <Select
+            label="Type"
+            value={form.type}
+            onChange={e => update('type', e.target.value)}
+            options={[{ value: '', label: 'Select Type' }, ...OLT_TYPES.map(t => ({ value: t, label: t }))]}
+          />
 
           {/* SNMP Section */}
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd space-y-3">
@@ -1241,18 +1217,9 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
               {!testing && !testResult && snmpStatus && <span className="ml-2">{statusBadge(snmpStatus)}</span>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="label-sm mb-1">Community (Read)</label>
-                <input type="text" value={form.snmp_community} onChange={e => update('snmp_community', e.target.value)} className="input-field" placeholder="public" />
-              </div>
-              <div>
-                <label className="label-sm mb-1">Community (Write)</label>
-                <input type="text" value={form.snmp_community_write} onChange={e => update('snmp_community_write', e.target.value)} className="input-field" placeholder="optional, e.g. SNMPREAD" />
-              </div>
-              <div>
-                <label className="label-sm mb-1">Port</label>
-                <input type="number" value={form.snmp_port} onChange={e => update('snmp_port', e.target.value)} className="input-field" />
-              </div>
+              <Input label="Community (Read)" type="text" value={form.snmp_community} onChange={e => update('snmp_community', e.target.value)} placeholder="public" />
+              <Input label="Community (Write)" type="text" value={form.snmp_community_write} onChange={e => update('snmp_community_write', e.target.value)} placeholder="optional, e.g. SNMPREAD" />
+              <Input label="Port" type="number" value={form.snmp_port} onChange={e => update('snmp_port', e.target.value)} />
             </div>
           </div>
 
@@ -1269,14 +1236,8 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
               <p className="text-xs text-tx3 italic">Leave empty for SNMP-only mode. Fill in to enable CLI access.</p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="label-sm mb-1">Username</label>
-                <input type="text" value={form.cli_username} onChange={e => update('cli_username', e.target.value)} placeholder="Optional" className="input-field" />
-              </div>
-              <div>
-                <label className="label-sm mb-1">Password</label>
-                <input type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder={olt ? '•••• (unchanged)' : 'Optional'} className="input-field" />
-              </div>
+              <Input label="Username" type="text" value={form.cli_username} onChange={e => update('cli_username', e.target.value)} placeholder="Optional" />
+              <Input label="Password" type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder={olt ? '•••• (unchanged)' : 'Optional'} />
               <div>
                 <label className="label-sm mb-1">Connection Mode</label>
                 <div className="flex gap-2 items-center">
@@ -1292,32 +1253,13 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="label-sm mb-1">{form.ssh_enabled ? 'SSH Port' : 'Telnet Port'}</label>
-                <input type="number" value={form.ssh_enabled ? form.ssh_port : form.telnet_port}
-                  onChange={e => form.ssh_enabled ? update('ssh_port', e.target.value) : update('telnet_port', e.target.value)}
-                  className="input-field" />
-              </div>
+              <Input label={form.ssh_enabled ? 'SSH Port' : 'Telnet Port'} type="number" value={form.ssh_enabled ? form.ssh_port : form.telnet_port}
+                onChange={e => form.ssh_enabled ? update('ssh_port', e.target.value) : update('telnet_port', e.target.value)} />
             </div>
           </div>
 
-        </div>
-
-        <div className="modal-footer justify-between sticky bottom-0">
-          <button onClick={onClose} className="btn-cancel text-xs md:text-sm"><X size={14} className="inline mr-1" /> Close</button>
-          <div className="flex gap-2">
-            <button onClick={testConnection} disabled={testing || !form.ip_address} className="btn-warning">
-              <Activity size={14} className={testing ? 'animate-spin inline mr-1' : 'inline mr-1'} />
-              {testing ? 'Testing...' : 'Test Connection'}
-            </button>
-            <button onClick={save} disabled={saving} className="btn-primary">
-              {saving ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}
-              {saving ? 'Saving...' : 'Submit'}
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1450,17 +1392,10 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="modal-overlay" onClick={onClose} />
-      <div className="relative glass-card w-full max-w-2xl max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
-        <div className="modal-header">
-          <h2 className="text-sm font-semibold flex items-center gap-2"><History size={16} /> Config Backups — {oltName}</h2>
-          <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
-        </div>
-
-        <div className="p-3 md:p-5 overflow-y-auto space-y-4 flex-1">
+    <Modal open onClose={onClose} icon={<History size={16} />} title={`Config Backups — ${oltName}`} size="lg">
+      <div className="space-y-4">
           {/* Auto-backup settings */}
-          <div className="glass-card p-3 md:p-4 border border-brd">
+          <Card bodyClassName="p-3 md:p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 {autoEnabled ? (
@@ -1476,11 +1411,9 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
                   </div>
                 </div>
               </div>
-              <button onClick={doBackup} disabled={backing}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-sm font-medium transition-all disabled:opacity-50">
-                {backing ? <Loader2 size={14} className="animate-spin" /> : <HardDriveDownload size={14} />}
+              <Button variant="accent" icon={<HardDriveDownload size={14} />} loading={backing} onClick={doBackup}>
                 Backup Now
-              </button>
+              </Button>
             </div>
             {autoEnabled && (
               <div className="space-y-3 mt-3 pt-3 border-t border-brd/50">
@@ -1503,15 +1436,14 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
                   <span className="text-xs text-tx3">(empty = anytime, uses system timezone)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={saveSettings} disabled={saving}
-                    className="px-3 py-1.5 rounded-lg bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-xs font-medium transition-all disabled:opacity-50">
-                    {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save Settings
-                  </button>
+                  <Button variant="accent" icon={<Save size={12} />} loading={saving} onClick={saveSettings}>
+                    Save Settings
+                  </Button>
                   <span className="text-xs text-tx3">Cron runs hourly, backs up when interval + time matched</span>
                 </div>
               </div>
             )}
-          </div>
+          </Card>
 
           {/* Backup list */}
           <div>
@@ -1524,10 +1456,7 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
             {isLoading ? (
               <div className="flex items-center justify-center py-8"><Loader2 size={20} className="animate-spin text-accent" /></div>
             ) : backups.length === 0 ? (
-              <div className="text-center py-8 text-tx3 text-sm">
-                <History size={32} className="mx-auto mb-2 opacity-30" />
-                No backups yet. Click "Backup Now" to create one.
-              </div>
+              <EmptyState icon={History} title="No backups yet" description='Click "Backup Now" to create one.' />
             ) : (
               <div className="space-y-1.5 max-h-[40vh] overflow-y-auto">
                 {backups.map((b) => (
@@ -1563,9 +1492,8 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
               </div>
             )}
           </div>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

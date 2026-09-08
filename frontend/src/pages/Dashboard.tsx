@@ -7,11 +7,14 @@ import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
   Server, Wifi, WifiOff, AlertTriangle, Thermometer,
-  RefreshCw, Radio, Clock, Fan, Zap, Activity, Search,
-  ArrowUpDown, ExternalLink
+  RefreshCw, Radio, Clock, Fan, Zap, Activity, ExternalLink
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState, Select } from '../components/ui';
+import { FilterBar, SearchBar } from '../components/shared';
 
 const REFRESH_INTERVAL = 30;
 
@@ -211,38 +214,47 @@ export function Dashboard() {
   const totalProblem = (stats.offline || 0) + (stats.dyinggasp || 0) + (stats.los || 0);
 
   return (
-    <div className="space-y-4 md:space-y-5">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-            <Activity size={20} className="text-accent" />
-            OLT Monitoring
-          </h1>
-          <p className="text-tx3 text-xs mt-0.5">
+    <PageContainer>
+      <PageHeader
+        icon={<Activity size={20} className="text-accent" />}
+        title="OLT Monitoring"
+        description={
+          <>
             {onlineCount}/{olts.length} online &mdash; refresh dalam{' '}
             <span className={countdown <= 5 ? 'text-warning font-semibold' : 'text-tx2'}>{countdown}d</span>
-          </p>
-        </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          {hasPerm('settings_ip_olts') && (
-            <button onClick={() => syncAllMutation.mutate()} disabled={syncingAll || syncingOlt !== null}
-              className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-sm font-medium transition-all disabled:opacity-50 flex-1 sm:flex-none justify-center">
-              <Zap size={16} className={syncingAll ? 'animate-pulse' : ''} /> Sync All
-            </button>
-          )}
-          <button onClick={async () => {
-            setRefreshing(true);
-            manualRefreshRef.current = true;
-            await refetch();
-            manualRefreshRef.current = false;
-            setTimeout(() => setRefreshing(false), 500);
-          }} disabled={showRefreshSpinner}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-glass border border-brd hover:border-accent/30 text-sm transition-all disabled:opacity-50 flex-1 sm:flex-none justify-center">
-            <RefreshCw size={16} className={showRefreshSpinner ? 'animate-spin' : ''} /> Refresh
-          </button>
-        </div>
-      </div>
+          </>
+        }
+        action={
+          <>
+            {hasPerm('settings_ip_olts') && (
+              <Button
+                variant="accent"
+                icon={<Zap size={16} className={syncingAll ? 'animate-pulse' : ''} />}
+                onClick={() => syncAllMutation.mutate()}
+                disabled={syncingAll || syncingOlt !== null}
+                className="flex-1 sm:flex-none"
+              >
+                Sync All
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              icon={<RefreshCw size={16} className={showRefreshSpinner ? 'animate-spin' : ''} />}
+              disabled={showRefreshSpinner}
+              className="flex-1 sm:flex-none"
+              onClick={async () => {
+                setRefreshing(true);
+                manualRefreshRef.current = true;
+                await refetch();
+                manualRefreshRef.current = false;
+                setTimeout(() => setRefreshing(false), 500);
+              }}
+            >
+              Refresh
+            </Button>
+          </>
+        }
+      />
 
       {/* Summary Stats — 4 cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
@@ -259,8 +271,7 @@ export function Dashboard() {
       </div>
 
       {/* Signal Distribution Bar */}
-      <div className="glass-card p-4">
-        <h3 className="text-xs font-medium text-tx3 mb-2.5 uppercase tracking-wide">Signal Quality Distribution</h3>
+      <Card title="Signal Quality Distribution">
         <div className="flex h-2.5 rounded-full overflow-hidden bg-glass">
           {stats.total_onu > 0 && (
             <>
@@ -277,11 +288,11 @@ export function Dashboard() {
           <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-danger" /> LOS ({stats.los})</span>
           <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-offline" /> Offline ({stats.offline})</span>
         </div>
-      </div>
+      </Card>
 
       {/* Sync Progress Bar */}
       {syncingOlt !== null && (
-        <div className="glass-card p-4 border border-accent/30">
+        <Card className="border-accent/30">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 text-sm">
               <RefreshCw size={14} className="animate-spin text-accent" />
@@ -293,60 +304,51 @@ export function Dashboard() {
           <div className="h-2 rounded-full bg-glass overflow-hidden">
             <div className="h-full bg-accent transition-all duration-500 rounded-full" style={{ width: `${syncProgress}%` }} />
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Filter / Sort Bar */}
-      <div className="glass-card p-3">
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="flex-1 relative">
-            <Search size={13} className="absolute left-2.5 top-2.5 text-tx3 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Cari nama OLT atau IP..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-glass border border-brd focus:outline-none focus:border-accent/50 text-tx1 placeholder:text-tx3"
-            />
-          </div>
+      <Card bodyClassName="p-3">
+        <FilterBar className="flex-nowrap flex-col sm:flex-row items-stretch sm:items-center">
+          <SearchBar
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Cari nama OLT atau IP..."
+            className="flex-1"
+          />
           <div className="flex gap-2">
-            <select
+            <Select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="px-2.5 py-1.5 text-xs rounded-lg bg-glass border border-brd focus:outline-none focus:border-accent/50 text-tx1"
-            >
-              <option value="all">Semua Status</option>
-              <option value="online">Online Only</option>
-              <option value="offline">Offline Only</option>
-            </select>
-            <div className="relative">
-              <ArrowUpDown size={11} className="absolute left-2 top-2.5 text-tx3 pointer-events-none" />
-              <select
-                value={sortKey}
-                onChange={e => setSortKey(e.target.value as SortKey)}
-                className="pl-7 pr-2.5 py-1.5 text-xs rounded-lg bg-glass border border-brd focus:outline-none focus:border-accent/50 text-tx1 appearance-none"
-              >
-                <option value="status">Sort: Status</option>
-                <option value="name">Sort: Nama</option>
-                <option value="problems">Sort: Problem</option>
-                <option value="offline">Sort: Offline ONU</option>
-              </select>
-            </div>
+              aria-label="Filter status"
+              options={[
+                { value: 'all', label: 'Semua Status' },
+                { value: 'online', label: 'Online Only' },
+                { value: 'offline', label: 'Offline Only' },
+              ]}
+            />
+            <Select
+              value={sortKey}
+              onChange={e => setSortKey(e.target.value as SortKey)}
+              aria-label="Urutkan"
+              options={[
+                { value: 'status', label: 'Sort: Status' },
+                { value: 'name', label: 'Sort: Nama' },
+                { value: 'problems', label: 'Sort: Problem' },
+                { value: 'offline', label: 'Sort: Offline ONU' },
+              ]}
+            />
           </div>
-        </div>
-      </div>
+        </FilterBar>
+      </Card>
 
       {/* OLT Grid */}
       {sortedOlts.length === 0 ? (
-        <div className="glass-card p-12 text-center">
-          <Server size={40} className="text-tx3 mx-auto mb-3 opacity-40" />
-          <p className="text-sm text-tx2 font-medium">
-            {searchTerm || statusFilter !== 'all' ? 'Tidak ada OLT yang cocok' : 'Belum ada OLT'}
-          </p>
-          <p className="text-xs text-tx3 mt-1">
-            {searchTerm || statusFilter !== 'all' ? 'Coba ubah filter pencarian' : 'Tambah OLT di Settings → OLT Settings'}
-          </p>
-        </div>
+        <EmptyState
+          icon={Server}
+          title={searchTerm || statusFilter !== 'all' ? 'Tidak ada OLT yang cocok' : 'Belum ada OLT'}
+          description={searchTerm || statusFilter !== 'all' ? 'Coba ubah filter pencarian' : 'Tambah OLT di Settings → OLT Settings'}
+        />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {sortedOlts.map(olt => (
@@ -361,7 +363,7 @@ export function Dashboard() {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
