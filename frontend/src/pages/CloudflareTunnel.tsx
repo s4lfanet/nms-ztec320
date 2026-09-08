@@ -5,6 +5,9 @@ import {
   Cloud, Download, Play, Square, Save, Terminal,
   CheckCircle2, XCircle, Loader2, ExternalLink, RefreshCw,
 } from 'lucide-react';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, Input } from '../components/ui';
 
 interface CfStatus {
   success: boolean;
@@ -106,43 +109,39 @@ export function CloudflareTunnel() {
   const configured = status?.configured;
 
   return (
-    <div className="space-y-4 max-w-3xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Cloud size={22} className="text-accent" />
-            Cloudflare Tunnel
-          </h1>
-          <p className="text-tx3 text-xs mt-0.5">
-            Hubungkan VPS ke domain via Cloudflare Tunnel — tanpa buka port, tanpa IP publik
-          </p>
-        </div>
-        <button onClick={() => refetch()} className="p-2 rounded-lg hover:bg-glass text-tx2 hover:text-tx1">
-          <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-        </button>
-      </div>
+    <PageContainer className="max-w-3xl">
+      <PageHeader
+        icon={<Cloud size={22} className="text-accent" />}
+        title="Cloudflare Tunnel"
+        description="Hubungkan VPS ke domain via Cloudflare Tunnel — tanpa buka port, tanpa IP publik"
+        action={
+          <Button variant="icon" onClick={() => refetch()}>
+            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+          </Button>
+        }
+      />
 
       {/* Status Cards */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="glass-card p-4 border border-brd">
+        <Card bodyClassName="p-4">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] text-tx3 uppercase tracking-wide">cloudflared</span>
             {installed ? <CheckCircle2 size={16} className="text-success" /> : <XCircle size={16} className="text-danger" />}
           </div>
           <div className="text-sm font-semibold">{installed ? 'Installed' : 'Not Installed'}</div>
           {status?.version && <div className="text-[10px] text-tx3 mt-0.5 font-mono truncate">{status.version}</div>}
-        </div>
+        </Card>
 
-        <div className="glass-card p-4 border border-brd">
+        <Card bodyClassName="p-4">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] text-tx3 uppercase tracking-wide">Tunnel</span>
             {running ? <span className="w-2 h-2 rounded-full bg-success animate-pulse" /> : <span className="w-2 h-2 rounded-full bg-danger" />}
           </div>
           <div className="text-sm font-semibold">{running ? 'Running' : 'Stopped'}</div>
           {status?.tunnel_name && <div className="text-[10px] text-tx3 mt-0.5">{status.tunnel_name}</div>}
-        </div>
+        </Card>
 
-        <div className="glass-card p-4 border border-brd">
+        <Card bodyClassName="p-4">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] text-tx3 uppercase tracking-wide">Domain</span>
             {configured ? <CheckCircle2 size={16} className="text-success" /> : <XCircle size={16} className="text-tx3" />}
@@ -154,94 +153,81 @@ export function CloudflareTunnel() {
               {status.domain} <ExternalLink size={9} />
             </a>
           )}
-        </div>
+        </Card>
       </div>
 
       {/* Step 1: Install cloudflared */}
       {!installed && (
-        <div className="glass-card p-5 border border-brd">
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[10px] font-bold flex items-center justify-center">1</span>
-            Install cloudflared
-          </h3>
+        <Card
+          icon={<span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[10px] font-bold flex items-center justify-center">1</span>}
+          title="Install cloudflared"
+        >
           <p className="text-xs text-tx3 mb-3">
             Download dan install Cloudflare Tunnel daemon di VPS ini.
           </p>
-          <button
+          <Button
+            variant="accent"
+            icon={installMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
             onClick={() => installMutation.mutate()}
             disabled={installMutation.isPending}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-sm font-medium transition-all disabled:opacity-50"
           >
-            {installMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
             Install cloudflared
-          </button>
-        </div>
+          </Button>
+        </Card>
       )}
 
       {/* Step 2: Configure Tunnel */}
       {installed && (
-        <div className="glass-card p-5 border border-brd">
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[10px] font-bold flex items-center justify-center">2</span>
-            Configure Tunnel
-          </h3>
+        <Card
+          icon={<span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[10px] font-bold flex items-center justify-center">2</span>}
+          title="Configure Tunnel"
+        >
           <p className="text-xs text-tx3 mb-4">
             Buat tunnel di <a href="https://one.dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline inline-flex items-center gap-0.5">Cloudflare Zero Trust <ExternalLink size={9} /></a> → Networks → Tunnels → Create Tunnel.
             Copy tunnel token dan paste di bawah. Set hostname public ke <code className="text-accent">http://localhost:80</code>.
           </p>
 
           <div className="space-y-3">
-            <div>
-              <label className="text-xs text-tx2 font-medium mb-1 block">Tunnel Token</label>
-              <input
-                type="password"
-                value={token}
-                onChange={e => setToken(e.target.value)}
-                placeholder="eyJhIjoi... (dari Cloudflare Zero Trust dashboard)"
-                className="w-full px-3 py-2 text-xs rounded-lg bg-glass border border-brd focus:outline-none focus:border-accent/50 text-tx1 font-mono"
+            <Input
+              label="Tunnel Token"
+              type="password"
+              value={token}
+              onChange={e => setToken(e.target.value)}
+              placeholder="eyJhIjoi... (dari Cloudflare Zero Trust dashboard)"
+              className="font-mono"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Domain"
+                value={domain}
+                onChange={e => setDomain(e.target.value)}
+                placeholder="nms.example.com"
+              />
+              <Input
+                label="Tunnel Name"
+                value={tunnelName}
+                onChange={e => setTunnelName(e.target.value)}
+                placeholder="salfanet-nms"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-tx2 font-medium mb-1 block">Domain</label>
-                <input
-                  type="text"
-                  value={domain}
-                  onChange={e => setDomain(e.target.value)}
-                  placeholder="nms.example.com"
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-glass border border-brd focus:outline-none focus:border-accent/50 text-tx1"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-tx2 font-medium mb-1 block">Tunnel Name</label>
-                <input
-                  type="text"
-                  value={tunnelName}
-                  onChange={e => setTunnelName(e.target.value)}
-                  placeholder="salfanet-nms"
-                  className="w-full px-3 py-2 text-xs rounded-lg bg-glass border border-brd focus:outline-none focus:border-accent/50 text-tx1"
-                />
-              </div>
-            </div>
-            <button
+            <Button
+              variant="accent"
+              icon={configureMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
               onClick={() => configureMutation.mutate()}
               disabled={configureMutation.isPending || !token || !domain}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent/15 text-accent border border-accent/20 hover:bg-accent/25 text-sm font-medium transition-all disabled:opacity-50"
             >
-              {configureMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
               Save & Start Tunnel
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Step 3: Control */}
       {installed && configured && (
-        <div className="glass-card p-5 border border-brd">
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[10px] font-bold flex items-center justify-center">3</span>
-            Tunnel Control
-          </h3>
+        <Card
+          icon={<span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[10px] font-bold flex items-center justify-center">3</span>}
+          title="Tunnel Control"
+        >
           <div className="flex items-center gap-2">
             <button
               onClick={() => startMutation.mutate()}
@@ -259,13 +245,9 @@ export function CloudflareTunnel() {
               {stopMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Square size={16} />}
               Stop
             </button>
-            <button
-              onClick={fetchLogs}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-glass border border-brd hover:border-accent/30 text-sm font-medium transition-all"
-            >
-              <Terminal size={16} />
+            <Button variant="secondary" icon={<Terminal size={16} />} onClick={fetchLogs}>
               {showLogs ? 'Hide Logs' : 'View Logs'}
-            </button>
+            </Button>
           </div>
 
           {showLogs && (
@@ -273,11 +255,11 @@ export function CloudflareTunnel() {
               <pre className="text-[10px] font-mono text-tx2 bg-glass rounded-lg p-3 max-h-64 overflow-auto border border-brd whitespace-pre-wrap">{logs}</pre>
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {/* Info Banner */}
-      <div className="glass-card p-4 border border-info/20 bg-info/5">
+      <Card className="border-info/20 bg-info/5" bodyClassName="p-4">
         <div className="flex items-start gap-2">
           <Cloud size={16} className="text-info flex-shrink-0 mt-0.5" />
           <div className="text-xs text-tx2 space-y-1">
@@ -288,7 +270,7 @@ export function CloudflareTunnel() {
             <p>4. SSL/TLS otomatis dari Cloudflare — tidak perlu certbot.</p>
           </div>
         </div>
-      </div>
-    </div>
+      </Card>
+    </PageContainer>
   );
 }
