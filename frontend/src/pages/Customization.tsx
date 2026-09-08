@@ -7,6 +7,9 @@ import {
   Eye, EyeOff, Monitor, Smartphone, Save, ArrowUp, ArrowDown,
   RotateCcw, Signal, AlertTriangle, CheckCircle, AlertCircle, Palette, Plus, Trash2, Globe, Clock
 } from 'lucide-react';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, Select } from '../components/ui';
 
 interface Column { id: string; column_name: string; column_key: string; visible_desktop: boolean; visible_mobile: boolean; sort_order: number; }
 
@@ -106,16 +109,11 @@ export function Customization() {
   const mobileColumns = columns.filter(c => c.visible_mobile);
 
   return (
-    <div className="space-y-4 md:space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">Customization</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">All ONUs Custom Page</p>
-        </div>
-      </div>
+    <PageContainer className="animate-fade-in">
+      <PageHeader title="Customization" description="All ONUs Custom Page" />
 
       {/* Tabs */}
-      <div className="glass-card overflow-hidden">
+      <Card bodyClassName="p-0">
         <div className="flex border-b border-brd overflow-x-auto">
           <button onClick={() => setActiveTab('desktop')}
             className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
@@ -149,10 +147,9 @@ export function Customization() {
           <div className="p-4 md:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
               <h3 className="text-sm font-semibold flex items-center gap-2"><Monitor size={16} className="text-accent" /> Desktop ONUs Table</h3>
-              <button onClick={handleSave} disabled={!hasChanges || saveMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all disabled:opacity-50">
-                <Save size={14} /> Save Changes
-              </button>
+              <Button variant="primary" icon={<Save size={14} />} onClick={handleSave} disabled={!hasChanges} loading={saveMutation.isPending}>
+                Save Changes
+              </Button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -236,10 +233,9 @@ export function Customization() {
           <div className="p-4 md:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
               <h3 className="text-sm font-semibold flex items-center gap-2"><Smartphone size={16} className="text-accent" /> Mobile ONUs Table</h3>
-              <button onClick={handleSave} disabled={!hasChanges || saveMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all disabled:opacity-50">
-                <Save size={14} /> Save Changes
-              </button>
+              <Button variant="primary" icon={<Save size={14} />} onClick={handleSave} disabled={!hasChanges} loading={saveMutation.isPending}>
+                Save Changes
+              </Button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -323,8 +319,8 @@ export function Customization() {
         {activeTab === 'timezone' && (
           <TimezoneTab />
         )}
-      </div>
-    </div>
+      </Card>
+    </PageContainer>
   );
 }
 
@@ -386,14 +382,14 @@ function SignalFilterTab() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
         <h3 className="text-sm font-semibold flex items-center gap-2"><Signal size={16} className="text-accent" /> ONU Signal Filter</h3>
         <div className="flex items-center gap-2">
-          <button onClick={() => { setCritical(DEFAULT_CRITICAL); setGood(DEFAULT_GOOD); setHasChanges(true); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass hover:bg-glass/70 text-tx2 text-sm font-medium transition-all">
-            <RotateCcw size={14} /> Default
-          </button>
-          <button onClick={() => saveMutation.mutate()} disabled={!hasChanges || saveMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all disabled:opacity-50">
-            <Save size={14} /> Apply
-          </button>
+          <Button variant="secondary" icon={<RotateCcw size={14} />}
+            onClick={() => { setCritical(DEFAULT_CRITICAL); setGood(DEFAULT_GOOD); setHasChanges(true); }}>
+            Default
+          </Button>
+          <Button variant="primary" icon={<Save size={14} />} onClick={() => saveMutation.mutate()}
+            disabled={!hasChanges} loading={saveMutation.isPending}>
+            Apply
+          </Button>
         </div>
       </div>
 
@@ -467,27 +463,27 @@ function SignalFilterTab() {
 
       {/* Zone descriptions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="glass-card p-4 rounded-lg border border-success/20">
+        <Card className="border-success/20" bodyClassName="p-4">
           <div className="flex items-center gap-2 mb-1">
             <CheckCircle size={16} className="text-success" />
             <h4 className="text-sm font-semibold text-success">Good</h4>
           </div>
           <p className="text-xs text-tx2">Signal power is optimal when it's greater than or equal to {good.toFixed(1)} dBm</p>
-        </div>
-        <div className="glass-card p-4 rounded-lg border border-warning/20">
+        </Card>
+        <Card className="border-warning/20" bodyClassName="p-4">
           <div className="flex items-center gap-2 mb-1">
             <AlertTriangle size={16} className="text-warning" />
             <h4 className="text-sm font-semibold text-warning">Warning</h4>
           </div>
           <p className="text-xs text-tx2">Signal is acceptable but needs monitoring when between {critical.toFixed(1)} dBm and {good.toFixed(1)} dBm</p>
-        </div>
-        <div className="glass-card p-4 rounded-lg border border-danger/20">
+        </Card>
+        <Card className="border-danger/20" bodyClassName="p-4">
           <div className="flex items-center gap-2 mb-1">
             <AlertCircle size={16} className="text-danger" />
             <h4 className="text-sm font-semibold text-danger">Critical</h4>
           </div>
           <p className="text-xs text-tx2">Signal is poor and needs attention when less than {critical.toFixed(1)} dBm</p>
-        </div>
+        </Card>
       </div>
     </div>
   );
@@ -542,14 +538,11 @@ function RxColorsTab() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
         <h3 className="text-sm font-semibold flex items-center gap-2"><Palette size={16} className="text-accent" /> RX Power Color Ranges</h3>
         <div className="flex items-center gap-2">
-          <button onClick={addRange}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-glass hover:bg-glass/70 text-tx2 text-sm font-medium transition-all">
-            <Plus size={14} /> Add Range
-          </button>
-          <button onClick={() => saveMutation.mutate()} disabled={!hasChanges || saveMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all disabled:opacity-50">
-            <Save size={14} /> Save
-          </button>
+          <Button variant="secondary" icon={<Plus size={14} />} onClick={addRange}>Add Range</Button>
+          <Button variant="primary" icon={<Save size={14} />} onClick={() => saveMutation.mutate()}
+            disabled={!hasChanges} loading={saveMutation.isPending}>
+            Save
+          </Button>
         </div>
       </div>
 
@@ -706,20 +699,20 @@ function TimezoneTab() {
           <h3 className="text-sm font-semibold flex items-center gap-2"><Clock size={16} className="text-accent" /> System Timezone</h3>
           <p className="text-xs text-tx3 mt-1">Set timezone used for auto-backup scheduling, timestamps, and UI display.</p>
         </div>
-        <button onClick={handleSave} disabled={saving}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-all disabled:opacity-50">
-          {saving ? <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> : <Save size={14} />} Save Timezone
-        </button>
+        <Button variant="primary" icon={<Save size={14} />} onClick={handleSave} loading={saving}>
+          Save Timezone
+        </Button>
       </div>
 
       {/* Timezone selector */}
-      <div className="glass-card p-4 border border-brd space-y-4">
+      <Card bodyClassName="p-4 space-y-4">
         <div>
-          <label className="text-xs text-tx3 font-medium block mb-2">Select Timezone</label>
-          <select value={timezone} onChange={e => setTimezone(e.target.value)}
-            className="w-full h-10 px-3 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none">
-            {COMMON_TIMEZONES.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
-          </select>
+          <Select
+            label="Select Timezone"
+            value={timezone}
+            onChange={e => setTimezone(e.target.value)}
+            options={COMMON_TIMEZONES}
+          />
         </div>
 
         {/* Live time preview */}
@@ -735,10 +728,10 @@ function TimezoneTab() {
             <div className="text-xs text-tx3 mt-1">Server time</div>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Info */}
-      <div className="p-4 rounded-lg bg-accent/5 border border-accent/20">
+      <Card className="border-accent/20 bg-accent/5" bodyClassName="p-4">
         <h4 className="text-xs font-semibold text-accent mb-2 flex items-center gap-1.5"><AlertCircle size={14} /> How Timezone Affects the System</h4>
         <ul className="text-xs text-tx3 space-y-1.5 pl-4 list-disc">
           <li><strong>Auto-Backup</strong>: The "At time" setting in OLT backup config uses this timezone. E.g. "02:00" means 02:00 in the selected timezone.</li>
@@ -746,7 +739,7 @@ function TimezoneTab() {
           <li><strong>Database</strong>: All timestamps remain stored in UTC in the database for consistency. Only display is converted.</li>
           <li><strong>VPS Time</strong>: The VPS server runs in UTC. NTP should be enabled to keep server time accurate.</li>
         </ul>
-      </div>
+      </Card>
     </div>
   );
 }

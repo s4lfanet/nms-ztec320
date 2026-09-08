@@ -5,6 +5,7 @@ import { api, type TechnicianData } from '../lib/api';
 import { collectOdpPortOptions } from '../lib/ftthTree';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
+import { Button, Input, Select } from '../components/ui';
 import {
   ArrowLeft, ArrowRight, Server, Radio, Search, Check, Loader2,
   Settings, FileText, Zap, Copy, Plus, Trash2, Wrench
@@ -642,10 +643,10 @@ export function RegisterWizard() {
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 md:gap-3 min-w-0">
-          <button onClick={() => step > 1 && step <= 4 ? setStep(step - 1) : navigate('/dashboard/onus/add')}
-            className="p-2 rounded-lg hover:bg-glass transition-colors text-tx2 hover:text-tx1 flex-shrink-0">
+          <Button variant="icon" onClick={() => step > 1 && step <= 4 ? setStep(step - 1) : navigate('/dashboard/onus/add')}
+            className="flex-shrink-0">
             <ArrowLeft size={18} />
-          </button>
+          </Button>
           <div className="min-w-0">
             <h1 className="text-xl md:text-2xl font-bold truncate">Register ONU Wizard</h1>
             <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">Step-by-step ONU registration with auto-configuration</p>
@@ -742,17 +743,14 @@ export function RegisterWizard() {
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Search size={18} /> Unconfigured ONUs</h2>
             <div className="flex gap-2 flex-shrink-0">
-              <button onClick={scanOnus} disabled={scanning}
-                className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-accent text-white text-xs md:text-sm font-medium hover:bg-accent-hover disabled:opacity-50">
-                {scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+              <Button onClick={scanOnus} loading={scanning} icon={<Search size={14} />} className="text-xs md:text-sm">
                 <span className="hidden sm:inline">{scanning ? 'Scanning...' : 'Scan OLT'}</span>
                 <span className="sm:hidden">{scanning ? '...' : 'Scan'}</span>
-              </button>
+              </Button>
               {unconfiguredOnus.length > 0 && (
-                <button onClick={selectAll}
-                  className="px-3 md:px-4 py-2 rounded-xl bg-glass border border-brd text-xs md:text-sm hover:border-accent/30">
+                <Button variant="secondary" onClick={selectAll} className="text-xs md:text-sm">
                   All ({unconfiguredOnus.length})
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -811,19 +809,16 @@ export function RegisterWizard() {
 
           {/* Load Custom Template */}
           {dbTemplates.length > 0 && (
-            <div>
-              <label className="label-sm mb-2">Load Custom Template</label>
-              <select
-                onChange={e => { if (e.target.value) loadDbTemplate(Number(e.target.value)); }}
-                defaultValue=""
-                className="input-field"
-              >
-                <option value="">— Select template —</option>
-                {dbTemplates.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}{t.config ? ` (${t.config})` : ''}</option>
-                ))}
-              </select>
-            </div>
+            <Select
+              label="Load Custom Template"
+              onChange={e => { if (e.target.value) loadDbTemplate(Number(e.target.value)); }}
+              defaultValue=""
+            >
+              <option value="">— Select template —</option>
+              {dbTemplates.map(t => (
+                <option key={t.id} value={t.id}>{t.name}{t.config ? ` (${t.config})` : ''}</option>
+              ))}
+            </Select>
           )}
 
           {/* Service Template */}
@@ -855,76 +850,75 @@ export function RegisterWizard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             {/* ONU Type */}
-            <div>
-              <label className="label-sm mb-1.5">ONU Type</label>
-              <select value={data.onuType} onChange={e => update('onuType', e.target.value)}
-                className="input-field">
-                <option value="All">All (auto-detect)</option>
-                {(() => {
-                  const isEpon = data.selectedOnus.length > 0 &&
-                    (data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon === true);
-                  const filtered = isEpon
-                    ? onuTypes.filter(t => t.pon_type === 'epon')
-                    : onuTypes.filter(t => t.pon_type === 'gpon');
-                  return filtered.map(t => <option key={t.type_name} value={t.type_name}>{t.type_name}</option>);
-                })()}
-              </select>
-              {onuTypes.length > 0 && <p className="text-xs text-tx3 mt-1">{onuTypes.length} types available{data.selectedOnus.length > 0 ? ` (${(data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon) ? 'EPON' : 'GPON'})` : ''}</p>}
-            </div>
+            <Select
+              label="ONU Type"
+              value={data.onuType} onChange={e => update('onuType', e.target.value)}
+              helperText={onuTypes.length > 0 ? `${onuTypes.length} types available${data.selectedOnus.length > 0 ? ` (${(data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon) ? 'EPON' : 'GPON'})` : ''}` : undefined}
+            >
+              <option value="All">All (auto-detect)</option>
+              {(() => {
+                const isEpon = data.selectedOnus.length > 0 &&
+                  (data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon === true);
+                const filtered = isEpon
+                  ? onuTypes.filter(t => t.pon_type === 'epon')
+                  : onuTypes.filter(t => t.pon_type === 'gpon');
+                return filtered.map(t => <option key={t.type_name} value={t.type_name}>{t.type_name}</option>);
+              })()}
+            </Select>
 
             {/* TCONT/Traffic or SLA Profile */}
             {(() => {
               const isEponUI = data.selectedOnus.length > 0 && (data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon === true);
               return isEponUI ? (
                 <div className="grid grid-cols-1 gap-2 md:gap-3">
-                  <div>
-                    <label className="label-sm mb-1.5">EPON SLA Profile <span className="text-tx3">(Speed Limit)</span></label>
-                    <select value={data.slaProfile} onChange={e => update('slaProfile', e.target.value)}
-                      className="input-field">
-                      <option value="">— No SLA (Default) —</option>
-                      {slaProfiles.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                    {slaProfiles.length > 0 && <p className="text-xs text-tx3 mt-1">{slaProfiles.length} SLA profiles</p>}
-                  </div>
+                  <Select
+                    label={<>EPON SLA Profile <span className="text-tx3">(Speed Limit)</span></>}
+                    value={data.slaProfile} onChange={e => update('slaProfile', e.target.value)}
+                    helperText={slaProfiles.length > 0 ? `${slaProfiles.length} SLA profiles` : undefined}
+                  >
+                    <option value="">— No SLA (Default) —</option>
+                    {slaProfiles.map(p => <option key={p} value={p}>{p}</option>)}
+                  </Select>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2 md:gap-3">
-                  <div>
-                    <label className="label-sm mb-1.5">TCONT Profile <span className="text-tx3">(Upload)</span></label>
-                    <select value={data.tcontProfile} onChange={e => update('tcontProfile', e.target.value)}
-                      className="input-field">
-                      <option value="">Select profile...</option>
-                      {tcontProfiles.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                    {tcontProfiles.length > 0 && <p className="text-xs text-tx3 mt-1">{tcontProfiles.length} TCONT profiles</p>}
-                  </div>
-                  <div>
-                    <label className="label-sm mb-1.5">Traffic Profile <span className="text-tx3">(Download)</span></label>
-                    <select value={data.trafficProfile} onChange={e => update('trafficProfile', e.target.value)}
-                      className="input-field">
-                      <option value="">None (no DL limit)</option>
-                      {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                    {trafficProfiles.length > 0 && <p className="text-xs text-tx3 mt-1">{trafficProfiles.length} traffic profiles</p>}
-                  </div>
+                  <Select
+                    label={<>TCONT Profile <span className="text-tx3">(Upload)</span></>}
+                    value={data.tcontProfile} onChange={e => update('tcontProfile', e.target.value)}
+                    helperText={tcontProfiles.length > 0 ? `${tcontProfiles.length} TCONT profiles` : undefined}
+                  >
+                    <option value="">Select profile...</option>
+                    {tcontProfiles.map(p => <option key={p} value={p}>{p}</option>)}
+                  </Select>
+                  <Select
+                    label={<>Traffic Profile <span className="text-tx3">(Download)</span></>}
+                    value={data.trafficProfile} onChange={e => update('trafficProfile', e.target.value)}
+                    helperText={trafficProfiles.length > 0 ? `${trafficProfiles.length} traffic profiles` : undefined}
+                  >
+                    <option value="">None (no DL limit)</option>
+                    {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
+                  </Select>
                 </div>
               );
             })()}
 
             {/* VLAN */}
             <div>
-              <label className="label-sm mb-1.5">VLAN ID</label>
               {vlanList.length > 0 ? (
-                <select value={data.vlan} onChange={e => update('vlan', parseInt(e.target.value) || 100)}
-                  className="input-field">
+                <Select
+                  label="VLAN ID"
+                  value={data.vlan} onChange={e => update('vlan', parseInt(e.target.value) || 100)}
+                  helperText={`${vlanList.length} VLANs available from OLT`}
+                >
                   <option value={100}>100 (default)</option>
                   {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
-                </select>
+                </Select>
               ) : (
-                <input type="number" value={data.vlan} onChange={e => update('vlan', parseInt(e.target.value) || 100)}
-                  min={1} max={4094} className="input-field" />
+                <Input
+                  label="VLAN ID"
+                  type="number" value={data.vlan} onChange={e => update('vlan', parseInt(e.target.value) || 100)}
+                  min={1} max={4094} />
               )}
-              {vlanList.length > 0 && <p className="text-xs text-tx3 mt-1">{vlanList.length} VLANs available from OLT</p>}
             </div>
 
             {/* Configure toggle */}
@@ -944,13 +938,10 @@ export function RegisterWizard() {
             <div className="p-3 md:p-4 rounded-lg bg-glass border border-accent/20 space-y-3">
               <h4 className="text-sm font-semibold text-accent">PPPoE Settings</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="label-sm mb-1">Username</label>
-                  <input type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} className="input-field" placeholder="PPPoE Username" /></div>
-                <div><label className="label-sm mb-1">Password</label>
-                  <div className="relative">
-                    <input type={data.extra._show_pppoe_pass === 'true' ? 'text' : 'password'} value={String(data.extra.pppoe_pass || '')} onChange={e => update('extra', { ...data.extra, pppoe_pass: e.target.value })} className="input-field pr-10" placeholder="PPPoE Password" />
-                    <button type="button" onClick={() => update('extra', { ...data.extra, _show_pppoe_pass: data.extra._show_pppoe_pass === 'true' ? '' : 'true' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1">{data.extra._show_pppoe_pass === 'true' ? '🙈' : '👁'}</button>
-                  </div></div>
+                <Input label="Username" type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} placeholder="PPPoE Username" />
+                <Input label="Password"
+                  type={data.extra._show_pppoe_pass === 'true' ? 'text' : 'password'} value={String(data.extra.pppoe_pass || '')} onChange={e => update('extra', { ...data.extra, pppoe_pass: e.target.value })} placeholder="PPPoE Password"
+                  suffix={<button type="button" onClick={() => update('extra', { ...data.extra, _show_pppoe_pass: data.extra._show_pppoe_pass === 'true' ? '' : 'true' })} className="hover:text-tx1">{data.extra._show_pppoe_pass === 'true' ? '🙈' : '👁'}</button>} />
               </div>
             </div>
           )}
@@ -987,13 +978,10 @@ export function RegisterWizard() {
                 </label>
                 {data.extra.enable_pppoe === 'true' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6">
-                    <div><label className="label-sm mb-1">PPPoE Username</label>
-                      <input type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} className="input-field" placeholder="PPPoE Username" /></div>
-                    <div><label className="label-sm mb-1">PPPoE Password</label>
-                      <div className="relative">
-                        <input type={data.extra._show_pppoe_pass === 'true' ? 'text' : 'password'} value={String(data.extra.pppoe_pass || '')} onChange={e => update('extra', { ...data.extra, pppoe_pass: e.target.value })} className="input-field pr-10" placeholder="PPPoE Password" />
-                        <button type="button" onClick={() => update('extra', { ...data.extra, _show_pppoe_pass: data.extra._show_pppoe_pass === 'true' ? '' : 'true' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1">{data.extra._show_pppoe_pass === 'true' ? '🙈' : '👁'}</button>
-                      </div></div>
+                    <Input label="PPPoE Username" type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} placeholder="PPPoE Username" />
+                    <Input label="PPPoE Password"
+                      type={data.extra._show_pppoe_pass === 'true' ? 'text' : 'password'} value={String(data.extra.pppoe_pass || '')} onChange={e => update('extra', { ...data.extra, pppoe_pass: e.target.value })} placeholder="PPPoE Password"
+                      suffix={<button type="button" onClick={() => update('extra', { ...data.extra, _show_pppoe_pass: data.extra._show_pppoe_pass === 'true' ? '' : 'true' })} className="hover:text-tx1">{data.extra._show_pppoe_pass === 'true' ? '🙈' : '👁'}</button>} />
                   </div>
                 )}
               </div>
@@ -1002,22 +990,18 @@ export function RegisterWizard() {
               <div className="space-y-2 pl-4 border-l-2 border-accent/20">
                 <div className="text-xs font-semibold text-tx2">WiFi SSID 2.4GHz — opsional (kosong = default ONT)</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2"><label className="label-sm mb-1">SSID Name</label>
-                    <input type="text" value={String(data.extra.ssid_name || '')} onChange={e => update('extra', { ...data.extra, ssid_name: e.target.value })} className="input-field" placeholder="Nama WiFi 2.4GHz (tanpa spasi)" /></div>
-                  <div><label className="label-sm mb-1">Auth</label>
-                    <select value={data.extra.ssid_auth || 'wpa2'} onChange={e => update('extra', { ...data.extra, ssid_auth: e.target.value })} className="input-field">
-                      <option value="wpa2">WPA2-PSK</option>
-                      <option value="mixed">WPA/WPA2 Mixed</option>
-                      <option value="wpa">WPA-PSK</option>
-                      <option value="open">Open (No Password)</option>
-                    </select></div>
+                  <Input wrapperClassName="sm:col-span-2" label="SSID Name" type="text" value={String(data.extra.ssid_name || '')} onChange={e => update('extra', { ...data.extra, ssid_name: e.target.value })} placeholder="Nama WiFi 2.4GHz (tanpa spasi)" />
+                  <Select label="Auth" value={data.extra.ssid_auth || 'wpa2'} onChange={e => update('extra', { ...data.extra, ssid_auth: e.target.value })}>
+                    <option value="wpa2">WPA2-PSK</option>
+                    <option value="mixed">WPA/WPA2 Mixed</option>
+                    <option value="wpa">WPA-PSK</option>
+                    <option value="open">Open (No Password)</option>
+                  </Select>
                 </div>
                 {data.extra.ssid_name && data.extra.ssid_auth !== 'open' && (
-                  <div><label className="label-sm mb-1">WiFi Password</label>
-                    <div className="relative">
-                      <input type={data.extra._show_ssid_pass === 'true' ? 'text' : 'password'} value={String(data.extra.ssid_pass || '')} onChange={e => update('extra', { ...data.extra, ssid_pass: e.target.value })} className="input-field pr-10" placeholder="Min 8 karakter" />
-                      <button type="button" onClick={() => update('extra', { ...data.extra, _show_ssid_pass: data.extra._show_ssid_pass === 'true' ? '' : 'true' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1">{data.extra._show_ssid_pass === 'true' ? '🙈' : '👁'}</button>
-                    </div></div>
+                  <Input label="WiFi Password"
+                    type={data.extra._show_ssid_pass === 'true' ? 'text' : 'password'} value={String(data.extra.ssid_pass || '')} onChange={e => update('extra', { ...data.extra, ssid_pass: e.target.value })} placeholder="Min 8 karakter"
+                    suffix={<button type="button" onClick={() => update('extra', { ...data.extra, _show_ssid_pass: data.extra._show_ssid_pass === 'true' ? '' : 'true' })} className="hover:text-tx1">{data.extra._show_ssid_pass === 'true' ? '🙈' : '👁'}</button>} />
                 )}
               </div>
 
@@ -1028,12 +1012,13 @@ export function RegisterWizard() {
                   <span className="text-sm font-medium">Enable Firewall</span>
                 </label>
                 {data.extra.enable_firewall === 'true' && (
-                  <div className="pl-6"><label className="label-sm mb-1">Firewall Level</label>
-                    <select value={data.extra.firewall_level || 'low'} onChange={e => update('extra', { ...data.extra, firewall_level: e.target.value })} className="input-field">
+                  <div className="pl-6">
+                    <Select label="Firewall Level" value={data.extra.firewall_level || 'low'} onChange={e => update('extra', { ...data.extra, firewall_level: e.target.value })}>
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
                       <option value="high">High</option>
-                    </select></div>
+                    </Select>
+                  </div>
                 )}
               </div>
 
@@ -1045,11 +1030,10 @@ export function RegisterWizard() {
                 </label>
                 {data.extra.enable_tr069 === 'true' && (
                   <div className="pl-6 space-y-3">
-                    <div><label className="label-sm mb-1">TR069 Profile</label>
-                      <select value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)} className="input-field">
-                        <option value="">Select Profile...</option>
-                        {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
-                      </select></div>
+                    <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
+                      <option value="">Select Profile...</option>
+                      {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
+                    </Select>
                     {data.extra.tr069_profile_id && (
                       <div className="grid grid-cols-2 gap-3 text-xs text-tx3">
                         <div>ACS URL: <span className="text-tx1 font-mono">{data.extra.acs_url}</span></div>
@@ -1160,13 +1144,10 @@ export function RegisterWizard() {
                 </label>
                 {data.extra.enable_pppoe === 'true' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6">
-                    <div><label className="label-sm mb-1">PPPoE Username</label>
-                      <input type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} className="input-field" placeholder="PPPoE Username" /></div>
-                    <div><label className="label-sm mb-1">PPPoE Password</label>
-                      <div className="relative">
-                        <input type={data.extra._show_pppoe_pass === 'true' ? 'text' : 'password'} value={String(data.extra.pppoe_pass || '')} onChange={e => update('extra', { ...data.extra, pppoe_pass: e.target.value })} className="input-field pr-10" placeholder="PPPoE Password" />
-                        <button type="button" onClick={() => update('extra', { ...data.extra, _show_pppoe_pass: data.extra._show_pppoe_pass === 'true' ? '' : 'true' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1">{data.extra._show_pppoe_pass === 'true' ? '🙈' : '👁'}</button>
-                      </div></div>
+                    <Input label="PPPoE Username" type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} placeholder="PPPoE Username" />
+                    <Input label="PPPoE Password"
+                      type={data.extra._show_pppoe_pass === 'true' ? 'text' : 'password'} value={String(data.extra.pppoe_pass || '')} onChange={e => update('extra', { ...data.extra, pppoe_pass: e.target.value })} placeholder="PPPoE Password"
+                      suffix={<button type="button" onClick={() => update('extra', { ...data.extra, _show_pppoe_pass: data.extra._show_pppoe_pass === 'true' ? '' : 'true' })} className="hover:text-tx1">{data.extra._show_pppoe_pass === 'true' ? '🙈' : '👁'}</button>} />
                   </div>
                 )}
               </div>
@@ -1273,12 +1254,13 @@ export function RegisterWizard() {
                   <span className="text-sm font-medium">Enable Firewall</span>
                 </label>
                 {data.extra.enable_firewall === 'true' && (
-                  <div className="pl-6"><label className="label-sm mb-1">Firewall Level</label>
-                    <select value={data.extra.firewall_level || 'low'} onChange={e => update('extra', { ...data.extra, firewall_level: e.target.value })} className="input-field">
+                  <div className="pl-6">
+                    <Select label="Firewall Level" value={data.extra.firewall_level || 'low'} onChange={e => update('extra', { ...data.extra, firewall_level: e.target.value })}>
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
                       <option value="high">High</option>
-                    </select></div>
+                    </Select>
+                  </div>
                 )}
               </div>
 
@@ -1290,11 +1272,10 @@ export function RegisterWizard() {
                 </label>
                 {data.extra.enable_tr069 === 'true' && (
                   <div className="pl-6 space-y-3">
-                    <div><label className="label-sm mb-1">TR069 Profile</label>
-                      <select value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)} className="input-field">
-                        <option value="">Select Profile...</option>
-                        {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
-                      </select></div>
+                    <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
+                      <option value="">Select Profile...</option>
+                      {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
+                    </Select>
                     {data.extra.tr069_profile_id && (
                       <div className="grid grid-cols-2 gap-3 text-xs text-tx3">
                         <div>ACS URL: <span className="text-tx1 font-mono">{data.extra.acs_url}</span></div>
@@ -1589,11 +1570,10 @@ export function RegisterWizard() {
                 </label>
                 {data.extra.enable_tr069 === 'true' && (
                   <div className="pl-6 space-y-3">
-                    <div><label className="label-sm mb-1">TR069 Profile</label>
-                      <select value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)} className="input-field">
-                        <option value="">Select Profile...</option>
-                        {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
-                      </select></div>
+                    <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
+                      <option value="">Select Profile...</option>
+                      {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
+                    </Select>
                     {data.extra.tr069_profile_id && (
                       <div className="grid grid-cols-2 gap-3 text-xs text-tx3">
                         <div>ACS URL: <span className="text-tx1 font-mono">{data.extra.acs_url}</span></div>
@@ -1681,8 +1661,7 @@ export function RegisterWizard() {
                 <p className="text-[10px] text-tx3 mt-1">Setiap VLAN akan dibuatkan service-port pada ONU. Jumlah VLAN fleksibel sesuai kebutuhan tenant.</p>
               </div>
 
-              <div><label className="label-sm mb-1">VLAN Profile Name</label>
-                <input type="text" value={String(data.extra.vlan_profile || 'genieacs')} onChange={e => update('extra', { ...data.extra, vlan_profile: e.target.value })} className="input-field" /></div>
+              <Input label="VLAN Profile Name" type="text" value={String(data.extra.vlan_profile || 'genieacs')} onChange={e => update('extra', { ...data.extra, vlan_profile: e.target.value })} />
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_tr069 === 'true'} onChange={e => update('extra', { ...data.extra, enable_tr069: e.target.checked ? 'true' : '' })} />
@@ -1690,11 +1669,10 @@ export function RegisterWizard() {
                 </label>
                 {data.extra.enable_tr069 === 'true' && (
                   <div className="pl-6 space-y-3">
-                    <div><label className="label-sm mb-1">TR069 Profile</label>
-                      <select value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)} className="input-field">
-                        <option value="">Select Profile...</option>
-                        {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
-                      </select></div>
+                    <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
+                      <option value="">Select Profile...</option>
+                      {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
+                    </Select>
                     {data.extra.tr069_profile_id && (
                       <div className="grid grid-cols-2 gap-3 text-xs text-tx3">
                         <div>ACS URL: <span className="text-tx1 font-mono">{data.extra.acs_url}</span></div>
@@ -1714,37 +1692,33 @@ export function RegisterWizard() {
               <h4 className="text-sm font-semibold text-accent">Fiberhome VEIP (HG6145D2)</h4>
 
               {/* WAN Mode */}
-              <div className="space-y-2">
-                <label className="label-sm">WAN Mode (Internet Service)</label>
-                <select value={data.extra.wan_mode || 'bridge'} onChange={e => update('extra', { ...data.extra, wan_mode: e.target.value })} className="input-field">
-                  <option value="bridge">Bridge (transparent — ONT manages WAN)</option>
-                  <option value="pppoe">PPPoE (OLT dials PPPoE via VEIP)</option>
-                  <option value="dhcp">DHCP (ONT gets IP via DHCP)</option>
-                </select>
-              </div>
+              <Select label="WAN Mode (Internet Service)" value={data.extra.wan_mode || 'bridge'} onChange={e => update('extra', { ...data.extra, wan_mode: e.target.value })}>
+                <option value="bridge">Bridge (transparent — ONT manages WAN)</option>
+                <option value="pppoe">PPPoE (OLT dials PPPoE via VEIP)</option>
+                <option value="dhcp">DHCP (ONT gets IP via DHCP)</option>
+              </Select>
 
               {/* PPPoE fields */}
               {data.extra.wan_mode === 'pppoe' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4 border-l-2 border-accent/20">
-                  <div><label className="label-sm mb-1">PPPoE Username</label>
-                    <input type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} className="input-field" placeholder="PPPoE Username" /></div>
-                  <div><label className="label-sm mb-1">PPPoE Password</label>
-                    <div className="relative">
-                      <input type={data.extra._show_pppoe_pass === 'true' ? 'text' : 'password'} value={String(data.extra.pppoe_pass || '')} onChange={e => update('extra', { ...data.extra, pppoe_pass: e.target.value })} className="input-field pr-10" placeholder="PPPoE Password" />
-                      <button type="button" onClick={() => update('extra', { ...data.extra, _show_pppoe_pass: data.extra._show_pppoe_pass === 'true' ? '' : 'true' })} className="absolute right-2 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1">{data.extra._show_pppoe_pass === 'true' ? '🙈' : '👁'}</button>
-                    </div></div>
+                  <Input label="PPPoE Username" type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} placeholder="PPPoE Username" />
+                  <Input label="PPPoE Password"
+                    type={data.extra._show_pppoe_pass === 'true' ? 'text' : 'password'} value={String(data.extra.pppoe_pass || '')} onChange={e => update('extra', { ...data.extra, pppoe_pass: e.target.value })} placeholder="PPPoE Password"
+                    suffix={<button type="button" onClick={() => update('extra', { ...data.extra, _show_pppoe_pass: data.extra._show_pppoe_pass === 'true' ? '' : 'true' })} className="hover:text-tx1">{data.extra._show_pppoe_pass === 'true' ? '🙈' : '👁'}</button>} />
                 </div>
               )}
 
               {/* VLAN Profile (required for PPPoE/DHCP wan-ip) */}
               {(data.extra.wan_mode === 'pppoe' || data.extra.wan_mode === 'dhcp') && (
                 <div className="pl-4 border-l-2 border-accent/20">
-                  <label className="label-sm mb-1">WAN-IP VLAN Profile <span className="text-tx3">(from OLT config)</span></label>
-                  <select value={data.extra.vlan_profile || ''} onChange={e => update('extra', { ...data.extra, vlan_profile: e.target.value })} className="input-field">
+                  <Select
+                    label={<>WAN-IP VLAN Profile <span className="text-tx3">(from OLT config)</span></>}
+                    value={data.extra.vlan_profile || ''} onChange={e => update('extra', { ...data.extra, vlan_profile: e.target.value })}
+                    helperText={wanIpProfiles.length === 0 ? 'No WAN-IP profiles found. Create one in OLT Config → WAN-IP tab.' : undefined}
+                  >
                     <option value="">— Select Profile —</option>
                     {wanIpProfiles.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
-                  </select>
-                  {wanIpProfiles.length === 0 && <p className="text-[10px] text-tx3 mt-1">No WAN-IP profiles found. Create one in OLT Config → WAN-IP tab.</p>}
+                  </Select>
                 </div>
               )}
 
@@ -1823,11 +1797,10 @@ export function RegisterWizard() {
                 </label>
                 {data.extra.enable_tr069 === 'true' && (
                   <div className="pl-6 space-y-3">
-                    <div><label className="label-sm mb-1">TR069 Profile</label>
-                      <select value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)} className="input-field">
-                        <option value="">Select Profile...</option>
-                        {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
-                      </select></div>
+                    <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
+                      <option value="">Select Profile...</option>
+                      {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
+                    </Select>
                     {data.extra.tr069_profile_id && (
                       <div className="grid grid-cols-2 gap-3 text-xs text-tx3">
                         <div>ACS URL: <span className="text-tx1 font-mono">{data.extra.acs_url}</span></div>
@@ -1846,34 +1819,29 @@ export function RegisterWizard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             {/* Name prefix */}
-            <div>
-              <label className="label-sm mb-1.5">ONU Name (optional)</label>
-              <input type="text" value={data.namePrefix} onChange={e => update('namePrefix', e.target.value)}
-                placeholder="e.g. salsa@rw04" className="input-field" />
-              <p className="text-xs text-tx3 mt-1">Name will be saved exactly as input, without auto suffix.</p>
-            </div>
+            <Input
+              label="ONU Name (optional)"
+              type="text" value={data.namePrefix} onChange={e => update('namePrefix', e.target.value)}
+              placeholder="e.g. salsa@rw04"
+              helperText="Name will be saved exactly as input, without auto suffix." />
 
             {/* Description */}
-            <div>
-              <label className="label-sm mb-1.5">Description (optional)</label>
-              <input type="text" value={data.description} onChange={e => update('description', e.target.value)}
-                placeholder="e.g. Pelanggan RT03" className="input-field" />
-            </div>
+            <Input
+              label="Description (optional)"
+              type="text" value={data.description} onChange={e => update('description', e.target.value)}
+              placeholder="e.g. Pelanggan RT03" />
           </div>
 
-          <div>
-              <label className="label-sm mb-1.5 flex items-center gap-1.5"><Wrench size={12} /> Teknisi Lapangan</label>
-              <select value={data.technicianId ?? ''} onChange={e => update('technicianId', e.target.value ? Number(e.target.value) : null)}
-                className="input-field">
-                <option value="">— Tidak ada teknisi —</option>
-                {technicians.map(t => (
-                  <option key={t.id} value={t.id}>{t.full_name}{t.phone ? ` (${t.phone})` : ''}</option>
-                ))}
-              </select>
-              {technicians.length === 0 && (
-                <p className="text-[10px] text-tx3 mt-1">Belum ada user dengan role Technician. Tambahkan di User Management.</p>
-              )}
-            </div>
+          <Select
+            label={<span className="flex items-center gap-1.5"><Wrench size={12} /> Teknisi Lapangan</span>}
+            value={data.technicianId ?? ''} onChange={e => update('technicianId', e.target.value ? Number(e.target.value) : null)}
+            helperText={technicians.length === 0 ? 'Belum ada user dengan role Technician. Tambahkan di User Management.' : undefined}
+          >
+            <option value="">— Tidak ada teknisi —</option>
+            {technicians.map(t => (
+              <option key={t.id} value={t.id}>{t.full_name}{t.phone ? ` (${t.phone})` : ''}</option>
+            ))}
+          </Select>
         </div>
       )}
 
@@ -2088,16 +2056,17 @@ export function RegisterWizard() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-semibold text-accent">Register Script Preview</h3>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 onClick={() => {
                   const script = generateRegisterScript(data);
                   navigator.clipboard.writeText(script).then(() => toast.success('Script copied!')).catch(() => toast.error('Copy failed'));
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/10 border border-accent/20 text-accent text-xs font-medium hover:bg-accent/20 transition-colors"
+                icon={<Copy size={14} />}
+                className="text-xs"
               >
-                <Copy size={14} /> Copy Script
-              </button>
+                Copy Script
+              </Button>
             </div>
             <pre className="code-block text-[10px] md:text-xs overflow-x-auto max-h-72 overflow-y-auto whitespace-pre">
 {generateRegisterScript(data)}
@@ -2145,12 +2114,10 @@ export function RegisterWizard() {
           )}
 
           <div className="flex justify-end gap-2 md:gap-3">
-            <button onClick={() => setStep(3)} className="btn-cancel">Back</button>
-            <button onClick={registerOnus} disabled={registering || !data.tcontProfile}
-              className="btn-primary flex items-center gap-2">
-              {registering ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+            <Button variant="secondary" onClick={() => setStep(3)}>Back</Button>
+            <Button onClick={registerOnus} disabled={registering || !data.tcontProfile} loading={registering} icon={<Zap size={14} />}>
               {registering ? 'Registering...' : `Register ${data.selectedOnus.length} ONU(s)`}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -2189,9 +2156,10 @@ export function RegisterWizard() {
           </div>
 
           <div className="flex justify-end gap-2 md:gap-3">
-            <button onClick={() => { setStep(1); setResults([]); setData(prev => ({ ...prev, selectedOnus: [] })); }}
-              className="btn-cancel">Register More</button>
-            <button onClick={() => navigate('/dashboard/onus')} className="btn-primary">View All ONUs</button>
+            <Button variant="secondary" onClick={() => { setStep(1); setResults([]); setData(prev => ({ ...prev, selectedOnus: [] })); }}>
+              Register More
+            </Button>
+            <Button onClick={() => navigate('/dashboard/onus')}>View All ONUs</Button>
           </div>
         </div>
       )}
@@ -2199,10 +2167,9 @@ export function RegisterWizard() {
       {/* Navigation */}
       {step >= 1 && step <= 3 && (
         <div className="flex justify-end gap-2 md:gap-3">
-          <button onClick={() => setStep(step + 1)} disabled={!canNext()}
-            className="btn-primary flex items-center gap-2">
+          <Button onClick={() => setStep(step + 1)} disabled={!canNext()}>
             Next <ArrowRight size={14} />
-          </button>
+          </Button>
         </div>
       )}
     </div>

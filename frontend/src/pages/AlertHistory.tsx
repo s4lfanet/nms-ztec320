@@ -6,6 +6,10 @@ import {
   Server, Activity, Cpu, ChevronLeft, ChevronRight,
   Filter, Clock, CheckCircle2, Info
 } from 'lucide-react';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Card, EmptyState, LoadingOverlay } from '../components/ui';
+import { FilterBar } from '../components/shared';
 
 interface AlertHistoryItem {
   id: number;
@@ -60,16 +64,11 @@ export function AlertHistory() {
   const allTypes = Object.entries(alertTypeConfig).map(([key, val]) => ({ key, label: val.label }));
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">Alert History</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">Riwayat semua alert yang terdeteksi oleh sistem monitoring</p>
-        </div>
-      </div>
+    <PageContainer className="animate-fade-in">
+      <PageHeader title="Alert History" description="Riwayat semua alert yang terdeteksi oleh sistem monitoring" />
 
       {/* Filter bar */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <FilterBar>
         <div className="flex items-center gap-2 text-sm text-tx3">
           <Filter size={15} />
           <span>Filter:</span>
@@ -91,21 +90,18 @@ export function AlertHistory() {
             {t.label}
           </button>
         ))}
-      </div>
+      </FilterBar>
 
       {/* Table */}
-      <div className="glass-card overflow-hidden">
+      <Card bodyClassName="p-0">
         {isLoading ? (
-          <div className="p-8 text-center">
-            <div className="animate-spin h-8 w-8 border-2 border-accent border-t-transparent rounded-full mx-auto" />
-            <p className="text-sm text-tx3 mt-3">Memuat data...</p>
-          </div>
+          <LoadingOverlay label="Memuat data..." />
         ) : history.length === 0 ? (
-          <div className="p-12 text-center">
-            <CheckCircle2 size={48} className="mx-auto text-success/30 mb-3" />
-            <p className="text-sm text-tx2 font-medium">Tidak ada alert history</p>
-            <p className="text-xs text-tx3 mt-1">Sistem monitoring belum mendeteksi masalah apapun</p>
-          </div>
+          <EmptyState
+            icon={CheckCircle2}
+            title="Tidak ada alert history"
+            description="Sistem monitoring belum mendeteksi masalah apapun"
+          />
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -196,7 +192,7 @@ export function AlertHistory() {
             )}
           </>
         )}
-      </div>
-    </div>
+      </Card>
+    </PageContainer>
   );
 }

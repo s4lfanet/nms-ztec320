@@ -9,6 +9,8 @@ import {
   Zap, Clock, RefreshCw, Smartphone, QrCode, LogOut, Loader2,
   Play, Square, Server, Activity, Cpu, Thermometer
 } from 'lucide-react';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, Input, Select, Tabs, EmptyState } from '../components/ui';
 
 export function AlertSettings() {
   const { user } = useAuth();
@@ -16,32 +18,22 @@ export function AlertSettings() {
   const [activeSection, setActiveSection] = useState<'rules' | 'telegram' | 'whatsapp' | 'whatsapp_native' | 'cronjob'>(isSuperAdmin ? 'whatsapp_native' : 'rules');
 
   const allTabs = [
-    { id: 'rules' as const, label: 'Alert Rules', icon: <Shield size={15} />, superAdmin: false },
-    { id: 'telegram' as const, label: 'Telegram Bot', icon: <Send size={15} />, superAdmin: false },
-    { id: 'whatsapp' as const, label: 'WhatsApp', icon: <MessageCircle size={15} />, superAdmin: false },
-    { id: 'whatsapp_native' as const, label: 'WA Native', icon: <Smartphone size={15} />, superAdmin: true },
-    { id: 'cronjob' as const, label: 'Cron Job', icon: <Clock size={15} />, superAdmin: true },
+    { key: 'rules' as const, label: 'Alert Rules', icon: <Shield size={15} />, superAdmin: false },
+    { key: 'telegram' as const, label: 'Telegram Bot', icon: <Send size={15} />, superAdmin: false },
+    { key: 'whatsapp' as const, label: 'WhatsApp', icon: <MessageCircle size={15} />, superAdmin: false },
+    { key: 'whatsapp_native' as const, label: 'WA Native', icon: <Smartphone size={15} />, superAdmin: true },
+    { key: 'cronjob' as const, label: 'Cron Job', icon: <Clock size={15} />, superAdmin: true },
   ];
   const visibleTabs = allTabs.filter(tab => !tab.superAdmin || isSuperAdmin);
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">Alert Settings</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">{isSuperAdmin ? 'Configure WA Native notifications for tenants & cron job monitoring' : 'Configure monitoring rules and notification channels'}</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Alert Settings"
+        description={isSuperAdmin ? 'Configure WA Native notifications for tenants & cron job monitoring' : 'Configure monitoring rules and notification channels'}
+      />
 
-      <div className="flex gap-2 flex-wrap pb-1">
-        {visibleTabs.map(tab => (
-          <button key={tab.id} onClick={() => setActiveSection(tab.id)}
-            className={cn('flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all flex-shrink-0',
-              activeSection === tab.id ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1 border border-brd')}>
-            {tab.icon} {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs tabs={visibleTabs} active={activeSection} onChange={(key) => setActiveSection(key as typeof activeSection)} />
 
       {activeSection === 'rules' && <AlertRulesSection />}
       {activeSection === 'telegram' && <TelegramSection />}
@@ -79,11 +71,11 @@ function AlertRulesSection() {
   return (
     <div className="space-y-4">
       {rules.length === 0 && (
-        <div className="glass-card p-8 text-center">
-          <Bell size={40} className="mx-auto text-tx3 mb-3 opacity-40" />
-          <p className="text-sm text-tx2 font-medium">No alert rules configured</p>
-          <p className="text-xs text-tx3 mt-1">Alert rules will be created automatically when your tenant is set up</p>
-        </div>
+        <EmptyState
+          icon={Bell}
+          title="No alert rules configured"
+          description="Alert rules will be created automatically when your tenant is set up"
+        />
       )}
       {rules.map((rule: Record<string, unknown>) => (
         <RuleCard key={String(rule.id)} rule={rule} onSave={(r) => updateMut.mutate(r)} />
@@ -101,7 +93,7 @@ function RuleCard({ rule, onSave }: { rule: Record<string, unknown>; onSave: (r:
   };
 
   return (
-    <div className="glass-card p-5">
+    <Card>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center',
@@ -151,18 +143,10 @@ function RuleCard({ rule, onSave }: { rule: Record<string, unknown>; onSave: (r:
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-tx3 block mb-1">RX Power Threshold (dBm)</label>
-              <input type="number" value={String(form.rx_threshold || -27)}
-                onChange={e => setForm({ ...form, rx_threshold: parseFloat(e.target.value) })}
-                className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
-            </div>
-            <div>
-              <label className="text-xs text-tx3 block mb-1">RX Change Threshold (dB)</label>
-              <input type="number" step="0.5" value={String(form.rx_change_threshold || 3)}
-                onChange={e => setForm({ ...form, rx_change_threshold: parseFloat(e.target.value) })}
-                className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
-            </div>
+            <Input label="RX Power Threshold (dBm)" type="number" value={String(form.rx_threshold || -27)}
+              onChange={e => setForm({ ...form, rx_threshold: parseFloat(e.target.value) })} />
+            <Input label="RX Change Threshold (dB)" type="number" step="0.5" value={String(form.rx_change_threshold || 3)}
+              onChange={e => setForm({ ...form, rx_change_threshold: parseFloat(e.target.value) })} />
           </div>
 
           {/* OLT Health Monitoring */}
@@ -185,24 +169,12 @@ function RuleCard({ rule, onSave }: { rule: Record<string, unknown>; onSave: (r:
               ))}
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs text-tx3 block mb-1">CPU Threshold (%)</label>
-                <input type="number" value={String(form.olt_cpu_threshold ?? 80)}
-                  onChange={e => setForm({ ...form, olt_cpu_threshold: parseFloat(e.target.value) })}
-                  className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
-              </div>
-              <div>
-                <label className="text-xs text-tx3 block mb-1">Memory Threshold (%)</label>
-                <input type="number" value={String(form.olt_memory_threshold ?? 80)}
-                  onChange={e => setForm({ ...form, olt_memory_threshold: parseFloat(e.target.value) })}
-                  className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
-              </div>
-              <div>
-                <label className="text-xs text-tx3 block mb-1">Temp Threshold (°C)</label>
-                <input type="number" value={String(form.olt_temp_threshold ?? 60)}
-                  onChange={e => setForm({ ...form, olt_temp_threshold: parseFloat(e.target.value) })}
-                  className="w-full h-9 px-3 rounded-lg bg-glass border border-brd text-sm" />
-              </div>
+              <Input label="CPU Threshold (%)" type="number" value={String(form.olt_cpu_threshold ?? 80)}
+                onChange={e => setForm({ ...form, olt_cpu_threshold: parseFloat(e.target.value) })} />
+              <Input label="Memory Threshold (%)" type="number" value={String(form.olt_memory_threshold ?? 80)}
+                onChange={e => setForm({ ...form, olt_memory_threshold: parseFloat(e.target.value) })} />
+              <Input label="Temp Threshold (°C)" type="number" value={String(form.olt_temp_threshold ?? 60)}
+                onChange={e => setForm({ ...form, olt_temp_threshold: parseFloat(e.target.value) })} />
             </div>
           </div>
 
@@ -226,14 +198,12 @@ function RuleCard({ rule, onSave }: { rule: Record<string, unknown>; onSave: (r:
           </div>
 
           <div className="flex gap-2">
-            <button onClick={() => { onSave(form); setEditing(false); }} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-white text-xs font-medium">
-              <Save size={14} /> Save
-            </button>
-            <button onClick={() => { setForm({ ...rule }); setEditing(false); }} className="px-4 py-2 rounded-lg bg-glass text-xs">Cancel</button>
+            <Button variant="primary" icon={<Save size={14} />} onClick={() => { onSave(form); setEditing(false); }}>Save</Button>
+            <Button variant="secondary" onClick={() => { setForm({ ...rule }); setEditing(false); }}>Cancel</Button>
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -264,23 +234,21 @@ function TelegramSection() {
   if (isLoading) return <TabSkeleton />;
 
   return (
-    <div className="glass-card p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-12 h-12 rounded-xl bg-accent/15 flex items-center justify-center">
-          <Send size={24} className="text-accent" />
+    <Card
+      icon={
+        <div className="w-9 h-9 rounded-xl bg-accent/15 flex items-center justify-center">
+          <Send size={18} className="text-accent" />
         </div>
-        <div>
-          <h3 className="font-semibold text-lg">Telegram Bot</h3>
-          <p className="text-xs text-tx3">Receive alert notifications via Telegram</p>
-        </div>
-        <div className="ml-auto">
-          <span className={cn('px-3 py-1 rounded-full text-xs font-medium', tgConfig.enabled ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>
-            {tgConfig.enabled ? 'Connected' : 'Not Configured'}
-          </span>
-        </div>
-      </div>
-
+      }
+      title="Telegram Bot"
+      action={
+        <span className={cn('px-3 py-1 rounded-full text-xs font-medium', tgConfig.enabled ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>
+          {tgConfig.enabled ? 'Connected' : 'Not Configured'}
+        </span>
+      }
+    >
       <div className="space-y-4">
+        <p className="text-xs text-tx3 -mt-1">Receive alert notifications via Telegram</p>
         <div className="flex items-center justify-between p-3 rounded-lg bg-glass border border-brd">
           <div>
             <div className="text-sm font-medium">Enable Telegram Notifications</div>
@@ -292,23 +260,13 @@ function TelegramSection() {
           </button>
         </div>
 
-        <div>
-          <label className="text-xs text-tx3 block mb-1">Bot Token</label>
-          <input type="password" value={form.bot_token}
-            onChange={e => { setForm({ ...form, bot_token: e.target.value }); setEditing(true); }}
-            className="w-full h-10 px-4 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none"
-            placeholder="123456:ABC-DEF..." />
-          <p className="text-xs text-tx3 mt-1">Get from @BotFather on Telegram</p>
-        </div>
+        <Input label="Bot Token" type="password" value={form.bot_token}
+          onChange={e => { setForm({ ...form, bot_token: e.target.value }); setEditing(true); }}
+          placeholder="123456:ABC-DEF..." helperText="Get from @BotFather on Telegram" />
 
-        <div>
-          <label className="text-xs text-tx3 block mb-1">Chat ID</label>
-          <input value={form.chat_id}
-            onChange={e => { setForm({ ...form, chat_id: e.target.value }); setEditing(true); }}
-            className="w-full h-10 px-4 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none"
-            placeholder="-1001234567890 (group) or 123456789 (user)" />
-          <p className="text-xs text-tx3 mt-1">Use @userinfobot or @raw_data_bot to get chat ID</p>
-        </div>
+        <Input label="Chat ID" value={form.chat_id}
+          onChange={e => { setForm({ ...form, chat_id: e.target.value }); setEditing(true); }}
+          placeholder="-1001234567890 (group) or 123456789 (user)" helperText="Use @userinfobot or @raw_data_bot to get chat ID" />
 
         <div className="p-3 rounded-lg bg-glass border border-brd text-xs text-tx3">
           <p className="font-medium text-tx2 mb-1">Setup Steps:</p>
@@ -323,27 +281,26 @@ function TelegramSection() {
 
         {editing && (
           <div className="flex gap-2">
-            <button onClick={() => { saveMut.mutate(); }} disabled={saveMut.isPending}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white font-medium text-sm hover:bg-accent/90 disabled:opacity-50">
-              <Save size={16} /> {saveMut.isPending ? 'Saving...' : 'Save Configuration'}
-            </button>
-            <button onClick={async () => {
-              setTesting(true);
-              try {
-                const r = await fetch('/api/bot-config/telegram/test', { method: 'POST', credentials: 'include' });
-                const d = await r.json();
-                if (d.success) toast.success('Test message sent! Check Telegram.');
-                else toast.error(d.message || 'Failed');
-              } catch { toast.error('Failed to send test'); }
-              setTesting(false);
-            }} disabled={testing || !form.bot_token || !form.chat_id}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-glass border border-brd text-sm font-medium hover:border-accent/30 disabled:opacity-50">
-              <Send size={16} /> {testing ? 'Sending...' : 'Test Message'}
-            </button>
+            <Button variant="primary" icon={<Save size={16} />} loading={saveMut.isPending} onClick={() => saveMut.mutate()}>
+              Save Configuration
+            </Button>
+            <Button variant="secondary" icon={<Send size={16} />} loading={testing} disabled={!form.bot_token || !form.chat_id}
+              onClick={async () => {
+                setTesting(true);
+                try {
+                  const r = await fetch('/api/bot-config/telegram/test', { method: 'POST', credentials: 'include' });
+                  const d = await r.json();
+                  if (d.success) toast.success('Test message sent! Check Telegram.');
+                  else toast.error(d.message || 'Failed');
+                } catch { toast.error('Failed to send test'); }
+                setTesting(false);
+              }}>
+              Test Message
+            </Button>
           </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -407,23 +364,22 @@ function WhatsAppSection() {
   if (isLoading) return <TabSkeleton />;
 
   return (
-    <div className="glass-card p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-12 h-12 rounded-xl bg-success/15 flex items-center justify-center">
-          <MessageCircle size={24} className="text-success" />
+    <Card
+      icon={
+        <div className="w-9 h-9 rounded-xl bg-success/15 flex items-center justify-center">
+          <MessageCircle size={18} className="text-success" />
         </div>
-        <div>
-          <h3 className="font-semibold text-lg">WhatsApp Notifications</h3>
-          <p className="text-xs text-tx3">Receive alert notifications via WhatsApp gateway</p>
-        </div>
-        <div className="ml-auto">
-          <span className={cn('px-3 py-1 rounded-full text-xs font-medium', waConfig.enabled ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>
-            {waConfig.enabled ? 'Connected' : 'Not Configured'}
-          </span>
-        </div>
-      </div>
-
+      }
+      title="WhatsApp Notifications"
+      action={
+        <span className={cn('px-3 py-1 rounded-full text-xs font-medium', waConfig.enabled ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>
+          {waConfig.enabled ? 'Connected' : 'Not Configured'}
+        </span>
+      }
+    >
       <div className="space-y-4">
+        <p className="text-xs text-tx3 -mt-1">Receive alert notifications via WhatsApp gateway</p>
+
         <div className="flex items-center justify-between p-3 rounded-lg bg-glass border border-brd">
           <div>
             <div className="text-sm font-medium">Enable WhatsApp Notifications</div>
@@ -435,62 +391,45 @@ function WhatsAppSection() {
           </button>
         </div>
 
-        <div>
-          <label className="text-xs text-tx3 block mb-1">Select Gateway Provider</label>
-          <select value={form.api_url} onChange={e => { setForm({ ...form, api_url: e.target.value }); setEditing(true); }}
-            className="w-full h-10 px-3 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none">
-            <option value="">— Select WhatsApp Gateway —</option>
-            <optgroup label="🇮🇩 Indonesia Local">
-              {waGateways.filter(g => g.name.includes('🇮🇩')).map(g => (
-                <option key={g.url} value={g.url}>{g.name.replace('🇮🇩 ', '')}</option>
-              ))}
-            </optgroup>
-            <optgroup label="🌍 International">
-              {waGateways.filter(g => g.name.includes('🌍')).map(g => (
-                <option key={g.url} value={g.url}>{g.name.replace('🌍 ', '')}</option>
-              ))}
-            </optgroup>
-          </select>
-        </div>
+        <Select label="Select Gateway Provider" value={form.api_url}
+          onChange={e => { setForm({ ...form, api_url: e.target.value }); setEditing(true); }}>
+          <option value="">— Select WhatsApp Gateway —</option>
+          <optgroup label="🇮🇩 Indonesia Local">
+            {waGateways.filter(g => g.name.includes('🇮🇩')).map(g => (
+              <option key={g.url} value={g.url}>{g.name.replace('🇮🇩 ', '')}</option>
+            ))}
+          </optgroup>
+          <optgroup label="🌍 International">
+            {waGateways.filter(g => g.name.includes('🌍')).map(g => (
+              <option key={g.url} value={g.url}>{g.name.replace('🌍 ', '')}</option>
+            ))}
+          </optgroup>
+        </Select>
 
-        <div>
-          <label className="text-xs text-tx3 block mb-1">API URL</label>
-          <input value={form.api_url}
-            onChange={e => { setForm({ ...form, api_url: e.target.value }); setEditing(true); }}
-            className="w-full h-10 px-4 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none"
-            placeholder="https://api.fonnte.com/send" />
-          <p className="text-xs text-tx3 mt-1">{selectedGateway ? `Endpoint: ${selectedGateway.url}` : 'Gateway endpoint (auto-filled from dropdown or enter custom)'}</p>
-        </div>
+        <Input label="API URL" value={form.api_url}
+          onChange={e => { setForm({ ...form, api_url: e.target.value }); setEditing(true); }}
+          placeholder="https://api.fonnte.com/send"
+          helperText={selectedGateway ? `Endpoint: ${selectedGateway.url}` : 'Gateway endpoint (auto-filled from dropdown or enter custom)'} />
 
-        <div>
-          <label className="text-xs text-tx3 block mb-1">API Key / Token</label>
-          <input type="password" value={form.api_key}
-            onChange={e => { setForm({ ...form, api_key: e.target.value }); setEditing(true); }}
-            className="w-full h-10 px-4 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none"
-            placeholder={selectedGateway?.tokenLabel || 'API key or token'} />
-        </div>
+        <Input label="API Key / Token" type="password" value={form.api_key}
+          onChange={e => { setForm({ ...form, api_key: e.target.value }); setEditing(true); }}
+          placeholder={selectedGateway?.tokenLabel || 'API key or token'} />
 
-        <div>
-          <label className="text-xs text-tx3 block mb-1">Target Phone Number</label>
-          <input value={form.phone_number}
-            onChange={e => { setForm({ ...form, phone_number: e.target.value }); setEditing(true); }}
-            className="w-full h-10 px-4 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none"
-            placeholder={selectedGateway?.phonePlaceholder || '+6281234567890'} />
-          <p className="text-xs text-tx3 mt-1">With country code, no spaces or dashes</p>
-        </div>
+        <Input label="Target Phone Number" value={form.phone_number}
+          onChange={e => { setForm({ ...form, phone_number: e.target.value }); setEditing(true); }}
+          placeholder={selectedGateway?.phonePlaceholder || '+6281234567890'}
+          helperText="With country code, no spaces or dashes" />
 
         <div className="flex gap-2">
-          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !editing}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white font-medium text-sm hover:bg-accent/90 disabled:opacity-50">
-            <Save size={16} /> {saveMut.isPending ? 'Saving...' : 'Save'}
-          </button>
-          <button onClick={() => testMut.mutate()} disabled={testing || !form.api_url}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-glass border border-brd text-sm font-medium hover:border-accent/30 disabled:opacity-50">
-            <Send size={16} /> {testing ? 'Sending...' : 'Test Message'}
-          </button>
+          <Button variant="primary" icon={<Save size={16} />} loading={saveMut.isPending} disabled={!editing} onClick={() => saveMut.mutate()}>
+            Save
+          </Button>
+          <Button variant="secondary" icon={<Send size={16} />} loading={testing} disabled={!form.api_url} onClick={() => testMut.mutate()}>
+            Test Message
+          </Button>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -645,16 +584,15 @@ function WhatsAppNativeSection() {
   };
 
   return (
-    <div className="glass-card p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-12 h-12 rounded-xl bg-success/15 flex items-center justify-center">
-          <Smartphone size={24} className="text-success" />
+    <Card
+      icon={
+        <div className="w-9 h-9 rounded-xl bg-success/15 flex items-center justify-center">
+          <Smartphone size={18} className="text-success" />
         </div>
-        <div>
-          <h3 className="font-semibold text-lg">WhatsApp Native Gateway</h3>
-          <p className="text-xs text-tx3">Self-hosted WhatsApp via Baileys — no third-party API needed</p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
+      }
+      title="WhatsApp Native Gateway"
+      action={
+        <div className="flex items-center gap-2">
           <span className={cn('px-3 py-1 rounded-full text-xs font-medium',
             gwData?.pm2_status === 'online' ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>
             Gateway: {gwData?.pm2_status || '...'}
@@ -664,7 +602,9 @@ function WhatsAppNativeSection() {
             {status?.connected ? 'Connected' : status ? 'Disconnected' : 'Checking...'}
           </span>
         </div>
-      </div>
+      }
+    >
+      <p className="text-xs text-tx3 -mt-3 mb-4">Self-hosted WhatsApp via Baileys — no third-party API needed</p>
 
       {/* Gateway Instance Control */}
       <div className="p-4 rounded-lg bg-glass border border-brd mb-4">
@@ -682,15 +622,14 @@ function WhatsAppNativeSection() {
           </div>
           <div className="flex gap-2">
             {gwData?.pm2_status !== 'online' ? (
-              <button onClick={handleStartGw} disabled={gwAction}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-success/15 text-success hover:bg-success/25 disabled:opacity-50">
-                <Play size={13} /> {gwAction ? 'Starting...' : 'Start'}
-              </button>
+              <Button variant="secondary" icon={<Play size={13} />} loading={gwAction}
+                className="!bg-success/15 !text-success hover:!bg-success/25" onClick={handleStartGw}>
+                Start
+              </Button>
             ) : (
-              <button onClick={handleStopGw} disabled={gwAction}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-danger/10 text-danger hover:bg-danger/20 disabled:opacity-50">
-                <Square size={13} /> {gwAction ? 'Stopping...' : 'Stop'}
-              </button>
+              <Button variant="danger" icon={<Square size={13} />} loading={gwAction} onClick={handleStopGw}>
+                Stop
+              </Button>
             )}
           </div>
         </div>
@@ -709,13 +648,9 @@ function WhatsAppNativeSection() {
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={handleReconnect} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-glass border border-brd hover:border-accent/30">
-              <RefreshCw size={13} className="inline mr-1" /> Reconnect
-            </button>
+            <Button variant="secondary" icon={<RefreshCw size={13} />} onClick={handleReconnect}>Reconnect</Button>
             {status?.connected && (
-              <button onClick={handleLogout} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-danger/10 text-danger hover:bg-danger/20">
-                <LogOut size={13} className="inline mr-1" /> Logout
-              </button>
+              <Button variant="danger" icon={<LogOut size={13} />} onClick={handleLogout}>Logout</Button>
             )}
           </div>
         </div>
@@ -739,9 +674,7 @@ function WhatsAppNativeSection() {
                 <span className="text-xs text-tx3">No QR available</span>
               </div>
             )}
-            <button onClick={handleRefreshQR} className="px-4 py-2 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90">
-              <RefreshCw size={13} className="inline mr-1" /> Refresh QR
-            </button>
+            <Button variant="primary" icon={<RefreshCw size={13} />} loading={qrLoading} onClick={handleRefreshQR}>Refresh QR</Button>
           </div>
         </div>
       )}
@@ -759,23 +692,17 @@ function WhatsAppNativeSection() {
           </button>
         </div>
 
-        <div>
-          <label className="text-xs text-tx3 block mb-1">Gateway URL {gwData?.api_url && <span className="text-accent">(auto: {gwData.api_url})</span>}</label>
-          <input value={form.api_url}
-            onChange={e => { setForm({ ...form, api_url: e.target.value }); setEditing(true); }}
-            className="w-full h-10 px-4 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none"
-            placeholder={gwData?.api_url || 'http://localhost:3001'} />
-          <p className="text-xs text-tx3 mt-1">Auto-assigned per tenant. Click Start above to launch your gateway instance.</p>
-        </div>
+        <Input
+          label={<>Gateway URL {gwData?.api_url && <span className="text-accent">(auto: {gwData.api_url})</span>}</>}
+          value={form.api_url}
+          onChange={e => { setForm({ ...form, api_url: e.target.value }); setEditing(true); }}
+          placeholder={gwData?.api_url || 'http://localhost:3001'}
+          helperText="Auto-assigned per tenant. Click Start above to launch your gateway instance." />
 
-        <div>
-          <label className="text-xs text-tx3 block mb-1">Target Phone Number</label>
-          <input value={form.phone_number}
-            onChange={e => { setForm({ ...form, phone_number: e.target.value }); setEditing(true); }}
-            className="w-full h-10 px-4 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none"
-            placeholder="6281234567890 (with country code, no +)" />
-          <p className="text-xs text-tx3 mt-1">Your WhatsApp number or group ID to receive alerts</p>
-        </div>
+        <Input label="Target Phone Number" value={form.phone_number}
+          onChange={e => { setForm({ ...form, phone_number: e.target.value }); setEditing(true); }}
+          placeholder="6281234567890 (with country code, no +)"
+          helperText="Your WhatsApp number or group ID to receive alerts" />
 
         {/* Setup Instructions */}
         <div className="p-3 rounded-lg bg-glass border border-brd text-xs text-tx3">
@@ -792,17 +719,15 @@ function WhatsAppNativeSection() {
 
         {/* Action Buttons */}
         <div className="flex gap-2">
-          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !editing}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white font-medium text-sm hover:bg-accent/90 disabled:opacity-50">
-            <Save size={16} /> {saveMut.isPending ? 'Saving...' : 'Save'}
-          </button>
-          <button onClick={handleTest} disabled={testing || !form.phone_number}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-glass border border-brd text-sm font-medium hover:border-accent/30 disabled:opacity-50">
-            <Send size={16} /> {testing ? 'Sending...' : 'Test Message'}
-          </button>
+          <Button variant="primary" icon={<Save size={16} />} loading={saveMut.isPending} disabled={!editing} onClick={() => saveMut.mutate()}>
+            Save
+          </Button>
+          <Button variant="secondary" icon={<Send size={16} />} loading={testing} disabled={!form.phone_number} onClick={handleTest}>
+            Test Message
+          </Button>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -876,26 +801,23 @@ function CronjobSection() {
   return (
     <div className="space-y-4">
       {/* Cron Job Interval + Timezone */}
-      <div className="glass-card p-4 md:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4 md:mb-6">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-warning/15 flex items-center justify-center flex-shrink-0">
-              <Clock size={20} className="text-warning md:w-6 md:h-6" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-semibold text-base md:text-lg">Cron Job Configuration</h3>
-              <p className="text-xs text-tx3">Set alert monitoring interval and system timezone</p>
-            </div>
+      <Card
+        icon={
+          <div className="w-9 h-9 rounded-xl bg-warning/15 flex items-center justify-center flex-shrink-0">
+            <Clock size={18} className="text-warning" />
           </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto">
+        }
+        title="Cron Job Configuration"
+        action={
+          <div className="flex items-center gap-2">
             <span className="px-3 py-1 rounded-full text-xs font-medium bg-success/15 text-success flex-shrink-0">Active</span>
-            <button onClick={handleRecheck} disabled={rechecking}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90 disabled:opacity-50 whitespace-nowrap">
-              <RefreshCw size={13} className={rechecking ? 'animate-spin' : ''} />
-              {rechecking ? 'Checking...' : 'Re-check Now'}
-            </button>
+            <Button variant="primary" icon={<RefreshCw size={13} className={rechecking ? 'animate-spin' : ''} />} loading={rechecking} onClick={handleRecheck}>
+              Re-check Now
+            </Button>
           </div>
-        </div>
+        }
+      >
+        <p className="text-xs text-tx3 -mt-3 mb-4">Set alert monitoring interval and system timezone</p>
 
         <div className="space-y-4">
           {/* Check Interval */}
@@ -923,15 +845,13 @@ function CronjobSection() {
 
           {/* Timezone */}
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd">
-            <label className="text-sm font-semibold block mb-2">System Timezone</label>
-            <p className="text-xs text-tx3 mb-3">Timezone used for displaying timestamps across the NMS.</p>
-            <select value={timezone} onChange={e => setTimezone(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg bg-glass border border-brd text-sm">
+            <Select label="System Timezone" value={timezone} onChange={e => setTimezone(e.target.value)}
+              helperText="Timezone used for displaying timestamps across the NMS.">
               {timezones.map(tz => {
                 const val = tz.split(' ')[0];
                 return <option key={val} value={val}>{tz}</option>;
               })}
-            </select>
+            </Select>
             <div className="mt-2 text-xs text-tx3">
               Current time: <strong className="text-tx1">{new Date().toLocaleString('id-ID', { timeZone: timezone || 'Asia/Jakarta' })}</strong>
             </div>
@@ -939,16 +859,15 @@ function CronjobSection() {
 
           {/* Save Button */}
           <div className="flex gap-2">
-            <button onClick={handleSave} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white font-medium text-sm hover:bg-accent/90 disabled:opacity-50">
-              <Save size={16} /> {saving ? 'Saving...' : 'Save Configuration'}
-            </button>
+            <Button variant="primary" icon={<Save size={16} />} loading={saving} onClick={handleSave}>
+              Save Configuration
+            </Button>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* How It Works */}
-      <div className="glass-card p-4 md:p-6">
+      <Card>
         <h4 className="text-sm font-semibold mb-3">How It Works</h4>
         <div className="space-y-3 text-sm text-tx2">
           <div className="flex items-start gap-3">
@@ -988,10 +907,10 @@ function CronjobSection() {
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Alert Types */}
-      <div className="glass-card p-4 md:p-6">
+      <Card>
         <h4 className="text-sm font-semibold mb-2">Alert Types</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {[
@@ -1008,7 +927,7 @@ function CronjobSection() {
             </div>
           ))}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

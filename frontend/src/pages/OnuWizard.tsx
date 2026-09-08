@@ -5,10 +5,13 @@ import { api, type TechnicianData } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import {
-  ArrowLeft, Server, Search, Check, Loader2, Settings, FileText,
+  ArrowLeft, ArrowRight, Server, Search, Check, Loader2, Settings, FileText,
   Zap, Plus, Trash2, Wrench, Radio, Wifi, Globe, Shield,
   Cpu, ChevronDown, ChevronRight, Eye, EyeOff,
 } from 'lucide-react';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState, Select, Input } from '../components/ui';
 
 // ==================== Types ====================
 
@@ -597,24 +600,21 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
   // ==================== Render ====================
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 md:gap-3 min-w-0">
+    <PageContainer className="max-w-4xl mx-auto animate-fade-in">
+      <PageHeader
+        icon={
           <button onClick={() => step > 1 && step <= 4 ? setStep(step - 1) : navigate('/dashboard/onus/unconfigured')}
             className="p-2 rounded-lg hover:bg-glass transition-colors text-tx2 hover:text-tx1 flex-shrink-0">
             <ArrowLeft size={18} />
           </button>
-          <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold truncate">{modeLabel} Wizard</h1>
-            <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">
-              {mode === 'register' ? 'Register scanned ONU with full configuration' :
-               mode === 'provision' ? 'Provision multiple ONUs with batch config' :
-               'Pre-configure ONU before physical connection'}
-            </p>
-          </div>
-        </div>
-      </div>
+        }
+        title={`${modeLabel} Wizard`}
+        description={
+          mode === 'register' ? 'Register scanned ONU with full configuration' :
+          mode === 'provision' ? 'Provision multiple ONUs with batch config' :
+          'Pre-configure ONU before physical connection'
+        }
+      />
 
       {/* Step Indicator */}
       {step <= 4 && (
@@ -640,16 +640,11 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
 
       {/* Step 1: Select OLT */}
       {step === 1 && (
-        <div className="glass-card p-4 md:p-6 space-y-4">
-          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Server size={18} /> Select OLT Device</h2>
-          <p className="text-tx2 text-xs md:text-sm">Choose which OLT to {mode === 'preconfig' ? 'pre-configure' : 'register'} ONUs on.</p>
+        <Card icon={<Server size={18} />} title="Select OLT Device">
+          <p className="text-tx2 text-xs md:text-sm -mt-1 mb-4">Choose which OLT to {mode === 'preconfig' ? 'pre-configure' : 'register'} ONUs on.</p>
           <div className="grid gap-2 md:gap-3">
             {olts.length === 0 && (
-              <div className="text-center py-8 text-tx3">
-                <Server size={36} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No OLTs available</p>
-                <p className="text-xs mt-1">Add an OLT in OLT Settings first</p>
-              </div>
+              <EmptyState icon={Server} title="No OLTs available" description="Add an OLT in OLT Settings first" />
             )}
             {olts.map((olt: { id: number; name: string; model: string; ip_address: string; is_online: boolean }) => (
               <button key={olt.id} onClick={() => update('oltId', olt.id)}
@@ -669,44 +664,43 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
               </button>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Step 2: Scan/Select ONUs or Manual Entry */}
       {step === 2 && (
-        <div className="glass-card p-4 md:p-6 space-y-4">
+        <Card
+          icon={mode === 'preconfig' ? <Cpu size={18} /> : <Search size={18} />}
+          title={mode === 'preconfig' ? 'ONU Details' : 'Unconfigured ONUs'}
+          action={mode !== 'preconfig' ? (
+            <Button variant="primary" icon={scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+              loading={scanning} onClick={scanOnus}>
+              Scan OLT
+            </Button>
+          ) : undefined}
+        >
           {mode === 'preconfig' ? (
             <>
-              <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Cpu size={18} /> ONU Details</h2>
-              <p className="text-tx2 text-xs md:text-sm">Enter ONU details manually for pre-configuration.</p>
+              <p className="text-tx2 text-xs md:text-sm -mt-1 mb-4">Enter ONU details manually for pre-configuration.</p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                <div>
-                  <label className="label-sm mb-1.5">Serial Number / MAC</label>
-                  <input type="text" value={state.serialNumber} onChange={e => update('serialNumber', e.target.value.toUpperCase())}
-                    className="input-field" placeholder="ZTEG0A1B2C3D or MAC address" />
-                  <p className="text-xs text-tx3 mt-1">Format: 4 letters + 8 hex digits</p>
-                </div>
-                <div>
-                  <label className="label-sm mb-1.5">ONU Type</label>
-                  <select value={state.onuType} onChange={e => update('onuType', e.target.value)} className="input-field">
-                    <option value="All">All (auto-detect)</option>
-                    {(() => {
-                      const isEpon = state.isEpon === true;
-                      const filtered = isEpon
-                        ? onuTypes.filter(t => t.pon_type === 'epon')
-                        : onuTypes.filter(t => t.pon_type === 'gpon');
-                      return filtered.map(t => <option key={t.type_name} value={t.type_name}>{t.type_name}</option>);
-                    })()}
-                  </select>
-                </div>
+                <Input label="Serial Number / MAC" type="text" value={state.serialNumber}
+                  onChange={e => update('serialNumber', e.target.value.toUpperCase())}
+                  placeholder="ZTEG0A1B2C3D or MAC address" helperText="Format: 4 letters + 8 hex digits" />
+                <Select
+                  label="ONU Type"
+                  value={state.onuType}
+                  onChange={e => update('onuType', e.target.value)}
+                  options={[
+                    { value: 'All', label: 'All (auto-detect)' },
+                    ...(state.isEpon === true ? onuTypes.filter(t => t.pon_type === 'epon') : onuTypes.filter(t => t.pon_type === 'gpon'))
+                      .map(t => ({ value: t.type_name, label: t.type_name })),
+                  ]}
+                />
                 <div className="grid grid-cols-3 gap-2">
-                  <div><label className="label-sm mb-1">Frame</label>
-                    <input type="number" value={state.frame} onChange={e => update('frame', parseInt(e.target.value) || 1)} className="input-field" min={1} /></div>
-                  <div><label className="label-sm mb-1">Slot</label>
-                    <input type="number" value={state.slot} onChange={e => update('slot', parseInt(e.target.value) || 1)} className="input-field" min={1} /></div>
-                  <div><label className="label-sm mb-1">PON Port</label>
-                    <input type="number" value={state.port} onChange={e => update('port', parseInt(e.target.value) || 1)} className="input-field" min={1} /></div>
+                  <Input label="Frame" type="number" value={state.frame} onChange={e => update('frame', parseInt(e.target.value) || 1)} min={1} />
+                  <Input label="Slot" type="number" value={state.slot} onChange={e => update('slot', parseInt(e.target.value) || 1)} min={1} />
+                  <Input label="PON Port" type="number" value={state.port} onChange={e => update('port', parseInt(e.target.value) || 1)} min={1} />
                 </div>
                 <div>
                   <label className="label-sm mb-1.5">PON Type</label>
@@ -725,20 +719,8 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
             </>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Search size={18} /> Unconfigured ONUs</h2>
-                <button onClick={scanOnus} disabled={scanning}
-                  className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-accent text-white text-xs md:text-sm font-medium hover:bg-accent-hover disabled:opacity-50">
-                  {scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                  {scanning ? 'Scanning...' : 'Scan OLT'}
-                </button>
-              </div>
-
               {unconfiguredOnus.length === 0 && !scanning && (
-                <div className="text-center py-12">
-                  <Radio size={48} className="mx-auto text-tx3 mb-4 opacity-30" />
-                  <p className="text-tx3">Click <strong>Scan OLT</strong> to discover unconfigured ONUs</p>
-                </div>
+                <EmptyState icon={Radio} title="No ONUs scanned yet" description='Click "Scan OLT" to discover unconfigured ONUs' />
               )}
 
               {scanning && (
@@ -786,14 +768,12 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
               )}
             </>
           )}
-        </div>
+        </Card>
       )}
 
       {/* Step 3: Configure */}
       {step === 3 && (
-        <div className="glass-card p-4 md:p-6 space-y-4 md:space-y-5">
-          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Settings size={18} /> Configuration</h2>
-
+        <Card icon={<Settings size={18} />} title="Configuration" bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
           {/* ONU Info Summary */}
           <div className="p-3 rounded-lg bg-glass border border-brd">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
@@ -842,20 +822,18 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
 
           {/* Profiles */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-            <div>
-              <label className="label-sm mb-1.5">TCONT Profile <span className="text-tx3">(Upload)</span></label>
-              <select value={state.tcontProfile} onChange={e => update('tcontProfile', e.target.value)} className="input-field">
-                <option value="">Select profile...</option>
-                {tcontProfiles.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label-sm mb-1.5">Traffic Profile <span className="text-tx3">(Download)</span></label>
-              <select value={state.trafficProfile} onChange={e => update('trafficProfile', e.target.value)} className="input-field">
-                <option value="">None (no DL limit)</option>
-                {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
+            <Select
+              label={<>TCONT Profile <span className="text-tx3">(Upload)</span></>}
+              value={state.tcontProfile}
+              onChange={e => update('tcontProfile', e.target.value)}
+              options={[{ value: '', label: 'Select profile...' }, ...tcontProfiles.map(p => ({ value: p, label: p }))]}
+            />
+            <Select
+              label={<>Traffic Profile <span className="text-tx3">(Download)</span></>}
+              value={state.trafficProfile}
+              onChange={e => update('trafficProfile', e.target.value)}
+              options={[{ value: '', label: 'None (no DL limit)' }, ...trafficProfiles.map(p => ({ value: p, label: p }))]}
+            />
           </div>
 
           <hr className="border-brd" />
@@ -864,10 +842,9 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold flex items-center gap-2"><Globe size={14} /> Services (max 4)</span>
-              <button type="button" onClick={addService} disabled={state.services.length >= 4}
-                className="px-2 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 flex items-center gap-1">
-                <Plus size={12} /> Add Service
-              </button>
+              <Button variant="accent" icon={<Plus size={12} />} disabled={state.services.length >= 4} onClick={addService}>
+                Add Service
+              </Button>
             </div>
             {state.services.map((svc, idx) => (
               <div key={idx} className={cn("p-3 rounded-lg border border-brd bg-glass space-y-3", !svc.enabled && "opacity-60")}>
@@ -981,10 +958,9 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold flex items-center gap-2"><Wifi size={14} /> WiFi SSID List (max 8)</span>
-              <button type="button" onClick={addSsid} disabled={state.ssids.length >= 8}
-                className="px-2 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 flex items-center gap-1">
-                <Plus size={12} /> Add SSID
-              </button>
+              <Button variant="accent" icon={<Plus size={12} />} disabled={state.ssids.length >= 8} onClick={addSsid}>
+                Add SSID
+              </Button>
             </div>
             {state.ssids.length === 0 && <p className="text-xs text-tx3">No SSIDs added. Click "Add SSID" to configure WiFi.</p>}
             {state.ssids.map((s, i) => (
@@ -1073,11 +1049,11 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                 <span className="text-sm font-medium flex items-center gap-1"><Shield size={12} /> Firewall</span>
               </label>
               {state.enableFirewall && (
-                <select value={state.firewallLevel} onChange={e => update('firewallLevel', e.target.value as WizardState['firewallLevel'])} className="input-field">
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
+                <Select
+                  value={state.firewallLevel}
+                  onChange={e => update('firewallLevel', e.target.value as WizardState['firewallLevel'])}
+                  options={[{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }]}
+                />
               )}
             </div>
             <div className="space-y-2">
@@ -1087,10 +1063,14 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
               </label>
               {state.enableTr069 && (
                 <div className="space-y-2 pl-6">
-                  <select value={state.tr069ProfileId} onChange={e => selectTr069Profile(e.target.value)} className="input-field">
-                    <option value="">Select Profile...</option>
-                    {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
-                  </select>
+                  <Select
+                    value={state.tr069ProfileId}
+                    onChange={e => selectTr069Profile(e.target.value)}
+                    options={[
+                      { value: '', label: 'Select Profile...' },
+                      ...tr069Profiles.map(p => ({ value: String(p.id), label: `${p.name} — ${p.acs_url}` })),
+                    ]}
+                  />
                   {state.tr069ProfileId && (
                     <div className="grid grid-cols-2 gap-2 text-xs text-tx3">
                       <div>ACS: <span className="text-tx1 font-mono">{state.acsUrl}</span></div>
@@ -1107,34 +1087,30 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
 
           {/* Name & Description */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-            <div>
-              <label className="label-sm mb-1.5">Name (optional)</label>
-              <input type="text" value={state.name} onChange={e => update('name', e.target.value)} className="input-field" placeholder="e.g. ODP-RW03-01" />
-            </div>
-            <div>
-              <label className="label-sm mb-1.5">Description (optional)</label>
-              <input type="text" value={state.description} onChange={e => update('description', e.target.value)} className="input-field" placeholder="e.g. Pelanggan RT03" />
-            </div>
+            <Input label="Name (optional)" type="text" value={state.name} onChange={e => update('name', e.target.value)} placeholder="e.g. ODP-RW03-01" />
+            <Input label="Description (optional)" type="text" value={state.description} onChange={e => update('description', e.target.value)} placeholder="e.g. Pelanggan RT03" />
           </div>
 
           <div>
-              <label className="label-sm mb-1.5 flex items-center gap-1.5"><Wrench size={12} /> Teknisi</label>
-              <select value={state.technicianId ?? ''} onChange={e => update('technicianId', e.target.value ? Number(e.target.value) : null)} className="input-field">
-                <option value="">— Tidak ada teknisi —</option>
-                {technicians.map(t => <option key={t.id} value={t.id}>{t.full_name}{t.phone ? ` (${t.phone})` : ''}</option>)}
-              </select>
+              <Select
+                label={<><Wrench size={12} className="inline mr-1.5" />Teknisi</>}
+                value={state.technicianId ?? ''}
+                onChange={e => update('technicianId', e.target.value ? Number(e.target.value) : null)}
+                options={[
+                  { value: '', label: '— Tidak ada teknisi —' },
+                  ...technicians.map(t => ({ value: String(t.id), label: `${t.full_name}${t.phone ? ` (${t.phone})` : ''}` })),
+                ]}
+              />
               {technicians.length === 0 && (
                 <p className="text-[10px] text-tx3 mt-1">Belum ada user dengan role Technician. Tambahkan di User Management.</p>
               )}
             </div>
-        </div>
+        </Card>
       )}
 
       {/* Step 4: Review */}
       {step === 4 && (
-        <div className="glass-card p-4 md:p-6 space-y-4 md:space-y-5">
-          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><FileText size={18} /> Review & {mode === 'preconfig' ? 'Save' : 'Register'}</h2>
-
+        <Card icon={<FileText size={18} />} title={`Review & ${mode === 'preconfig' ? 'Save' : 'Register'}`} bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
           <div>
             <h3 className="text-sm font-semibold mb-2 text-accent">General Settings</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
@@ -1198,33 +1174,27 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
 
           {/* Actions */}
           <div className="flex gap-2 md:gap-3 flex-wrap">
-            <button onClick={() => submit(true)} disabled={submitting}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-glass border border-brd text-sm font-medium hover:border-accent/30 disabled:opacity-50">
-              {submitting ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
+            <Button variant="secondary" icon={<Eye size={16} />} loading={submitting} onClick={() => submit(true)}>
               Preview (Dry Run)
-            </button>
-            <button onClick={() => submit(false)} disabled={submitting}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50">
-              {submitting ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+            </Button>
+            <Button variant="primary" icon={<Zap size={16} />} loading={submitting} onClick={() => submit(false)}>
               {mode === 'preconfig' ? 'Save Config' : 'Register Now'}
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Navigation */}
       {step < 4 && (
         <div className="flex justify-end gap-2">
-          <button onClick={() => step > 1 ? setStep(step - 1) : navigate('/dashboard/onus/unconfigured')}
-            className="px-4 py-2.5 rounded-xl bg-glass border border-brd text-sm hover:border-accent/30">
+          <Button variant="secondary" onClick={() => step > 1 ? setStep(step - 1) : navigate('/dashboard/onus/unconfigured')}>
             Back
-          </button>
-          <button onClick={() => canNext() && setStep(step + 1)} disabled={!canNext()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50">
-            Next
-          </button>
+          </Button>
+          <Button variant="primary" disabled={!canNext()} onClick={() => canNext() && setStep(step + 1)}>
+            Next <ArrowRight size={14} />
+          </Button>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
