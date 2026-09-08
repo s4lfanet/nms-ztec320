@@ -4,7 +4,7 @@ import { cn } from '../../lib/utils';
 
 interface PageHeaderProps {
   title: string;
-  description?: string;
+  description?: ReactNode;
   breadcrumbs?: BreadcrumbItem[];
   icon?: ReactNode;
   action?: ReactNode;
