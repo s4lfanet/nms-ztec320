@@ -16,6 +16,9 @@ import { LocationPicker } from '../components/LocationPicker';
 import { LeafletMap } from '../components/LeafletMap';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, EmptyState, Modal as SharedModal, Tabs } from '../components/ui';
 
 type Tab = 'overview' | 'tree' | 'map' | 'otb' | 'jc' | 'odc' | 'odp' | 'pon';
 type ModalType = 'otb' | 'jc' | 'odc' | 'odp' | 'port' | 'pon' | null;
@@ -167,49 +170,61 @@ export function FtthInfrastructure() {
 
   const tree = treeData?.tree || [];
 
+  const TAB_ADD: Partial<Record<Tab, { label: string; type: ModalType }>> = {
+    tree: { label: 'Add OTB', type: 'otb' },
+    pon: { label: 'Add PON', type: 'pon' },
+    otb: { label: 'Add OTB', type: 'otb' },
+    jc: { label: 'Add JC', type: 'jc' },
+    odc: { label: 'Add ODC', type: 'odc' },
+    odp: { label: 'Add ODP', type: 'odp' },
+  };
+  const tabAdd = TAB_ADD[tab];
+
   return (
-    <div className="space-y-3 md:space-y-4">
-      {/* Header */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2"><Network size={20} /> FTTH Infrastructure</h1>
-            <p className="text-tx2 text-xs md:text-sm mt-1">Manage OTB/ODF → ODC → ODP → ONU chain with map coordinates</p>
-          </div>
-        </div>
+    <PageContainer className="space-y-3 md:space-y-4">
+      <PageHeader
+        icon={<Network size={20} />}
+        title="FTTH Infrastructure"
+        description="Manage OTB/ODF → ODC → ODP → ONU chain with map coordinates"
+      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <Tabs
+          className="max-w-full overflow-x-auto"
+          tabs={[
+            { key: 'overview', label: 'Overview', icon: <Gauge size={14} /> },
+            { key: 'tree', label: 'Tree', icon: <TreePine size={14} /> },
+            { key: 'pon', label: 'PON', icon: <Cable size={14} /> },
+            { key: 'otb', label: 'OTB', icon: <Server size={14} /> },
+            { key: 'jc', label: 'JC', icon: <GitMerge size={14} /> },
+            { key: 'odc', label: 'ODC', icon: <Box size={14} /> },
+            { key: 'odp', label: 'ODP', icon: <Split size={14} /> },
+            { key: 'map', label: 'Map', icon: <MapIcon size={14} /> },
+          ]}
+          active={tab}
+          onChange={(key) => setTab(key as Tab)}
+        />
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex bg-glass rounded-lg p-0.5 overflow-x-auto scrollbar-thin max-w-full">
-            <button onClick={() => setTab('overview')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'overview' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Gauge size={14} /> Overview</button>
-            <button onClick={() => setTab('tree')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'tree' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><TreePine size={14} /> Tree</button>
-            <button onClick={() => setTab('pon')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'pon' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Cable size={14} /> PON</button>
-            <button onClick={() => setTab('otb')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'otb' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Server size={14} /> OTB</button>
-            <button onClick={() => setTab('jc')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'jc' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><GitMerge size={14} /> JC</button>
-            <button onClick={() => setTab('odc')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'odc' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Box size={14} /> ODC</button>
-            <button onClick={() => setTab('odp')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'odp' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><Split size={14} /> ODP</button>
-            <button onClick={() => setTab('map')} className={cn('px-2.5 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0', tab === 'map' ? 'bg-accent text-white' : 'text-tx3 hover:text-tx1')}><MapIcon size={14} /> Map</button>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {canEdit && tab === 'tree' && <button onClick={() => openAdd('otb')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add OTB</button>}
-            {canEdit && tab === 'pon' && <button onClick={() => openAdd('pon')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add PON</button>}
-            {canEdit && tab === 'otb' && <button onClick={() => openAdd('otb')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add OTB</button>}
-            {canEdit && tab === 'jc' && <button onClick={() => openAdd('jc')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add JC</button>}
-            {canEdit && tab === 'odc' && <button onClick={() => openAdd('odc')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add ODC</button>}
-            {canEdit && tab === 'odp' && <button onClick={() => openAdd('odp')} className="btn-primary flex items-center gap-1.5 text-xs md:text-sm"><Plus size={14} /> Add ODP</button>}
-            <button onClick={() => window.open(api.ftthExport(), '_blank')} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass text-tx2 text-xs md:text-sm hover:text-tx1 transition-colors" title="Export CSV"><Download size={13} /> Export</button>
-            {canEdit && <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass text-tx2 text-xs md:text-sm hover:text-tx1 transition-colors cursor-pointer" title="Import CSV">
-              <Upload size={13} /> Import
-              <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                try { const r = await api.ftthImport(file); toast.success(`Imported: ${JSON.stringify(r.imported)}`); invalidate(); }
-                catch (err: any) { toast.error(err.message); }
-                e.target.value = '';
-              }} />
-            </label>}
-            <button onClick={() => invalidate()} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass text-tx2 text-xs md:text-sm hover:text-tx1 transition-colors" title="Refresh data">
-              <RefreshCw size={13} /> Refresh
-            </button>
-          </div>
+          {canEdit && tabAdd && (
+            <Button variant="primary" className="text-xs md:text-sm" icon={<Plus size={14} />} onClick={() => openAdd(tabAdd.type)}>
+              {tabAdd.label}
+            </Button>
+          )}
+          <Button variant="secondary" className="text-xs md:text-sm" icon={<Download size={13} />} title="Export CSV" onClick={() => window.open(api.ftthExport(), '_blank')}>
+            Export
+          </Button>
+          {canEdit && <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass text-tx2 text-xs md:text-sm hover:text-tx1 transition-colors cursor-pointer" title="Import CSV">
+            <Upload size={13} /> Import
+            <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try { const r = await api.ftthImport(file); toast.success(`Imported: ${JSON.stringify(r.imported)}`); invalidate(); }
+              catch (err: any) { toast.error(err.message); }
+              e.target.value = '';
+            }} />
+          </label>}
+          <Button variant="secondary" className="text-xs md:text-sm" icon={<RefreshCw size={13} />} title="Refresh data" onClick={() => invalidate()}>
+            Refresh
+          </Button>
         </div>
       </div>
 
@@ -221,11 +236,8 @@ export function FtthInfrastructure() {
         <div className="space-y-2">
           {isLoading && <div className="text-center py-8 text-tx3 text-sm">Loading...</div>}
           {!isLoading && tree.length === 0 && (
-            <div className="glass-card p-8 text-center">
-              <Server size={40} className="mx-auto text-tx3 mb-3" />
-              <p className="text-tx3 text-sm mb-3">No OTB/ODF added yet</p>
-              {canEdit && <button onClick={() => openAdd('otb')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First OTB/ODF</button>}
-            </div>
+            <EmptyState icon={Server} title="No OTB/ODF added yet"
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('otb')}>Add First OTB/ODF</Button>} />
           )}
           {tree.map(otb => (
             <OtbNode key={otb.id} otb={otb} expanded={expanded} toggleExpand={toggleExpand} canEdit={canEdit}
@@ -246,7 +258,8 @@ export function FtthInfrastructure() {
       {tab === 'pon' && (
         <div className="space-y-2">
           {(ponList?.items || []).length === 0 && (
-            <div className="glass-card p-8 text-center"><Cable size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm mb-3">No PON ports added yet</p>{canEdit && <button onClick={() => openAdd('pon')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First PON</button>}</div>
+            <EmptyState icon={Cable} title="No PON ports added yet"
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('pon')}>Add First PON</Button>} />
           )}
           {(ponList?.items || []).map(p => {
             const onlinePct = p.total_onu > 0 ? Math.round((p.online_onu / p.total_onu) * 100) : 0;
@@ -292,7 +305,8 @@ export function FtthInfrastructure() {
       {tab === 'otb' && (
         <div className="space-y-2">
           {(otbList?.items || []).length === 0 && (
-            <div className="glass-card p-8 text-center"><Server size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm mb-3">No OTB/ODF added yet</p>{canEdit && <button onClick={() => openAdd('otb')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First OTB/ODF</button>}</div>
+            <EmptyState icon={Server} title="No OTB/ODF added yet"
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('otb')}>Add First OTB/ODF</Button>} />
           )}
           {(otbList?.items || []).map(o => {
             const util = o.total_cores > 0 ? Math.round((o.used_cores / o.total_cores) * 100) : 0;
@@ -332,7 +346,9 @@ export function FtthInfrastructure() {
       {tab === 'jc' && (
         <div className="space-y-2">
           {(jcList?.items || []).length === 0 && (
-            <div className="glass-card p-8 text-center"><GitMerge size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm mb-1">No JC (Joint Closure) added yet</p><p className="text-tx3 text-xs mb-3">Titik sambungan opsional di sepanjang jalur OTB → ODC → ODP</p>{canEdit && <button onClick={() => openAdd('jc')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First JC</button>}</div>
+            <EmptyState icon={GitMerge} title="No JC (Joint Closure) added yet"
+              description="Titik sambungan opsional di sepanjang jalur OTB → ODC → ODP"
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('jc')}>Add First JC</Button>} />
           )}
           {(jcList?.items || []).map(j => (
             <div key={j.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
@@ -364,7 +380,8 @@ export function FtthInfrastructure() {
       {tab === 'odc' && (
         <div className="space-y-2">
           {(odcList?.items || []).length === 0 && (
-            <div className="glass-card p-8 text-center"><Box size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm mb-3">No ODC added yet</p>{canEdit && <button onClick={() => openAdd('odc')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First ODC</button>}</div>
+            <EmptyState icon={Box} title="No ODC added yet"
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('odc')}>Add First ODC</Button>} />
           )}
           {(odcList?.items || []).map(o => {
             const util = o.total_cores > 0 ? Math.round((o.used_cores / o.total_cores) * 100) : 0;
@@ -404,7 +421,8 @@ export function FtthInfrastructure() {
       {tab === 'odp' && (
         <div className="space-y-2">
           {(odpList?.items || []).length === 0 && (
-            <div className="glass-card p-8 text-center"><Split size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm mb-3">No ODP added yet</p>{canEdit && <button onClick={() => openAdd('odp')} className="btn-primary inline-flex items-center gap-1.5 text-sm"><Plus size={16} /> Add First ODP</button>}</div>
+            <EmptyState icon={Split} title="No ODP added yet"
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('odp')}>Add First ODP</Button>} />
           )}
           {(odpList?.items || []).map(o => {
             const util = o.total_ports > 0 ? Math.round((o.used_ports / o.total_ports) * 100) : 0;
@@ -519,7 +537,7 @@ export function FtthInfrastructure() {
       {modal === 'odp' && <OdpModal item={editItem} parent={parentCtx} parentKind={parentKind} odcList={odcList?.items || []} jcList={jcList?.items || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {modal === 'pon' && <PonModal item={editItem} otbList={otbList?.items || []} olts={statsData?.per_olt || []} onClose={() => setModal(null)} onSaved={() => { invalidate(); setModal(null); }} />}
       {impactTarget && <ImpactModal target={impactTarget} onClose={() => setImpactTarget(null)} />}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -914,7 +932,7 @@ function MapView({ markers, lines, fiberPaths, drawMode, onDrawComplete, onMarke
   onMarkerClick?: (marker: any) => void;
 }) {
   if (markers.length === 0) {
-    return <div className="glass-card p-8 text-center"><MapIcon size={40} className="mx-auto text-tx3 mb-3" /><p className="text-tx3 text-sm">No coordinates set. Add latitude/longitude to OTB/ODF, ODC, or ODP to see them on map.</p></div>;
+    return <EmptyState icon={MapIcon} title="No coordinates set" description="Add latitude/longitude to OTB/ODF, ODC, or ODP to see them on map." />;
   }
   return (
     <LeafletMap
@@ -1795,61 +1813,43 @@ function ImpactModal({ target, onClose }: { target: { type: 'otb' | 'jc' | 'odc'
     queryFn: () => api.ftthImpact(target.type, target.id),
   });
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="modal-overlay" onClick={onClose} />
-      <div className="relative glass-card w-full max-w-md max-h-[85vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
-        <div className="px-4 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between sticky top-0 bg-surface z-10 rounded-t-2xl">
-          <h2 className="text-sm font-semibold flex items-center gap-2"><Users size={16} /> Dampak: {target.name}</h2>
-          <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
-        </div>
-        <div className="p-4 md:p-5 overflow-y-auto flex-1 space-y-3">
-          {isLoading && <div className="text-center py-8 text-tx3 text-sm">Menghitung...</div>}
-          {data && (
-            <>
-              <p className="text-xs text-tx3">Kalau titik ini putus/bermasalah, pelanggan berikut akan terdampak:</p>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="p-2.5 rounded-lg bg-glass"><div className="text-lg font-bold">{data.total}</div><div className="text-[10px] text-tx3 uppercase">Total</div></div>
-                <div className="p-2.5 rounded-lg bg-success/10"><div className="text-lg font-bold text-success">{data.online}</div><div className="text-[10px] text-tx3 uppercase">Online</div></div>
-                <div className="p-2.5 rounded-lg bg-danger/10"><div className="text-lg font-bold text-danger">{data.offline}</div><div className="text-[10px] text-tx3 uppercase">Offline</div></div>
-              </div>
-              {data.total === 0 ? (
-                <p className="text-xs text-tx3 text-center py-4">Belum ada pelanggan downstream dari titik ini.</p>
-              ) : (
-                <div className="space-y-1 max-h-64 overflow-y-auto">
-                  {data.customers.map(c => (
-                    <div key={c.id} className="flex items-center gap-2 p-2 rounded-lg bg-glass text-xs">
-                      <span className={cn('w-2 h-2 rounded-full flex-shrink-0', c.status?.toLowerCase() === 'online' ? 'bg-success' : 'bg-tx3')} />
-                      <span className="font-medium truncate flex-1">{c.name}</span>
-                      <span className="text-tx3 font-mono">{c.serial}</span>
-                    </div>
-                  ))}
-                  {data.truncated && <p className="text-[11px] text-tx3 text-center pt-1">...dan {data.total - 200} lainnya (dipotong untuk performa)</p>}
+    <SharedModal open onClose={onClose} icon={<Users size={16} />} title={`Dampak: ${target.name}`} size="sm">
+      {isLoading && <div className="text-center py-8 text-tx3 text-sm">Menghitung...</div>}
+      {data && (
+        <>
+          <p className="text-xs text-tx3">Kalau titik ini putus/bermasalah, pelanggan berikut akan terdampak:</p>
+          <div className="grid grid-cols-3 gap-2 text-center mt-3">
+            <div className="p-2.5 rounded-lg bg-glass"><div className="text-lg font-bold">{data.total}</div><div className="text-[10px] text-tx3 uppercase">Total</div></div>
+            <div className="p-2.5 rounded-lg bg-success/10"><div className="text-lg font-bold text-success">{data.online}</div><div className="text-[10px] text-tx3 uppercase">Online</div></div>
+            <div className="p-2.5 rounded-lg bg-danger/10"><div className="text-lg font-bold text-danger">{data.offline}</div><div className="text-[10px] text-tx3 uppercase">Offline</div></div>
+          </div>
+          {data.total === 0 ? (
+            <p className="text-xs text-tx3 text-center py-4">Belum ada pelanggan downstream dari titik ini.</p>
+          ) : (
+            <div className="space-y-1 max-h-64 overflow-y-auto mt-3">
+              {data.customers.map(c => (
+                <div key={c.id} className="flex items-center gap-2 p-2 rounded-lg bg-glass text-xs">
+                  <span className={cn('w-2 h-2 rounded-full flex-shrink-0', c.status?.toLowerCase() === 'online' ? 'bg-success' : 'bg-tx3')} />
+                  <span className="font-medium truncate flex-1">{c.name}</span>
+                  <span className="text-tx3 font-mono">{c.serial}</span>
                 </div>
-              )}
-            </>
+              ))}
+              {data.truncated && <p className="text-[11px] text-tx3 text-center pt-1">...dan {data.total - 200} lainnya (dipotong untuk performa)</p>}
+            </div>
           )}
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    </SharedModal>
   );
 }
 
 // ─── Generic Modal wrapper ───
 function Modal({ title, onClose, onSubmit, loading, children }: { title: string; onClose: () => void; onSubmit: () => void; loading: boolean; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="modal-overlay" />
-      <div className="relative glass-card w-full max-w-lg max-h-[90vh] md:max-h-[85vh] flex flex-col rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in">
-        <div className="px-4 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between sticky top-0 bg-surface z-10 rounded-t-2xl md:rounded-t-2xl">
-          <h2 className="text-sm font-semibold">{title}</h2>
-          <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
-        </div>
-        <div className="p-4 md:p-5 overflow-y-auto flex-1 space-y-3">{children}</div>
-        <div className="px-4 md:px-5 py-3 border-t border-brd flex justify-end gap-2 sticky bottom-0 bg-surface rounded-b-2xl md:rounded-b-2xl">
-          <button onClick={onClose} className="btn-cancel text-sm">Cancel</button>
-          <button onClick={onSubmit} disabled={loading} className="btn-primary text-sm flex items-center gap-1.5">{loading && <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>} Save</button>
-        </div>
-      </div>
-    </div>
+    <SharedModal open onClose={onClose} title={title} size="md"
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" loading={loading} onClick={onSubmit}>Save</Button></>}
+    >
+      <div className="space-y-3">{children}</div>
+    </SharedModal>
   );
 }
