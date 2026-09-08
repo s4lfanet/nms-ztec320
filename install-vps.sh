@@ -321,7 +321,21 @@ DB_BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 db_backu
 BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
 SYNC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
 TRAFFIC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
-( crontab -l 2>/dev/null | grep -v 'db_backup\.py\|auto_backup\|auto_sync\|traffic_poller\|salfanet-nms' ; echo "$DB_BACKUP_CRON" ; echo "$BACKUP_CRON" ; echo "$SYNC_CRON" ; echo "$TRAFFIC_CRON" ) | crontab -
+# Write to a temp file and verify afterward, rather than piping straight
+# into `crontab -` — a bare pipe can silently install an EMPTY crontab if
+# the subshell is interrupted (e.g. a flaky SSH session mid-install),
+# leaving auto-sync/backups permanently not running with no error anywhere.
+# Retries once, then falls through to a loud failure message instead.
+CRON_TMP=$(mktemp)
+CRON_COUNT=0
+for attempt in 1 2; do
+    { crontab -l 2>/dev/null | grep -v 'db_backup\.py\|auto_backup\|auto_sync\|traffic_poller\|salfanet-nms'; echo "$DB_BACKUP_CRON"; echo "$BACKUP_CRON"; echo "$SYNC_CRON"; echo "$TRAFFIC_CRON"; } > "$CRON_TMP"
+    crontab "$CRON_TMP"
+    CRON_COUNT=$(crontab -l 2>/dev/null | grep -c 'auto_sync\.py\|auto_backup\.py\|db_backup\.py\|traffic_poller\.py' || true)
+    [ "$CRON_COUNT" -ge 4 ] && break
+    echo "  ⚠️  Cron install looked incomplete ($CRON_COUNT/4 jobs) — retrying..."
+done
+rm -f "$CRON_TMP"
 touch /var/log/salfanet-db-backup.log /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log
 chown ${APP_USER}:${APP_USER} /var/log/salfanet-db-backup.log /var/log/salfanet-backup.log /var/log/salfanet-sync.log /var/log/salfanet-traffic.log 2>/dev/null || true
 
@@ -340,10 +354,19 @@ cat > /etc/logrotate.d/${APP_NAME} << LOGROTATE_EOF
 }
 LOGROTATE_EOF
 
-echo "  ✅ DB backup cron: hourly (instance/backups/, 24 hourly + 7 daily retention)"
-echo "  ✅ OLT config backup cron: hourly"
-echo "  ✅ Auto-sync cron: every 5 minutes"
-echo "  ✅ Traffic poller cron: every 5 minutes"
+if [ "$CRON_COUNT" -ge 4 ]; then
+    echo "  ✅ DB backup cron: hourly (instance/backups/, 24 hourly + 7 daily retention)"
+    echo "  ✅ OLT config backup cron: hourly"
+    echo "  ✅ Auto-sync cron: every 5 minutes"
+    echo "  ✅ Traffic poller cron: every 5 minutes"
+else
+    echo "  ❌ FAILED to install cron jobs ($CRON_COUNT/4 found) — auto-sync/backups will NOT run automatically."
+    echo "     Fix manually: crontab -e (as root) and add these 4 lines:"
+    echo "       $DB_BACKUP_CRON"
+    echo "       $BACKUP_CRON"
+    echo "       $SYNC_CRON"
+    echo "       $TRAFFIC_CRON"
+fi
 echo "  ✅ Log rotation: daily, 14 days retention"
 
 # ── 9. Start & verify ──
@@ -371,6 +394,11 @@ if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:80/ 2>/dev/null | gre
     echo "  ✅ Nginx (port 80): OK"
 else
     echo "  ❌ Nginx (port 80): FAILED"
+    FAIL=1
+fi
+
+if [ "$CRON_COUNT" -lt 4 ]; then
+    echo "  ❌ Cron jobs (auto-sync/backups): NOT installed ($CRON_COUNT/4) — see warning above"
     FAIL=1
 fi
 

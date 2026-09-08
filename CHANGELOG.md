@@ -4,6 +4,23 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-08 — Cron Jobs (Auto-Sync/Backup) Bisa Gagal Diam-Diam Saat Install/Update
+
+#### Ditemukan Saat Audit — Direproduksi Langsung
+- User minta audit cronjob/auto-sync di VPS instalasi baru (`192.168.54.134`) — hasilnya: `crontab -l` untuk root **kosong total** (cuma header comment), padahal installer barusan selesai jalan. Semua 4 log cron (`salfanet-sync.log`, `-backup.log`, `-db-backup.log`, `-traffic.log`) 0 byte sejak dibuat — auto-sync OLT, auto-backup, DB backup, dan traffic poller **tidak pernah jalan sekali pun**
+- **Root cause**: `install-vps.sh`/`deploy/vps-setup.sh`/`deploy/update_vps.sh` menulis crontab lewat `( ... ; echo "$CRON_1" ; echo "$CRON_2" ; ... ) | crontab -` — kalau subshell ini terputus di tengah jalan (mis. koneksi SSH sempat hiccup pas instalasi), `crontab -` menerima input kosong dan diam-diam menginstall crontab **kosong** tanpa satupun baris job, tanpa error apapun — installer tetap menampilkan pesan sukses ("✅ Auto-sync cron: every 5 minutes") padahal tidak benar
+
+#### Diperbaiki
+- Ketiga script sekarang menulis crontab ke file temp dulu (bukan pipe langsung), lalu **verifikasi jumlah baris job yang benar-benar masuk** (`crontab -l | grep -c ...`) — kalau kurang dari yang seharusnya, retry sekali, dan kalau tetap gagal setelah retry, tampilkan pesan **❌ FAILED** yang jelas beserta baris cron yang harus ditambahkan manual — bukan pesan sukses palsu
+- `install-vps.sh`/`vps-setup.sh`: kegagalan cron sekarang juga menandai instalasi keseluruhan sebagai gagal di ringkasan akhir (bukan cuma warning yang gampang kelewat di tengah output panjang)
+- VPS `192.168.54.134` yang jadi temuan awal sudah diperbaiki langsung (crontab 4 job berhasil terpasang, dikonfirmasi lewat `crontab -l`)
+
+#### Diverifikasi
+- Ketiga script di-syntax-check (`bash -n`) — lolos semua
+- Logika retry+verifikasi dijalankan langsung di VPS yang bermasalah — berhasil pasang 4/4 job di percobaan pertama, dikonfirmasi via `crontab -l`
+
+---
+
 ### 2026-09-08 — Form "Add PON Port" Bisa Pilih dari Data Sync OLT Nyata
 
 #### Ditemukan
