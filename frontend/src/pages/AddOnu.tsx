@@ -5,9 +5,12 @@ import { api, type TechnicianData } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import {
-  ArrowLeft, ArrowRight, Server, Cpu, Settings, Check,
-  Loader2, Zap, Wifi, Globe, Search, Wrench
+  ArrowLeft, ArrowRight, Server, Cpu, Settings, Check, CheckCircle2, XCircle,
+  Loader2, Zap, Wifi, Globe, Search, Wrench, X
 } from 'lucide-react';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState, Select } from '../components/ui';
 
 
 const STEPS = [
@@ -241,17 +244,17 @@ export function AddOnu() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 animate-fade-in">
-      <div className="flex items-center gap-2 md:gap-3">
-        <button onClick={() => step > 1 ? setStep(step - 1) : navigate('/dashboard/onus')}
-          className="p-2 rounded-lg hover:bg-glass transition-colors text-tx2 hover:text-tx1 flex-shrink-0">
-          <ArrowLeft size={18} />
-        </button>
-        <div className="min-w-0">
-          <h1 className="text-xl md:text-2xl font-bold truncate">Add New ONU</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">ZTE ONT provisioning</p>
-        </div>
-      </div>
+    <PageContainer className="max-w-4xl mx-auto animate-fade-in">
+      <PageHeader
+        icon={
+          <button onClick={() => step > 1 ? setStep(step - 1) : navigate('/dashboard/onus')}
+            className="p-2 rounded-lg hover:bg-glass transition-colors text-tx2 hover:text-tx1 flex-shrink-0">
+            <ArrowLeft size={18} />
+          </button>
+        }
+        title="Add New ONU"
+        description="ZTE ONT provisioning"
+      />
 
       {/* Step Indicator */}
       {step <= 4 && (
@@ -273,15 +276,10 @@ export function AddOnu() {
 
       {/* Step 1: Select OLT */}
       {step === 1 && (
-        <div className="glass-card p-4 md:p-6 space-y-4">
-          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Server size={18} /> Select OLT</h2>
+        <Card icon={<Server size={18} />} title="Select OLT">
           <div className="grid gap-2 md:gap-3">
             {olts.length === 0 && (
-              <div className="text-center py-8 text-tx3">
-                <Server size={36} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No OLTs available</p>
-                <p className="text-xs mt-1">Add an OLT in OLT Settings first</p>
-              </div>
+              <EmptyState icon={Server} title="No OLTs available" description="Add an OLT in OLT Settings first" />
             )}
             {olts.map((olt: {id: number; name: string; ip_address: string; is_online?: boolean}) => (
               <button key={olt.id} onClick={() => setOltId(olt.id)}
@@ -299,20 +297,22 @@ export function AddOnu() {
               </button>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Step 2: ONU Info */}
       {step === 2 && (
-        <div className="glass-card p-4 md:p-6 space-y-4 md:space-y-5">
-          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Cpu size={18} /> ONU Information</h2>
+        <Card icon={<Cpu size={18} />} title="ONU Information" bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
           {/* Scan Button */}
           <div className="flex items-center gap-2 md:gap-3 flex-wrap">
-            <button onClick={scanOnus} disabled={scanning || !oltId}
-              className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg bg-accent/15 border border-accent/30 text-accent text-xs md:text-sm font-medium hover:bg-accent/25 disabled:opacity-50">
-              {scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+            <Button
+              variant="accent"
+              icon={scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+              onClick={scanOnus}
+              disabled={scanning || !oltId}
+            >
               {scanning ? 'Scanning...' : 'Scan ONUs'}
-            </button>
+            </Button>
             {scannedOnus.length > 0 && !showScan && (
               <button onClick={() => setShowScan(true)} className="text-xs text-accent hover:underline">
                 Show {scannedOnus.length} result(s)
@@ -325,7 +325,9 @@ export function AddOnu() {
             <div className="p-4 rounded-xl border border-brd bg-glass max-h-64 overflow-y-auto">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-tx3 font-semibold uppercase">Unconfigured ONUs ({scannedOnus.length})</span>
-                <button onClick={() => setShowScan(false)} className="text-xs text-tx3 hover:text-tx1">✕ Close</button>
+                <button onClick={() => setShowScan(false)} className="flex items-center gap-1 text-xs text-tx3 hover:text-tx1">
+                  <X size={12} /> Close
+                </button>
               </div>
               <div className="grid gap-2">
                 {scannedOnus.map((onu, i) => (
@@ -356,13 +358,14 @@ export function AddOnu() {
                 placeholder="ZTEG0A1B2C3D" className="input-field" />
             </div>
             <div>
-              <label className="label-sm mb-1">ONU Type</label>
               {registeredTypes.length > 0 ? (
-                <select value={onuType} onChange={e => setOnuType(e.target.value)} className="input-field">
-                  {registeredTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                <Select label="ONU Type" value={onuType} onChange={e => setOnuType(e.target.value)}
+                  options={registeredTypes.map(t => ({ value: t, label: t }))} />
               ) : (
-                <input type="text" value={onuType} onChange={e => setOnuType(e.target.value)} className="input-field" />
+                <>
+                  <label className="label-sm mb-1">ONU Type</label>
+                  <input type="text" value={onuType} onChange={e => setOnuType(e.target.value)} className="input-field" />
+                </>
               )}
             </div>
           </div>
@@ -384,87 +387,93 @@ export function AddOnu() {
               <input type="number" value={frame} onChange={e => setFrame(Number(e.target.value))} className="input-field" />
             </div>
             <div>
-              <label className="label-sm mb-1">Slot (Card)</label>
               {slots.length > 0 ? (
-                <select value={slot} onChange={e => {
+                <Select label="Slot (Card)" value={slot} onChange={e => {
                   const newSlot = Number(e.target.value);
                   setSlot(newSlot);
                   const s = slots.find(s => s.card === newSlot);
                   if (s && s.ports.length > 0) setPort(s.ports[0]);
-                }} className="input-field">
-                  {slots.map(s => <option key={s.card} value={s.card}>Card {s.card}</option>)}
-                </select>
+                }} options={slots.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))} />
               ) : (
-                <input type="number" value={slot} onChange={e => setSlot(Number(e.target.value))} className="input-field" placeholder="Auto" />
+                <>
+                  <label className="label-sm mb-1">Slot (Card)</label>
+                  <input type="number" value={slot} onChange={e => setSlot(Number(e.target.value))} className="input-field" placeholder="Auto" />
+                </>
               )}
               {slots.length === 0 && oltId && <p className="text-[10px] text-tx3 mt-1">Sync OLT to load cards</p>}
             </div>
             <div>
-              <label className="label-sm mb-1">PON Port</label>
               {slots.length > 0 ? (() => {
                 const currentSlot = slots.find(s => s.card === slot);
                 return (
-                  <select value={port} onChange={e => setPort(Number(e.target.value))} className="input-field">
-                    {(currentSlot?.ports || []).map(p => <option key={p} value={p}>Port {p}</option>)}
-                  </select>
+                  <Select label="PON Port" value={port} onChange={e => setPort(Number(e.target.value))}
+                    options={(currentSlot?.ports || []).map(p => ({ value: String(p), label: `Port ${p}` }))} />
                 );
               })() : (
-                <input type="number" value={port} onChange={e => setPort(Number(e.target.value))} className="input-field" placeholder="Auto" />
+                <>
+                  <label className="label-sm mb-1">PON Port</label>
+                  <input type="number" value={port} onChange={e => setPort(Number(e.target.value))} className="input-field" placeholder="Auto" />
+                </>
               )}
             </div>
           </div>
           <div>
-              <label className="label-sm mb-1 flex items-center gap-1.5"><Wrench size={12} /> Teknisi Lapangan</label>
-              <select value={technicianId ?? ''} onChange={e => setTechnicianId(e.target.value ? Number(e.target.value) : null)}
-                className="input-field">
-                <option value="">— Tidak ada teknisi —</option>
-                {technicians.map(t => (
-                  <option key={t.id} value={t.id}>{t.full_name}{t.phone ? ` (${t.phone})` : ''}</option>
-                ))}
-              </select>
+              <Select
+                label={<><Wrench size={12} className="inline mr-1.5" />Teknisi Lapangan</>}
+                value={technicianId ?? ''}
+                onChange={e => setTechnicianId(e.target.value ? Number(e.target.value) : null)}
+                options={[
+                  { value: '', label: '— Tidak ada teknisi —' },
+                  ...technicians.map(t => ({ value: String(t.id), label: `${t.full_name}${t.phone ? ` (${t.phone})` : ''}` })),
+                ]}
+              />
               {technicians.length === 0 && (
                 <p className="text-[10px] text-tx3 mt-1">Belum ada user dengan role Technician. Tambahkan di User Management.</p>
               )}
             </div>
-        </div>
+        </Card>
       )}
 
       {/* Step 3: Configuration */}
       {step === 3 && (
-        <div className="glass-card p-4 md:p-6 space-y-4 md:space-y-5">
-          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Settings size={18} /> Configuration</h2>
+        <Card icon={<Settings size={18} />} title="Configuration" bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             <div>
-              <label className="label-sm mb-1">TCONT Profile (Upload)</label>
-              <select value={tcontProfile} onChange={e => setTcontProfile(e.target.value)} className="input-field">
-                {profileList.length > 0 ? profileList.map(p => <option key={p} value={p}>{p}</option>) : (
-                  <><option value="1G">1G</option><option value="UP-PPPOE">UP-PPPOE</option></>
-                )}
-              </select>
-              <p className="text-[10px] text-tx3 mt-1">Upload bandwidth limit profile</p>
+              <Select
+                label="TCONT Profile (Upload)"
+                value={tcontProfile}
+                onChange={e => setTcontProfile(e.target.value)}
+                helperText="Upload bandwidth limit profile"
+                options={profileList.length > 0
+                  ? profileList.map(p => ({ value: p, label: p }))
+                  : [{ value: '1G', label: '1G' }, { value: 'UP-PPPOE', label: 'UP-PPPOE' }]}
+              />
             </div>
             <div>
-              <label className="label-sm mb-1">Traffic Profile (Download)</label>
-              <select value={trafficProfile} onChange={e => setTrafficProfile(e.target.value)} className="input-field">
-                <option value="">— Same as TCONT —</option>
-                {trafficList.map(p => <option key={p} value={p}>{p}</option>)}
-                {profileList.filter(p => !trafficList.includes(p)).map(p => (
-                  <option key={p} value={p}>{p} (from TCONT)</option>
-                ))}
-              </select>
-              <p className="text-[10px] text-tx3 mt-1">Download bandwidth limit profile</p>
+              <Select
+                label="Traffic Profile (Download)"
+                value={trafficProfile}
+                onChange={e => setTrafficProfile(e.target.value)}
+                helperText="Download bandwidth limit profile"
+                options={[
+                  { value: '', label: '— Same as TCONT —' },
+                  ...trafficList.map(p => ({ value: p, label: p })),
+                  ...profileList.filter(p => !trafficList.includes(p)).map(p => ({ value: p, label: `${p} (from TCONT)` })),
+                ]}
+              />
             </div>
             <div>
-              <label className="label-sm mb-1">Service VLAN</label>
-              <select value={serviceVlan} onChange={e => setServiceVlan(Number(e.target.value))} className="input-field">
-                <option value={0}>— Select VLAN —</option>
-                {vlanList.map(v => (
-                  <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name}</option>
-                ))}
-                {!vlanList.find(v => v.vlan_id === serviceVlan) && serviceVlan > 0 && (
-                  <option value={serviceVlan}>{serviceVlan} (custom)</option>
-                )}
-              </select>
+              <Select
+                label="Service VLAN"
+                value={serviceVlan}
+                onChange={e => setServiceVlan(Number(e.target.value))}
+                options={[
+                  { value: '0', label: '— Select VLAN —' },
+                  ...vlanList.map(v => ({ value: String(v.vlan_id), label: `${v.vlan_id} — ${v.name}` })),
+                  ...(!vlanList.find(v => v.vlan_id === serviceVlan) && serviceVlan > 0
+                    ? [{ value: String(serviceVlan), label: `${serviceVlan} (custom)` }] : []),
+                ]}
+              />
               <input type="number" value={serviceVlan || ''} onChange={e => setServiceVlan(Number(e.target.value))}
                 min={1} max={4094} className="input-field mt-1" placeholder="Custom VLAN ID" />
             </div>
@@ -586,13 +595,12 @@ export function AddOnu() {
               </div>
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {/* Step 4: Review */}
       {step === 4 && (
-        <div className="glass-card p-4 md:p-6 space-y-4 md:space-y-5">
-          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Check size={18} /> Review & Provision</h2>
+        <Card icon={<Check size={18} />} title="Review & Provision" bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
             {[
               ['OLT', olts.find((o: {id:number}) => o.id === oltId)?.name || ''],
@@ -609,20 +617,21 @@ export function AddOnu() {
             ))}
           </div>
           <div className="flex gap-2 md:gap-3 pt-2 flex-wrap">
-            <button onClick={() => provision(true)} disabled={loading}
-              className="flex items-center gap-2 px-4 md:px-5 py-2 md:py-2.5 rounded-xl bg-glass border border-brd text-xs md:text-sm font-medium hover:border-accent/30 disabled:opacity-50">
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />} Preview
-            </button>
-            <button onClick={() => provision(false)} disabled={loading}
-              className="flex items-center gap-2 px-4 md:px-5 py-2 md:py-2.5 rounded-xl bg-accent text-white text-xs md:text-sm font-medium hover:bg-accent-hover disabled:opacity-50 glow-accent">
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />} Provision Now
-            </button>
+            <Button variant="secondary" icon={loading ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+              onClick={() => provision(true)} disabled={loading}>
+              Preview
+            </Button>
+            <Button variant="primary" className="glow-accent" icon={loading ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
+              onClick={() => provision(false)} disabled={loading}>
+              Provision Now
+            </Button>
           </div>
           {result && (
             <div className={cn('p-4 rounded-xl border', result.success ? 'border-success/30 bg-success/5' : 'border-danger/30 bg-danger/5')}>
               <div className="flex items-center gap-2 mb-2">
-                <span className={cn('text-sm font-semibold', result.success ? 'text-success' : 'text-danger')}>
-                  {result.success ? '✅ Success' : '❌ Failed'}
+                <span className={cn('flex items-center gap-1.5 text-sm font-semibold', result.success ? 'text-success' : 'text-danger')}>
+                  {result.success ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                  {result.success ? 'Success' : 'Failed'}
                 </span>
                 <span className="text-xs text-tx3">{String(result['message'] || '')}</span>
               </div>
@@ -641,23 +650,22 @@ export function AddOnu() {
               )}
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {/* Navigation */}
       {step <= 4 && !result && (
         <div className="flex justify-between gap-2">
-          <button onClick={() => step > 1 ? setStep(step - 1) : navigate('/dashboard/onus')}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-glass border border-brd text-xs md:text-sm text-tx2 hover:border-accent/30">
-            <ArrowLeft size={14} /> Back
-          </button>
-          <button onClick={() => setStep(step + 1)} disabled={!canNext()}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-accent text-white text-xs md:text-sm font-medium hover:bg-accent-hover disabled:opacity-50">
+          <Button variant="secondary" icon={<ArrowLeft size={14} />}
+            onClick={() => step > 1 ? setStep(step - 1) : navigate('/dashboard/onus')}>
+            Back
+          </Button>
+          <Button variant="primary" disabled={!canNext()} onClick={() => setStep(step + 1)}>
             Next <ArrowRight size={14} />
-          </button>
+          </Button>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
