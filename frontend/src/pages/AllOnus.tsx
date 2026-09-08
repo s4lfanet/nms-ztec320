@@ -7,13 +7,17 @@ import { cn, formatSn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
-  Search, Eye, Edit3, Trash2,
-  CheckCircle2, AlertTriangle, XCircle, HelpCircle, Wifi, WifiOff,
+  Eye, Edit3, Trash2,
+  CheckCircle2, AlertTriangle, XCircle, HelpCircle, Wifi,
   Satellite, Download, Split, Radio, Wrench, MapPin
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { LocationPicker } from '../components/LocationPicker';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState, Select, Input, Modal } from '../components/ui';
+import { FilterBar, SearchBar, StatusBadge } from '../components/shared';
 
 export function AllOnus() {
   const queryClient = useQueryClient();
@@ -187,40 +191,40 @@ export function AllOnus() {
   };
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">All ONUs</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">{total} optical network units</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              const params = new URLSearchParams();
-              if (oltFilter !== 'all') params.set('olt', oltFilter);
-              if (statusFilter !== 'all') params.set('status', statusFilter);
-              if (ponFilter !== 'all') params.set('pon', ponFilter);
-              else if (slotFilter !== 'all') params.set('pon', `slot/${slotFilter}`);
-              if (debouncedSearch) params.set('search', debouncedSearch);
-              if (sortBy) { params.set('sort_by', sortBy); params.set('sort_dir', sortDir); }
-              const qs = params.toString();
-              window.open(`/api/all-onus/export${qs ? '?' + qs : ''}`, '_blank');
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-glass border border-brd hover:border-accent/30 text-xs md:text-sm transition-all"
-          >
-            <Download size={15} /> <span className="hidden sm:inline">Export CSV</span><span className="sm:hidden">Export</span>
-          </button>
-          <button
-            onClick={() => olts.forEach(o => refreshSignalMutation.mutate(o.id))}
-            disabled={refreshSignalMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-glass border border-brd hover:border-accent/30 text-xs md:text-sm transition-all disabled:opacity-50"
-          >
-            <Satellite size={15} className={refreshSignalMutation.isPending ? 'animate-spin' : ''} />
-            {refreshSignalMutation.isPending ? 'Refreshing...' : 'Signal'}
-          </button>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="All ONUs"
+        description={`${total} optical network units`}
+        action={
+          <>
+            <Button
+              variant="secondary"
+              icon={<Download size={15} />}
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (oltFilter !== 'all') params.set('olt', oltFilter);
+                if (statusFilter !== 'all') params.set('status', statusFilter);
+                if (ponFilter !== 'all') params.set('pon', ponFilter);
+                else if (slotFilter !== 'all') params.set('pon', `slot/${slotFilter}`);
+                if (debouncedSearch) params.set('search', debouncedSearch);
+                if (sortBy) { params.set('sort_by', sortBy); params.set('sort_dir', sortDir); }
+                const qs = params.toString();
+                window.open(`/api/all-onus/export${qs ? '?' + qs : ''}`, '_blank');
+              }}
+            >
+              <span className="hidden sm:inline">Export CSV</span><span className="sm:hidden">Export</span>
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<Satellite size={15} className={refreshSignalMutation.isPending ? 'animate-spin' : ''} />}
+              onClick={() => olts.forEach(o => refreshSignalMutation.mutate(o.id))}
+              disabled={refreshSignalMutation.isPending}
+            >
+              {refreshSignalMutation.isPending ? 'Refreshing...' : 'Signal'}
+            </Button>
+          </>
+        }
+      />
 
       {/* Signal Stats Cards — dynamic from RX color ranges */}
       <div className={`grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 transition-opacity ${isFilterFetching ? 'opacity-40' : ''}`}>
@@ -256,18 +260,13 @@ export function AllOnus() {
 
       {/* Filters */}
       <div className="flex flex-col gap-3">
-        <div className="relative w-full">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-tx3" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Cari: Name, OLT, SN, PPPoE, Type..."
-            className="w-full h-10 pl-9 pr-4 rounded-xl bg-glass border border-brd text-sm text-tx1 placeholder:text-tx3 focus:outline-none focus:border-accent/50 transition-colors"
-          />
-        </div>
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Cari: Name, OLT, SN, PPPoE, Type..."
+        />
 
-        <div className="flex flex-wrap gap-2 items-center">
+        <FilterBar>
           <div className="flex gap-1 p-1 rounded-xl bg-glass border border-brd overflow-x-auto max-w-full">
             <FilterBtn active={oltFilter === 'all'} onClick={() => { setOltFilter('all'); setPonFilter('all'); setSlotFilter('all'); }}>All</FilterBtn>
             {olts.map(o => (
@@ -279,57 +278,60 @@ export function AllOnus() {
 
           {oltFilter !== 'all' && pon_ports.length > 0 && (
             <>
-              <select
+              <Select
                 value={slotFilter}
                 onChange={e => { setSlotFilter(e.target.value); setPonFilter('all'); setPage(1); }}
-                className="h-10 px-3 rounded-xl bg-glass border border-brd text-sm text-tx1 focus:outline-none focus:border-accent/50 flex-shrink-0"
-              >
-                <option value="all">All Slots</option>
-                {pon_ports.map(s => (
-                  <option key={s.slot} value={String(s.slot)}>
-                    Slot {s.slot}{s.card_type ? ` (${s.card_type})` : ''}
-                  </option>
-                ))}
-              </select>
+                aria-label="Filter slot"
+                className="w-auto flex-shrink-0"
+                options={[
+                  { value: 'all', label: 'All Slots' },
+                  ...pon_ports.map(s => ({ value: String(s.slot), label: `Slot ${s.slot}${s.card_type ? ` (${s.card_type})` : ''}` })),
+                ]}
+              />
 
               {slotFilter !== 'all' && (() => {
                 const slotGroup = pon_ports.find(s => String(s.slot) === slotFilter);
                 if (!slotGroup) return null;
                 return (
-                  <select
+                  <Select
                     value={ponFilter}
                     onChange={e => { setPonFilter(e.target.value); setPage(1); }}
-                    className="h-10 px-3 rounded-xl bg-glass border border-brd text-sm text-tx1 focus:outline-none focus:border-accent/50 flex-shrink-0"
-                  >
-                    <option value="all">All PON</option>
-                    {slotGroup.ports.map(p => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
-                    ))}
-                  </select>
+                    aria-label="Filter PON"
+                    className="w-auto flex-shrink-0"
+                    options={[
+                      { value: 'all', label: 'All PON' },
+                      ...slotGroup.ports.map(p => ({ value: p.value, label: p.label })),
+                    ]}
+                  />
                 );
               })()}
             </>
           )}
 
-          <select
+          <Select
             value={statusFilter}
             onChange={e => { setStatusFilter(e.target.value); setPage(1); const p = new URLSearchParams(searchParams); if (e.target.value === 'all') p.delete('filter'); else p.set('filter', e.target.value); setSearchParams(p, { replace: true }); }}
-            className="h-10 px-3 rounded-xl bg-glass border border-brd text-sm text-tx1 focus:outline-none focus:border-accent/50 flex-shrink-0"
-          >
-          <option value="all">All Status</option>
-          <option value="online">Online</option>
-          <option value="offline">Offline</option>
-          <option value="los">LOS</option>
-          <option value="dyinggasp">DyingGasp</option>
-        </select>
-        {isFilterFetching && (
-          <span className="text-xs text-tx3 animate-pulse">Loading...</span>
-        )}
-        </div>
+            aria-label="Filter status"
+            className="w-auto flex-shrink-0"
+            options={[
+              { value: 'all', label: 'All Status' },
+              { value: 'online', label: 'Online' },
+              { value: 'offline', label: 'Offline' },
+              { value: 'los', label: 'LOS' },
+              { value: 'dyinggasp', label: 'DyingGasp' },
+            ]}
+          />
+          {isFilterFetching && (
+            <span className="text-xs text-tx3 animate-pulse">Loading...</span>
+          )}
+        </FilterBar>
       </div>
 
       {/* Table */}
-      <div className={`glass-card overflow-hidden transition-opacity ${isFilterFetching ? 'opacity-40' : ''}`}>
+      <Card
+        bodyClassName="p-0"
+        className={cn('overflow-hidden transition-opacity', isFilterFetching && 'opacity-40')}
+      >
         <div className="overflow-x-auto">
           {/* Desktop table */}
           <table className="hidden md:table w-full">
@@ -350,10 +352,12 @@ export function AllOnus() {
             </thead>
             <tbody>
               {onus.length === 0 && (
-                <tr><td colSpan={11} className="text-center py-12 text-tx3">
-                  <Radio size={40} className="mx-auto mb-3 opacity-30" />
-                  <p>No ONUs found</p>
-                  <p className="text-xs mt-1">{olts.length === 0 ? 'Add an OLT and sync to get started' : 'Sync your OLT or adjust filters'}</p>
+                <tr><td colSpan={11}>
+                  <EmptyState
+                    icon={Radio}
+                    title="No ONUs found"
+                    description={olts.length === 0 ? 'Add an OLT and sync to get started' : 'Sync your OLT or adjust filters'}
+                  />
                 </td></tr>
               )}
               {onus.map((onu) => (
@@ -451,11 +455,11 @@ export function AllOnus() {
           {/* Mobile cards */}
           <div className="md:hidden divide-y divide-brd/50">
             {onus.length === 0 && (
-              <div className="text-center py-12 text-tx3">
-                <Radio size={40} className="mx-auto mb-3 opacity-30" />
-                <p>No ONUs found</p>
-                <p className="text-xs mt-1">{olts.length === 0 ? 'Add an OLT and sync to get started' : 'Sync your OLT or adjust filters'}</p>
-              </div>
+              <EmptyState
+                icon={Radio}
+                title="No ONUs found"
+                description={olts.length === 0 ? 'Add an OLT and sync to get started' : 'Sync your OLT or adjust filters'}
+              />
             )}
             {onus.map((onu) => (
               <div key={onu.id} className="p-4">
@@ -588,57 +592,60 @@ export function AllOnus() {
             />
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Edit Modal */}
-      {editingOnu && (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-          <div className="modal-overlay" onClick={() => setEditingOnu(null)} />
-          <div className="relative glass-card p-4 md:p-6 w-full max-w-md rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in max-h-[90vh] overflow-y-auto">
-            <h3 className="text-base md:text-lg font-semibold mb-1">Edit ONU</h3>
-            {editingOnu && (
-              <div className="flex items-center gap-3 mb-4">
-                <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-accent/10 text-accent text-xs font-mono font-semibold border border-accent/20">{editingOnu.onu_id_str}</span>
-                <span className="text-xs text-tx3">{editingOnu.serial_number}</span>
-              </div>
-            )}
+      <Modal
+        open={!!editingOnu}
+        onClose={() => setEditingOnu(null)}
+        title="Edit ONU"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditingOnu(null)}>Cancel</Button>
+            <Button variant="primary" onClick={saveEdit} loading={updateMutation.isPending}>
+              {updateMutation.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </>
+        }
+      >
+        {editingOnu && (
+          <>
+            <div className="flex items-center gap-3 mb-4">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-accent/10 text-accent text-xs font-mono font-semibold border border-accent/20">{editingOnu.onu_id_str}</span>
+              <span className="text-xs text-tx3">{editingOnu.serial_number}</span>
+            </div>
             <div className="space-y-4">
-              <InputField label="Name" value={editName} onChange={setEditName} />
-              <InputField label="Description" value={editDesc} onChange={setEditDesc} />
-              <div>
-                <label className="block text-sm font-medium text-tx2 mb-1.5">ONU ID <span className="text-tx3 font-normal text-xs">(1–128, updates DB only)</span></label>
-                <input
-                  type="number" min={1} max={128}
-                  value={editOnuId}
-                  onChange={e => setEditOnuId(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full h-10 px-4 rounded-xl bg-glass border border-brd text-sm text-tx1 placeholder:text-tx3 focus:outline-none focus:border-accent/50 transition-colors"
-                />
-              </div>
-              <InputField label="PPPoE Username" value={editPppoe} onChange={setEditPppoe} placeholder="e.g. user@isp" />
-              <InputField label="Actual Type (Model)" value={editType} onChange={setEditType} placeholder="e.g. F670LV9.0" />
+              <Input label="Name" value={editName} onChange={e => setEditName(e.target.value)} />
+              <Input label="Description" value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+              <Input
+                type="number" min={1} max={128}
+                label={<>ONU ID <span className="text-tx3 font-normal text-xs">(1–128, updates DB only)</span></>}
+                value={editOnuId}
+                onChange={e => setEditOnuId(e.target.value === '' ? '' : Number(e.target.value))}
+              />
+              <Input label="PPPoE Username" value={editPppoe} onChange={e => setEditPppoe(e.target.value)} placeholder="e.g. user@isp" />
+              <Input label="Actual Type (Model)" value={editType} onChange={e => setEditType(e.target.value)} placeholder="e.g. F670LV9.0" />
               {technicians.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-tx2 mb-1.5 flex items-center gap-1.5"><Wrench size={12} /> Teknisi Lapangan</label>
-                  <select value={editTechnicianId ?? ''} onChange={e => setEditTechnicianId(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full h-10 px-4 rounded-xl bg-glass border border-brd text-sm text-tx1 focus:outline-none focus:border-accent/50 transition-colors">
-                    <option value="">— Tidak ada teknisi —</option>
-                    {technicians.map(t => (
-                      <option key={t.id} value={t.id}>{t.full_name}{t.phone ? ` (${t.phone})` : ''}</option>
-                    ))}
-                  </select>
-                </div>
+                <Select
+                  label={<><Wrench size={12} className="inline mr-1.5" />Teknisi Lapangan</>}
+                  value={editTechnicianId ?? ''}
+                  onChange={e => setEditTechnicianId(e.target.value ? Number(e.target.value) : null)}
+                  options={[
+                    { value: '', label: '— Tidak ada teknisi —' },
+                    ...technicians.map(t => ({ value: String(t.id), label: `${t.full_name}${t.phone ? ` (${t.phone})` : ''}` })),
+                  ]}
+                />
               )}
               {odpPorts.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-tx2 mb-1.5 flex items-center gap-1.5"><Split size={12} /> ODP Port</label>
-                  <select value={editOdpPortId ?? ''} onChange={e => setEditOdpPortId(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full h-10 px-4 rounded-xl bg-glass border border-brd text-sm text-tx1 focus:outline-none focus:border-accent/50 transition-colors">
-                    <option value="">— Tidak ada ODP —</option>
-                    {odpPorts.map(p => (
-                      <option key={p.id} value={p.id}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
+                <Select
+                  label={<><Split size={12} className="inline mr-1.5" />ODP Port</>}
+                  value={editOdpPortId ?? ''}
+                  onChange={e => setEditOdpPortId(e.target.value ? Number(e.target.value) : null)}
+                  options={[
+                    { value: '', label: '— Tidak ada ODP —' },
+                    ...odpPorts.map(p => ({ value: String(p.id), label: p.label })),
+                  ]}
+                />
               )}
               {/* Location Picker */}
               <div className="border-t border-brd pt-4 mt-2">
@@ -656,19 +663,10 @@ export function AllOnus() {
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setEditingOnu(null)} className="px-4 py-2 rounded-xl text-sm hover:bg-glass transition-colors">
-                Cancel
-              </button>
-              <button onClick={saveEdit} disabled={updateMutation.isPending}
-                className="px-4 py-2 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm transition-colors disabled:opacity-50">
-                {updateMutation.isPending ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+          </>
+        )}
+      </Modal>
+    </PageContainer>
   );
 }
 
@@ -722,22 +720,6 @@ function StatusCard({ icon, label, count, color }: {
         <span className="text-xs text-tx3">{label}</span>
       </div>
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
-    online: { color: 'bg-success/15 text-success border-success/20', icon: <Wifi size={13} />, label: 'Online' },
-    offline: { color: 'bg-offline/15 text-tx3 border-offline/20', icon: <WifiOff size={13} />, label: 'Offline' },
-    los: { color: 'bg-danger/15 text-danger border-danger/20', icon: <XCircle size={13} />, label: 'LOS' },
-    dyinggasp: { color: 'bg-warning/15 text-warning border-warning/20', icon: <AlertTriangle size={13} />, label: 'DyingGasp' },
-  };
-  const c = config[status] || config.offline;
-
-  return (
-    <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border', c.color)}>
-      {c.icon} {c.label}
-    </span>
   );
 }
 
@@ -844,22 +826,6 @@ function PaginationBtn({ label, onClick, disabled, active }: {
   );
 }
 
-function InputField({ label, value, onChange, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-tx2 mb-1.5">{label}</label>
-      <input
-        type="text"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full h-10 px-4 rounded-xl bg-glass border border-brd text-sm text-tx1 placeholder:text-tx3 focus:outline-none focus:border-accent/50 transition-colors"
-      />
-    </div>
-  );
-}
 
 function TableSkeleton() {
   return (
