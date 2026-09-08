@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from 'react';
 import { Search, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -6,9 +7,10 @@ interface SearchBarProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  onKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => void;
 }
 
-export function SearchBar({ value, onChange, placeholder = 'Search...', className }: SearchBarProps) {
+export function SearchBar({ value, onChange, placeholder = 'Search...', className, onKeyDown }: SearchBarProps) {
   return (
     <div className={cn('relative', className)}>
       <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-tx3 pointer-events-none" />
@@ -16,6 +18,7 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', classNam
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
         placeholder={placeholder}
         className="input-field pl-9 pr-8"
         aria-label={placeholder}
