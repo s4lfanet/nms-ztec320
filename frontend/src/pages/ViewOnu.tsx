@@ -7,12 +7,14 @@ import { confirm } from '../components/ConfirmDialog';
 import {
   Wifi, Clock, RefreshCw, RotateCcw, Trash2, Ban, Eraser,
   FileText, Radio, Globe, Shield, Key, Plug, Database, Layers,
-  Edit3, X, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff, ChevronDown, Replace,
+  Edit3, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff, ChevronDown, Replace,
   Cable, Cpu, Server, GitMerge, Box, Split, Home, AlertTriangle, ChevronRight,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useHasPerm } from '../hooks/useHasPerm';
+import { Breadcrumb } from '../components/layout/Breadcrumb';
+import { Card, EmptyState, Modal, Button } from '../components/ui';
 
 interface ModalState { type: string; data?: Record<string, unknown>; }
 
@@ -365,25 +367,25 @@ export function ViewOnu() {
 
   return (
     <div className="space-y-4 md:space-y-5 animate-fade-in">
-      <div className="flex items-center gap-2 text-xs md:text-sm text-tx3 overflow-x-auto whitespace-nowrap pb-1">
-        <button onClick={() => navigate('/dashboard')} className="hover:text-accent transition-colors">Dashboard</button>
-        <span>/</span><button onClick={() => navigate('/dashboard/onus')} className="hover:text-accent transition-colors">All-ONUs</button>
-        <span>/</span><span className="text-tx1">View / Onu</span>
-      </div>
+      <Breadcrumb items={[
+        { label: 'Dashboard', path: '/dashboard' },
+        { label: 'All-ONUs', path: '/dashboard/onus' },
+        { label: 'View / Onu' },
+      ]} />
 
       {/* ONU Details Card */}
-      <div className="glass-card">
-        <div className="px-3 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between">
-          <h2 className="text-sm font-semibold flex items-center gap-2"><Radio size={16} /> ONU Details</h2>
+      <Card
+        title="ONU Details"
+        icon={<Radio size={16} />}
+        action={
           <div className="flex items-center gap-2">
-            <button onClick={() => refetchLive()} disabled={liveFetching}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass border border-brd hover:border-accent/30 text-xs transition-all disabled:opacity-50">
-              <RefreshCw size={13} className={liveFetching ? 'animate-spin' : ''} /> Refresh Live
-            </button>
+            <Button variant="secondary" icon={<RefreshCw size={13} />} loading={liveFetching} onClick={() => refetchLive()}>
+              Refresh Live
+            </Button>
             {hasPerm('configure_onu') && <SaveConfigBtn onuId={onuId} />}
           </div>
-        </div>
-        <div className="p-3 md:p-5">
+        }
+      >
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
             <DetailField label="OLT" value={onu.olt_name} />
             <DetailField label={(onu.card || '').toLowerCase() === 'epon' ? 'Epon Onu' : 'Gpon Onu'} value={onu.onu_id_str} mono onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'moveOnu' }) : undefined} />
@@ -467,8 +469,7 @@ export function ViewOnu() {
               </div>
             ) : (<div className="flex items-center gap-2 p-3 rounded-lg bg-glass text-xs text-tx3"><Clock size={14} /> No event history. Click <strong>Get Status</strong> to refresh.</div>)}
           </div>
-        </div>
-      </div>
+      </Card>
 
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2">
@@ -552,7 +553,7 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={<Shield size={24} />} text={isEpon ? 'Remote Access not available for EPON ONUs' : 'No remote access rules'} />}
+        ) : <EmptyState icon={Shield} title={isEpon ? 'Remote Access not available for EPON ONUs' : 'No remote access rules'} />}
       </Card>
 
       {/* VEIP */}
@@ -566,7 +567,7 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={<Key size={24} />} text={isEpon ? 'VEIP not available for EPON ONUs' : 'No VEIP config from OLT'} />}
+        ) : <EmptyState icon={Key} title={isEpon ? 'VEIP not available for EPON ONUs' : 'No VEIP config from OLT'} />}
       </Card>
 
       {/* TR069 */}
@@ -580,7 +581,7 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={<Shield size={24} />} text={isEpon ? 'TR069 not available for EPON ONUs' : 'No TR069 config from OLT'} />}
+        ) : <EmptyState icon={Shield} title={isEpon ? 'TR069 not available for EPON ONUs' : 'No TR069 config from OLT'} />}
       </Card>
 
       {/* WiFi */}
@@ -619,7 +620,7 @@ export function ViewOnu() {
             </div>
           ) : null;
           return <div>{renderGroup('2.4 GHz', band24)}{renderGroup('5 GHz', band5)}</div>;
-        })() : <EmptyState icon={<Wifi size={24} />} text={isEpon ? 'No WiFi config (EPON — configured via ONU Web UI)' : 'No WiFi config from OLT'} />}
+        })() : <EmptyState icon={Wifi} title={isEpon ? 'No WiFi config (EPON — configured via ONU Web UI)' : 'No WiFi config from OLT'} />}
       </Card>
 
       {/* Ethernet */}
@@ -635,7 +636,7 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={<Plug size={24} />} text={isEpon ? 'Ethernet detail not available for EPON ONUs' : 'No Ethernet config from OLT'} />}
+        ) : <EmptyState icon={Plug} title={isEpon ? 'Ethernet detail not available for EPON ONUs' : 'No Ethernet config from OLT'} />}
       </Card>
 
       {/* Optical Signal */}
@@ -659,7 +660,7 @@ export function ViewOnu() {
           <h6 className="text-xs text-tx3 mb-2 mt-4 font-semibold">GEM Ports</h6>
           <DataTable headers={['#','GEM Port','TCONT']}>{gemports.map((g, i) => (<tr key={i}><td>{i+1}</td><td><strong>{g.split(" ")[1] || '-'}</strong></td><td>{g.includes("tcont ") ? g.split("tcont ")[1].split(" ")[0] : '-'}</td></tr>))}</DataTable>
         </>)}
-        {tcontProfiles.length === 0 && gemports.length === 0 && <EmptyState icon={<Database size={24} />} text={isEpon ? 'TCONT/GEM not applicable to EPON ONUs' : 'No TCONT/GEM data. Run Sync to collect.'} />}
+        {tcontProfiles.length === 0 && gemports.length === 0 && <EmptyState icon={Database} title={isEpon ? 'TCONT/GEM not applicable to EPON ONUs' : 'No TCONT/GEM data. Run Sync to collect.'} />}
       </Card>
 
       {/* VLAN Services */}
@@ -668,45 +669,28 @@ export function ViewOnu() {
           <DataTable headers={['#','Service Port','Vport','User VLAN','VLAN']}>
             {services.map((s, i) => { const parts = s.split(" "); const getVal = (kw: string) => { const idx = parts.indexOf(kw); return idx >= 0 && parts[idx+1] ? parts[idx+1] : '-'; }; return (<tr key={i}><td>{i+1}</td><td>{parts[1]||'-'}</td><td>{getVal('vport')}</td><td>{getVal('user-vlan')}</td><td>{getVal('vlan')}</td></tr>); })}
           </DataTable>
-        ) : <EmptyState icon={<Layers size={24} />} text={isEpon ? 'No service-port data (EPON)' : 'No service-port data.'} />}
+        ) : <EmptyState icon={Layers} title={isEpon ? 'No service-port data (EPON)' : 'No service-port data.'} />}
       </Card>
 
       {/* MODALS */}
-      {modal && <ModalPortal onClose={() => setModal(null)}>
-        {modal.type === 'editField' && <EditFieldModal data={modal.data!} onSave={(value) => updateFieldMut.mutate({ field: modal.data!.field as string, value })} onClose={() => setModal(null)} loading={updateFieldMut.isPending} />}
-        {modal.type === 'onuType' && <OnuTypeModal onuId={onuId} oltId={onu.olt_id} currentType={onu.onu_type || (ld.onu_type as string) || ''} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
-        {modal.type === 'moveOnu' && <MoveOnuModal onuId={onuId} onu={onu} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); toast.success('ONU moved!'); }} />}
-        {modal.type === 'sectionEdit' && <SectionEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); setModal(null); }} />}
-        {modal.type === 'aclEdit' && <AclEditModal data={modal.data!} onuId={onuId} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
-        {modal.type === 'showConfig' && (
-          <div className="glass-card w-full max-w-4xl max-h-[80vh] flex flex-col">
-            <div className="px-5 py-4 border-b border-brd flex items-center justify-between">
-              <h2 className="text-sm font-semibold flex items-center gap-2"><FileText size={16} /> ONU Running Config</h2>
-              <button onClick={() => setModal(null)} className="text-tx3 hover:text-tx1"><X size={18} /></button>
-            </div>
-            <div className="p-5 overflow-auto flex-1"><pre className="code-block !p-4 text-sm whitespace-pre-wrap break-all leading-relaxed">{configContent}</pre></div>
-          </div>
-        )}
-        {modal.type === 'getStatus' && <GetStatusModal status={modal.data as Record<string, unknown>} onClose={() => setModal(null)} />}
-        {modal.type === 'wanEdit' && <WanEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} serialNumber={(modal.data!.serialNumber as string) || ''} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
-        {modal.type === 'replaceOnu' && <ReplaceOnuModal onu={onu} onClose={() => setModal(null)} onConfirm={(newSerial) => replaceMut.mutate(newSerial)} loading={replaceMut.isPending} />}
-      </ModalPortal>}
+      {modal?.type === 'editField' && <EditFieldModal data={modal.data!} onSave={(value) => updateFieldMut.mutate({ field: modal.data!.field as string, value })} onClose={() => setModal(null)} loading={updateFieldMut.isPending} />}
+      {modal?.type === 'onuType' && <OnuTypeModal onuId={onuId} oltId={onu.olt_id} currentType={onu.onu_type || (ld.onu_type as string) || ''} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
+      {modal?.type === 'moveOnu' && <MoveOnuModal onuId={onuId} onu={onu} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); toast.success('ONU moved!'); }} />}
+      {modal?.type === 'sectionEdit' && <SectionEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); setModal(null); }} />}
+      {modal?.type === 'aclEdit' && <AclEditModal data={modal.data!} onuId={onuId} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
+      {modal?.type === 'showConfig' && (
+        <Modal open onClose={() => setModal(null)} icon={<FileText size={16} />} title="ONU Running Config" size="xl">
+          <pre className="code-block !p-4 text-sm whitespace-pre-wrap break-all leading-relaxed">{configContent}</pre>
+        </Modal>
+      )}
+      {modal?.type === 'getStatus' && <GetStatusModal status={modal.data as Record<string, unknown>} onClose={() => setModal(null)} />}
+      {modal?.type === 'wanEdit' && <WanEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} serialNumber={(modal.data!.serialNumber as string) || ''} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
+      {modal?.type === 'replaceOnu' && <ReplaceOnuModal onu={onu} onClose={() => setModal(null)} onConfirm={(newSerial) => replaceMut.mutate(newSerial)} loading={replaceMut.isPending} />}
     </div>
   );
 }
 
 /* ═══ MODAL COMPONENTS ═══ */
-
-function ModalPortal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
-  useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h); }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center p-0 md:p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal-overlay" />
-      <div className="relative w-full md:w-auto max-h-[90vh] md:max-h-none overflow-y-auto md:overflow-visible rounded-t-2xl md:rounded-none animate-slide-up md:animate-fade-in">{children}</div>
-    </div>
-  );
-}
-
 
 // ═══ Helper: fetch VLANs from OLT ═══
 function useOltVlans(oltId: number) {
@@ -816,11 +800,11 @@ function EditFieldModal({ data, onSave, onClose, loading }: { data: Record<strin
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
   return (
-    <div className="glass-card w-full max-w-md">
-      <div className="modal-header"><h2 className="text-sm font-semibold">Edit {data.label as string}</h2><button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button></div>
-      <div className="p-3 md:p-5"><input ref={ref} type="text" value={val} onChange={e => setVal(e.target.value)} className="input-field" onKeyDown={e => { if (e.key === 'Enter') onSave(val); }} /></div>
-      <div className="modal-footer"><button onClick={onClose} className="btn-cancel">Cancel</button><button onClick={() => onSave(val)} disabled={loading} className="btn-primary">{loading ? 'Saving...' : 'Save Changes'}</button></div>
-    </div>
+    <Modal open onClose={onClose} title={`Edit ${data.label as string}`}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" loading={loading} onClick={() => onSave(val)}>Save Changes</Button></>}
+    >
+      <input ref={ref} type="text" value={val} onChange={e => setVal(e.target.value)} className="input-field" onKeyDown={e => { if (e.key === 'Enter') onSave(val); }} />
+    </Modal>
   );
 }
 
@@ -855,9 +839,10 @@ function MoveOnuModal({ onuId, onu, onClose, onSuccess }: { onuId: number; onu: 
   };
 
   return (
-    <div className="glass-card w-full max-w-md animate-fade-in">
-      <div className="modal-header"><h2 className="text-sm font-semibold">Move ONU</h2><button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button></div>
-      <div className="p-3 md:p-5 space-y-4 md:space-y-5">
+    <Modal open onClose={onClose} title="Move ONU"
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" loading={loading} onClick={save}>Save Changes</Button></>}
+    >
+      <div className="space-y-4 md:space-y-5">
         <div>
           <label className="label-sm mb-2">Card</label>
           <select value={card} onChange={e => { setCard(e.target.value); setPon(''); }} className="input-field">
@@ -890,13 +875,7 @@ function MoveOnuModal({ onuId, onu, onClose, onSuccess }: { onuId: number; onu: 
           )}
         </div>
       </div>
-      <div className="modal-footer">
-        <div className="flex gap-3 ml-auto">
-          <button onClick={onClose} className="btn-cancel">Cancel</button>
-          <button onClick={save} disabled={loading} className="btn-primary">{loading ? 'Moving...' : 'Save Changes'}</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -922,12 +901,17 @@ function ReplaceOnuModal({ onu, onClose, onConfirm, loading }: {
   ];
 
   return (
-    <div className="glass-card w-full max-w-md animate-fade-in">
-      <div className="modal-header">
-        <h2 className="text-sm font-semibold flex items-center gap-2"><Replace size={16} /> Replace ONU (Swap SN)</h2>
-        <button onClick={onClose} className="text-tx3 hover:text-tx1" disabled={loading}><X size={18} /></button>
-      </div>
-      <div className="p-4 md:p-5 space-y-4">
+    <Modal open onClose={onClose} icon={<Replace size={16} />} title="Replace ONU (Swap SN)"
+      footer={
+        <>
+          <Button variant="secondary" disabled={loading} onClick={onClose}>Cancel</Button>
+          <Button variant="warning" loading={loading} disabled={!newSerial.trim() || !confirmed} onClick={handleConfirm}>
+            Replace ONU
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         {/* Current SN */}
         <div className="p-3 rounded-lg bg-glass">
           <div className="text-xs text-tx3 mb-1">Current SN / MAC</div>
@@ -979,19 +963,7 @@ function ReplaceOnuModal({ onu, onClose, onConfirm, loading }: {
           </div>
         )}
       </div>
-      <div className="modal-footer">
-        <div className="flex gap-3 ml-auto">
-          <button onClick={onClose} className="btn-cancel" disabled={loading}>Cancel</button>
-          <button
-            onClick={handleConfirm}
-            disabled={loading || !newSerial.trim() || !confirmed}
-            className="btn-primary bg-warning text-white border-warning hover:bg-warning/80"
-          >
-            {loading ? 'Replacing...' : 'Replace ONU'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1012,17 +984,15 @@ function OnuTypeModal({ onuId, oltId, currentType, onClose, onSuccess }: { onuId
   }, [oltId]);
   const save = async () => { if (!selected) { toast.error('Please select a type'); return; } setLoading(true); try { const res = await fetch(`/api/onu/${onuId}/update-field`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ field: 'onu_type', value: selected }) }); const d = await res.json(); if (d.success) { onSuccess(); toast.success('Onu type updated!'); } else { toast.error(d.message || 'Failed to update ONU type'); } } catch { toast.error('Failed'); } setLoading(false); };
   return (
-    <div className="glass-card w-full max-w-md">
-      <div className="modal-header"><h2 className="text-sm font-semibold">Onu Type</h2><button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button></div>
-      <div className="p-5">
-        <p className="text-xs text-tx3 mb-3">{status}</p>
-        <select value={selected} onChange={e => setSelected(e.target.value)} className="input-field">
-          <option value="" disabled>Select Type</option>
-          {types.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-      </div>
-      <div className="modal-footer"><button onClick={onClose} className="btn-cancel">Cancel</button><button onClick={save} disabled={loading} className="btn-primary">{loading ? 'Saving...' : 'Save Changes'}</button></div>
-    </div>
+    <Modal open onClose={onClose} title="Onu Type"
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" loading={loading} onClick={save}>Save Changes</Button></>}
+    >
+      <p className="text-xs text-tx3 mb-3">{status}</p>
+      <select value={selected} onChange={e => setSelected(e.target.value)} className="input-field">
+        <option value="" disabled>Select Type</option>
+        {types.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+    </Modal>
   );
 }
 
@@ -1083,9 +1053,10 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
   );
 
   return (
-    <div className="glass-card w-full max-w-lg max-h-[85vh] flex flex-col">
-      <div className="modal-header"><h2 className="text-sm font-semibold flex items-center gap-2"><Globe size={16} /> Service {svcIdx}</h2><button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button></div>
-      <div className="p-3 md:p-5 overflow-y-auto space-y-3 md:space-y-4 flex-1">
+    <Modal open onClose={onClose} icon={<Globe size={16} />} title={`Service ${svcIdx}`} size="md"
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" loading={loading} onClick={save}>Save Changes</Button></>}
+    >
+      <div className="space-y-3 md:space-y-4">
         {/* Status */}
         <div><label className="label-sm mb-1">Status</label>
           <div className="flex gap-4"><label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="wanStatus" checked={enabled} onChange={() => setEnabled(true)} /> Enable</label><label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="wanStatus" checked={!enabled} onChange={() => setEnabled(false)} /> Disable</label></div>
@@ -1144,8 +1115,7 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
           <div><label className="label-sm mb-1">Password</label><input type="password" value={pppoe.password} onChange={e => setPppoe(p => ({...p, password: e.target.value}))} placeholder="PPPoE Password" className="input-field" /></div>
         </div>}
       </div>
-      <div className="modal-footer"><button onClick={onClose} className="btn-cancel">Cancel</button><button onClick={save} disabled={loading} className="btn-primary">{loading ? 'Saving...' : 'Save Changes'}</button></div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1242,9 +1212,18 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
   );
 
   return (
-    <div className="glass-card w-full max-w-lg max-h-[85vh] flex flex-col">
-      <div className="modal-header"><h2 className="text-sm font-semibold">{sectionTitle[section] || `Edit ${section}`}</h2><button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button></div>
-      <div className="p-3 md:p-5 overflow-y-auto space-y-3 md:space-y-4 flex-1">
+    <Modal open onClose={onClose} title={sectionTitle[section] || `Edit ${section}`} size="md"
+      footer={
+        <div className="w-full flex items-center justify-between gap-2">
+          {section !== 'tr069' ? <Button variant="danger" icon={<Trash2 size={14} />} onClick={deleteEntry}>Delete</Button> : <span />}
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" loading={loading} onClick={save}>Save Changes</Button>
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-3 md:space-y-4">
         {/* TR069 fields */}
         {section === 'tr069' && <>
           <div><label className="label-sm mb-1">ACS URL</label><input type="text" value={acsUrl} onChange={e => setAcsUrl(e.target.value)} placeholder="http://192.168.54.254:7547" className="input-field" /></div>
@@ -1358,11 +1337,7 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
           {section !== 'wifi' && <div><label className="label-sm mb-1">Priority</label><input type="text" value={priority} onChange={e => setPriority(e.target.value)} className="input-field" /></div>}
         </>}
       </div>
-      <div className="modal-footer">
-        {section !== 'tr069' && <button onClick={deleteEntry} className="btn-danger"><Trash2 size={14} className="inline mr-1" /> Delete</button>}
-        <div className="flex gap-3 ml-auto"><button onClick={onClose} className="btn-cancel">Cancel</button><button onClick={save} disabled={loading} className="btn-primary">{loading ? 'Saving...' : 'Save Changes'}</button></div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1417,9 +1392,18 @@ function AclEditModal({ data, onuId, onClose, onSuccess }: { data: Record<string
   };
 
   return (
-    <div className="glass-card w-full max-w-lg">
-      <div className="modal-header"><h2 className="text-sm font-semibold flex items-center gap-2"><Shield size={16} /> Remote Access</h2><button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button></div>
-      <div className="p-3 md:p-5 space-y-3 md:space-y-4">
+    <Modal open onClose={onClose} icon={<Shield size={16} />} title="Remote Access" size="md"
+      footer={
+        <div className="w-full flex items-center justify-between gap-2">
+          {!isNew ? <Button variant="danger" icon={<Trash2 size={14} />} onClick={deleteAcl}>Delete</Button> : <span />}
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" loading={loading} onClick={save}>Save Changes</Button>
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-3 md:space-y-4">
         <div><label className="label-sm mb-1">Mode</label>
           <select value={mode} onChange={e => setMode(e.target.value)} className="input-field"><option value="forward">Allow (Forward)</option><option value="block">Block (Deny)</option></select>
         </div>
@@ -1436,11 +1420,7 @@ function AclEditModal({ data, onuId, onClose, onSuccess }: { data: Record<string
           <div><label className="label-sm mb-1">End Source IP</label><input type="text" value={endIp} onChange={e => setEndIp(e.target.value)} placeholder="0.0.0.0" className="input-field" /></div>
         </div>
       </div>
-      <div className="modal-footer">
-        {!isNew && <button onClick={deleteAcl} className="btn-danger"><Trash2 size={14} className="inline mr-1" /> Delete</button>}
-        <div className="flex gap-3 ml-auto"><button onClick={onClose} className="btn-cancel">Cancel</button><button onClick={save} disabled={loading} className="btn-primary">{loading ? 'Saving...' : 'Save Changes'}</button></div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1481,12 +1461,10 @@ function GetStatusModal({ status, onClose }: { status: Record<string, unknown> |
   const hasOpticalData = Object.keys(upOpt).length > 0 || Object.keys(downOpt).length > 0;
   const hasOnuModule = Object.keys(onuModule).length > 0;
   return (
-    <div className="glass-card w-full max-w-4xl max-h-[85vh] flex flex-col">
-      <div className="px-5 py-4 border-b border-brd flex items-center justify-between">
-        <h2 className="text-sm font-semibold flex items-center gap-2"><Activity size={16} /> Get Status — ONU Detail</h2>
-        <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
-      </div>
-      <div className="p-3 md:p-5 overflow-y-auto flex-1 space-y-4 md:space-y-5">
+    <Modal open onClose={onClose} icon={<Activity size={16} />} title="Get Status — ONU Detail" size="xl"
+      footer={<Button variant="secondary" onClick={onClose}>Close</Button>}
+    >
+      <div className="space-y-4 md:space-y-5">
         {/* Interface Info */}
         <div>
           <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">ONU Interface Info</h6>
@@ -1591,18 +1569,11 @@ function GetStatusModal({ status, onClose }: { status: Record<string, unknown> |
           </div>
         )}
       </div>
-      <div className="modal-footer">
-        <button onClick={onClose} className="btn-cancel">Close</button>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
 /* ═══ REUSABLE COMPONENTS ═══ */
-
-function Card({ title, icon, children, action }: { title: string; icon: React.ReactNode; children: React.ReactNode; action?: React.ReactNode }) {
-  return (<div className="glass-card"><div className="px-3 md:px-5 py-3 md:py-4 border-b border-brd flex items-center justify-between"><h2 className="text-sm font-semibold flex items-center gap-2">{icon} {title}</h2>{action}</div><div className="p-3 md:p-5">{children}</div></div>);
-}
 
 const FTTH_HOP_ICON: Record<string, React.ReactNode> = {
   olt: <Cpu size={16} />, otb: <Server size={16} />, jc: <GitMerge size={16} />,
@@ -1706,9 +1677,6 @@ function SaveConfigBtn({ onuId }: { onuId: number }) {
 }
 function DataTable({ headers, children }: { headers: string[]; children: React.ReactNode }) {
   return (<div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-brd">{headers.map(h => <th key={h} className="px-3 py-2.5 text-left text-xs font-medium text-tx3 uppercase tracking-wider">{h}</th>)}</tr></thead><tbody className="[&>tr]:border-b [&>tr]:border-brd/50 [&>tr:hover]:bg-glass/50 [&>tr]:transition-colors">{children}</tbody></table></div>);
-}
-function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
-  return (<div className="text-center py-6"><div className="text-tx3 mb-2">{icon}</div><p className="text-tx3 text-sm">{text}</p></div>);
 }
 function Skeleton() {
   return (<div className="space-y-5 animate-pulse"><div className="h-5 w-48 bg-glass rounded-lg" /><div className="glass-card h-64" /><div className="flex gap-2">{[...Array(5)].map((_, i) => <div key={i} className="h-9 w-24 bg-glass rounded-xl" />)}</div><div className="glass-card h-48" /><div className="glass-card h-48" /></div>);
