@@ -6,6 +6,8 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string;
   helperText?: string;
   icon?: ReactNode;
+  /** Trailing slot inside the field, e.g. a show/hide password toggle. */
+  suffix?: ReactNode;
   wrapperClassName?: string;
 }
 
@@ -15,7 +17,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
  * (per FORM UX guidance — error state near the related field).
  */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, error, helperText, icon, className, wrapperClassName, id, ...props },
+  { label, error, helperText, icon, suffix, className, wrapperClassName, id, ...props },
   ref,
 ) {
   const autoId = useId();
@@ -28,11 +30,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         <input
           ref={ref}
           id={inputId}
-          className={cn('input-field', icon && 'pl-9', error && 'border-danger', className)}
+          className={cn('input-field', icon && 'pl-9', suffix && 'pr-10', error && 'border-danger', className)}
           aria-invalid={!!error || undefined}
           aria-describedby={error ? `${inputId}-error` : helperText ? `${inputId}-helper` : undefined}
           {...props}
         />
+        {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-tx3">{suffix}</span>}
       </div>
       {error ? (
         <p id={`${inputId}-error`} className="text-xs text-danger mt-1">{error}</p>
