@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, X, Server, Lock, Unlock } from 'lucide-react';
+import { Plus, Pencil, Trash2, Server, Lock, Unlock, FileText } from 'lucide-react';
 import { api } from '../lib/api';
 import { toast } from '../components/Toast';
 import { useHasPerm } from '../hooks/useHasPerm';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState, Modal, Select } from '../components/ui';
 
 interface Tr069Profile {
   id: number;
@@ -57,26 +60,23 @@ export default function Tr069Profile() {
   });
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">TR069 Profile</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">Manage ACS profiles for TR069 remote management</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {canManage && <button onClick={() => setModal({ mode: 'add' })} className="btn-primary flex items-center gap-2 text-sm">
-            <Plus size={16} />
+    <PageContainer>
+      <PageHeader
+        title="TR069 Profile"
+        description="Manage ACS profiles for TR069 remote management"
+        action={canManage && (
+          <Button variant="primary" icon={<Plus size={16} />} onClick={() => setModal({ mode: 'add' })}>
             Create
-          </button>}
-        </div>
-      </div>
+          </Button>
+        )}
+      />
 
       {/* Table */}
-      <div className="rounded-xl border border-brd bg-glass/30 overflow-hidden">
+      <Card bodyClassName="p-0">
         {isLoading ? (
           <div className="p-8 text-center text-tx3 text-sm">Loading...</div>
         ) : profiles.length === 0 ? (
-          <div className="p-8 text-center text-tx3 text-sm">No TR069 profiles yet. Click "Create" to add one.</div>
+          <EmptyState icon={FileText} title="No TR069 profiles yet" description='Click "Create" to add one.' />
         ) : (
           <>
           <table className="hidden md:table w-full text-sm">
@@ -186,7 +186,7 @@ export default function Tr069Profile() {
           </div>
           </>
         )}
-      </div>
+      </Card>
 
       {/* Add/Edit Modal */}
       {modal && (
@@ -199,7 +199,7 @@ export default function Tr069Profile() {
           onSuccess={() => { setModal(null); qc.invalidateQueries({ queryKey: ['tr069-profiles'] }); toast.success(modal.mode === 'add' ? 'Profile created!' : 'Profile updated!'); }}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -244,74 +244,80 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="modal-overlay" />
-      <div className="relative w-full max-w-md rounded-t-2xl md:rounded-2xl border border-brd bg-surface shadow-xl max-h-[90vh] overflow-y-auto animate-slide-up md:animate-fade-in">
-        <div className="flex items-center justify-between p-4 border-b border-brd sticky top-0 bg-surface z-10">
-          <h3 className="font-semibold">{mode === 'add' ? 'Add TR069 Profile' : 'Edit TR069 Profile'}</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-glass text-tx3"><X size={18} /></button>
-        </div>
-        <div className="p-4 space-y-3">
-          <div>
-            <label className="label-sm mb-1">Profile Name</label>
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" placeholder="e.g. ACS-SVR-MAIN" />
-          </div>
-          <div>
-            <label className="label-sm mb-1">ACS URL</label>
-            <input value={form.acs_url} onChange={e => setForm({ ...form, acs_url: e.target.value })} className="input-field" placeholder="e.g. http://10.10.10.100:7547" />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label-sm mb-1">Username</label>
-              <input value={form.acs_username} onChange={e => setForm({ ...form, acs_username: e.target.value })} className="input-field" placeholder="e.g. acs_admin" />
-            </div>
-            <div>
-              <label className="label-sm mb-1">Password</label>
-              <input value={form.acs_password} onChange={e => setForm({ ...form, acs_password: e.target.value })} className="input-field" placeholder="e.g. Admin@123" />
-            </div>
-          </div>
-          <div>
-            <label className="label-sm mb-1">VLAN</label>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1.5 cursor-pointer text-sm">
-                  <input type="radio" checked={form.vlan_mode === 'tag'} onChange={() => setForm({ ...form, vlan_mode: 'tag' })} />
-                  Tag
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer text-sm">
-                  <input type="radio" checked={form.vlan_mode === 'untag'} onChange={() => setForm({ ...form, vlan_mode: 'untag' })} />
-                  Untag
-                </label>
-              </div>
-              {form.vlan_mode === 'tag' && (
-                vlanList.length > 0 ? (
-                  <select value={form.vlan} onChange={e => setForm({ ...form, vlan: parseInt(e.target.value) || 0 })} className="input-field flex-1">
-                    <option value={0}>Select VLAN...</option>
-                    {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
-                  </select>
-                ) : (
-                  <input type="number" value={form.vlan} onChange={e => setForm({ ...form, vlan: parseInt(e.target.value) || 0 })} className="input-field flex-1" placeholder="1010" />
-                )
-              )}
-            </div>
-            {form.vlan_mode === 'untag' && <p className="text-xs text-tx3 mt-1">Untag mode: no VLAN tag applied to TR069 traffic.</p>}
-          </div>
-          <div>
-            <label className="label-sm mb-1">Default OLT (optional)</label>
-            <select value={form.default_olt_id || ''} onChange={e => setForm({ ...form, default_olt_id: e.target.value ? parseInt(e.target.value) : null })} className="input-field">
-              <option value="">— None —</option>
-              {olts.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-            <p className="text-xs text-tx3 mt-1">If selected, this profile will be automatically applied when registering an ONT on that OLT.</p>
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-2 p-4 border-t border-brd sticky bottom-0 bg-surface">
-          <button onClick={onClose} className="btn-ghost">Close</button>
-          <button onClick={submit} disabled={submitting || !form.name || !form.acs_url} className="btn-primary">
+    <Modal
+      open
+      onClose={onClose}
+      title={mode === 'add' ? 'Add TR069 Profile' : 'Edit TR069 Profile'}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+          <Button variant="primary" onClick={submit} loading={submitting} disabled={!form.name || !form.acs_url}>
             {submitting ? 'Saving...' : 'Submit'}
-          </button>
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div>
+          <label className="label-sm mb-1">Profile Name</label>
+          <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" placeholder="e.g. ACS-SVR-MAIN" />
         </div>
+        <div>
+          <label className="label-sm mb-1">ACS URL</label>
+          <input value={form.acs_url} onChange={e => setForm({ ...form, acs_url: e.target.value })} className="input-field" placeholder="e.g. http://10.10.10.100:7547" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label-sm mb-1">Username</label>
+            <input value={form.acs_username} onChange={e => setForm({ ...form, acs_username: e.target.value })} className="input-field" placeholder="e.g. acs_admin" />
+          </div>
+          <div>
+            <label className="label-sm mb-1">Password</label>
+            <input value={form.acs_password} onChange={e => setForm({ ...form, acs_password: e.target.value })} className="input-field" placeholder="e.g. Admin@123" />
+          </div>
+        </div>
+        <div>
+          <label className="label-sm mb-1">VLAN</label>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 cursor-pointer text-sm">
+                <input type="radio" checked={form.vlan_mode === 'tag'} onChange={() => setForm({ ...form, vlan_mode: 'tag' })} />
+                Tag
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer text-sm">
+                <input type="radio" checked={form.vlan_mode === 'untag'} onChange={() => setForm({ ...form, vlan_mode: 'untag' })} />
+                Untag
+              </label>
+            </div>
+            {form.vlan_mode === 'tag' && (
+              vlanList.length > 0 ? (
+                <Select
+                  value={form.vlan}
+                  onChange={e => setForm({ ...form, vlan: parseInt(e.target.value) || 0 })}
+                  className="flex-1"
+                  options={[
+                    { value: '0', label: 'Select VLAN...' },
+                    ...vlanList.map(v => ({ value: String(v.vlan_id), label: `${v.vlan_id} — ${v.name || '(unnamed)'}` })),
+                  ]}
+                />
+              ) : (
+                <input type="number" value={form.vlan} onChange={e => setForm({ ...form, vlan: parseInt(e.target.value) || 0 })} className="input-field flex-1" placeholder="1010" />
+              )
+            )}
+          </div>
+          {form.vlan_mode === 'untag' && <p className="text-xs text-tx3 mt-1">Untag mode: no VLAN tag applied to TR069 traffic.</p>}
+        </div>
+        <Select
+          label="Default OLT (optional)"
+          value={form.default_olt_id || ''}
+          onChange={e => setForm({ ...form, default_olt_id: e.target.value ? parseInt(e.target.value) : null })}
+          helperText="If selected, this profile will be automatically applied when registering an ONT on that OLT."
+          options={[
+            { value: '', label: '— None —' },
+            ...olts.map(o => ({ value: String(o.id), label: o.name })),
+          ]}
+        />
       </div>
-    </div>
+    </Modal>
   );
 }
