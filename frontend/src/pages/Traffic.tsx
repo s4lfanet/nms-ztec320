@@ -1,10 +1,13 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, ArrowDown, ArrowUp, Search, Server, Radio, Clock } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, Server, Radio, Clock } from 'lucide-react';
 import { api } from '../lib/api';
 import type { TrafficCard, TrafficPoint } from '../lib/api';
-import { Modal } from '../components/ui';
+import { Modal, Card, EmptyState, Select } from '../components/ui';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { SearchBar } from '../components/shared';
 import { cn } from '../lib/utils';
 
 const PERIODS: { key: string; label: string }[] = [
@@ -254,27 +257,27 @@ export function Traffic() {
   }, []);
 
   return (
-    <div className="space-y-4 md:space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2"><Activity size={22} className="text-accent" /> Traffic Monitoring</h1>
-          <p className="text-tx2 text-xs md:text-sm mt-1">Real-time and historical bandwidth usage per OLT / PON port</p>
-        </div>
-      </div>
+    <PageContainer className="animate-fade-in">
+      <PageHeader
+        icon={<Activity size={22} className="text-accent" />}
+        title="Traffic Monitoring"
+        description="Real-time and historical bandwidth usage per OLT / PON port"
+      />
 
       {/* Filters */}
-      <div className="glass-card p-3 md:p-4 space-y-3">
+      <Card bodyClassName="p-3 md:p-4 space-y-3">
         <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 text-xs text-tx3 font-medium"><Server size={14} /> OLT</div>
-            <select
+            <Select
               value={oltId ?? ''}
               onChange={e => setOltId(Number(e.target.value))}
-              className="bg-glass border border-brd rounded-lg px-3 py-1.5 text-sm focus:border-accent/50 outline-none"
-            >
-              {olts.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-              {olts.length === 0 && <option value="">No OLT available</option>}
-            </select>
+              className="w-auto"
+              aria-label="Pilih OLT"
+              options={olts.length > 0
+                ? olts.map(o => ({ value: String(o.id), label: o.name }))
+                : [{ value: '', label: 'No OLT available' }]}
+            />
 
             <div className="flex items-center rounded-lg bg-glass border border-brd p-0.5 ml-1">
               <button
@@ -310,17 +313,14 @@ export function Traffic() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2 flex-1 md:flex-none md:w-64">
-            <Search size={15} className="text-tx3 flex-shrink-0" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search interface..."
-              className="flex-1 bg-glass border border-brd rounded-lg px-3 py-1.5 text-sm focus:border-accent/50 outline-none"
-            />
-          </div>
+          <SearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search interface..."
+            className="flex-1 md:flex-none md:w-64"
+          />
         </div>
-      </div>
+      </Card>
 
       {/* Stats bar */}
       <div className="text-xs text-tx3 flex items-center justify-between">
@@ -331,16 +331,17 @@ export function Traffic() {
       {isLoading ? (
         <div className="glass-card p-10 text-center text-tx3 text-sm">Loading traffic data...</div>
       ) : !oltId ? (
-        <div className="glass-card p-10 text-center text-tx3 text-sm">No OLT with CLI access configured yet.</div>
+        <EmptyState icon={Server} title="No OLT with CLI access configured yet" description="Add CLI credentials to an OLT in OLT Settings to monitor its traffic." />
       ) : cards.length === 0 ? (
-        <div className="glass-card p-10 text-center text-tx3 text-sm">No {portType === 'uplink' ? 'uplink' : 'PON'} ports found for this OLT.</div>
+        <EmptyState icon={Radio} title={`No ${portType === 'uplink' ? 'uplink' : 'PON'} ports found`} description="This OLT has no ports of this type, or it hasn't synced yet." />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {cards.map(card => (
-            <div
+            <Card
               key={card.port_name}
               onClick={() => setSelectedCard(card)}
-              className="glass-card p-3.5 cursor-pointer hover:border-accent/40 hover:-translate-y-0.5 transition-all"
+              className="cursor-pointer hover:border-accent/40 hover:-translate-y-0.5 transition-all"
+              bodyClassName="p-3.5"
             >
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5 min-w-0">
@@ -358,7 +359,7 @@ export function Traffic() {
               ) : (
                 <div className="h-[130px] flex items-center justify-center text-tx3 text-xs">No Data</div>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       )}
@@ -372,6 +373,6 @@ export function Traffic() {
           onClose={() => setSelectedCard(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

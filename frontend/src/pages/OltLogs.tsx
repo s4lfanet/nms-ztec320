@@ -4,6 +4,9 @@ import { api } from '../lib/api';
 import type { OnuStatusHistoryRecord } from '../lib/api';
 import { cn } from '../lib/utils';
 import { Bell, Terminal, FileText, RefreshCw, AlertTriangle, Info, Activity } from 'lucide-react';
+import { PageContainer } from '../components/layout/PageContainer';
+import { PageHeader } from '../components/layout/PageHeader';
+import { Button, Card, EmptyState, LoadingOverlay, Select } from '../components/ui';
 
 type LogTab = 'alarmlog' | 'cmdlog' | 'snmplog' | 'synclog' | 'statushistory';
 
@@ -90,68 +93,57 @@ export function OltLogs() {
   const records = histData?.records || [];
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-tx1">OLT Logs</h1>
-          <p className="text-sm text-tx3 mt-0.5">View OLT device logs and NMS sync activity</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* OLT selector */}
-          {olts.length > 0 && (
-            <select
-              value={selectedOltId ?? ''}
-              onChange={(e) => setOltId(Number(e.target.value))}
-              className="bg-bg2 border border-border rounded-lg px-3 py-1.5 text-sm text-tx1 outline-none focus:border-accent"
+    <PageContainer className="p-4 md:p-6">
+      <PageHeader
+        title="OLT Logs"
+        description="View OLT device logs and NMS sync activity"
+        action={
+          <>
+            {olts.length > 0 && (
+              <Select
+                value={selectedOltId ?? ''}
+                onChange={(e) => setOltId(Number(e.target.value))}
+                className="w-auto"
+                aria-label="Pilih OLT"
+                options={olts.map(o => ({ value: String(o.id), label: o.name }))}
+              />
+            )}
+            {isStatusHistory && (
+              <Select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-auto"
+                aria-label="Filter status"
+                options={STATUS_FILTERS.map(s => ({ value: s, label: s === 'all' ? 'All Status' : s }))}
+              />
+            )}
+            <Select
+              value={lineLimit}
+              onChange={(e) => setLineLimit(Number(e.target.value))}
+              className="w-auto"
+              aria-label="Line limit"
+              options={LINE_LIMITS.map(n => ({ value: String(n), label: `${n} ${isStatusHistory ? 'records' : 'lines'}` }))}
+            />
+            <Button
+              variant="secondary"
+              icon={<RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />}
+              onClick={() => refetch()}
+              disabled={isFetching}
             >
-              {olts.map(o => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-          )}
-          {/* Status filter (only for status history) */}
-          {isStatusHistory && (
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-bg2 border border-border rounded-lg px-3 py-1.5 text-sm text-tx1 outline-none focus:border-accent"
-            >
-              {STATUS_FILTERS.map(s => (
-                <option key={s} value={s}>{s === 'all' ? 'All Status' : s}</option>
-              ))}
-            </select>
-          )}
-          {/* Line limit */}
-          <select
-            value={lineLimit}
-            onChange={(e) => setLineLimit(Number(e.target.value))}
-            className="bg-bg2 border border-border rounded-lg px-3 py-1.5 text-sm text-tx1 outline-none focus:border-accent"
-          >
-            {LINE_LIMITS.map(n => (
-              <option key={n} value={n}>{n} {isStatusHistory ? 'records' : 'lines'}</option>
-            ))}
-          </select>
-          {/* Refresh */}
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/10 text-accent text-sm font-medium hover:bg-accent/20 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
-            Refresh
-          </button>
-        </div>
-      </div>
+              Refresh
+            </Button>
+          </>
+        }
+      />
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border overflow-x-auto">
+      <div className="flex gap-1 border-b border-brd overflow-x-auto">
         {TAB_CONFIG.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+              'flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0',
               activeTab === tab.key
                 ? 'border-accent text-accent'
                 : 'border-transparent text-tx3 hover:text-tx2'
@@ -171,8 +163,8 @@ export function OltLogs() {
 
       {/* Content area */}
       {isStatusHistory ? (
-        <div className="bg-bg2 rounded-lg border border-border overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg2/50">
+        <Card bodyClassName="p-0">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-brd bg-glass/50">
             <span className="text-xs text-tx3">
               {isLoading ? 'Loading...' : `${records.length} records`}
             </span>
@@ -180,19 +172,14 @@ export function OltLogs() {
           </div>
           <div className="max-h-[70vh] overflow-y-auto">
             {isLoading ? (
-              <div className="flex items-center justify-center py-8 text-tx3">
-                <RefreshCw size={16} className="animate-spin mr-2" />
-                Loading history...
-              </div>
+              <LoadingOverlay label="Loading history..." />
             ) : error ? (
-              <div className="flex items-center gap-2 text-red-400 py-4 px-4">
+              <div className="flex items-center gap-2 text-danger py-4 px-4">
                 <AlertTriangle size={14} />
                 {(error as Error).message}
               </div>
             ) : records.length === 0 ? (
-              <div className="text-tx3 py-8 text-center">
-                No status changes recorded yet
-              </div>
+              <EmptyState icon={Activity} title="No status changes recorded yet" />
             ) : (
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-bg3 z-10">
@@ -228,10 +215,10 @@ export function OltLogs() {
               </table>
             )}
           </div>
-        </div>
+        </Card>
       ) : (
-        <div className="bg-[#0a0a0a] rounded-lg border border-border overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg2/50">
+        <div className="bg-[#0a0a0a] rounded-lg border border-brd overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-brd bg-black/30">
             <span className="text-xs text-tx3">
               {isLoading ? 'Loading...' : `${lines.length} lines shown`}
               {totalLines > lines.length && ` (of ${totalLines} total)`}
@@ -240,20 +227,14 @@ export function OltLogs() {
           </div>
           <div className="font-mono text-xs leading-relaxed max-h-[70vh] overflow-y-auto p-3">
             {isLoading ? (
-              <div className="flex items-center justify-center py-8 text-tx3">
-                <RefreshCw size={16} className="animate-spin mr-2" />
-                Loading logs...
-              </div>
+              <LoadingOverlay label="Loading logs..." />
             ) : error ? (
-              <div className="flex items-center gap-2 text-red-400 py-4 px-2">
+              <div className="flex items-center gap-2 text-danger py-4 px-2">
                 <AlertTriangle size={14} />
                 {(error as Error).message}
               </div>
             ) : lines.length === 0 ? (
-              <div className="text-tx3 py-8 text-center">
-                No log entries found
-                {logData?.message && <div className="text-xs mt-1">{logData.message}</div>}
-              </div>
+              <EmptyState icon={FileText} title="No log entries found" description={logData?.message} />
             ) : (
               <div className="space-y-0">
                 {lines.map((line, i) => (
@@ -273,6 +254,6 @@ export function OltLogs() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
