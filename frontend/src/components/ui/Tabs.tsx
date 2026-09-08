@@ -15,7 +15,7 @@ export function Tabs({ tabs, active, onChange, className }: TabsProps) {
         <button
           key={tab.key}
           onClick={() => onChange(tab.key)}
-          className={cn('tab-btn', active === tab.key && 'tab-btn-active')}
+          className={cn('tab-btn inline-flex items-center gap-1.5', active === tab.key && 'tab-btn-active')}
         >
           {tab.icon}{tab.label}
         </button>
