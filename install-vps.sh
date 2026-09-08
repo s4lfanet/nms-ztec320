@@ -329,8 +329,8 @@ TRAFFIC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 traffic_
 CRON_TMP=$(mktemp)
 CRON_COUNT=0
 for attempt in 1 2; do
-    { crontab -l 2>/dev/null | grep -v 'db_backup\.py\|auto_backup\|auto_sync\|traffic_poller\|salfanet-nms'; echo "$DB_BACKUP_CRON"; echo "$BACKUP_CRON"; echo "$SYNC_CRON"; echo "$TRAFFIC_CRON"; } > "$CRON_TMP"
-    crontab "$CRON_TMP"
+    { crontab -l 2>/dev/null | grep -v 'db_backup\.py\|auto_backup\|auto_sync\|traffic_poller\|salfanet-nms' || true; echo "$DB_BACKUP_CRON"; echo "$BACKUP_CRON"; echo "$SYNC_CRON"; echo "$TRAFFIC_CRON"; } > "$CRON_TMP"
+    crontab "$CRON_TMP" || true
     CRON_COUNT=$(crontab -l 2>/dev/null | grep -c 'auto_sync\.py\|auto_backup\.py\|db_backup\.py\|traffic_poller\.py' || true)
     [ "$CRON_COUNT" -ge 4 ] && break
     echo "  ⚠️  Cron install looked incomplete ($CRON_COUNT/4 jobs) — retrying..."

@@ -95,8 +95,8 @@ TRAFFIC_CRON="*/5 * * * * cd /opt/salfanet-nms && /opt/salfanet-nms/.venv/bin/py
 CRON_TMP=$(mktemp)
 CRON_COUNT=0
 for attempt in 1 2; do
-    { crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|traffic_poller\|salfanet-nms'; echo "$BACKUP_CRON"; echo "$SYNC_CRON"; echo "$TRAFFIC_CRON"; } > "$CRON_TMP"
-    crontab "$CRON_TMP"
+    { crontab -l 2>/dev/null | grep -v 'auto_backup\|auto_sync\|traffic_poller\|salfanet-nms' || true; echo "$BACKUP_CRON"; echo "$SYNC_CRON"; echo "$TRAFFIC_CRON"; } > "$CRON_TMP"
+    crontab "$CRON_TMP" || true
     CRON_COUNT=$(crontab -l 2>/dev/null | grep -c 'auto_sync\.py\|auto_backup\.py\|traffic_poller\.py' || true)
     [ "$CRON_COUNT" -ge 3 ] && break
     echo "Cron install looked incomplete ($CRON_COUNT/3 jobs) — retrying..."
