@@ -4,6 +4,27 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-09 — WAN Service: Mode/Profile ONU Ke-2+ Bisa Salah Baca (Fallback ke Default/Bridge)
+
+#### Ditemukan Saat Investigasi
+- User laporkan: WAN IP dari DHCP tidak muncul lagi di View ONU untuk ONT Huawei (sebelumnya bisa), dan traffic/TCONT profile yang baru diubah selalu tampil balik ke default
+- Ditelusuri ke `telnet_client.py` (`collect_onu_detail`, fungsi parsing config ONU dari telnet) — kode ini tidak diubah sesi ini/sebelumnya (bukan regresi baru), tapi ditemukan bug nyata yang match dengan gejalanya
+
+#### Root Cause — Dikonfirmasi Lewat Test, Bukan Dugaan
+- `wan_ip_mode` dan `pppoe_mode` adalah **satu variabel** yang di-assign ulang tiap kali baris `wan-ip N mode ...` / `pppoe N nat ...` ditemukan saat scan config ONU. Untuk ONU dengan **lebih dari satu WAN service** (umum — sampai 4 service per ONU didukung), hanya baris **terakhir** yang ke-parse yang benar; service-service lain kehilangan mode-nya secara diam-diam dan jatuh ke default "Bridge / ONU Webpage" — reproduksi test langsung menunjukkan ini (service1 seharusnya "Wan-IP - DHCP" malah jadi "Bridge / ONU Webpage" begitu ada baris `wan-ip 3 ...` lain di config yang sama)
+- WAN IP dari DHCP (`show gpon remote-onu ip-host`) hanya di-assign ke service kalau ID host yang dilaporkan device **persis string `'1'`** — sebagian firmware ONT pihak ketiga (dilaporkan: sebagian unit Huawei) tidak menomori host tunggalnya sebagai "1", sehingga IP-nya gagal ditampilkan meski datanya sebenarnya ada di respons OLT
+
+#### Diperbaiki
+- `wan_ip_mode`/`pppoe_mode` diganti jadi dict yang di-key per nomor service (`wan_ip_modes`/`pppoe_modes`) — tiap service sekarang ambil entry miliknya sendiri, bukan berebut satu variabel
+- Assignment WAN IP dari DHCP: kalau cuma ada **satu host** yang dilaporkan OLT sama sekali (tidak ambigu), langsung di-assign ke service Wan-IP tanpa IP — tidak lagi mensyaratkan ID-nya literal `'1'`
+- Ditambah logging (`WARNING`/`DEBUG`) saat `show gpon remote-onu ip-host` balik data tapi formatnya tidak cocok label yang diharapkan, atau command-nya sendiri tidak mengembalikan data — supaya kasus yang masih gagal ke depannya bisa langsung didiagnosis dari log server, tanpa perlu akses SSH live ke OLT
+
+#### Diverifikasi
+- 3 test baru — salah satunya dikonfirmasi **gagal di kode lama** (reproduksi bug persis: service1 jadi "Bridge / ONU Webpage" padahal dikonfigurasi DHCP) dan **lolos di kode baru** — full suite 181 passed/2 skipped
+- **Catatan jujur**: perbaikan ini menutup dua bug nyata yang match dengan gejala yang dilaporkan, tapi belum bisa dipastikan 100% ini akar masalah persis untuk unit Huawei spesifik user tanpa melihat raw output `show gpon remote-onu ip-host` dari perangkat itu — logging baru di atas akan menunjukkan lebih jelas kalau ternyata masih ada kasus lain yang belum tertutup
+
+---
+
 ### 2026-09-08 — Cron Jobs (Auto-Sync/Backup) Bisa Gagal Diam-Diam Saat Install/Update
 
 #### Ditemukan Saat Audit — Direproduksi Langsung

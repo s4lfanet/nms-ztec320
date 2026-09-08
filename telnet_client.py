@@ -4610,8 +4610,12 @@ class TelnetCollector:
             result['wifi_entries'] = []
             result['eth_entries'] = []
             result['remote_access'] = []
-            wan_ip_mode = None  # Track wan-ip config from pon-onu-mng
-            pppoe_mode = None   # Track pppoe config from pon-onu-mng
+            # Keyed by service/host number — an ONU can have several `wan-ip N ...`
+            # or `pppoe N ...` lines (one per WAN service); a single shared variable
+            # here would get clobbered by the last line parsed, silently losing the
+            # mode/host/profile for every service but the last one.
+            wan_ip_modes = {}  # svc_num -> {mode, vlan_profile, host}
+            pppoe_modes = {}   # host_id -> {nat, username, password}
             has_veip_vlan = False  # Track if veip has vlan port config
             eth_by_port = {}  # Dedup: keep last entry per port number
             eth_locked_ports = set()  # Track locked ports (processed after vlan lines)
@@ -4788,17 +4792,18 @@ class TelnetCollector:
                     if m:
                         svc_num = m.group(1)
                         mode = m.group(2)
-                        wan_ip_mode = {'svc_num': svc_num, 'mode': mode}
+                        entry = {'svc_num': svc_num, 'mode': mode}
                         vp = re.search(r'vlan-profile\s+(\S+)', ls)
-                        if vp: wan_ip_mode['vlan_profile'] = vp.group(1)
+                        if vp: entry['vlan_profile'] = vp.group(1)
                         host = re.search(r'host\s+(\S+)', ls)
-                        if host: wan_ip_mode['host'] = host.group(1)
+                        if host: entry['host'] = host.group(1)
+                        wan_ip_modes[svc_num] = entry
 
                 # pppoe 1 nat enable user server2 password salfanet
                 elif ls.startswith('pppoe '):
                     m = re.match(r'pppoe\s+(\d+)\s+nat\s+(\S+)\s+user\s+(\S+)\s+password\s+(\S+)', ls)
                     if m:
-                        pppoe_mode = {
+                        pppoe_modes[m.group(1)] = {
                             'host_id': m.group(1),
                             'nat': m.group(2),
                             'username': m.group(3),
@@ -4945,22 +4950,28 @@ class TelnetCollector:
                     else:
                         svc['service_name'] = f'service{svc_idx}'
 
-                    # Determine mode from wan-ip or pppoe config in pon-onu-mng
-                    if wan_ip_mode and str(wan_ip_mode.get('svc_num')) == str(svc_idx):
+                    # Determine mode from wan-ip or pppoe config in pon-onu-mng —
+                    # look up this service's own entry, not whichever wan-ip/pppoe
+                    # line happened to be parsed last (see wan_ip_modes/pppoe_modes
+                    # above: an ONU with several WAN services has several of these
+                    # lines, one per service).
+                    svc_wan_ip_mode = wan_ip_modes.get(str(svc_idx))
+                    svc_pppoe_mode = pppoe_modes.get(str(svc_idx))
+                    if svc_wan_ip_mode:
                         # wan-ip 1 mode dhcp → "Wan-IP - DHCP"
                         # wan-ip 1 mode pppoe → "Wan-IP - PPPOE"
-                        ip_mode = wan_ip_mode.get('mode', 'dhcp').upper()
+                        ip_mode = svc_wan_ip_mode.get('mode', 'dhcp').upper()
                         svc['mode'] = f'Wan-IP - {ip_mode}'
-                        svc['wan_ip_profile'] = wan_ip_mode.get('vlan_profile', '')
-                        svc['wan_ip_host'] = wan_ip_mode.get('host', '')
-                    elif pppoe_mode and str(pppoe_mode.get('host_id', svc_idx)) == str(svc_idx):
+                        svc['wan_ip_profile'] = svc_wan_ip_mode.get('vlan_profile', '')
+                        svc['wan_ip_host'] = svc_wan_ip_mode.get('host', '')
+                    elif svc_pppoe_mode:
                         # pppoe 1 nat enable user X password Y → "PPPoE NAT" (only for matching service)
-                        nat = pppoe_mode.get('nat', 'enable')
+                        nat = svc_pppoe_mode.get('nat', 'enable')
                         svc['mode'] = 'PPPoE NAT' if nat == 'enable' else 'PPPoE'
-                        svc['pppoe_username'] = pppoe_mode.get('username', '')
-                        svc['pppoe_password'] = pppoe_mode.get('password', '')
+                        svc['pppoe_username'] = svc_pppoe_mode.get('username', '')
+                        svc['pppoe_password'] = svc_pppoe_mode.get('password', '')
                         svc['pppoe_nat'] = nat
-                        svc['pppoe_host'] = pppoe_mode.get('host_id', '1')
+                        svc['pppoe_host'] = svc_pppoe_mode.get('host_id', '1')
                     else:
                         svc['mode'] = 'Bridge / ONU Webpage'
 
@@ -4984,6 +4995,13 @@ class TelnetCollector:
                         elif k == 'Current IP address' and current_host_id:
                             if v and v != '0.0.0.0' and '.' in v:
                                 host_ips[current_host_id] = v
+                if not host_ips:
+                    # ip-host responded but none of its lines matched the expected
+                    # "Host ID:"/"Current IP address:" labels — some third-party ONT
+                    # firmwares (seen with some Huawei units) phrase this OMCI dump
+                    # slightly differently. Logged so a mismatch can be diagnosed
+                    # from server logs without needing a live SSH session.
+                    logger.warning(f"[live-detail] {iface}: ip-host returned data but no Host ID/Current IP address lines matched — raw: {iphost_out[:500]!r}")
                 # Assign IP to matching WAN services
                 for host_id, host_ip in host_ips.items():
                     # Try exact match via wan_ip_host
@@ -4995,14 +5013,19 @@ class TelnetCollector:
                             svc2['ip'] = host_ip
                             assigned = True
                             break
-                    if not assigned and host_id == '1':
-                        # Default: host 1 → first Wan-IP service without IP
+                    if not assigned and len(host_ips) == 1:
+                        # Only one host reported at all — unambiguous, so assign it
+                        # to the first Wan-IP service without an IP yet, regardless
+                        # of the literal host id string (some ONTs don't number their
+                        # single host "1", so matching on that exact string missed it).
                         for svc_idx3 in range(1, 5):
                             svc_key3 = f'service{svc_idx3}'
                             svc3 = result['wan_services'].get(svc_key3, {})
                             if svc3 and svc3.get('mode', '').startswith('Wan-IP') and not svc3.get('ip'):
                                 svc3['ip'] = host_ip
                                 break
+            else:
+                logger.debug(f"[live-detail] {iface}: ip-host command returned no usable data — raw: {iphost_out[:300]!r}")
             # Fallback: if no Wan-IP services found, try assigning to any active service
             if not any(s.get('ip') for s in result['wan_services'].values() if s):
                 iphost_out2 = self._send_command(tn, f'show gpon remote-onu ip-host {iface}', timeout=15)
