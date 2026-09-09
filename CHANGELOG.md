@@ -4,6 +4,28 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-09 — Root Cause Ditemukan: Response Command Telnet Bisa "Bocor" ke Command Berikutnya
+
+#### Ditemukan Lewat Investigasi Live di Produksi
+- Setelah fix sebelumnya (di bawah) di-deploy, user laporkan justru lebih parah: PPPoE yang sebelumnya muncul jadi hilang, dan beberapa section (WAN, VEIP, TR069, WiFi, LAN) di banyak ONU (ZTE maupun Huawei) jadi tidak muncul, running config juga kelihatan tidak lengkap
+- Ditelusuri LANGSUNG ke OLT produksi (bukan dugaan) — cek beberapa ONU spesifik yang dilaporkan user satu per satu lewat command manual ke OLT:
+  - Satu ONU (ZTEGDD9C04FB) ternyata memang **betul-betul tidak punya section `pon-onu-mng` di running-config OLT saat ini** — dikonfirmasi 2x lewat command langsung ke OLT (bukan bug di kita; kemungkinan besar karena riwayat ONU ini sempat DyingGasp lalu beberapa kali putus-nyambung tanggal 8 Sept, config OMCI-nya belum ter-apply ulang ke OLT)
+  - Dua ONU lain (HWTC2D23B69E, HWTCC890FDAA) config-nya ADA di OLT, tapi saat dites lewat `collect_onu_detail()` versi lengkap, command `show gpon remote-onu ip-host` kadang balikin **data dari command SEBELUMNYA** (`show gpon remote-onu veip`/`tr069`) — bukan data ip-host yang diminta
+
+#### Root Cause Sesungguhnya
+- `SimpleTelnet`/`SimpleSSH` di `telnet_client.py` membaca respons OLT dengan cara cari karakter prompt (`#`/`>`) di mana saja dalam buffer (`if expected in self.buffer`). Kalau karakter `#` itu muncul DI DALAM isi output suatu command (bukan prompt asli), pembacaan berhenti terlalu cepat — sisa respons command itu (termasuk prompt aslinya) **tertinggal di buffer**, lalu ke-baca ulang sebagai bagian dari respons command BERIKUTNYA, mencampur dua respons berbeda jadi satu
+- Ini bug lama (bukan dari perubahan sesi ini), tapi baru ketahuan sekarang karena logging baru di fix sebelumnya membuatnya kelihatan untuk pertama kali — dan sebelumnya SELALU silently gagal (IP tidak pernah muncul untuk kasus begini, cuma tanpa jejak di log)
+
+#### Diperbaiki
+- Ditambah `drain()` di `SimpleTelnet`/`SimpleSSH`: buang semua byte sisa di buffer sebelum kirim command baru, supaya sisa respons command sebelumnya tidak pernah "bocor" mencemari command berikutnya
+- Dipanggil otomatis di awal `_send_command()` — berlaku untuk SEMUA command (bukan cuma ip-host), memperbaiki reliabilitas keseluruhan komunikasi telnet/SSH ke OLT
+
+#### Diverifikasi
+- 3 test baru mensimulasikan persis skenario bocornya (satu gagal di kode lama dengan pesan error yang identik dengan gejala nyata, lolos di kode baru) — full suite 184 passed/2 skipped
+- **Dites langsung ke OLT produksi** (bukan simulasi) — sebelum fix: `show gpon remote-onu ip-host` untuk ONU Huawei balikin data VEIP yang salah, field `ip` tidak pernah terisi. Setelah fix (dites pakai salinan file terpisah di server, belum di-deploy ke live saat testing): `ip: "172.16.8.22"` muncul benar, `veip_entries` yang tadinya kosong sekarang terisi data asli
+
+---
+
 ### 2026-09-09 — WAN Service: Mode/Profile ONU Ke-2+ Bisa Salah Baca (Fallback ke Default/Bridge)
 
 #### Ditemukan Saat Investigasi

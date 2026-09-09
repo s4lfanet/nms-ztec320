@@ -81,6 +81,16 @@ class SimpleTelnet:
         self.sock = None
         self.buffer = b''
 
+    def drain(self):
+        """Discard any unconsumed bytes left over from a previous read_until()
+        call — e.g. it matched its terminator on a '#'/'>' byte that appeared
+        inside the command's own output rather than the real shell prompt,
+        leaving the true rest of that response (including the real prompt)
+        still sitting in the buffer. Left there, those bytes get silently
+        prepended to whatever the NEXT command reads, corrupting it with a
+        stale previous response. Call before writing each new command."""
+        self.buffer = b''
+
     def connect(self):
         try:
             self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
@@ -208,7 +218,14 @@ class SimpleSSH:
         self.client = None
         self.shell = None
         self.buffer = b''
-    
+
+    def drain(self):
+        """See SimpleTelnet.drain() — same leftover-buffer hazard applies
+        here (read_until() can match its terminator inside a response's own
+        content, leaving the true rest of that response buffered to corrupt
+        the next command's read)."""
+        self.buffer = b''
+
     def connect(self):
         try:
             import paramiko
@@ -400,6 +417,16 @@ class TelnetCollector:
             return None
 
     def _send_command(self, tn, command, timeout=15):
+        # Drain any bytes left over from a previous command's response before
+        # sending this one — read_until() below can match '#'/'>' inside a
+        # response's own content instead of the real shell prompt, leaving
+        # that response's true tail (and the real prompt) still buffered.
+        # Without this, those stale bytes get silently prepended to THIS
+        # command's output, returning a mix of two different commands'
+        # responses (confirmed live: a `show ... veip` reply leaking into
+        # the following `show ... ip-host` command's result).
+        if hasattr(tn, 'drain'):
+            tn.drain()
         tn.write(command + '\n')
         output = tn.read_until(b'#', timeout=timeout).decode('utf-8', errors='replace')
         # If no '#' found, try reading for '>' prompt
