@@ -4,6 +4,23 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-10 — Audit WebSocket: 4 Koneksi Redundan ke `/ws/dashboard` Jadi 1 Koneksi Bersama
+
+#### Ditemukan Saat Audit (Diminta User — Error di Console: "WebSocket is closed before the connection is established")
+- Ditelusuri ke 4 tempat berbeda (`Topbar`, `Dashboard`, `AllOnus`, `FtthInfrastructure`) yang **masing-masing** memanggil `useWebSocket('/ws/dashboard', ...)` sendiri-sendiri — 4 koneksi WebSocket terpisah ke endpoint yang SAMA PERSIS, untuk tujuan yang sama persis (invalidate query cache saat ada event alert/onu_change)
+- `Topbar` hidup di layout `AppShell` yang persisten (tidak pernah unmount), tapi 3 halaman lainnya mount/unmount setiap kali pindah halaman — jadi tiap kali pindah Dashboard ↔ All ONUs ↔ FTTH, koneksi WebSocket punya halaman itu di-tutup lalu dibuka ulang dari nol (fetch token baru, handshake baru)
+- Pesan error browser "WebSocket is closed before the connection is established" muncul spesifik kalau JS kita sendiri memanggil `.close()` pada koneksi yang belum selesai handshake — cocok dengan pola 4 koneksi yang saling silang saat navigasi cepat
+
+#### Diperbaiki
+- Dibuat 1 koneksi `/ws/dashboard` yang dibagikan lewat React Context (`useDashboardWs`), dipasang sekali di level `AppShell` — Topbar dan ketiga halaman sekarang tinggal "dengar" dari context yang sama, bukan buka koneksi sendiri-sendiri
+- Ditambah proteksi di `useWebSocket` sendiri: kalau `connect()` kepanggil lagi sebelum panggilan sebelumnya selesai ambil token (async), yang lama otomatis dibatalkan — supaya tidak ada 2 percobaan koneksi tabrakan biarpun cuma ada 1 instance hook
+
+#### Diverifikasi
+- Build frontend bersih, nol error TypeScript
+- Dites langsung di browser (Playwright): navigasi bolak-balik Dashboard → All ONUs → FTTH → Dashboard → All ONUs (klik link asli, bukan reload halaman) — **koneksi `/ws/dashboard` sekarang tidak pernah tertutup/terbuka ulang sama sekali** selama navigasi (sebelumnya setiap pindah halaman = 1 siklus tutup-buka), nol error console
+
+---
+
 ### 2026-09-09 — Full Sync Bisa Hapus Ratusan ONU Asli Kalau Walk-nya Cuma Kepotong Setengah Jalan
 
 #### Ditemukan Saat Audit (Diminta User: OLT 500+ ONU, Data Kadang Tidak Lengkap Pas Auto-Sync)

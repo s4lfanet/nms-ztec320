@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
-import { useWebSocket } from '../../hooks/useWebSocket';
+import { useDashboardWs } from '../../hooks/useDashboardWs';
 
 type NotifType = 'alarm' | 'unregister' | 'general';
 
@@ -347,7 +347,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
 
   // WebSocket listener — real-time alert push from backend
   // ('onu_change' also covers sync completion — see ws_bridge.py)
-  const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
+  const alertWsMsg = useDashboardWs();
   useEffect(() => {
     if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change')) {
       qc.invalidateQueries({ queryKey: ['notifications'] });

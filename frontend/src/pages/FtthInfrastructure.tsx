@@ -15,7 +15,7 @@ import { confirm } from '../components/ConfirmDialog';
 import { LocationPicker } from '../components/LocationPicker';
 import { LeafletMap } from '../components/LeafletMap';
 import { useHasPerm } from '../hooks/useHasPerm';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useDashboardWs } from '../hooks/useDashboardWs';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, EmptyState, Modal as SharedModal, Tabs } from '../components/ui';
@@ -72,7 +72,7 @@ export function FtthInfrastructure() {
 
   // WebSocket: realtime refresh on ONU status changes
   // ('onu_change' also covers sync completion — see ws_bridge.py)
-  const { lastMessage: mapWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
+  const mapWsMsg = useDashboardWs();
   useEffect(() => {
     if (mapWsMsg && (mapWsMsg.event === 'onu_change' || mapWsMsg.event === 'alert')) {
       qc.invalidateQueries({ queryKey: ['ftth-map'] });

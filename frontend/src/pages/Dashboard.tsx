@@ -10,7 +10,7 @@ import {
   RefreshCw, Radio, Clock, Fan, Zap, Activity, ExternalLink
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useDashboardWs } from '../hooks/useDashboardWs';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, EmptyState, Select } from '../components/ui';
@@ -62,7 +62,7 @@ export function Dashboard() {
 
   // WebSocket listener — real-time updates: refresh dashboard on alert or
   // ONU status change ('onu_change' also covers sync completion — see ws_bridge.py)
-  const { lastMessage: alertWsMsg } = useWebSocket('/ws/dashboard', { reconnect: true });
+  const alertWsMsg = useDashboardWs();
   useEffect(() => {
     if (alertWsMsg && (alertWsMsg.event === 'alert' || alertWsMsg.event === 'onu_change')) {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
