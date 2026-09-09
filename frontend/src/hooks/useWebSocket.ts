@@ -60,6 +60,15 @@ export function useWebSocket(
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+  // Bumped at the start of every connect() call. fetchToken() is an async
+  // round-trip — if connect() is invoked again before a prior call's fetch
+  // resolves (e.g. a reconnect timer firing right as a manual reconnect
+  // happens), the stale call must not go on to open a second WebSocket:
+  // whichever one wsRef.current pointed to would then get closed by the
+  // *next* connect()'s cleanup() while still in the CONNECTING state,
+  // which is exactly the browser's "WebSocket is closed before the
+  // connection is established" warning.
+  const connectGenerationRef = useRef(0);
 
   const getWsUrl = useCallback(() => {
     if (opts.baseUrl) {
@@ -113,10 +122,15 @@ export function useWebSocket(
     if (!mountedRef.current) return;
 
     cleanup();
+    const myGeneration = ++connectGenerationRef.current;
 
     // Fetch auth token before connecting
     const token = await fetchToken();
-    if (!mountedRef.current || !token) return;
+    // Bail out if unmounted, or if a newer connect() call has started since
+    // this one began awaiting the token — proceeding here would open a
+    // WebSocket that the newer call's cleanup() has already (or is about
+    // to) close before it finishes connecting.
+    if (!mountedRef.current || !token || myGeneration !== connectGenerationRef.current) return;
 
     const baseUrl = getWsUrl();
     const separator = baseUrl.includes('?') ? '&' : '?';
