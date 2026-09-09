@@ -1033,3 +1033,72 @@ class TestOnuLiveDetailTransientFailure:
         assert data['live_detail'] is None
         assert data['live_detail_error']
         assert 'connection reset' in data['live_detail_error']
+
+
+# ==================== ONU Live Detail — Serializes With Sync Lock ====================
+# collect_onu_detail() opens its own telnet session and sends 10+ sequential
+# commands to the OLT. auto_sync / manual sync already serialize their own
+# telnet access to a given OLT via sync_lock (acquire_sync_lock/
+# release_sync_lock), but a live "View ONU" page refresh used to open its
+# own session with no coordination at all — letting it run concurrently
+# with an in-progress sync, which is a plausible source of the OLT
+# interleaving/delaying responses across the two sessions. The endpoint now
+# takes the same per-OLT lock around its own collect_onu_detail() call.
+
+class TestOnuLiveDetailSyncLock:
+    def _make_onu(self, olt_id):
+        with app.app_context():
+            onu = ONU(olt_id=olt_id, frame=1, slot=1, port=1, onu_id=1, serial_number='ZTEGLIVE002')
+            db.session.add(onu)
+            db.session.commit()
+            return onu.id
+
+    def test_lock_acquired_and_released_around_collect(self, auth_client, test_olt):
+        onu_id = self._make_onu(test_olt)
+        with patch('snmp_collector.create_cli_collector') as mock_cli, \
+             patch('sync_lock.acquire_sync_lock') as mock_acquire, \
+             patch('sync_lock.release_sync_lock') as mock_release:
+            mock_acquire.return_value = 'token-123'
+            mock_tc = MagicMock()
+            mock_tc.collect_onu_detail.return_value = {'name': 'Customer B'}
+            mock_cli.return_value = mock_tc
+            resp = auth_client.get(f'/api/onu/{onu_id}/live-detail')
+
+        assert resp.status_code == 200
+        mock_acquire.assert_called_once_with(test_olt, timeout=5)
+        mock_release.assert_called_once_with(test_olt, 'token-123')
+
+    def test_lock_released_even_if_collect_raises(self, auth_client, test_olt):
+        onu_id = self._make_onu(test_olt)
+        with patch('snmp_collector.create_cli_collector') as mock_cli, \
+             patch('sync_lock.acquire_sync_lock') as mock_acquire, \
+             patch('sync_lock.release_sync_lock') as mock_release:
+            mock_acquire.return_value = 'token-456'
+            mock_tc = MagicMock()
+            mock_tc.collect_onu_detail.side_effect = Exception('boom')
+            mock_cli.return_value = mock_tc
+            resp = auth_client.get(f'/api/onu/{onu_id}/live-detail')
+
+        assert resp.status_code == 200
+        mock_release.assert_called_once_with(test_olt, 'token-456')
+
+    def test_proceeds_without_lock_when_sync_in_progress(self, auth_client, test_olt):
+        """If a sync is actively holding the lock, the fetch still proceeds
+        (better than blocking the page indefinitely) rather than failing —
+        acquire returning None must not stop collect_onu_detail from running,
+        and release must not be called for a lock we never held."""
+        onu_id = self._make_onu(test_olt)
+        with patch('snmp_collector.create_cli_collector') as mock_cli, \
+             patch('sync_lock.acquire_sync_lock') as mock_acquire, \
+             patch('sync_lock.release_sync_lock') as mock_release:
+            mock_acquire.return_value = None
+            mock_tc = MagicMock()
+            mock_tc.collect_onu_detail.return_value = {'name': 'Customer C'}
+            mock_cli.return_value = mock_tc
+            resp = auth_client.get(f'/api/onu/{onu_id}/live-detail')
+
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data['live_detail']['name'] == 'Customer C'
+        mock_tc.collect_onu_detail.assert_called_once()
+        mock_release.assert_not_called()
