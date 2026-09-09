@@ -4576,6 +4576,12 @@ class TelnetCollector:
             # ── 3. running-config: use per-interface command (fast) + fallback ──
             # 'show running-config interface {iface}' works on all firmware
             cfg_interface = self._send_command(tn, f'show running-config interface {iface}', timeout=15)
+            # De-wrap immediately, before any parsing/display use below — a long
+            # tcont/gemport/service-port line (e.g. a lengthy profile name) can
+            # hit the OLT's ~80-char wrap column exactly like the pon-onu-mng
+            # case (see _join_wrapped_lines), silently corrupting whatever
+            # keyword it cuts through.
+            cfg_interface = self._join_wrapped_lines(cfg_interface)
 
             # 'show running-config pon-onu-mng {iface}' does NOT work on V2.1.0
             # Try it first (fast on newer firmware), fall back to full running-config
@@ -5292,16 +5298,23 @@ class TelnetCollector:
     def _join_wrapped_lines(text):
         """Join continuation lines from OLT terminal-width wrapping.
         ZTE C320 wraps long lines at ~80 chars. Both indented and non-indented
-        continuation lines need joining. Known config keywords start a new line."""
+        continuation lines need joining. Known config keywords start a new line.
+        Covers both the pon-onu-mng section and the interface section (tcont/
+        gemport/service-port) — used on both."""
         lines = text.split('\n')
         result = []
-        # Known pon-onu-mng config keywords that start new lines
+        # Known pon-onu-mng AND interface-section config keywords that start
+        # a new line — anything NOT starting with one of these is treated as
+        # a wrapped continuation of the previous line. A keyword missing here
+        # would cause a genuinely separate config line to be wrongly merged
+        # into the previous one instead of being recognized as its own line.
         config_keywords = (
             'vlan port ', 'interface eth ', 'tr069-mgmt', 'pppoe ', 'wan-ip ',
-            'service ', 'name ', 'description ', 'switchport ', 'wifi ',
+            'service ', 'service-port ', 'name ', 'description ', 'switchport ', 'wifi ',
             'security-mgmt', 'reboot', 'restore', 'firewall', 'igmp',
             'pon-onu-mng ', 'interface ', '!', 'end', 'ZXAN', '#',
             'ssid ctrl ', 'ssid auth ', 'interface wifi ', 'wan ',
+            'tcont ', 'gemport ',
         )
         for line in lines:
             stripped = line.strip()

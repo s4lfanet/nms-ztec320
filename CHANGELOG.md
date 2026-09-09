@@ -4,6 +4,24 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-09 — Audit Lanjutan: Section Interface (TCONT/Gemport/Service-Port) Juga Rentan Kena Word-Wrap
+
+#### Ditemukan Saat Audit (Diminta User Setelah Fix TR069)
+- Setelah fix word-wrap TR069, diaudit lebih luas: apakah bug sejenis (baris config ke-wrap OLT lalu ke-gabung salah) ada di tempat lain
+- Ditemukan **dua gap nyata**:
+  1. `cfg_interface` (section tcont/gemport/service-port) tidak pernah melewati fungsi penggabung wrap sama sekali — kalau ada baris di situ yang cukup panjang (mis. nama profile custom yang panjang), bisa kena corruption yang sama seperti kasus TR069 kemarin, tapi belum pernah diperbaiki
+  2. Kalaupun langsung diterapkan begitu saja, daftar kata kunci "awal baris baru" yang dipakai fungsi penggabung **tidak punya `tcont `, `gemport `, `service-port `** — dicoba langsung (dites, bukan dugaan): SEMUA baris tcont/gemport/service-port jadi tergabung jadi satu baris raksasa, sama sekali rusak
+
+#### Diperbaiki
+- `cfg_interface` sekarang ikut diproses lewat fungsi penggabung wrap yang sama, sesaat setelah diambil dari OLT — otomatis berlaku untuk semua pemakaian di bawahnya
+- Kata kunci `tcont `, `gemport `, `service-port ` ditambahkan ke daftar, supaya baris-baris ini tetap dikenali sebagai baris baru masing-masing (tidak ketiban gabung ke baris sebelumnya)
+
+#### Diverifikasi
+- 2 test baru: satu membuktikan baris tcont/gemport/service-port yang terpisah TETAP terpisah (sempat gagal saat kata kuncinya belum ditambahkan — persis skenario yang ditakutkan di atas), satu lagi membuktikan baris yang sengaja dibuat panjang untuk ke-wrap tetap tergabung benar — full suite 188 passed/2 skipped
+- Dites ulang ke 3 ONU asli di produksi (termasuk edisetiadi@rw03) — tcont_profiles, wan service mode, running config semua tetap benar setelah perubahan, tidak ada regresi untuk config pendek yang normal
+
+---
+
 ### 2026-09-09 — TR069 Tidak Muncul Kalau Baris Config-nya Kena Word-Wrap OLT
 
 #### Ditemukan
