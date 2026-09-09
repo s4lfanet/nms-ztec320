@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-09 — Kemungkinan Penyebab Sisa: View ONU Tidak Ikut Antre dengan Sync yang Sedang Jalan
+
+#### Ditemukan
+- Setelah 3 perbaikan sebelumnya (buffer bleed, word-wrap TR069, word-wrap interface), user masih laporkan Remote Access/VEIP sesekali tidak muncul — kali ini tidak selalu reproducible seperti 3 bug sebelumnya (data mentah di OLT terbukti lengkap saat dicek langsung, tapi endpoint kadang balikin kosong)
+- Ditelusuri: `auto_sync.py` (cron tiap 5 menit — yang baru benar-benar jalan lagi setelah perbaikan cron sebelumnya) dan sync manual sama-sama pakai **sync lock per-OLT** (`sync_lock.py`) supaya tidak saling tabrakan buka sesi telnet ke OLT yang sama. Tapi halaman **View ONU** (`collect_onu_detail()`, dipakai tombol Refresh Live) **tidak pernah ikut memakai lock ini** — bisa buka sesi telnet sendiri ke OLT yang sama persis saat sync (auto atau manual) sedang jalan, tanpa koordinasi sama sekali
+- Ini kandidat kuat penyebab sisa gejala yang masih sesekali muncul: dua sesi telnet terpisah aktif bersamaan ke OLT yang sama, saling mengganggu urutan/waktu respons di sisi OLT
+
+#### Diperbaiki
+- View ONU sekarang ikut memakai sync lock yang sama sebelum buka sesi telnet-nya sendiri — tunggu maksimal 5 detik kalau sync sedang jalan, baru lanjut. Kalau setelah 5 detik masih terkunci, tetap lanjut jalan (supaya halaman tidak macet nunggu sync yang bisa makan waktu 60-90 detik), tapi dicatat ke log supaya kelihatan kalau ini masih sering kejadian
+
+#### Diverifikasi
+- 3 test baru (lock diambil & dilepas dengan benar, tetap dilepas walau `collect_onu_detail` error, tetap jalan meski lock gagal diambil) — full suite 191 passed/2 skipped
+- **Catatan jujur**: ini kandidat penyebab yang masuk akal dan sudah diperbaiki, tapi BEDA dengan 3 bug sebelumnya — tidak bisa direproduksi 100% secara langsung (butuh timing pas bareng sync beneran jalan). Perlu dipantau lagi setelah deploy apakah keluhan Remote Access/VEIP sesekali hilang ini benar-benar hilang atau masih ada penyebab lain.
+
+---
+
 ### 2026-09-09 — Audit Lanjutan: Section Interface (TCONT/Gemport/Service-Port) Juga Rentan Kena Word-Wrap
 
 #### Ditemukan Saat Audit (Diminta User Setelah Fix TR069)

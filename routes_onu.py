@@ -98,10 +98,28 @@ def api_onu_live_detail(onu_id):
     if olt and olt.cli_enabled and olt.cli_username:
         # ZTE: CLI-based live detail (SSH or Telnet)
         from snmp_collector import TelnetCollector, create_cli_collector
+        from sync_lock import acquire_sync_lock, release_sync_lock
         try:
             tc = create_cli_collector(olt)
             is_epon = (onu.card or '').lower() == 'epon'
-            collected = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+            # A concurrent auto-sync/manual-sync run opens its OWN telnet
+            # session to this same OLT — collect_onu_detail() below sends
+            # 10+ sequential commands over its own session with no
+            # protection against another session's traffic interleaving on
+            # the OLT's side. Wait briefly for the same per-OLT lock
+            # auto_sync/manual sync already use before opening ours; if a
+            # sync is still running after the wait, proceed anyway rather
+            # than block the page indefinitely, but log it — this is the
+            # most likely explanation for data intermittently coming back
+            # wrong/empty despite the OLT's own config being fine.
+            lock_token = acquire_sync_lock(olt.id, timeout=5)
+            if lock_token is None:
+                logger.warning(f"[live-detail] OLT {olt.id}: proceeding without sync lock (still held after 5s) — a concurrent sync may interfere with this fetch")
+            try:
+                collected = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+            finally:
+                if lock_token:
+                    release_sync_lock(olt.id, lock_token)
             if not collected:
                 # collect_onu_detail returns {} when the CLI connection itself
                 # failed (Telnet/SSH session busy or refused) — not a real
