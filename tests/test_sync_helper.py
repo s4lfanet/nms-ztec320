@@ -122,3 +122,132 @@ class TestLightSyncPartialWalk:
         assert stale_count == 1
         assert remaining == 0
         assert reloaded.total_onu == 0
+
+
+class TestFullSyncPartialWalk:
+    """A full sync (light=False) does more work per ONU than a light sync
+    (CLI enrichment on top of SNMP), so it's at least as exposed to the same
+    per-batch timeouts light mode already guards against — more so on a
+    large OLT (500+ ONUs, per a real user report). Before this fix, a full
+    sync that only partially completed its collection (for any reason — a
+    walk timeout, a network blip, an overloaded OLT) had its "missing" ONUs
+    unconditionally deleted, silently wiping out perfectly-online ONUs the
+    walk simply didn't reach in time on a single unlucky cycle."""
+
+    def _make_olt_with_onus(self, name, ip, count):
+        olt = OLT(name=name, ip_address=ip, vendor='ZTE', model='C320')
+        db.session.add(olt)
+        db.session.commit()
+        for i in range(1, count + 1):
+            db.session.add(ONU(
+                olt_id=olt.id, frame=1, slot=1, port=1, onu_id=i,
+                onu_index=110000 + i, serial_number=f'ZTEGC{i:04d}', status='online',
+            ))
+        sync = OLTSyncStatus(olt_id=olt.id)
+        db.session.add(sync)
+        db.session.commit()
+        return olt, sync
+
+    def test_dramatically_short_full_sync_result_skips_deletion(self, db_ctx):
+        """500 ONUs known from before; this full-sync result only found 50
+        of them (a walk that gave up ~90% of the way through). None of the
+        450 missing ones should be deleted — and the OLT's total_onu tile
+        must still reflect all 500, not 50."""
+        from sync_helper import save_sync_result
+
+        with app.app_context():
+            olt, sync = self._make_olt_with_onus('Big-OLT-Partial', '10.9.9.20', 500)
+            olt_id = olt.id
+
+            # Only the first 50 ONUs came back in this (partial) full sync.
+            result = {
+                'system': {}, 'snmp_ok': True, 'telnet_ok': True,
+                'onus': [
+                    {'onu_index': 110000 + i, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': i,
+                     'serial_number': f'ZTEGC{i:04d}', 'name': '', 'status': 'online',
+                     'oper_state': 1, 'reg_status': 1}
+                    for i in range(1, 51)
+                ],
+            }
+            onu_count, stale_count = save_sync_result(olt, result, sync, light=False)
+            db.session.commit()
+
+            remaining = ONU.query.filter_by(olt_id=olt_id).count()
+            reloaded = db.session.get(OLT, olt_id)
+
+        assert stale_count == 0, "partial full-sync result must not delete the ONUs it missed"
+        assert remaining == 500
+        assert reloaded.total_onu == 500
+
+    def test_dramatically_short_full_sync_logs_warning(self, db_ctx, caplog):
+        from sync_helper import save_sync_result
+        import logging
+
+        with app.app_context():
+            olt, sync = self._make_olt_with_onus('Big-OLT-Warn', '10.9.9.21', 500)
+            result = {
+                'system': {}, 'snmp_ok': True, 'telnet_ok': True,
+                'onus': [
+                    {'onu_index': 110000 + i, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': i,
+                     'serial_number': f'ZTEGC{i:04d}', 'name': '', 'status': 'online',
+                     'oper_state': 1, 'reg_status': 1}
+                    for i in range(1, 51)
+                ],
+            }
+            with caplog.at_level(logging.WARNING):
+                save_sync_result(olt, result, sync, light=False)
+
+        assert any('partial walk' in r.message for r in caplog.records)
+
+    def test_genuine_small_scale_removal_still_works(self, db_ctx):
+        """A small OLT (below the 20-ONU threshold) losing a handful of ONUs
+        in one pass is very plausibly real (someone unplugged a unit) —
+        must still delete normally, not get treated as a partial walk."""
+        from sync_helper import save_sync_result
+
+        with app.app_context():
+            olt, sync = self._make_olt_with_onus('Small-OLT', '10.9.9.22', 5)
+            olt_id = olt.id
+            # Only 2 of the 5 ONUs still respond — plausible for a small OLT.
+            result = {
+                'system': {}, 'snmp_ok': True, 'telnet_ok': True,
+                'onus': [
+                    {'onu_index': 110001, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                     'serial_number': 'ZTEGC0001', 'name': '', 'status': 'online',
+                     'oper_state': 1, 'reg_status': 1},
+                    {'onu_index': 110002, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 2,
+                     'serial_number': 'ZTEGC0002', 'name': '', 'status': 'online',
+                     'oper_state': 1, 'reg_status': 1},
+                ],
+            }
+            onu_count, stale_count = save_sync_result(olt, result, sync, light=False)
+            db.session.commit()
+            remaining = ONU.query.filter_by(olt_id=olt_id).count()
+
+        assert stale_count == 3
+        assert remaining == 2
+
+    def test_mildly_lower_count_still_deletes_normally(self, db_ctx):
+        """500 known, 480 found this round (a handful of ONUs genuinely
+        went offline/were removed) — well within the "this looks like a
+        real, not a partial walk" range, so normal deletion still applies."""
+        from sync_helper import save_sync_result
+
+        with app.app_context():
+            olt, sync = self._make_olt_with_onus('Big-OLT-Mild', '10.9.9.23', 500)
+            olt_id = olt.id
+            result = {
+                'system': {}, 'snmp_ok': True, 'telnet_ok': True,
+                'onus': [
+                    {'onu_index': 110000 + i, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': i,
+                     'serial_number': f'ZTEGC{i:04d}', 'name': '', 'status': 'online',
+                     'oper_state': 1, 'reg_status': 1}
+                    for i in range(1, 481)
+                ],
+            }
+            onu_count, stale_count = save_sync_result(olt, result, sync, light=False)
+            db.session.commit()
+            remaining = ONU.query.filter_by(olt_id=olt_id).count()
+
+        assert stale_count == 20
+        assert remaining == 480
