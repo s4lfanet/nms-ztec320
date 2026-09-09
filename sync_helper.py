@@ -412,10 +412,38 @@ def save_sync_result(olt, result, sync, light=False):
     missed_count = 0
     # In light mode, don't delete stale ONUs — SNMP walk might miss some in a single pass
     if not light:
-        for idx, onu in existing_onus.items():
-            if idx not in seen_indices:
-                db.session.delete(onu)
-                stale_count += 1
+        # A full sync's own collection can ALSO come back incomplete — more
+        # likely, not less, at scale: it does more work per ONU (CLI
+        # enrichment on top of SNMP) than a light sync, so it's exposed to
+        # the same per-batch timeouts light mode already guards against,
+        # and more so on a large OLT (500+ ONUs). Deleting everything not
+        # seen in one partial pass would silently wipe out perfectly-online
+        # ONUs the walk simply didn't reach in time. If this sync found
+        # dramatically fewer ONUs than the OLT is known to have (not just a
+        # handful genuinely unplugged), don't trust it enough to delete
+        # anything — preserve those rows the same way light mode does, and
+        # let a later, hopefully-complete sync clean up any real removals.
+        _prev_total = len(existing_onus)
+        _incomplete_walk = _prev_total >= 20 and len(onus_data) < _prev_total * 0.9
+        if _incomplete_walk:
+            logger.warning(
+                f"[sync:{olt.id}] Full sync returned {len(onus_data)} ONUs, expected ~{_prev_total} "
+                f"(known from last sync) — treating as a partial walk and skipping stale-ONU "
+                f"deletion this round instead of deleting ONUs the walk just didn't reach in time."
+            )
+            for idx, onu in existing_onus.items():
+                if idx not in seen_indices:
+                    missed_count += 1
+                    if onu.status == 'online': online += 1
+                    elif onu.status == 'los': los += 1
+                    elif onu.status == 'dyinggasp': dyinggasp += 1
+                    elif onu.status == 'offline': offline += 1
+                    else: other += 1
+        else:
+            for idx, onu in existing_onus.items():
+                if idx not in seen_indices:
+                    db.session.delete(onu)
+                    stale_count += 1
     else:
         # A partial SNMP walk (concurrent bulk-walks in
         # snmp_core.py:_collect_onus_light_async can time out unevenly) can

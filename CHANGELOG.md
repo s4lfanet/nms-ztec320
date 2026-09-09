@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-09 — Full Sync Bisa Hapus Ratusan ONU Asli Kalau Walk-nya Cuma Kepotong Setengah Jalan
+
+#### Ditemukan Saat Audit (Diminta User: OLT 500+ ONU, Data Kadang Tidak Lengkap Pas Auto-Sync)
+- Ditelusuri ke `sync_helper.py::save_sync_result` — untuk **light sync** (tiap 5 menit) sudah ADA proteksi: kalau SNMP walk cuma berhasil ambil sebagian ONU (misal karena timeout di OLT besar), ONU yang "kelewat" TIDAK dihapus, cuma dihitung tetap di total (komentar di kode sudah eksplisit bilang ini: "SNMP walk might miss some in a single pass")
+- Tapi **full sync** (sync pertama kali untuk OLT baru + tiap 6 jam) **TIDAK PUNYA proteksi yang sama** — kode-nya menghapus SEMUA ONU yang "tidak kelihatan" di hasil sync ini, tanpa cek apakah hasilnya memang cuma sebagian (partial) atau benar-benar lengkap
+- **Dikonfirmasi lewat test, bukan dugaan**: 500 ONU sudah ada di DB, full sync berikutnya cuma berhasil ambil 50 (walk kepotong ~90% jalan) — kode lama **menghapus 450 ONU asli yang masih online**, bukan cuma "tidak update," benar-benar dihapus dari database
+
+#### Diperbaiki
+- Full sync sekarang pakai proteksi yang sama seperti light sync: kalau OLT punya ≥20 ONU dari sync sebelumnya, DAN hasil sync kali ini kurang dari 90% jumlah itu — dianggap partial walk, tidak ada yang dihapus (ONU yang kelewat tetap disimpan datanya, cuma dihitung tetap di total), dan dicatat WARNING di log supaya kelihatan kalau ini masih sering kejadian
+- OLT kecil (<20 ONU) kehilangan sebagian unit dalam satu putaran tetap dianggap normal (misal pelanggan cabut ONU) dan tetap dihapus seperti biasa — proteksi ini cuma aktif untuk pola "kehilangan besar-besaran mendadak" yang jadi ciri khas walk yang kepotong, bukan penghapusan wajar sehari-hari
+
+#### Diverifikasi
+- 4 test baru: partial walk 500→50 tidak menghapus apa-apa (gagal di kode lama — sempat menghapus 450!), warning ter-log, OLT kecil tetap terhapus normal, OLT besar dengan penurunan wajar (500→480) tetap terhapus normal — full suite 195 passed/2 skipped
+
+---
+
 ### 2026-09-09 — Kemungkinan Penyebab Sisa: View ONU Tidak Ikut Antre dengan Sync yang Sedang Jalan
 
 #### Ditemukan
