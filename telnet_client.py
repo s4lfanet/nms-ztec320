@@ -5313,8 +5313,22 @@ class TelnetCollector:
             if starts_keyword:
                 result.append(line)
             else:
-                # Continuation of previous wrapped line — join
-                result[-1] = result[-1].rstrip() + ' ' + stripped
+                # Continuation of a wrapped line. ZTE's terminal wraps at a
+                # fixed column (~80 chars) with no regard for word
+                # boundaries — it can cut in the middle of a single token,
+                # e.g. "...username acs password ***" wraps as
+                # "...username acs passwo" + "rd ***". Joining with an
+                # inserted space (as if these were always two separate
+                # words) corrupts exactly that case: the literal keyword
+                # "password" then never appears in the reassembled line
+                # (only "passwo" + " " + "rd"), silently breaking every
+                # regex downstream that expects it — confirmed live: this
+                # is why tr069_entries came back empty despite a valid
+                # tr069-mgmt config, whenever the ACS URL/username/password
+                # line happened to land past the wrap column. Concatenate
+                # raw instead, with no inserted space — correct for a
+                # mid-word cut.
+                result[-1] = result[-1].rstrip() + stripped
         return '\n'.join(result)
 
     def collect_onu_traffic(self, frame, slot, port, onu_id):

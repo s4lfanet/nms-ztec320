@@ -4,6 +4,21 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-09 — TR069 Tidak Muncul Kalau Baris Config-nya Kena Word-Wrap OLT
+
+#### Ditemukan
+- User kirim langsung potongan running-config asli satu ONU (edisetiadi@rw03) yang TR069-nya tidak muncul di aplikasi, padahal `tr069-mgmt 1 acs ...` jelas ada di config. Baris ACS-nya kepotong OLT jadi 2 baris fisik persis di kolom ke-80: `...username acs passwo` lalu baris baru `rd ***`
+- `_join_wrapped_lines()` (fungsi penggabung baris yang ke-wrap OLT) selalu menyisipkan spasi saat menggabung — cocok untuk wrap yang jatuh di antara kata, tapi salah untuk wrap yang motong DI TENGAH satu kata: "passwo" + " " + "rd ***" jadi "passwo rd ***", bukan "password ***" — sehingga regex yang mencari kata kunci literal "password" tidak pernah cocok, dan TR069 gagal ke-parse sama sekali dari config yang sebenarnya valid
+
+#### Diperbaiki
+- Baris lanjutan (wrap) sekarang digabung TANPA spasi tambahan — benar untuk kasus terpotong di tengah kata (kasus nyata di atas), dan tidak lebih buruk untuk kasus wrap di batas kata (informasi soal ada/tidaknya spasi di titik potong sudah hilang duluan sejak `.strip()`, jadi tidak ada cara sempurna tanpa tahu lebar kolom pasti — versi tanpa-spasi ini yang terbukti benar untuk kasus nyata yang dilaporkan)
+
+#### Diverifikasi
+- 2 test baru pakai persis potongan config yang dikirim user — gagal di kode lama (reproduksi identik: "passwo rd ***"), lolos di kode baru — full suite 186 passed/2 skipped
+- Dites langsung ke ONU asli (edisetiadi@rw03) di OLT produksi: `tr069_entries` sekarang benar berisi ACS URL, username, VLAN 1010
+
+---
+
 ### 2026-09-09 — Root Cause Ditemukan: Response Command Telnet Bisa "Bocor" ke Command Berikutnya
 
 #### Ditemukan Lewat Investigasi Live di Produksi
