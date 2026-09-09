@@ -53,3 +53,54 @@ class TestJoinWrappedLines:
         assert m is not None, f"tr069 acs regex failed to match rejoined line: {acs_line!r}"
         assert m.group(2) == 'http://192.168.54.254:7547'
         assert m.group(4) == '***'
+
+
+# ── Interface-section coverage: cfg_interface (tcont/gemport/service-port)
+# used to never go through _join_wrapped_lines at all, and even after fixing
+# that, the keyword list didn't include 'tcont ', 'gemport ', or
+# 'service-port ' — so naively applying the fixer would have wrongly merged
+# every genuinely separate interface-section line into the one before it
+# (none of them started with a keyword the function recognized).
+INTERFACE_SECTION_MULTIPLE_SERVICES = """interface gpon-onu_1/1/6:29
+  Building configuration...
+  name amalianuriski@rw01
+  tcont 1 name VLAN0030 profile UP-PPPOE
+  tcont 2 name VLAN151 profile UP-PPPOE
+  gemport 1 tcont 1
+  gemport 1 traffic-limit downstream DOWN-PPPOE
+  gemport 2 tcont 2
+  gemport 2 traffic-limit downstream DOWN-PPPOE
+  service-port 1 vport 1 user-vlan 30 vlan 30
+  service-port 2 vport 2 user-vlan 151 vlan 151
+  end
+!"""
+
+
+class TestInterfaceSectionKeywordCoverage:
+    def test_separate_tcont_gemport_service_port_lines_stay_separate(self):
+        """Regression guard: tcont/gemport/service-port must each be
+        recognized as their own new line, not merged into whatever
+        preceded them."""
+        joined = TelnetCollector._join_wrapped_lines(INTERFACE_SECTION_MULTIPLE_SERVICES)
+        lines = [l.strip() for l in joined.split('\n') if l.strip()]
+        assert 'tcont 1 name VLAN0030 profile UP-PPPOE' in lines
+        assert 'tcont 2 name VLAN151 profile UP-PPPOE' in lines
+        assert 'gemport 1 tcont 1' in lines
+        assert 'gemport 2 tcont 2' in lines
+        assert 'service-port 1 vport 1 user-vlan 30 vlan 30' in lines
+        assert 'service-port 2 vport 2 user-vlan 151 vlan 151' in lines
+
+    def test_wrapped_service_port_line_reassembles(self):
+        """A service-port (or tcont/gemport) line long enough to hit the
+        same ~80-char wrap column must reassemble the same way tr069-mgmt
+        does — no inserted space at the cut."""
+        cfg = (
+            "interface gpon-onu_1/1/1:1\n"
+            "  tcont 1 name A-VERY-LONG-VLAN-PROFILE-NAME-THAT-WRAPS profile UP-VERYLONGPROF\n"
+            "  ILE-NAME\n"
+            "  gemport 1 tcont 1\n"
+            "!"
+        )
+        joined = TelnetCollector._join_wrapped_lines(cfg)
+        assert 'UP-VERYLONGPROFILE-NAME' in joined
+        assert 'UP-VERYLONGPROF ILE-NAME' not in joined
