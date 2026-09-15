@@ -387,6 +387,85 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
     return True
 
 
+# How long a monitored OLT can go without a completed auto-sync attempt
+# (success or error — see auto_sync.py's `_sync_one_olt`) before we treat it
+# as "sync stuck", not just "unlucky enough to have hit the rare single-skip
+# case" (measured on this codebase's production log: 7 skips in ~12.6k runs
+# over 45 days, all isolated single misses well under this threshold). This
+# only fires while the OLT itself answers SNMP right now — if the OLT is
+# offline, `_check_olt_health` already alerts on that and stale sync data is
+# just a symptom, not a separate problem.
+SYNC_STALE_THRESHOLD = timedelta(minutes=20)
+
+
+def _check_sync_staleness(olt, now, notifications_to_create, alerts_to_send):
+    """Detect an OLT whose auto_sync.py cron job has stopped completing runs —
+    catches the cron daemon dying, the script crashing, or a stuck per-OLT
+    lock that never releases (none of which auto_sync.py can detect about
+    itself, since a dead cron job can't report its own absence)."""
+    from models import db, AlertHistory, Notification, OLTSyncStatus
+
+    if not olt.snmp_enabled:
+        return  # auto_sync.py never syncs these — staleness here would be a false positive
+
+    sync = OLTSyncStatus.query.filter_by(olt_id=olt.id).first()
+    if not sync or not sync.completed_at:
+        return  # never synced yet (new OLT) — not stale, just hasn't had its first run
+
+    completed_at = sync.completed_at
+    if completed_at.tzinfo is not None:
+        completed_at = completed_at.replace(tzinfo=None)
+    age = now - completed_at
+
+    active_notif = Notification.query.filter_by(
+        olt_id=olt.id, category='sync_stale', resolved=False
+    ).first()
+
+    if age <= SYNC_STALE_THRESHOLD:
+        # Healthy (or recovered) — auto-resolve any open alert for this OLT.
+        if active_notif:
+            active_notif.resolved = True
+            active_notif.resolved_at = now
+            active_notif.is_read = True
+        return
+
+    age_minutes = int(age.total_seconds() // 60)
+    recent = AlertHistory.query.filter_by(
+        olt_id=olt.id, alert_type='sync_stale'
+    ).filter(AlertHistory.last_alert_at > now - timedelta(hours=2)).first()
+
+    if not recent:
+        title = f"⚠️ Auto-Sync Tertunda: {olt.name}"
+        message = (
+            f"⚠️ AUTO-SYNC TERTUNDA ⚠️\n\n"
+            f"OLT: {olt.name} ({olt.ip_address})\n"
+            f"Sync terakhir selesai: {_fmt_time(completed_at)} ({age_minutes} menit lalu)\n"
+            f"Status terakhir: {sync.status}\n\n"
+            f"⚠️ Indikasi: cron auto_sync mungkin berhenti jalan, macet, atau terus gagal — "
+            f"OLT ini merespons SNMP dengan normal, jadi kemungkinan besar bukan OLT-nya.\n"
+            f"⚠️ Cek: crontab -l, systemctl status cron, dan /var/log/salfanet-sync.log\n\n"
+            f"🕒 Waktu: {_fmt_time(now)}"
+        )
+        if not active_notif:
+            notifications_to_create.append({
+                'olt_id': olt.id, 'onu_id': None,
+                'severity': 'warning', 'category': 'sync_stale',
+                'title': title, 'message': message, 'target_roles': '',
+            })
+            alerts_to_send.append({
+                'type': 'sync_stale', 'severity': 'warning',
+                'title': title, 'message': message,
+                'olt_name': olt.name, 'olt_ip': olt.ip_address, 'is_recovery': False,
+            })
+
+    hist = AlertHistory.query.filter_by(olt_id=olt.id, alert_type='sync_stale').first()
+    if hist:
+        hist.last_alert_at = now
+        hist.last_value = str(age_minutes)
+    else:
+        db.session.add(AlertHistory(olt_id=olt.id, alert_type='sync_stale', last_value=str(age_minutes), last_alert_at=now))
+
+
 def run_alert_monitor(app):
     """Background thread that monitors ONU status changes and sends alerts."""
     logger.info("[ALERT] Alert monitor started")
@@ -476,6 +555,10 @@ def _check_onus_for_tenant(force_send=False):
         if not olt_reachable:
             logger.info(f"[ALERT] OLT {olt.name} is offline — skipping ONU checks")
             continue  # Skip ONU checks for unreachable OLT (avoid false positives)
+
+        # ─── Auto-sync staleness check — OLT is reachable but its cron sync
+        # job hasn't completed a run in a while (see SYNC_STALE_THRESHOLD) ───
+        _check_sync_staleness(olt, now, notifications_to_create, alerts_to_send)
 
         onus = ONU.query.filter_by(olt_id=olt.id).all()
 

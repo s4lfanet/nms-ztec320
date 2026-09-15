@@ -35,6 +35,7 @@ const alertTypeConfig: Record<string, { label: string; icon: React.ReactNode; co
   olt_cpu_high: { label: 'CPU HIGH', icon: <Cpu size={14} />, color: 'text-warning', bg: 'bg-warning/15' },
   olt_mem_high: { label: 'MEM HIGH', icon: <Activity size={14} />, color: 'text-warning', bg: 'bg-warning/15' },
   olt_temp_high: { label: 'TEMP HIGH', icon: <Thermometer size={14} />, color: 'text-danger', bg: 'bg-danger/15' },
+  sync_stale: { label: 'SYNC TERTUNDA', icon: <Clock size={14} />, color: 'text-warning', bg: 'bg-warning/15' },
 };
 
 function getTypeConfig(type: string) {

@@ -852,6 +852,110 @@ class TestNewOltAutoSync:
         assert resp.get_json()['success'] is True
 
 
+class TestSyncStalenessAlert:
+    """Regression tests for alerts.py's auto-sync staleness check — catches
+    the cron job dying/hanging/getting stuck, which auto_sync.py can never
+    detect about its own absence (a dead cron job can't report itself)."""
+
+    def _make_olt(self, name='Stale Test OLT', ip='10.0.0.60', snmp_enabled=True):
+        from models import db, OLT
+        olt = OLT(name=name, ip_address=ip, snmp_enabled=snmp_enabled)
+        db.session.add(olt)
+        db.session.commit()
+        return olt
+
+    def test_no_alert_when_recently_synced(self, client):
+        from datetime import datetime, timedelta
+        from alerts import _check_sync_staleness
+        from models import db, OLTSyncStatus
+        with app.app_context():
+            olt = self._make_olt()
+            db.session.add(OLTSyncStatus(olt_id=olt.id, status='completed',
+                                          completed_at=datetime.utcnow() - timedelta(minutes=2)))
+            db.session.commit()
+
+            notifications, alerts_out = [], []
+            _check_sync_staleness(olt, datetime.utcnow(), notifications, alerts_out)
+            assert notifications == []
+            assert alerts_out == []
+
+    def test_no_alert_for_olt_never_synced(self, client):
+        """A brand-new OLT with no OLTSyncStatus row yet must not be flagged —
+        it just hasn't had its first cron tick, that's normal, not stale."""
+        from datetime import datetime
+        from alerts import _check_sync_staleness
+        with app.app_context():
+            olt = self._make_olt(name='Brand New OLT', ip='10.0.0.61')
+            notifications, alerts_out = [], []
+            _check_sync_staleness(olt, datetime.utcnow(), notifications, alerts_out)
+            assert notifications == []
+
+    def test_alerts_when_sync_stale(self, client):
+        from datetime import datetime, timedelta
+        from alerts import _check_sync_staleness
+        from models import db, OLTSyncStatus
+        with app.app_context():
+            olt = self._make_olt(name='Stuck OLT', ip='10.0.0.62')
+            db.session.add(OLTSyncStatus(olt_id=olt.id, status='running',
+                                          completed_at=datetime.utcnow() - timedelta(minutes=45)))
+            db.session.commit()
+
+            notifications, alerts_out = [], []
+            _check_sync_staleness(olt, datetime.utcnow(), notifications, alerts_out)
+            assert len(notifications) == 1
+            assert notifications[0]['category'] == 'sync_stale'
+            assert notifications[0]['severity'] == 'warning'
+            assert notifications[0]['olt_id'] == olt.id
+            assert len(alerts_out) == 1
+
+    def test_skips_olt_with_snmp_disabled(self, client):
+        """auto_sync.py never syncs an SNMP-disabled OLT, so a stale
+        completed_at there would be a false positive."""
+        from datetime import datetime, timedelta
+        from alerts import _check_sync_staleness
+        from models import db, OLTSyncStatus
+        with app.app_context():
+            olt = self._make_olt(name='No SNMP OLT', ip='10.0.0.63', snmp_enabled=False)
+            db.session.add(OLTSyncStatus(olt_id=olt.id, status='error',
+                                          completed_at=datetime.utcnow() - timedelta(hours=5)))
+            db.session.commit()
+
+            notifications, alerts_out = [], []
+            _check_sync_staleness(olt, datetime.utcnow(), notifications, alerts_out)
+            assert notifications == []
+
+    def test_auto_resolves_when_sync_recovers(self, client):
+        """An open sync_stale notification must auto-resolve once a fresh
+        sync completes — mirrors the existing olt_recovery pattern."""
+        from datetime import datetime, timedelta
+        from alerts import _check_sync_staleness
+        from models import db, Notification, OLTSyncStatus
+        with app.app_context():
+            olt = self._make_olt(name='Recovering OLT', ip='10.0.0.64')
+            sync = OLTSyncStatus(olt_id=olt.id, status='error',
+                                  completed_at=datetime.utcnow() - timedelta(minutes=45))
+            db.session.add(sync)
+            db.session.commit()
+
+            notifications, alerts_out = [], []
+            _check_sync_staleness(olt, datetime.utcnow(), notifications, alerts_out)
+            for n in notifications:
+                db.session.add(Notification(**n))
+            db.session.commit()
+
+            open_notif = Notification.query.filter_by(olt_id=olt.id, category='sync_stale', resolved=False).first()
+            assert open_notif is not None
+
+            # Sync completes successfully now — staleness clears.
+            sync.completed_at = datetime.utcnow()
+            db.session.commit()
+            _check_sync_staleness(olt, datetime.utcnow(), [], [])
+            db.session.commit()
+
+            db.session.refresh(open_notif)
+            assert open_notif.resolved is True
+
+
 class TestSyncJob:
     """Tests for sync job lifecycle (Phase 3)."""
 

@@ -10,6 +10,13 @@ Jinja2>=3.1
 # === Security ===
 cryptography>=42.0
 
+# === Timezone data (zoneinfo) ===
+# Most Linux servers get IANA tzdata from the OS, so this is a harmless no-op
+# there — but without it, ZoneInfo() raises ZoneInfoNotFoundError on Windows
+# and on minimal containers (e.g. Alpine/musl) with no OS tzdata, breaking
+# every timestamp alerts.py formats.
+tzdata>=2024.1
+
 # === Network ===
 pysnmp>=7.1
 paramiko>=3.0,<4.0
