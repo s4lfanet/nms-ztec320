@@ -4,6 +4,24 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Audit Toast Notification: Overflow di Mobile Sempit + Bisa Menutupi Layar Kalau Beruntun
+
+#### Diminta User
+- Audit posisi & tampilan toast notification di desktop dan mobile
+
+#### Ditemukan Saat Audit
+- **Mobile (viewport < ~375px, misal 360px — lebar Android yang sangat umum)**: kontainer toast (`Toast.tsx`) cuma di-set `right-4` (tanpa `left`) dengan lebar `w-full` dibatasi `max-w-sm` (384px) — begitu `viewport width < right offset + lebar toast`, box-nya overflow ke luar layar sebelah kiri. Dikonfirmasi lewat pengukuran geometri langsung di browser: di 360px box mulai dari `x=-15px` (kepotong 15px di kiri layar), di 320px (lebar umum lain) juga overflow. Baru "aman" mulai ~390px ke atas
+- **Desktop & mobile (semua ukuran)**: kontainer toast tidak dibatasi jumlahnya — dikonfirmasi dengan menumpuk 5 toast sekaligus (skenario realistis karena app ini push notifikasi alert lewat WebSocket, beberapa ONU bisa offline bersamaan), hasilnya menutupi SELURUH kartu statistik dashboard di desktop, dan di mobile menutupi hampir seluruh konten di atas layar (judul halaman, tombol Sync All/Refresh, semua kartu status)
+
+#### Diperbaiki
+- Kontainer toast sekarang pakai `left-4` + `right-4` (margin kiri-kanan sama besar) di mobile, lalu `sm:left-auto` di layar ≥640px supaya balik ke gaya lama (nempel kanan atas, lebar dibatasi `max-w-sm`) — tidak overflow di lebar layar berapa pun, dites dari 320px sampai 1440px
+- Ditambah batas maksimal 4 toast tampil bersamaan (`MAX_VISIBLE`) — toast baru yang masuk saat sudah penuh otomatis menggeser yang paling lama, supaya tumpukan alert beruntun tidak menutupi seluruh layar
+
+#### Diverifikasi
+- 2 test baru di `frontend/src/__tests__/Toast.test.tsx` (jsdom/Vitest — juga menemukan & memperbaiki gap terpisah: `jsdom` belum ter-install padahal sudah dikonfigurasi di `vitest.config.ts`, jadi test yang butuh DOM belum pernah bisa jalan sebelumnya): satu mengecek class positioning, satu mengecek logika cap 4-toast — keduanya dikonfirmasi GAGAL di kode lama dan LULUS di kode baru
+- Dites visual & geometri langsung di browser (Playwright) di 5 lebar layar (320/360/375/390/1440px) — semua sekarang pas di dalam viewport, tidak ada lagi yang kepotong
+- Full suite backend tetap hijau, build frontend bersih
+
 ### 2026-09-16 — Fix: Nama Perusahaan & Logo Balik ke Default Setelah Logout-Login (Harus Hard Refresh)
 
 #### Diminta User
