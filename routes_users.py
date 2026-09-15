@@ -66,9 +66,12 @@ def update_profile():
             db.session.add(SystemConfig(key='nms_name', value=data['sidebar_name']))
     if 'password' in data and data['password']:
         current_user.set_password(data['password'])
+        # Changing the password satisfies the forced-change requirement
+        # seeded for the default admin/admin123 account (see app.py).
+        current_user.must_change_password = False
     db.session.commit()
     log_action('profile_update', 'user', target=current_user.username, detail=f'Updated own profile — fields: {list(data.keys())}')
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'must_change_password': bool(current_user.must_change_password)})
 
 
 ALLOWED_LOGO_EXT = {'png', 'jpg', 'jpeg', 'webp', 'gif'}

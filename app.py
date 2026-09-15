@@ -253,8 +253,13 @@ def seed_initial_data():
     db.session.add_all([admin_role, viewer_role, limited_role, technician_role])
     db.session.flush()
 
-    # Create admin user (super admin)
-    admin = User(full_name='Administrator', username='admin', role_id=admin_role.id, is_super_admin=True)
+    # Create admin user (super admin). admin/admin123 is a well-known
+    # default credential — must_change_password forces a change on first
+    # login before the rest of the app becomes usable (see routes_auth.py
+    # and the frontend's ProtectedRoute). Only ever set True here, at
+    # initial seed time — never retroactively for existing installs.
+    admin = User(full_name='Administrator', username='admin', role_id=admin_role.id,
+                 is_super_admin=True, must_change_password=True)
     admin.set_password('admin123')
     db.session.add(admin)
 
@@ -373,6 +378,12 @@ def migrate_schema():
     # User table - add sidebar_name
     add_col('users', 'sidebar_name', 'VARCHAR(100)', "'FiberNMS'")
     add_col('users', 'is_super_admin', 'BOOLEAN', '0')
+    # Default 0/False for every existing row — an admin who already changed
+    # their password in the past must NOT be forced to change it again just
+    # because this column showed up. Only a fresh seed (seed_initial_data,
+    # above) ever sets this True, and only for the brand-new 'admin' row it
+    # creates.
+    add_col('users', 'must_change_password', 'BOOLEAN', '0')
 
     # Migrate existing admin user to super_admin
     try:

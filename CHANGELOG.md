@@ -4,6 +4,26 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Security Fix: Paksa Ganti Password Default admin/admin123 (Audit Temuan 2)
+
+#### Ditemukan
+- `app.py` men-seed user `admin` dengan password `admin123` saat instalasi pertama, tanpa mekanisme apa pun yang memaksa admin menggantinya sebelum memakai aplikasi — kredensial default yang dikenal publik ini bisa tetap aktif selamanya kalau admin tidak sadar/lupa menggantinya
+
+#### Diperbaiki
+- Kolom baru `must_change_password` (Boolean, default `False`) di model `User` — migration Alembic baru (`77cd667a1e6b`) + `add_col()` di `app.py` untuk instalasi existing (default `0`/False untuk SEMUA baris lama, **tidak retroaktif** — admin yang sudah pernah ganti password tidak akan tiba-tiba diminta ganti lagi)
+- Hanya user `admin` hasil seeding awal yang di-set `must_change_password=True`, dilakukan tepat di titik seeding (`app.py::seed_initial_data`)
+- Response `POST /api/auth/login` dan `GET /api/auth/me` (`routes_auth.py`) sekarang menyertakan flag `must_change_password` — disertakan di KEDUA endpoint sekaligus (bukan cuma salah satu) supaya tidak mengulang bug staleness yang sebelumnya pernah ditemukan di sesi ini (nama/logo perusahaan sempat balik ke default setelah login karena cuma salah satu endpoint yang lengkap)
+- `ProtectedRoute` di `App.tsx` (frontend) mengalihkan paksa ke halaman My Profile (form ganti password yang sudah ada, di-reuse) kalau `must_change_password` true — memblokir akses ke halaman lain sampai password diganti. Card banner baru di My Profile menjelaskan kenapa
+- Mengganti password lewat `POST /api/profile` otomatis membersihkan flag (`routes_users.py`)
+
+#### Bug yang Ditemukan Sekaligus Diperbaiki Saat Verifikasi
+- Implementasi awal pengalihan paksa pakai `window.location.pathname` untuk mengecek path saat ini — ternyata race condition dengan siklus render React Router menyebabkan **redirect loop** (URL sempat memantul lewat `/dashboard/admin` → `/` → `/login` → `/dashboard` berkali-kali sebelum akhirnya "settle" di URL yang benar, tapi halaman tetap kosong/tidak pernah benar-benar render). Diperbaiki dengan memakai hook `useLocation()` dari React Router (reaktif terhadap render, bukan API browser mentah) — dikonfirmasi lewat browser sungguhan: sekarang halaman My Profile langsung render normal dengan banner, tanpa loop
+
+#### Diverifikasi
+- 5 test baru (`TestForcedPasswordChange`): instalasi baru (simulasi DB kosong) menghasilkan admin dengan flag true, response login menyertakan flag, user biasa (bukan hasil seed) flag-nya false, ganti password membersihkan flag, admin existing tidak ter-flag retroaktif oleh migration — full suite 227 passed/2 skipped
+- Migration Alembic dites end-to-end: dari DB kosong sampai revision terbaru (termasuk migration baru ini) berhasil tanpa error, kolom baru terkonfirmasi ada dengan tipe & default yang benar
+- Dites visual langsung di browser: login dengan akun ber-flag → langsung dialihkan ke My Profile dengan banner peringatan → coba pindah halaman manual → tetap dipentalkan balik ke My Profile → ganti password → berhasil pindah halaman normal
+
 ### 2026-09-16 — Security Fix: Sanitasi Input Sebelum Dikirim sebagai Perintah CLI Telnet ke OLT (Audit Temuan 1)
 
 #### Ditemukan

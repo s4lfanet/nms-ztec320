@@ -1,5 +1,5 @@
 import { useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './stores/auth';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -58,6 +58,11 @@ const routePatterns: { pattern: RegExp; perm: string }[] = [
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  // React Router's own location, not window.location.pathname — the raw
+  // browser API isn't guaranteed to reflect the in-flight route synchronously
+  // with this render, which let the must_change_password redirect below
+  // re-fire against a stale `path` and loop instead of settling.
+  const { pathname: path } = useLocation();
   // Only gate on `loading` while we don't have a user yet (initial app boot).
   // fetchUser() is also called mid-session (e.g. after saving a profile
   // change) and toggles `loading` again without clearing `user` — gating on
@@ -79,8 +84,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   if (!user) return <Navigate to="/" replace />;
 
+  // Force a password change for the seeded admin/admin123 account before
+  // anything else in the app is usable — admin123 is a well-known default
+  // credential. My Profile already has the password-change form, so this
+  // just blocks every other route until must_change_password clears (the
+  // backend clears it the moment a new password is actually saved).
+  if (user.must_change_password && path !== '/dashboard/profile') {
+    return <Navigate to="/dashboard/profile" replace />;
+  }
+
   // Check route-specific permission
-  const path = window.location.pathname;
   let requiredPerm = routePermissions[path];
   if (!requiredPerm) {
     for (const rp of routePatterns) {
