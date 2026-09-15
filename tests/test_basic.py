@@ -1328,6 +1328,81 @@ class TestFastAPIDocsSecurity:
                 os.environ.pop('FLASK_ENV', None)
 
 
+class TestRedisRateLimitWarning:
+    """Audit finding 4: warn loudly at startup when the login rate limiter
+    will silently be less effective than it looks — REDIS_URL unset means
+    helpers.py falls back to an in-memory, per-process attempt counter, so
+    with N gunicorn/uvicorn workers the real lockout is 5*N attempts, not 5."""
+
+    def _reload_config(self):
+        import importlib
+        import config
+        importlib.reload(config)
+        return config
+
+    def test_warns_in_production_without_redis(self, caplog):
+        orig_env = os.environ.get('FLASK_ENV', '')
+        orig_redis = os.environ.get('REDIS_URL', '')
+        os.environ['FLASK_ENV'] = 'production'
+        os.environ.pop('REDIS_URL', None)
+        try:
+            with caplog.at_level('ERROR'):
+                self._reload_config()
+            assert any('REDIS_URL' in r.message and 'rate limiter' in r.message for r in caplog.records)
+        finally:
+            if orig_env:
+                os.environ['FLASK_ENV'] = orig_env
+            else:
+                os.environ.pop('FLASK_ENV', None)
+            if orig_redis:
+                os.environ['REDIS_URL'] = orig_redis
+            else:
+                os.environ.pop('REDIS_URL', None)
+            self._reload_config()
+
+    def test_no_warning_in_production_with_redis(self, caplog):
+        orig_env = os.environ.get('FLASK_ENV', '')
+        orig_redis = os.environ.get('REDIS_URL', '')
+        os.environ['FLASK_ENV'] = 'production'
+        os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
+        try:
+            with caplog.at_level('ERROR'):
+                self._reload_config()
+            assert not any('rate limiter' in r.message for r in caplog.records)
+        finally:
+            if orig_env:
+                os.environ['FLASK_ENV'] = orig_env
+            else:
+                os.environ.pop('FLASK_ENV', None)
+            if orig_redis:
+                os.environ['REDIS_URL'] = orig_redis
+            else:
+                os.environ.pop('REDIS_URL', None)
+            self._reload_config()
+
+    def test_no_warning_in_development_without_redis(self, caplog):
+        """The in-memory fallback is fine for a single-process dev server —
+        only production (implying multi-worker) needs the warning."""
+        orig_env = os.environ.get('FLASK_ENV', '')
+        orig_redis = os.environ.get('REDIS_URL', '')
+        os.environ['FLASK_ENV'] = 'development'
+        os.environ.pop('REDIS_URL', None)
+        try:
+            with caplog.at_level('ERROR'):
+                self._reload_config()
+            assert not any('rate limiter' in r.message for r in caplog.records)
+        finally:
+            if orig_env:
+                os.environ['FLASK_ENV'] = orig_env
+            else:
+                os.environ.pop('FLASK_ENV', None)
+            if orig_redis:
+                os.environ['REDIS_URL'] = orig_redis
+            else:
+                os.environ.pop('REDIS_URL', None)
+            self._reload_config()
+
+
 class TestForcedPasswordChange:
     """Audit finding 2: the seeded admin/admin123 account must be forced to
     change its password before the rest of the app is usable — admin123 is
