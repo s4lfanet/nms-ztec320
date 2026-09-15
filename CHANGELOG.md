@@ -4,6 +4,21 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Fix: Kotak Logo Diberi Latar Putih (Logo Hitam Tidak Kelihatan di Latar Gelap)
+
+#### Diminta User
+- Logo custom yang berwarna hitam tidak kelihatan karena kotak logo di sidebar/topbar/halaman login pakai latar warna accent/gelap
+
+#### Diperbaiki
+- 6 tempat yang menampilkan logo (`AuthLayout` desktop & mobile, `Sidebar` expanded & collapsed, `Topbar` mobile, preview di `MyProfile`) sekarang pakai latar putih + sedikit padding KHUSUS saat logo custom sedang ditampilkan — supaya logo warna apa pun (termasuk hitam) tetap kontras. Kalau belum ada logo custom, kotak tetap pakai ikon & warna default seperti sebelumnya (tidak ada perubahan tampilan untuk instalasi yang belum upload logo)
+- Bonus temuan waktu verifikasi: proxy Vite dev server (`vite.config.ts`) cuma meneruskan `/api` dan `/auth` ke backend, tidak `/static` — jadi logo yang baru diupload gagal tampil pas testing lokal (`pnpm dev`), padahal di produksi (Nginx) sudah benar. Ditambahkan `/static` ke proxy supaya testing lokal akurat; tidak ada dampak ke behavior produksi
+
+#### Diverifikasi
+- TypeScript build bersih, full suite tetap 200 passed/2 skipped
+- Dites visual langsung di browser (logo lingkaran hitam solid): sekarang kontras jelas di halaman login, sidebar (expanded & collapsed), dan preview My Profile — dibandingkan sebelumnya yang nyaris tidak kelihatan di latar gelap
+
+---
+
 ### 2026-09-16 — Fitur Baru: Upload Logo Perusahaan (Branding Custom, Tidak Lagi Default)
 
 #### Diminta User

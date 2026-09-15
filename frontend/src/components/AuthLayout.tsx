@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { Zap, Activity, Radio, Server, ShieldCheck, Wifi } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -25,7 +26,10 @@ export function AuthLayout({ children, brandName, logoUrl }: AuthLayoutProps) {
         {/* Top: Logo + Brand */}
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-accent/15 flex items-center justify-center glow-accent overflow-hidden">
+            <div className={cn(
+              'w-12 h-12 rounded-2xl flex items-center justify-center overflow-hidden',
+              logoUrl ? 'bg-white p-1.5' : 'bg-accent/15 glow-accent',
+            )}>
               {logoUrl ? <img src={logoUrl} alt={brandName} className="w-full h-full object-contain" /> : <Zap size={26} className="text-accent" />}
             </div>
             <div>
@@ -91,7 +95,10 @@ export function AuthLayout({ children, brandName, logoUrl }: AuthLayoutProps) {
 
         {/* Mobile logo (visible only on mobile, above form) */}
         <div className="lg:hidden fixed top-6 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2">
-          <div className="w-12 h-12 rounded-2xl bg-accent/15 flex items-center justify-center glow-accent overflow-hidden">
+          <div className={cn(
+            'w-12 h-12 rounded-2xl flex items-center justify-center overflow-hidden',
+            logoUrl ? 'bg-white p-1.5' : 'bg-accent/15 glow-accent',
+          )}>
             {logoUrl ? <img src={logoUrl} alt={brandName} className="w-full h-full object-contain" /> : <Zap size={24} className="text-accent" />}
           </div>
           <h1 className="text-lg font-bold font-display">{brandName}</h1>
