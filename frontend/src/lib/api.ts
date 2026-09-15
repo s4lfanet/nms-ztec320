@@ -351,6 +351,7 @@ export interface User {
   role: string;
   permissions: string[];
   sidebar_name: string;
+  logo_url?: string | null;
   is_super_admin?: boolean;
   tenant_id?: number | null;
   subscription?: {

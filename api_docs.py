@@ -897,6 +897,16 @@ def register_flask_api_docs(app: FastAPI):
     def update_profile(body: ProfileUpdate):
         pass
 
+    @app.post("/api/profile/logo", tags=["Users"], summary="Upload company logo",
+              description="Super admin only. Uploads a PNG/JPG/WEBP/GIF (max 2MB) to replace the default NMS logo shown on the login page, sidebar, and topbar.")
+    def upload_logo():
+        pass
+
+    @app.delete("/api/profile/logo", tags=["Users"], summary="Reset company logo",
+               description="Super admin only. Removes the custom logo and reverts to the default NMS branding.")
+    def reset_logo():
+        pass
+
     # ======================================================================
     # CUSTOMIZATION
     # ======================================================================
@@ -1023,7 +1033,7 @@ def register_flask_api_docs(app: FastAPI):
     # PUBLIC ENDPOINTS (no auth)
     # ======================================================================
     @app.get("/api/public/branding", tags=["Public"], summary="Get NMS branding",
-             description="Returns NMS name, base_url, base_domain. No auth required.")
+             description="Returns NMS name, logo_url (custom company logo, if uploaded), base_url, base_domain. No auth required.")
     def branding():
         pass
 

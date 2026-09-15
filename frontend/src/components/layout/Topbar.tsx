@@ -424,8 +424,8 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           <Menu size={20} className="text-tx2" />
         </button>
         <div className="flex items-center gap-1.5 lg:hidden">
-          <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center shadow-lg shadow-accent/20">
-            <Zap size={15} className="text-white" />
+          <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center shadow-lg shadow-accent/20 overflow-hidden">
+            {user?.logo_url ? <img src={user.logo_url} alt="" className="w-full h-full object-contain" /> : <Zap size={15} className="text-white" />}
           </div>
           <span className="text-sm font-bold tracking-tight">{user?.sidebar_name || 'Salfanet NMS'}</span>
         </div>

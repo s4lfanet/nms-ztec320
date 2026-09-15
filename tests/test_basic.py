@@ -5,6 +5,7 @@ Or: py -3 tests/test_basic.py
 """
 import os
 import sys
+import io
 import json
 import pytest
 from unittest.mock import patch
@@ -404,6 +405,104 @@ class TestRBAC:
             content_type='application/json')
         resp = client.get('/api/users')
         assert resp.status_code == 200
+
+
+class TestCompanyLogoUpload:
+    """Regression tests for the custom company logo (branding) upload feature."""
+
+    _PNG_BYTES = b'\x89PNG\r\n\x1a\n' + b'\x00' * 32
+    _FAKE_BYTES = b'not a real image, just plain text padding' * 4
+
+    def _create_viewer(self):
+        with app.app_context():
+            from models import Role, User, db
+            viewer_role = Role(name='LogoViewerTest', permissions='')
+            db.session.add(viewer_role)
+            viewer = User(username='logoviewertest', full_name='Viewer', role=viewer_role)
+            viewer.set_password('viewer123')
+            db.session.add(viewer)
+            db.session.commit()
+
+    def _login_admin(self, client):
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+
+    def _login_viewer(self, client):
+        self._create_viewer()
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'logoviewertest', 'password': 'viewer123'}),
+            content_type='application/json')
+
+    def teardown_method(self):
+        """Remove any logo file written to disk by a test, so runs stay isolated."""
+        import glob
+        for f in glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'static', 'uploads', 'company-logo.*')):
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+
+    def test_non_super_admin_cannot_upload_logo(self, client):
+        """Only a super admin may change the company logo."""
+        self._login_viewer(client)
+        resp = client.post('/api/profile/logo',
+            data={'logo': (io.BytesIO(self._PNG_BYTES), 'logo.png')},
+            content_type='multipart/form-data',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 403
+
+    def test_super_admin_can_upload_and_it_appears_in_branding(self, client):
+        """A valid PNG upload is saved and served back via public branding + /api/auth/me."""
+        self._login_admin(client)
+        resp = client.post('/api/profile/logo',
+            data={'logo': (io.BytesIO(self._PNG_BYTES), 'logo.png')},
+            content_type='multipart/form-data',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['success'] is True
+        assert '/static/uploads/company-logo.png' in data['logo_url']
+
+        branding = client.get('/api/public/branding').get_json()
+        assert branding['logo_url'] == data['logo_url']
+
+        me = client.get('/api/auth/me').get_json()
+        assert me['user']['logo_url'] == data['logo_url']
+
+    def test_upload_rejects_disguised_non_image_file(self, client):
+        """A .png-named file whose bytes don't match the PNG signature is rejected."""
+        self._login_admin(client)
+        resp = client.post('/api/profile/logo',
+            data={'logo': (io.BytesIO(self._FAKE_BYTES), 'logo.png')},
+            content_type='multipart/form-data',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 400
+        assert resp.get_json()['success'] is False
+
+    def test_upload_rejects_disallowed_extension(self, client):
+        """Non-image extensions (e.g. .svg, .exe) are rejected outright."""
+        self._login_admin(client)
+        resp = client.post('/api/profile/logo',
+            data={'logo': (io.BytesIO(self._PNG_BYTES), 'logo.svg')},
+            content_type='multipart/form-data',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 400
+
+    def test_reset_removes_logo(self, client):
+        """Resetting deletes the file and clears the branding override."""
+        self._login_admin(client)
+        client.post('/api/profile/logo',
+            data={'logo': (io.BytesIO(self._PNG_BYTES), 'logo.png')},
+            content_type='multipart/form-data',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+
+        resp = client.delete('/api/profile/logo', headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['success'] is True
+
+        branding = client.get('/api/public/branding').get_json()
+        assert branding['logo_url'] is None
 
 
 class TestWebSocketTokenSecurity:

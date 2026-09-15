@@ -14,6 +14,7 @@ export function Login() {
   const { login, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [brandName, setBrandName] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [showForgot, setShowForgot] = useState(false);
   const [forgotIdentifier, setForgotIdentifier] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
@@ -24,6 +25,7 @@ export function Login() {
   useEffect(() => {
     fetch('/api/public/branding').then(r => r.json()).then(d => {
       setBrandName(d.nms_name || 'FiberNMS');
+      setLogoUrl(d.logo_url || null);
     }).catch(() => { setBrandName('FiberNMS'); });
   }, []);
 
@@ -49,7 +51,7 @@ export function Login() {
   };
 
   return (
-    <AuthLayout brandName={brandName}>
+    <AuthLayout brandName={brandName} logoUrl={logoUrl}>
       {/* Login Card */}
       <Card bodyClassName="p-6 sm:p-8">
         <h2 className="text-xl font-semibold mb-1 font-display">Sign In</h2>

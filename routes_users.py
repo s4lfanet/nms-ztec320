@@ -5,7 +5,7 @@ from flask import Blueprint, request, jsonify, g, session, redirect
 from flask_login import login_required, current_user
 from datetime import datetime, timezone, timedelta
 from functools import wraps
-import logging, re, threading, os, json, time, hashlib, shutil, hmac
+import logging, re, threading, os, json, time, hashlib, shutil, hmac, glob
 
 from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
@@ -68,6 +68,88 @@ def update_profile():
         current_user.set_password(data['password'])
     db.session.commit()
     log_action('profile_update', 'user', target=current_user.username, detail=f'Updated own profile — fields: {list(data.keys())}')
+    return jsonify({'success': True})
+
+
+ALLOWED_LOGO_EXT = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
+# Signature check guards against a mislabeled/corrupt upload being written to
+# disk and served as a broken image — not a security boundary (the file is
+# never executed, only served as static bytes with a matching Content-Type).
+LOGO_MAGIC_BYTES = {
+    'png': (b'\x89PNG\r\n\x1a\n',),
+    'jpg': (b'\xff\xd8\xff',),
+    'jpeg': (b'\xff\xd8\xff',),
+    'gif': (b'GIF87a', b'GIF89a'),
+}
+MAX_LOGO_SIZE = 2 * 1024 * 1024  # 2MB
+
+
+def _logo_dir():
+    base = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+def _clear_logo_files(logo_dir):
+    for old in glob.glob(os.path.join(logo_dir, 'company-logo.*')):
+        try:
+            os.remove(old)
+        except OSError:
+            pass
+
+
+@bp.route('/api/profile/logo', methods=['POST'])
+@super_admin_required
+def upload_logo():
+    if 'logo' not in request.files:
+        return jsonify({'success': False, 'message': 'No logo file uploaded'}), 400
+    upload = request.files['logo']
+    if not upload.filename:
+        return jsonify({'success': False, 'message': 'Empty filename'}), 400
+
+    ext = upload.filename.rsplit('.', 1)[-1].lower() if '.' in upload.filename else ''
+    if ext not in ALLOWED_LOGO_EXT:
+        return jsonify({'success': False, 'message': 'Unsupported file type. Use PNG, JPG, WEBP, or GIF.'}), 400
+
+    data = upload.read()
+    if not data:
+        return jsonify({'success': False, 'message': 'Empty file.'}), 400
+    if len(data) > MAX_LOGO_SIZE:
+        return jsonify({'success': False, 'message': 'Logo file too large (max 2MB).'}), 400
+
+    if ext == 'webp':
+        magic_ok = data[:4] == b'RIFF' and data[8:12] == b'WEBP'
+    else:
+        magic_ok = any(data.startswith(sig) for sig in LOGO_MAGIC_BYTES[ext])
+    if not magic_ok:
+        return jsonify({'success': False, 'message': 'File content does not match a valid image.'}), 400
+
+    logo_dir = _logo_dir()
+    _clear_logo_files(logo_dir)
+    filename = f'company-logo.{ext}'
+    with open(os.path.join(logo_dir, filename), 'wb') as f:
+        f.write(data)
+
+    logo_url = f'/static/uploads/{filename}?v={int(time.time())}'
+    cfg = SystemConfig.query.filter_by(key='nms_logo_url').first()
+    if cfg:
+        cfg.value = logo_url
+    else:
+        db.session.add(SystemConfig(key='nms_logo_url', value=logo_url))
+    db.session.commit()
+    log_action('logo_upload', 'general', target='branding', detail=f'Uploaded company logo ({ext}, {len(data)} bytes)')
+    return jsonify({'success': True, 'logo_url': logo_url})
+
+
+@bp.route('/api/profile/logo', methods=['DELETE'])
+@super_admin_required
+def reset_logo():
+    _clear_logo_files(_logo_dir())
+    cfg = SystemConfig.query.filter_by(key='nms_logo_url').first()
+    if cfg:
+        db.session.delete(cfg)
+        db.session.commit()
+    log_action('logo_reset', 'general', target='branding', detail='Reset to default logo')
     return jsonify({'success': True})
 
 

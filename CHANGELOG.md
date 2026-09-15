@@ -4,6 +4,23 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Fitur Baru: Upload Logo Perusahaan (Branding Custom, Tidak Lagi Default)
+
+#### Diminta User
+- Bisa upload logo sendiri supaya NMS tampil dengan nama & logo perusahaan masing-masing, bukan logo default aplikasi
+
+#### Ditambahkan
+- Endpoint baru `POST /api/profile/logo` (upload, super admin only — PNG/JPG/WEBP/GIF, maks 2MB, divalidasi lewat ekstensi + magic bytes supaya file yang bukan gambar asli ditolak) dan `DELETE /api/profile/logo` (reset ke logo default) — disimpan di `static/uploads/company-logo.<ext>`, URL-nya dicatat di `SystemConfig` key `nms_logo_url` (pola yang sama dengan `nms_name` yang sudah ada untuk custom brand name)
+- `logo_url` sekarang ikut dikirim di `/api/public/branding` (dipakai halaman login) dan `/api/auth/me` (dipakai sidebar & topbar setelah login)
+- Card "Company Logo" baru di halaman My Profile (khusus super admin) — preview logo saat ini, tombol Upload, dan tombol Reset ke Default
+- Logo custom otomatis tampil menggantikan ikon default di 4 tempat: halaman login (desktop & mobile), sidebar (expanded & collapsed), dan topbar mobile — kalau belum ada logo custom, tetap tampil ikon default seperti sebelumnya (tidak ada breaking change untuk instalasi yang belum pakai fitur ini)
+
+#### Diverifikasi
+- 5 test baru: non-super-admin ditolak (403), upload valid langsung muncul di `/api/public/branding` & `/api/auth/me`, file yang menyamar (nama `.png` tapi isinya bukan gambar) ditolak, ekstensi tidak diizinkan (mis. `.svg`) ditolak, reset menghapus file & mengembalikan ke default — full suite 200 passed/2 skipped
+- Dites langsung di browser (Playwright): login → My Profile → upload logo → sidebar langsung berubah tanpa perlu reload → tetap muncul setelah reload halaman → logout → halaman login menampilkan logo custom yang sama → login lagi → klik Reset ke Default → sidebar kembali ke ikon default. Nol error console di semua langkah
+
+---
+
 ### 2026-09-10 — Audit WebSocket: 4 Koneksi Redundan ke `/ws/dashboard` Jadi 1 Koneksi Bersama
 
 #### Ditemukan Saat Audit (Diminta User — Error di Console: "WebSocket is closed before the connection is established")

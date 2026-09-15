@@ -23,6 +23,7 @@ def api_me():
     from models import SystemConfig
     sys_cfg = {c.key: c.value for c in SystemConfig.query.all()}
     nms_name = sys_cfg.get('nms_name', 'Salfanet NMS')
+    logo_url = sys_cfg.get('nms_logo_url') or None
     return jsonify({'user': {
         'id': current_user.id,
         'full_name': current_user.full_name,
@@ -30,6 +31,7 @@ def api_me():
         'role': current_user.role.name if current_user.role else 'User',
         'permissions': current_user.role.permissions.split(',') if current_user.role else [],
         'sidebar_name': nms_name,
+        'logo_url': logo_url,
         'is_super_admin': current_user.is_super_admin,
     }})
 
