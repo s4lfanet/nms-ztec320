@@ -13,6 +13,12 @@ interface Toast {
 }
 
 const DEFAULT_DURATION = 4000;
+// Caps how much of the screen a burst of toasts can cover — this app pushes
+// several alert toasts back-to-back over WebSocket (e.g. multiple ONUs going
+// offline at once), and without a cap they stack tall enough to blanket the
+// dashboard's stat cards on desktop or the entire above-the-fold content on
+// mobile for the whole toast duration.
+const MAX_VISIBLE = 4;
 
 let _addToast: ((t: Omit<Toast, 'id'>) => void) | null = null;
 
@@ -58,7 +64,13 @@ export function Toaster() {
       const id = `${t.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const dur = t.duration || DEFAULT_DURATION;
       timersRef.current[id] = setTimeout(() => remove(id), dur);
-      return [...prev, { ...t, id }];
+      const next = [...prev, { ...t, id }];
+      if (next.length <= MAX_VISIBLE) return next;
+      // Drop the oldest toasts past the cap immediately (no exit animation —
+      // they're being superseded, not dismissed) and clear their timers.
+      const overflow = next.slice(0, next.length - MAX_VISIBLE);
+      overflow.forEach(o => { clearTimeout(timersRef.current[o.id]); delete timersRef.current[o.id]; });
+      return next.slice(next.length - MAX_VISIBLE);
     });
   }, [remove]);
 
@@ -69,7 +81,7 @@ export function Toaster() {
   }, []);
 
   return (
-    <div className="fixed top-20 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+    <div className="fixed top-20 left-4 right-4 sm:left-auto sm:w-full max-w-sm z-[9999] flex flex-col gap-2 pointer-events-none">
       {toasts.map((t) => (
         <div
           key={t.id}
