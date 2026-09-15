@@ -1279,5 +1279,224 @@ class TestFastAPIDocsSecurity:
                 os.environ.pop('FLASK_ENV', None)
 
 
+class TestCliSanitize:
+    """Unit tests for cli_sanitize.py — the choke point every free-text
+    field passes through before being interpolated into a ZTE OLT CLI
+    command over Telnet. Each CLI command is exactly one line, so a
+    newline/CR smuggled through a field like SSID name or description lets
+    an attacker with only add_onu permission inject a second, arbitrary
+    command into the same Telnet session."""
+
+    def test_rejects_newline_injection(self):
+        from cli_sanitize import sanitize_cli_text, CliValidationError
+        with pytest.raises(CliValidationError):
+            sanitize_cli_text('MySSID\nreboot', 'ssid_name')
+
+    def test_rejects_carriage_return_injection(self):
+        from cli_sanitize import sanitize_cli_text, CliValidationError
+        with pytest.raises(CliValidationError):
+            sanitize_cli_text('MySSID\rno onu 1', 'ssid_name')
+
+    def test_rejects_tab_and_other_control_chars(self):
+        from cli_sanitize import sanitize_cli_text, CliValidationError
+        for bad in ('a\tb', 'a\x00b', 'a\x1fb', 'a\x7fb'):
+            with pytest.raises(CliValidationError):
+                sanitize_cli_text(bad, 'field')
+
+    def test_rejects_shell_cli_metacharacters(self):
+        from cli_sanitize import sanitize_cli_text, CliValidationError
+        for bad in ('a;b', 'a|b', 'a&b', 'a`b', 'a$b', 'a<b', 'a>b', 'a"b', "a'b", 'a\\b'):
+            with pytest.raises(CliValidationError):
+                sanitize_cli_text(bad, 'field')
+
+    def test_valid_alphanumeric_passes_unchanged(self):
+        from cli_sanitize import sanitize_cli_text
+        assert sanitize_cli_text('HomeWifi123', 'ssid_name') == 'HomeWifi123'
+        assert sanitize_cli_text('Strong-Pass_99.', 'ssid_pass') == 'Strong-Pass_99.'
+
+    def test_space_collapsed_to_underscore(self):
+        """A raw space breaks ZTE's space-delimited CLI syntax — not a
+        security issue by itself (dangerous chars are already rejected
+        above), so it's collapsed rather than rejected, matching the
+        pre-existing SSID-name convention."""
+        from cli_sanitize import sanitize_cli_text
+        assert sanitize_cli_text('My Home SSID', 'ssid_name') == 'My_Home_SSID'
+
+    def test_rejects_over_length(self):
+        from cli_sanitize import sanitize_cli_text, CliValidationError
+        with pytest.raises(CliValidationError):
+            sanitize_cli_text('A' * 33, 'ssid_name', max_len=32)
+        # exactly at the limit is fine
+        assert sanitize_cli_text('A' * 32, 'ssid_name', max_len=32) == 'A' * 32
+
+    def test_empty_allowed_by_default_rejected_when_required(self):
+        from cli_sanitize import sanitize_cli_text, CliValidationError
+        assert sanitize_cli_text('', 'description') == ''
+        assert sanitize_cli_text(None, 'description') == ''
+        with pytest.raises(CliValidationError):
+            sanitize_cli_text('', 'serial', allow_empty=False)
+
+    def test_rejects_non_string_type(self):
+        from cli_sanitize import sanitize_cli_text, CliValidationError
+        with pytest.raises(CliValidationError):
+            sanitize_cli_text(['a', 'b'], 'field')
+
+    def test_sanitize_cli_int_valid_and_invalid(self):
+        from cli_sanitize import sanitize_cli_int, CliValidationError
+        assert sanitize_cli_int('100', 'vlan') == 100
+        assert sanitize_cli_int(100, 'vlan') == 100
+        with pytest.raises(CliValidationError):
+            sanitize_cli_int('100; reboot', 'vlan')
+        with pytest.raises(CliValidationError):
+            sanitize_cli_int('abc', 'vlan')
+        with pytest.raises(CliValidationError):
+            sanitize_cli_int(5000, 'vlan', min_val=1, max_val=4094)
+        assert sanitize_cli_int(None, 'vlan', default=100) == 100
+
+    def test_sanitize_cli_dict_recursive_and_reports_path(self):
+        from cli_sanitize import sanitize_cli_dict, CliValidationError
+        clean = sanitize_cli_dict({
+            'ssids': [
+                {'name': 'Home Wifi', 'pass': 'GoodPass1'},
+            ],
+            'acs_url': 'http://192.168.1.1:7547',
+        })
+        assert clean['ssids'][0]['name'] == 'Home_Wifi'
+        assert clean['acs_url'] == 'http://192.168.1.1:7547'
+
+        with pytest.raises(CliValidationError) as exc_info:
+            sanitize_cli_dict({'ssids': [{'name': 'Evil\nreboot'}]})
+        assert 'ssids[0].name' in str(exc_info.value)
+
+
+class TestProvisioningInputSanitization:
+    """HTTP-level regression tests: the /api/provision/unified and
+    /api/pre-register endpoints must reject a CLI-injection attempt with a
+    clean 400 — before any Telnet connection is even attempted — and must
+    keep accepting ordinary, well-formed provisioning requests."""
+
+    def _login_admin(self, client):
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+
+    def _make_olt(self, name='Injection Test OLT', ip='10.0.0.70'):
+        olt = OLT(name=name, ip_address=ip, cli_username='admin', cli_password='pw')
+        db.session.add(olt)
+        db.session.commit()
+        return olt
+
+    def test_ssid_name_newline_injection_rejected(self, client):
+        """A newline in wifi_config.ssids[].name must never reach
+        telnet_client.py — the request is rejected outright with 400."""
+        self._login_admin(client)
+        with app.app_context():
+            olt = self._make_olt()
+            olt_id = olt.id
+
+        resp = client.post('/api/provision/unified',
+            data=json.dumps({
+                'olt_id': olt_id, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                'serial': 'ZTEGCTEST01', 'onu_type': 'All',
+                'services': [{'service_type': 'internet', 'vlan': 100}],
+                'wifi_config': {'ssids': [{'port': 'wifi_0/1', 'name': 'Evil\nno onu 1', 'pass': ''}]},
+            }),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data['success'] is False
+        assert 'wifi_config' in data['message'] or 'ssid' in data['message'].lower()
+
+    def test_acs_password_newline_injection_rejected(self, client):
+        """Same for tr069_config.acs_pass — a newline there would let a
+        caller smuggle a command into the TR069/ACS provisioning step."""
+        self._login_admin(client)
+        with app.app_context():
+            olt = self._make_olt(name='TR069 Injection OLT', ip='10.0.0.71')
+            olt_id = olt.id
+
+        resp = client.post('/api/provision/unified',
+            data=json.dumps({
+                'olt_id': olt_id, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                'serial': 'ZTEGCTEST02', 'onu_type': 'All',
+                'services': [{'service_type': 'internet', 'vlan': 100}],
+                'tr069_config': {'acs_url': 'http://x', 'acs_user': 'a', 'acs_pass': 'pw\nreboot'},
+            }),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 400
+        assert resp.get_json()['success'] is False
+
+    def test_ssid_name_too_long_rejected(self, client):
+        self._login_admin(client)
+        with app.app_context():
+            olt = self._make_olt(name='Length Test OLT', ip='10.0.0.72')
+            olt_id = olt.id
+
+        resp = client.post('/api/provision/unified',
+            data=json.dumps({
+                'olt_id': olt_id, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                'serial': 'ZTEGCTEST03', 'onu_type': 'All',
+                'services': [{'service_type': 'internet', 'vlan': 100}],
+                'wifi_config': {'ssids': [{'port': 'wifi_0/1', 'name': 'A' * 40, 'pass': ''}]},
+            }),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 400
+        assert resp.get_json()['success'] is False
+
+    def test_valid_ssid_name_still_provisions_successfully(self, client):
+        """No-regression check: a normal alphanumeric SSID name must still
+        reach telnet_client.py and provision successfully. The actual
+        Telnet I/O is mocked out — this only proves validation doesn't
+        block legitimate input."""
+        from unittest.mock import MagicMock
+        self._login_admin(client)
+        with app.app_context():
+            olt = self._make_olt(name='Valid Provision OLT', ip='10.0.0.73')
+            olt_id = olt.id
+
+        mock_tc = MagicMock()
+        mock_tc.register_unified.return_value = (True, 'ONU registered')
+        with patch('snmp_collector.create_cli_collector', return_value=mock_tc):
+            resp = client.post('/api/provision/unified',
+                data=json.dumps({
+                    'olt_id': olt_id, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                    'serial': 'ZTEGCTEST04', 'onu_type': 'All',
+                    'services': [{'service_type': 'internet', 'vlan': 100}],
+                    'wifi_config': {'ssids': [{'port': 'wifi_0/1', 'name': 'HomeWifi123', 'pass': 'StrongPass1'}]},
+                }),
+                content_type='application/json',
+                headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['success'] is True
+        # The sanitized (unchanged, since it was already clean) SSID name
+        # must be what actually reached telnet_client.py.
+        _, kwargs = mock_tc.register_unified.call_args
+        assert kwargs['wifi_config']['ssids'][0]['name'] == 'HomeWifi123'
+
+    def test_pre_register_extra_ssid_newline_rejected(self, client):
+        """The legacy /api/pre-register endpoint (extra.ssid_name) must be
+        covered by the same sanitization as /api/provision/unified."""
+        self._login_admin(client)
+        with app.app_context():
+            olt = self._make_olt(name='Legacy Injection OLT', ip='10.0.0.74')
+            olt_id = olt.id
+
+        resp = client.post('/api/pre-register',
+            data=json.dumps({
+                'olt_id': olt_id, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                'serial': 'ZTEGCTEST05', 'onu_type': 'All', 'vlan': 100,
+                'template': 'zte_single',
+                'extra': {'ssid_name': 'Evil\nno onu 1'},
+            }),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 400
+        assert resp.get_json()['success'] is False
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

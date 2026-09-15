@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Security Fix: Sanitasi Input Sebelum Dikirim sebagai Perintah CLI Telnet ke OLT (Audit Temuan 1)
+
+#### Ditemukan
+- Di `telnet_client.py`, field bebas dari request provisioning — nama/password SSID WiFi, kredensial ACS TR069, username/password PPPoE, nama service, nama profile TCONT/traffic/SLA, nama/deskripsi ONU — langsung disisipkan ke perintah CLI Telnet lewat f-string (mis. `sc(f'ssid ctrl {wp} name {ssid_name} hide {hide_str}')`, `sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')`) tanpa sanitasi memadai
+- Satu tempat (nama SSID) sempat melakukan `.replace(' ', '_')`, tapi ini **tidak menghapus karakter newline (`\n`, `\r`)**. Karena sesi Telnet ke OLT berbasis baris teks (`tn.write(command + '\n')`), user dengan izin `add_onu` saja bisa menyisipkan baris perintah CLI tambahan lewat field seperti nama SSID atau password ACS — berpotensi mengeksekusi perintah lain di sesi OLT yang sama (mis. `no onu`, reboot)
+- Dikonfirmasi lewat test regresi: sebelum fix, payload provisioning dengan `wifi_config.ssids[0].name = "Evil\nno onu 1"` memang diproses sampai ke titik mencoba koneksi Telnet ke OLT dengan data yang belum tersanitasi — bukan cuma teori
+
+#### Diperbaiki
+- Modul baru `cli_sanitize.py`: `sanitize_cli_text()` (whitelist karakter aman, tolak `\n`/`\r`/karakter kontrol/metakarakter shell `;|&`$<>"'\`, batasi panjang per jenis field — SSID name 32 char, password 63 char, dll sesuai batas wajar ZTE C320), `sanitize_cli_int()` (cast angka untuk field seperti VLAN, tolak kalau bukan angka valid), dan `sanitize_cli_dict()` (jalan rekursif ke seluruh struktur `wifi_config`/`tr069_config`/`extra`/`services[]`, menyanitasi SEMUA field teks di dalamnya sekaligus, melaporkan path field yang bermasalah kalau gagal)
+- Dipasang di **titik masuk HTTP** (`routes_onu.py` — endpoint `/api/provision/unified` dan `/api/pre-register`): input divalidasi sebelum diteruskan ke `telnet_client.py` sama sekali; gagal validasi → HTTP 400 dengan pesan jelas (bukan diam-diam di-strip)
+- Dipasang lagi sebagai **pertahanan berlapis** di titik masuk 5 fungsi registrasi `telnet_client.py` (`register_onu`, `configure_onu_profile`, `register_and_configure`, `register_vendor_template`, `register_unified`) — supaya tetap aman kalau suatu saat ada caller lain yang tidak lewat kedua endpoint HTTP di atas
+
+#### Diverifikasi
+- 16 test baru (`TestCliSanitize`, `TestProvisioningInputSanitization`): newline/CR/karakter kontrol/metakarakter shell ditolak, input alfanumerik normal tetap lolos tanpa perubahan (no-regression, dites end-to-end sampai ke pemanggilan `telnet_client.py` yang di-mock), field kepanjangan ditolak, kedua endpoint provisioning (unified & legacy pre-register) tercakup
+- Semua 16 test dikonfirmasi **GAGAL di kode lama** (payload jahat benar-benar sampai mencoba konek Telnet ke OLT palsu, bukan langsung ditolak) dan **LULUS di kode baru**
+
 ### 2026-09-16 — Fitur Baru: Alert Kalau Auto-Sync Macet/Berhenti (Follow-up Audit Interval 5 Menit)
 
 #### Latar Belakang
