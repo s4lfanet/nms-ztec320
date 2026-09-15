@@ -131,6 +131,12 @@ class User(UserMixin, db.Model):
     phone = db.Column(db.String(30), default='')  # phone number for WA notifications
     profile_image = db.Column(db.String(256), default='default.png')
     sidebar_name = db.Column(db.String(100), default='FiberNMS')
+    # Only True for the 'admin' user created by the initial-install seed
+    # (see app.py::seed_initial_data) — forces a password change before the
+    # rest of the app is usable, since admin/admin123 is a well-known
+    # default. Never retroactively set True for existing users; False is
+    # always safe (falls back to "no forced change").
+    must_change_password = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def set_password(self, password):

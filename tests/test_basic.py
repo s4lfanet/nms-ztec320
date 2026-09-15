@@ -1279,6 +1279,99 @@ class TestFastAPIDocsSecurity:
                 os.environ.pop('FLASK_ENV', None)
 
 
+class TestForcedPasswordChange:
+    """Audit finding 2: the seeded admin/admin123 account must be forced to
+    change its password before the rest of the app is usable — admin123 is
+    a well-known default credential with no expiry mechanism otherwise."""
+
+    def test_fresh_install_seeds_admin_with_must_change_password(self, client):
+        """Simulate a truly fresh install (no roles/users yet) and confirm
+        seed_initial_data() flags the admin it creates."""
+        with app.app_context():
+            from models import db, User, Role
+            User.query.delete()
+            Role.query.delete()
+            db.session.commit()
+
+            from app import seed_initial_data
+            seed_initial_data()
+
+            admin = User.query.filter_by(username='admin').first()
+            assert admin is not None
+            assert admin.must_change_password is True
+
+    def test_login_response_includes_must_change_password_flag(self, client):
+        with app.app_context():
+            from models import db, Role
+            role = Role.query.filter_by(name='Full Access').first()
+            flagged = User(username='flagged_admin', full_name='Flagged Admin',
+                            role_id=role.id, is_super_admin=True, must_change_password=True)
+            flagged.set_password('admin123')
+            db.session.add(flagged)
+            db.session.commit()
+
+        resp = client.post('/api/auth/login',
+            data=json.dumps({'username': 'flagged_admin', 'password': 'admin123'}),
+            content_type='application/json')
+        assert resp.status_code == 200
+        assert resp.get_json()['user']['must_change_password'] is True
+
+    def test_ordinary_user_has_flag_false(self, client):
+        """A user created through the normal UI flow (not the initial seed)
+        must never be forced to change their password."""
+        with app.app_context():
+            from models import db, Role
+            role = Role.query.filter_by(name='Full Access').first()
+            regular = User(username='regular_user', full_name='Regular User', role_id=role.id)
+            regular.set_password('SomePass123')
+            db.session.add(regular)
+            db.session.commit()
+
+        resp = client.post('/api/auth/login',
+            data=json.dumps({'username': 'regular_user', 'password': 'SomePass123'}),
+            content_type='application/json')
+        assert resp.status_code == 200
+        assert resp.get_json()['user']['must_change_password'] is False
+
+    def test_changing_password_clears_the_flag(self, client):
+        with app.app_context():
+            from models import db, Role
+            role = Role.query.filter_by(name='Full Access').first()
+            flagged = User(username='changeme_admin', full_name='Changeme Admin',
+                            role_id=role.id, is_super_admin=True, must_change_password=True)
+            flagged.set_password('admin123')
+            db.session.add(flagged)
+            db.session.commit()
+
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'changeme_admin', 'password': 'admin123'}),
+            content_type='application/json')
+
+        resp = client.post('/api/profile',
+            data=json.dumps({'password': 'BrandNewStrongPass1'}),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['must_change_password'] is False
+
+        client.post('/api/auth/logout', headers={'X-Requested-With': 'XMLHttpRequest'})
+        resp = client.post('/api/auth/login',
+            data=json.dumps({'username': 'changeme_admin', 'password': 'BrandNewStrongPass1'}),
+            content_type='application/json')
+        assert resp.status_code == 200
+        assert resp.get_json()['user']['must_change_password'] is False
+
+    def test_existing_admin_not_retroactively_flagged_by_migration(self, client):
+        """add_col()'s server-side default (0/False) must apply to every
+        pre-existing row — an admin who already changed their password in
+        the past must not suddenly be forced to change it again just
+        because this column showed up in a schema migration."""
+        with app.app_context():
+            admin = User.query.filter_by(username='admin').first()
+            assert admin is not None
+            assert admin.must_change_password in (False, None)
+
+
 class TestCliSanitize:
     """Unit tests for cli_sanitize.py — the choke point every free-text
     field passes through before being interpolated into a ZTE OLT CLI

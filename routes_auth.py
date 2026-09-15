@@ -33,6 +33,7 @@ def api_me():
         'sidebar_name': nms_name,
         'logo_url': logo_url,
         'is_super_admin': current_user.is_super_admin,
+        'must_change_password': bool(current_user.must_change_password),
     }})
 
 
@@ -62,6 +63,7 @@ def api_login():
             'sidebar_name': sys_cfg.get('nms_name', 'Salfanet NMS'),
             'logo_url': sys_cfg.get('nms_logo_url') or None,
             'is_super_admin': user.is_super_admin,
+            'must_change_password': bool(user.must_change_password),
         }})
     record_failed_login(client_ip)
     return jsonify({'success': False, 'message': 'Invalid credentials'}), 401

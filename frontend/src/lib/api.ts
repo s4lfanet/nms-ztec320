@@ -353,6 +353,7 @@ export interface User {
   sidebar_name: string;
   logo_url?: string | null;
   is_super_admin?: boolean;
+  must_change_password?: boolean;
   tenant_id?: number | null;
   subscription?: {
     is_active: boolean;

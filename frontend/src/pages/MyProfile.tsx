@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../stores/auth';
 import { toast } from '../components/Toast';
-import { User, Lock, Save, Eye, EyeOff, Image, Upload, RotateCcw } from 'lucide-react';
+import { User, Lock, Save, Eye, EyeOff, Image, Upload, RotateCcw, ShieldAlert } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, Input } from '../components/ui';
@@ -93,6 +93,19 @@ export function MyProfile() {
   return (
     <PageContainer className="animate-fade-in">
       <PageHeader title="My Profile" description="Manage your account settings" />
+
+      {user?.must_change_password && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-warning/30 bg-warning/10 mb-6">
+          <ShieldAlert size={18} className="text-warning flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium text-tx1">Ganti password default Anda</p>
+            <p className="text-tx3 mt-0.5">
+              Akun ini masih menggunakan password bawaan instalasi. Silakan atur password baru di bawah ini
+              sebelum melanjutkan ke halaman lain.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Profile Card */}
