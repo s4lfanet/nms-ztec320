@@ -39,7 +39,12 @@ def api_me():
 
 @bp.route('/api/auth/login', methods=['POST'])
 def api_login():
-    client_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
+    # app.py installs ProxyFix(x_for=1, ...), which already normalizes
+    # request.remote_addr from a trusted X-Forwarded-For header. Reading the
+    # header directly here let a caller set an arbitrary X-Forwarded-For and
+    # get a fresh rate-limit bucket on every login attempt, defeating the
+    # brute-force protection below entirely.
+    client_ip = request.remote_addr
     allowed, retry_after = check_rate_limit(client_ip)
     if not allowed:
         return jsonify({'success': False, 'message': f'Too many login attempts. Please try again in {retry_after} seconds.'}), 429

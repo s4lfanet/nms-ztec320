@@ -41,13 +41,14 @@ def log_action(action, category='general', target='', detail=''):
     try:
         uid = getattr(current_user, 'id', None) if current_user else None
         uname = getattr(current_user, 'username', '') if current_user else ''
-        ip = ''
-        if request:
-            ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
-            if not ip:
-                ip = request.headers.get('X-Real-IP', '').strip()
-            if not ip:
-                ip = request.remote_addr or ''
+        # app.py installs ProxyFix(x_for=1, ...), which already rewrites
+        # request.remote_addr from a trusted X-Forwarded-For header (the
+        # outermost single hop). Reading X-Forwarded-For/X-Real-IP directly
+        # here bypassed that trust boundary — a caller could set either
+        # header to any value and have it land straight in the audit log,
+        # since Flask never validates that the request actually came through
+        # the reverse proxy ProxyFix expects.
+        ip = request.remote_addr or '' if request else ''
         entry = ActionLog(
             user_id=uid, username=uname or '',
             action=action, category=category,
