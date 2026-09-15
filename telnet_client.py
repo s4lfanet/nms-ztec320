@@ -28,6 +28,7 @@ from snmp_core import (
     BOARD2_BASE,
     PON_INCREMENT,
 )
+from cli_sanitize import CliValidationError, sanitize_cli_text, sanitize_cli_dict
 
 logger = logging.getLogger(__name__)
 
@@ -1275,6 +1276,11 @@ class TelnetCollector:
 
     def register_onu(self, frame, slot, port, onu_id, onu_type='ZTE-F609', serial='', vlan=100, is_epon=False):
         """Pre-register a new ONU on the OLT"""
+        try:
+            onu_type = sanitize_cli_text(onu_type, 'onu_type', max_len=32, default='ZTE-F609')
+            serial = sanitize_cli_text(serial, 'serial', max_len=32)
+        except CliValidationError as e:
+            return False, f'Invalid input: {e}'
         olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
@@ -1311,6 +1317,14 @@ class TelnetCollector:
         """Configure TCONT/GEM/service-port for an ONU after registration.
         Also sets name, description, and EPON SLA.
         """
+        try:
+            tcont_profile = sanitize_cli_text(tcont_profile, 'tcont_profile', max_len=32, default='default')
+            traffic_profile = sanitize_cli_text(traffic_profile, 'traffic_profile', max_len=32)
+            sla_profile = sanitize_cli_text(sla_profile, 'sla_profile', max_len=32)
+            name = sanitize_cli_text(name, 'name', max_len=64)
+            description = sanitize_cli_text(description, 'description', max_len=128)
+        except CliValidationError as e:
+            return False, f'Invalid input: {e}'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
@@ -1392,6 +1406,15 @@ class TelnetCollector:
         """Register ONU + configure profile matching oltc320 register_onu_stepbystep().
         Uses 'type All' (universal), step-by-step with error checking, 2s sleep.
         """
+        try:
+            onu_type = sanitize_cli_text(onu_type, 'onu_type', max_len=32, default='All')
+            serial = sanitize_cli_text(serial, 'serial', max_len=32)
+            tcont_profile = sanitize_cli_text(tcont_profile, 'tcont_profile', max_len=32, default='default')
+            name = sanitize_cli_text(name, 'name', max_len=64)
+            description = sanitize_cli_text(description, 'description', max_len=128)
+            sla_profile = sanitize_cli_text(sla_profile, 'sla_profile', max_len=32)
+        except CliValidationError as e:
+            return False, f'Invalid input: {e}'
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
@@ -1519,7 +1542,21 @@ class TelnetCollector:
         Uses step-by-step commands matching oltc320 reference.
         Templates: bridge, pppoe, fiberhome_veip, zte_full, zte_single, huawei_full, zte_multi
         """
-        extra = extra or {}
+        # Defense-in-depth: routes_onu.py already sanitizes this payload at
+        # the HTTP boundary, but re-validate here too in case this method is
+        # ever called from another path — every value below eventually lands
+        # in an f-string CLI command sent over Telnet, and each command is
+        # one line, so an unsanitized newline lets a caller smuggle in a
+        # second, arbitrary command.
+        try:
+            name = sanitize_cli_text(name, 'name', max_len=64)
+            description = sanitize_cli_text(description, 'description', max_len=128)
+            serial = sanitize_cli_text(serial, 'serial', max_len=32)
+            onu_type = sanitize_cli_text(onu_type, 'onu_type', max_len=32, default='All')
+            tcont_profile = sanitize_cli_text(tcont_profile, 'tcont_profile', max_len=32)
+            extra = sanitize_cli_dict(extra) if extra else {}
+        except CliValidationError as e:
+            return False, f'Invalid input: {e}'
         # Auto-detect VEIP from serial: ZTE (ZTEG) = iphost, non-ZTE = VEIP
         sn_upper = (serial or '').upper()
         if sn_upper.startswith('ZTEG'):
@@ -2313,6 +2350,26 @@ class TelnetCollector:
             tr069_config: dict with acs_url, acs_user, acs_pass, tr069_vlan, tr069_vlan_mode
             skip_registration: if True, skip ONU registration (SNMP already did it) — only configure services
         """
+        # Defense-in-depth: routes_onu.py already sanitizes this payload at
+        # the HTTP boundary, but re-validate here too in case this method is
+        # ever called from another path — every value below eventually lands
+        # in an f-string CLI command sent over Telnet, and each command is
+        # one line, so an unsanitized newline lets a caller smuggle in a
+        # second, arbitrary command.
+        try:
+            name = sanitize_cli_text(name, 'name', max_len=64)
+            description = sanitize_cli_text(description, 'description', max_len=128)
+            serial = sanitize_cli_text(serial, 'serial', max_len=32)
+            onu_type = sanitize_cli_text(onu_type, 'onu_type', max_len=32, default='All')
+            tcont_profile = sanitize_cli_text(tcont_profile, 'tcont_profile', max_len=32)
+            traffic_profile = sanitize_cli_text(traffic_profile, 'traffic_profile', max_len=32)
+            sla_profile = sanitize_cli_text(sla_profile, 'sla_profile', max_len=32)
+            wifi_config = sanitize_cli_dict(wifi_config) if wifi_config else wifi_config
+            tr069_config = sanitize_cli_dict(tr069_config) if tr069_config else tr069_config
+            extra = sanitize_cli_dict(extra) if extra else {}
+            services = [sanitize_cli_dict(s) if isinstance(s, dict) else s for s in services] if services else services
+        except CliValidationError as e:
+            return False, f'Invalid input: {e}'
         extra = extra or {}
         # Auto-detect VEIP
         if use_veip is None:

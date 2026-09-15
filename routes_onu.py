@@ -27,6 +27,7 @@ from helpers import (
 )
 from services_wa import get_nms_branding as _get_nms_branding
 from services_sync import start_single_sync, start_sync_all
+from cli_sanitize import CliValidationError, sanitize_cli_text, sanitize_cli_int, sanitize_cli_dict
 
 bp = Blueprint('onu', __name__)
 
@@ -2248,6 +2249,56 @@ def _duplicate_serial_error(serial, olt_id, frame, slot, port, onu_id):
             f'Deregister it there first if you are moving this modem.')
 
 
+def _sanitize_provisioning_input(name='', description='', tcont_profile='', traffic_profile='',
+                                  sla_profile='', wifi_config=None, tr069_config=None,
+                                  services=None, extra=None, serial='', onu_type='', vlan=None):
+    """Validate every free-text field that will eventually be interpolated
+    into a ZTE CLI command sent over Telnet — the choke point both
+    provisioning endpoints (/api/provision/unified, /api/pre-register) run
+    their payload through before handing it to telnet_client.py. Each CLI
+    command is one line, so an unsanitized newline in any of these fields
+    would let a caller with only add_onu permission smuggle a second,
+    arbitrary command into the same Telnet session.
+
+    Raises CliValidationError on the first invalid field — route handlers
+    must catch this and return 400 with str(e), not swallow it. Returns a
+    dict of cleaned values, safe to interpolate.
+    """
+    out = {
+        'name': sanitize_cli_text(name, 'name', max_len=64),
+        'description': sanitize_cli_text(description, 'description', max_len=128),
+        'serial': sanitize_cli_text(serial, 'serial', max_len=32),
+        'onu_type': sanitize_cli_text(onu_type, 'onu_type', max_len=32, default='All'),
+        'tcont_profile': sanitize_cli_text(tcont_profile, 'tcont_profile', max_len=32),
+        'traffic_profile': sanitize_cli_text(traffic_profile, 'traffic_profile', max_len=32),
+        'sla_profile': sanitize_cli_text(sla_profile, 'sla_profile', max_len=32),
+        'wifi_config': sanitize_cli_dict(wifi_config) if isinstance(wifi_config, dict) else wifi_config,
+        'tr069_config': sanitize_cli_dict(tr069_config) if isinstance(tr069_config, dict) else tr069_config,
+        'extra': sanitize_cli_dict(extra) if isinstance(extra, dict) else extra,
+        'services': [sanitize_cli_dict(s) if isinstance(s, dict) else s for s in services] if services else services,
+    }
+    out['vlan'] = sanitize_cli_int(vlan, 'vlan', min_val=1, max_val=4094, default=100)
+
+    # Known-numeric fields must actually BE numbers, not just "a string with
+    # no dangerous characters" — a non-numeric VLAN would otherwise reach
+    # the OLT as a syntactically broken command instead of failing loudly
+    # at the API boundary.
+    tr069_cfg = out.get('tr069_config')
+    if isinstance(tr069_cfg, dict) and tr069_cfg.get('tr069_vlan') not in (None, ''):
+        tr069_cfg['tr069_vlan'] = sanitize_cli_int(tr069_cfg['tr069_vlan'], 'tr069_config.tr069_vlan', min_val=1, max_val=4094)
+    extra_cfg = out.get('extra')
+    if isinstance(extra_cfg, dict) and extra_cfg.get('tr069_vlan') not in (None, ''):
+        extra_cfg['tr069_vlan'] = sanitize_cli_int(extra_cfg['tr069_vlan'], 'extra.tr069_vlan', min_val=1, max_val=4094)
+    for i, s in enumerate(out.get('services') or []):
+        if not isinstance(s, dict):
+            continue
+        for vlan_field in ('vlan', 'mvlan'):
+            if s.get(vlan_field) not in (None, ''):
+                s[vlan_field] = sanitize_cli_int(s[vlan_field], f'services[{i}].{vlan_field}', min_val=1, max_val=4094)
+
+    return out
+
+
 def _next_available_onu_id(olt, frame, slot, port, is_epon=False):
     """Resolve the next free ONU ID (1-128) on a PON port. Prefers a live CLI
     query (reflects true OLT state) and falls back to the DB's used-ID set
@@ -2319,6 +2370,22 @@ def provision_unified():
     wifi_config = data.get('wifi_config')  # None = no wifi
     tr069_config = data.get('tr069_config')  # None = no tr069
     sla_profile = data.get('sla_profile', '')  # EPON SLA profile for speed limiting
+
+    try:
+        clean = _sanitize_provisioning_input(
+            name=name, description=description, tcont_profile=tcont_profile,
+            traffic_profile=traffic_profile, sla_profile=sla_profile,
+            wifi_config=wifi_config, tr069_config=tr069_config, services=services,
+            serial=serial, onu_type=onu_type,
+        )
+    except CliValidationError as e:
+        return jsonify({'success': False, 'message': f'Input tidak valid: {e}'}), 400
+    (name, description, serial, onu_type, tcont_profile, traffic_profile, sla_profile,
+     wifi_config, tr069_config, services) = (
+        clean['name'], clean['description'], clean['serial'], clean['onu_type'],
+        clean['tcont_profile'], clean['traffic_profile'], clean['sla_profile'],
+        clean['wifi_config'], clean['tr069_config'], clean['services'],
+    )
 
     if wifi_config and isinstance(wifi_config, dict):
         ssids_log = wifi_config.get('ssids', [])
@@ -2520,6 +2587,21 @@ def pre_register_onu():
     sla_profile = data.get('sla_profile', '') or extra.get('sla_profile', '')
     if traffic_profile and 'traffic_profile' not in extra:
         extra['traffic_profile'] = traffic_profile
+
+    try:
+        clean = _sanitize_provisioning_input(
+            name=name, description=description, tcont_profile=tcont_profile,
+            traffic_profile=traffic_profile, sla_profile=sla_profile, extra=extra,
+            serial=serial, onu_type=onu_type, vlan=vlan,
+        )
+    except CliValidationError as e:
+        return jsonify({'success': False, 'message': f'Input tidak valid: {e}'}), 400
+    (name, description, serial, onu_type, tcont_profile, traffic_profile, sla_profile,
+     extra, vlan) = (
+        clean['name'], clean['description'], clean['serial'], clean['onu_type'],
+        clean['tcont_profile'], clean['traffic_profile'], clean['sla_profile'],
+        clean['extra'], clean['vlan'],
+    )
 
     # Check register mode from request — SNMP or CLI (SSH/Telnet)
     use_snmp = data.get('register_mode', 'cli') == 'snmp' and olt.snmp_enabled
