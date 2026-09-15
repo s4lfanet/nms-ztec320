@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../stores/auth';
 import { toast } from '../components/Toast';
-import { User, Lock, Save, Eye, EyeOff } from 'lucide-react';
+import { User, Lock, Save, Eye, EyeOff, Image, Upload, RotateCcw } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, Input } from '../components/ui';
+
+const MAX_LOGO_SIZE = 2 * 1024 * 1024;
+const ALLOWED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 export function MyProfile() {
   const { user, fetchUser } = useAuth();
@@ -14,6 +17,7 @@ export function MyProfile() {
   const [password, setPassword] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
   const [showPass, setShowPass] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const { data: meData } = useQuery({
     queryKey: ['auth-me'],
@@ -44,6 +48,41 @@ export function MyProfile() {
       toast.success('Profile updated');
       setPassword('');
       setConfirmPass('');
+      await fetchUser();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const uploadLogoMut = useMutation({
+    mutationFn: async (file: File) => {
+      if (!ALLOWED_LOGO_TYPES.includes(file.type)) {
+        throw new Error('Format tidak didukung. Gunakan PNG, JPG, WEBP, atau GIF.');
+      }
+      if (file.size > MAX_LOGO_SIZE) {
+        throw new Error('Ukuran file maksimal 2MB.');
+      }
+      const formData = new FormData();
+      formData.append('logo', file);
+      const r = await fetch('/api/profile/logo', { method: 'POST', credentials: 'include', body: formData });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.message || 'Upload failed');
+      return d;
+    },
+    onSuccess: async () => {
+      toast.success('Logo perusahaan berhasil diperbarui');
+      await fetchUser();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const resetLogoMut = useMutation({
+    mutationFn: async () => {
+      const r = await fetch('/api/profile/logo', { method: 'DELETE', credentials: 'include' });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.message || 'Reset failed');
+    },
+    onSuccess: async () => {
+      toast.success('Logo dikembalikan ke default');
       await fetchUser();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -96,6 +135,59 @@ export function MyProfile() {
               <Input label="Role" value={user?.role || ''} disabled />
             </div>
           </Card>
+
+          {user?.is_super_admin && (
+            <Card title="Company Logo" icon={<Image size={18} />}>
+              <div className="flex items-center gap-5">
+                <div className="w-20 h-20 rounded-xl bg-glass border border-brd flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {user?.logo_url ? (
+                    <img src={user.logo_url} alt="Company logo" className="w-full h-full object-contain" />
+                  ) : (
+                    <Image size={28} className="text-tx3" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-tx2 mb-1">
+                    {user?.logo_url ? 'Custom logo digunakan di halaman login, sidebar & topbar.' : 'Belum ada logo custom — masih menggunakan default.'}
+                  </p>
+                  <p className="text-xs text-tx3 mb-3">PNG, JPG, WEBP, atau GIF. Maksimal 2MB.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadLogoMut.mutate(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <Button
+                      variant="secondary"
+                      className="text-xs px-3 py-1.5"
+                      icon={<Upload size={14} />}
+                      onClick={() => logoInputRef.current?.click()}
+                      loading={uploadLogoMut.isPending}
+                    >
+                      {uploadLogoMut.isPending ? 'Mengunggah...' : 'Upload Logo'}
+                    </Button>
+                    {user?.logo_url && (
+                      <Button
+                        variant="ghost"
+                        className="text-xs px-3 py-1.5"
+                        icon={<RotateCcw size={14} />}
+                        onClick={() => resetLogoMut.mutate()}
+                        loading={resetLogoMut.isPending}
+                      >
+                        Reset ke Default
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )}
 
           <Card title="Change Password" icon={<Lock size={18} />}>
             <div className="space-y-4">

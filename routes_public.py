@@ -45,4 +45,6 @@ def public_branding():
     # Include system timezone for frontend date formatting
     tz_cfg = SystemConfig.query.filter_by(key='timezone').first()
     system_timezone = tz_cfg.value if tz_cfg and tz_cfg.value else 'Asia/Jakarta'
-    return jsonify({'nms_name': brand['nms_name'], 'base_domain': root_domain, 'nms_prefix': nms_prefix, 'timezone': system_timezone})
+    logo_cfg = SystemConfig.query.filter_by(key='nms_logo_url').first()
+    logo_url = logo_cfg.value if logo_cfg and logo_cfg.value else None
+    return jsonify({'nms_name': brand['nms_name'], 'logo_url': logo_url, 'base_domain': root_domain, 'nms_prefix': nms_prefix, 'timezone': system_timezone})
