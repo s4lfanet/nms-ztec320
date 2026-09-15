@@ -4,6 +4,24 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Fitur Baru: Alert Kalau Auto-Sync Macet/Berhenti (Follow-up Audit Interval 5 Menit)
+
+#### Latar Belakang
+- Setelah dicek: auto-sync tiap 5 menit di produksi aman (30-60 detik per run, skip cuma 7x dari 12.588 run dalam 45 hari). Tapi ditemukan histori: kalau BANYAK OLT butuh full-sync (Telnet+config) bersamaan, seluruh proses `auto_sync.py` pernah jalan ~15 menit — cukup lama untuk beberapa siklus cron ke-skip total. Auto_sync.py sendiri tidak bisa mendeteksi kalau CRON-NYA BERHENTI JALAN SAMA SEKALI (script crash, cron daemon mati, dll) — karena proses yang mati tidak bisa melaporkan ketidakhadirannya sendiri
+
+#### Ditambahkan
+- Check baru `_check_sync_staleness` di `alerts.py` (jalan di background thread yang SAMA yang sudah memonitor status ONU/OLT, terpisah dari cron auto_sync — supaya tetap bisa mendeteksi walau cron-nya sendiri yang mati): untuk tiap OLT yang SNMP-nya masih bisa dihubungi tapi `OLTSyncStatus.completed_at` sudah lebih dari 20 menit (4x interval normal — jauh di atas kasus "sekali skip" yang wajar), kirim notifikasi peringatan (severity `warning`, kategori `sync_stale`) lewat jalur yang sudah ada (bell notification, Telegram, WhatsApp — sesuai toggle di Alert Settings) — auto-resolve begitu sync berhasil lagi
+- OLT yang belum pernah sync sama sekali (baru ditambahkan) TIDAK dianggap stale — itu normal, bukan tanda macet
+- OLT yang SNMP-nya mati duluan tidak double-alert — sudah ada alert `olt_offline` terpisah, sync stale di situ cuma gejala, bukan masalah baru
+- Kategori baru "SYNC TERTUNDA" muncul di halaman Alert History dengan ikon & warna sendiri
+
+#### Ditemukan Sekalian (Bonus)
+- `tzdata` belum terdaftar di `requirements.txt` — di Linux produksi ini nggak kelihatan masalah karena OS sudah punya tzdata sistem, tapi di Windows atau container minim (mis. Alpine) `zoneinfo.ZoneInfo('Asia/Jakarta')` yang dipakai di seluruh `alerts.py` untuk format waktu akan langsung error. Ditambahkan sebagai dependency
+
+#### Diverifikasi
+- 5 test baru: tidak alert kalau baru sync (< 20 menit), tidak alert untuk OLT yang belum pernah sync, alert kalau memang stale (> 20 menit), tidak alert untuk OLT yang SNMP-nya memang dimatikan, dan notifikasi auto-resolve begitu sync berhasil lagi — full suite tetap hijau
+- Dites visual di browser: notifikasi "Auto-Sync Tertunda" muncul dengan benar di bell dropdown topbar dan di halaman Alert History dengan label/ikon/warna yang sesuai
+
 ### 2026-09-16 — Audit Toast Notification: Overflow di Mobile Sempit + Bisa Menutupi Layar Kalau Beruntun
 
 #### Diminta User
