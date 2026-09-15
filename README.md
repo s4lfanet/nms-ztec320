@@ -377,8 +377,18 @@ journalctl -u salfanet-nms -f      # View logs (live)
 | `PORT` | 5000 | Flask port |
 | `WS_PORT` | 8765 | FastAPI/WebSocket port |
 | `SESSION_COOKIE_SECURE` | 1 | HTTPS-only cookies (set 0 for HTTP) |
-| `REDIS_URL` | (empty) | Redis URL for caching (optional, reduces OLT load) |
+| `REDIS_URL` | (empty) | Redis URL for caching (optional, reduces OLT load) — **also backs the login rate limiter; see warning below** |
 | `WA_GATEWAY_URL` | (empty) | WhatsApp gateway URL (optional) |
+
+> **Login rate-limit accuracy without Redis.** `REDIS_URL` unset falls back
+> to an in-memory attempt counter (`helpers.py`). That counter is
+> per-process — with gunicorn/uvicorn running more than one worker, each
+> worker keeps its own counter, so the effective brute-force lockout
+> becomes `5 × worker_count` attempts, not the 5 the code implies. Set
+> `REDIS_URL` in any multi-worker production deployment so the limit is
+> shared and enforced correctly. The app logs an ERROR-level warning at
+> startup when it detects this combination (`FLASK_ENV=production` with no
+> `REDIS_URL`).
 
 ### Adding Your OLT
 

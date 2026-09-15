@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Security Hardening: Warning Rate-Limit Login Tidak Akurat Tanpa Redis di Deployment Multi-Worker (Audit Temuan 4)
+
+#### Latar Belakang
+- `helpers.py` punya fallback in-memory (`_login_attempts` dict) kalau Redis tidak dikonfigurasi. Ini per-proses — kalau deployment production pakai gunicorn/uvicorn dengan >1 worker tanpa Redis, proteksi brute-force efektif jadi `5 × jumlah_worker` percobaan, bukan 5 seperti yang terlihat dari kode
+- Dipilih Opsi B (lebih tegas) dari 2 opsi yang diajukan: warning level ERROR di startup log, bukan cuma dokumentasi pasif — supaya kelihatan jelas di log production kalau kombinasi ini terjadi
+
+#### Diperbaiki
+- `config.py`: warning ERROR di startup (mengikuti pola yang sama seperti warning `DevelopmentConfig` yang sudah ada) kalau `FLASK_ENV=production` DAN `REDIS_URL` kosong — tidak `raise` (Redis memang opsional untuk fitur lain juga), tapi cukup keras supaya tidak mudah terlewat
+- `README.md`: penjelasan di tabel environment variable + catatan khusus soal implikasi `5 × N worker`
+
+#### Diverifikasi
+- 3 test baru (`TestRedisRateLimitWarning`): warning muncul saat production+tanpa Redis, TIDAK muncul saat production+dengan Redis, TIDAK muncul saat development+tanpa Redis (fallback in-memory wajar untuk server single-process) — dikonfirmasi gagal di kode lama, lulus di kode baru
+
 ### 2026-09-16 — Security Fix: Sumber IP Client yang Konsisten untuk Rate-Limit Login & Audit Log (Audit Temuan 3)
 
 #### Ditemukan

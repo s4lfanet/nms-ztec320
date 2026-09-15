@@ -159,3 +159,19 @@ if ActiveConfig is DevelopmentConfig and _env_name != "testing":
         "Set FLASK_ENV=production for any real/internet-facing deployment.",
         _env_name,
     )
+
+# Audit finding 4: the login rate limiter (helpers.py) falls back to an
+# in-memory per-process counter when REDIS_URL is unset. That counter isn't
+# shared across gunicorn/uvicorn workers, so with N workers the effective
+# brute-force lockout becomes 5*N attempts instead of the 5 the code
+# implies — not a crash, so this doesn't raise, but it's easy to miss
+# silently, so it's logged loudly (ERROR, not debug) at every production
+# startup until REDIS_URL is set.
+if _is_production and not Config.REDIS_URL:
+    _logger.error(
+        "REDIS_URL is not set in production (FLASK_ENV=production). The login "
+        "rate limiter falls back to an in-memory counter that is NOT shared "
+        "across worker processes — with N gunicorn/uvicorn workers, the "
+        "effective brute-force lockout is 5*N attempts, not 5. Set REDIS_URL "
+        "so the limit is enforced correctly across all workers."
+    )
