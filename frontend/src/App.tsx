@@ -58,7 +58,13 @@ const routePatterns: { pattern: RegExp; perm: string }[] = [
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) {
+  // Only gate on `loading` while we don't have a user yet (initial app boot).
+  // fetchUser() is also called mid-session (e.g. after saving a profile
+  // change) and toggles `loading` again without clearing `user` — gating on
+  // `loading` alone would unmount the whole protected tree (AppShell + the
+  // current page) into this spinner on every such call, wiping any unsaved
+  // local state (like an in-progress edit on My Profile) for no reason.
+  if (loading && !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
         <div className="flex flex-col items-center gap-4">
