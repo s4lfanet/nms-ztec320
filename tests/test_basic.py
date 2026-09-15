@@ -321,6 +321,55 @@ class TestSecurityPhase1:
         assert len(data['token']) > 0
 
 
+class TestTrustedClientIP:
+    """Audit finding 3: routes_auth.py and helpers.py used to read
+    X-Forwarded-For directly, taking its FIRST (client-supplied, spoofable)
+    value. app.py already installs ProxyFix(x_for=1, ...), which correctly
+    trusts only the LAST hop of X-Forwarded-For (the value the one real
+    reverse proxy in front of the app appends) — request.remote_addr should
+    be used instead so a caller can't fake a fresh rate-limit bucket or a
+    bogus audit-log IP by simply prepending an arbitrary first value."""
+
+    def test_rate_limit_keys_by_trusted_hop_not_spoofed_header(self, client):
+        """X-Forwarded-For: <attacker-value>, <what-the-proxy-actually-saw>
+        — the rate limiter must bucket by the trusted last hop, not the
+        attacker-controlled first one."""
+        from helpers import _login_attempts
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'nonexistent', 'password': 'wrong'}),
+            content_type='application/json',
+            headers={'X-Forwarded-For': '9.9.9.9, 127.0.0.1'})
+        assert '127.0.0.1' in _login_attempts
+        assert '9.9.9.9' not in _login_attempts
+
+    def test_spoofed_forwarded_for_cannot_reset_rate_limit_bucket(self, client):
+        """A caller can't evade the 5-attempt lockout by varying only the
+        spoofable first X-Forwarded-For value while the trusted last hop
+        (the real connecting IP) stays the same."""
+        for _ in range(5):
+            client.post('/api/auth/login',
+                data=json.dumps({'username': 'nonexistent', 'password': 'wrong'}),
+                content_type='application/json',
+                headers={'X-Forwarded-For': f'{__import__("random").randint(1, 999)}.1.1.1, 127.0.0.1'})
+        resp = client.post('/api/auth/login',
+            data=json.dumps({'username': 'nonexistent', 'password': 'wrong'}),
+            content_type='application/json',
+            headers={'X-Forwarded-For': '111.1.1.1, 127.0.0.1'})
+        assert resp.status_code == 429
+
+    def test_action_log_records_trusted_hop_not_spoofed_header(self, client):
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json',
+            headers={'X-Forwarded-For': '8.8.8.8, 127.0.0.1'})
+        with app.app_context():
+            from models import ActionLog
+            entry = ActionLog.query.filter_by(action='login').order_by(ActionLog.id.desc()).first()
+            assert entry is not None
+            assert entry.ip_address == '127.0.0.1'
+            assert entry.ip_address != '8.8.8.8'
+
+
 class TestCSRFProtection:
     """Regression tests for CSRF protection (S9)."""
 

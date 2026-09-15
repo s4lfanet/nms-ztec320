@@ -403,6 +403,14 @@ docker compose --profile production up -d
 
 Services: backend (Flask+FastAPI), PostgreSQL, Redis, Nginx
 
+> **Proxy count matters.** The app trusts exactly one reverse-proxy hop's
+> `X-Forwarded-For` entry (`ProxyFix(x_for=1, ...)` in `app.py`) to resolve
+> the real client IP for login rate-limiting and the audit log. The
+> standard `browser → Nginx → Flask` chain above is one hop — if you add
+> another proxy/load balancer in front of Nginx, increase `x_for` to match
+> or the app will read the wrong hop and a client can spoof it. See
+> `.env.example`.
+
 ### VPS Deployment (Ubuntu)
 
 ```bash

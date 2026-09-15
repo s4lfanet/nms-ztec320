@@ -4,6 +4,21 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Security Fix: Sumber IP Client yang Konsisten untuk Rate-Limit Login & Audit Log (Audit Temuan 3)
+
+#### Ditemukan
+- `app.py` sudah memasang `ProxyFix(x_for=1, ...)`, yang seharusnya membuat `request.remote_addr` otomatis berisi IP client asli (dipercaya dari SATU hop reverse proxy). Tapi `routes_auth.py::api_login` dan `helpers.py::log_action` masih membaca header `X-Forwarded-For`/`X-Real-IP` secara manual dan mengambil elemen **pertama** — nilai yang sepenuhnya dikontrol oleh pengirim request, bukan yang ditambahkan oleh proxy tepercaya
+- Dikonfirmasi lewat test: kirim `X-Forwarded-For: 9.9.9.9, 127.0.0.1` (mensimulasikan attacker menaruh IP palsu di depan, nginx menambahkan IP asli di belakang) — kode lama mencatat rate-limit & audit log pakai `9.9.9.9` (bisa diganti-ganti bebas untuk lolos dari lockout 5x percobaan), bukan `127.0.0.1` yang benar
+
+#### Diperbaiki
+- `routes_auth.py::api_login` dan `helpers.py::log_action` sekarang pakai `request.remote_addr` (hasil normalisasi `ProxyFix`) alih-alih parsing header manual
+- Digrep seluruh repo untuk pemakaian manual `X-Forwarded-For`/`X-Real-IP` lain — cuma 2 tempat itu yang relevan di Flask app (ada satu lagi di `api_async.py`, tapi itu proses FastAPI terpisah dengan model kepercayaan proxy yang berbeda dan sudah diuji tersendiri di `tests/test_security.py` — di luar cakupan temuan ini, dicatat terpisah kalau perlu ditinjau)
+- Ditambahkan dokumentasi di `.env.example` dan `README.md`: jumlah proxy (`x_for=1`) harus disesuaikan kalau ada lebih dari satu reverse proxy di depan aplikasi (mis. load balancer + Nginx)
+
+#### Diverifikasi
+- 3 test baru (`TestTrustedClientIP`): rate-limit tercatat pakai hop tepercaya bukan header yang dispoof, attacker tidak bisa reset bucket rate-limit dengan mengganti-ganti nilai pertama XFF, audit log (`ActionLog.ip_address`) mencatat IP yang benar
+- Dikonfirmasi ketiganya **GAGAL di kode lama** (rate-limit & audit log memang tercatat pakai IP yang dispoof) dan **LULUS di kode baru**
+
 ### 2026-09-16 — Security Fix: Paksa Ganti Password Default admin/admin123 (Audit Temuan 2)
 
 #### Ditemukan
