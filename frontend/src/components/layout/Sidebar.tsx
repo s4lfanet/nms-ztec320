@@ -133,13 +133,19 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
         <div className={cn('flex items-center h-16 px-4 border-b border-brd', isExpanded ? 'justify-between' : 'justify-center')}>
           {isExpanded ? (
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center flex-shrink-0 overflow-hidden">
+              <div className={cn(
+                'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden',
+                user?.logo_url ? 'bg-white p-1' : 'bg-accent',
+              )}>
                 {user?.logo_url ? <img src={user.logo_url} alt={brandName} className="w-full h-full object-contain" /> : <Zap size={18} className="text-white" />}
               </div>
               <span className="text-lg font-bold tracking-tight truncate">{brandName}</span>
             </div>
           ) : (
-            <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center flex-shrink-0 overflow-hidden">
+            <div className={cn(
+              'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden',
+              user?.logo_url ? 'bg-white p-1' : 'bg-accent',
+            )}>
               {user?.logo_url ? <img src={user.logo_url} alt={brandName} className="w-full h-full object-contain" /> : <Zap size={18} className="text-white" />}
             </div>
           )}

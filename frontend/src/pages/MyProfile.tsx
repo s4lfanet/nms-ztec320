@@ -139,7 +139,7 @@ export function MyProfile() {
           {user?.is_super_admin && (
             <Card title="Company Logo" icon={<Image size={18} />}>
               <div className="flex items-center gap-5">
-                <div className="w-20 h-20 rounded-xl bg-glass border border-brd flex items-center justify-center flex-shrink-0 overflow-hidden">
+                <div className={`w-20 h-20 rounded-xl border border-brd flex items-center justify-center flex-shrink-0 overflow-hidden ${user?.logo_url ? 'bg-white p-2' : 'bg-glass'}`}>
                   {user?.logo_url ? (
                     <img src={user.logo_url} alt="Company logo" className="w-full h-full object-contain" />
                   ) : (

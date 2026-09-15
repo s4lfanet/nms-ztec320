@@ -424,7 +424,10 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           <Menu size={20} className="text-tx2" />
         </button>
         <div className="flex items-center gap-1.5 lg:hidden">
-          <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center shadow-lg shadow-accent/20 overflow-hidden">
+          <div className={cn(
+            'w-7 h-7 rounded-lg flex items-center justify-center shadow-lg shadow-accent/20 overflow-hidden',
+            user?.logo_url ? 'bg-white p-1' : 'bg-accent',
+          )}>
             {user?.logo_url ? <img src={user.logo_url} alt="" className="w-full h-full object-contain" /> : <Zap size={15} className="text-white" />}
           </div>
           <span className="text-sm font-bold tracking-tight">{user?.sidebar_name || 'Salfanet NMS'}</span>
