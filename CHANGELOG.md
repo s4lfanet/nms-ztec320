@@ -4,6 +4,26 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Fix: Nama Perusahaan & Logo Balik ke Default Setelah Logout-Login (Harus Hard Refresh)
+
+#### Diminta User
+- Nama perusahaan & logo yang sudah disimpan balik ke default begitu logout lalu login lagi — baru muncul lagi setelah hard refresh manual
+
+#### Ditemukan Saat Audit
+- Root cause: response `POST /api/auth/login` (`routes_auth.py`) TIDAK menyertakan `sidebar_name` maupun `logo_url` — cuma id/nama/role/permission. Padahal `/api/auth/me` (yang dipakai saat app pertama kali dimuat) SUDAH menyertakan keduanya
+- Setelah login berhasil, `useAuth.login()` di frontend langsung memakai data dari response login itu apa adanya (tanpa fetch ulang), lalu pindah ke `/dashboard` secara client-side (SPA navigation, bukan reload) — jadi sidebar & topbar langsung baca `sidebar_name`/`logo_url` yang `undefined` dari response login, dan jatuh ke default. `App.tsx` cuma manggil `fetchUser()` (yang datanya lengkap) sekali saat APP PERTAMA KALI di-mount — makanya cuma hard refresh yang bisa "membetulkan" karena itu me-mount ulang App dari nol
+- Bonus temuan lain waktu verifikasi pakai Playwright: `ProtectedRoute` di `App.tsx` menampilkan spinner loading FULL PAGE setiap kali `fetchUser()` dipanggil di mana pun (termasuk dari tengah sesi, misal setelah upload logo di My Profile) — ini bikin seluruh `AppShell` + halaman yang lagi dibuka unmount lalu mount ulang, jadi field form yang sedang diisi (misal lagi ngetik nama brand baru) ke-reset tiba-tiba tanpa peringatan
+
+#### Diperbaiki
+- `POST /api/auth/login` sekarang menyertakan `sidebar_name` & `logo_url`, sama seperti `/api/auth/me` — jadi begitu login sukses, data branding-nya sudah lengkap dari awal, tidak perlu request tambahan atau hard refresh
+- `ProtectedRoute` sekarang cuma menampilkan spinner loading kalau BELUM ada user sama sekali (`loading && !user`) — bukan setiap kali `loading` jadi `true`. Jadi `fetchUser()` yang dipanggil di tengah sesi (setelah save profile, upload logo, dll) tidak lagi bikin halaman yang sedang dibuka unmount/remount
+
+#### Diverifikasi
+- 1 test baru: login dengan `SystemConfig` custom (`nms_name`, `nms_logo_url`) terisi, response login harus langsung membawa keduanya — full suite 201 passed/2 skipped
+- Dites end-to-end di browser (skenario persis laporan user): set nama brand + upload logo → logout lewat menu user asli di topbar → login lagi TANPA reload apa pun → sidebar & logo langsung tampil benar sejak render pertama, bukan setelah hard refresh
+
+---
+
 ### 2026-09-16 — Fix: Kotak Logo Diberi Latar Putih (Logo Hitam Tidak Kelihatan di Latar Gelap)
 
 #### Diminta User

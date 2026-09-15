@@ -53,10 +53,14 @@ def api_login():
         session.permanent = True
         clear_failed_logins(client_ip)
         log_action('login', 'auth', target=user.username, detail=f'User {user.username} logged in')
+        from models import SystemConfig
+        sys_cfg = {c.key: c.value for c in SystemConfig.query.all()}
         return jsonify({'success': True, 'user': {
             'id': user.id, 'full_name': user.full_name, 'username': user.username,
             'role': user.role.name if user.role else 'User',
             'permissions': user.role.permissions.split(',') if user.role else [],
+            'sidebar_name': sys_cfg.get('nms_name', 'Salfanet NMS'),
+            'logo_url': sys_cfg.get('nms_logo_url') or None,
             'is_super_admin': user.is_super_admin,
         }})
     record_failed_login(client_ip)

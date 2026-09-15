@@ -102,6 +102,26 @@ class TestAuthEndpoints:
         assert data['user']['username'] == 'admin'
         assert data['user']['is_super_admin'] is True
 
+    def test_login_response_includes_custom_branding(self, client):
+        """Regression: after logout/login, the sidebar name & logo must not
+        revert to default until a hard refresh — the login response itself
+        has to carry them, not just /api/auth/me (which is only re-fetched
+        on a full page load, not on the client-side navigation after login).
+        """
+        with app.app_context():
+            from models import SystemConfig, db
+            db.session.add(SystemConfig(key='nms_name', value='Acme Fiber'))
+            db.session.add(SystemConfig(key='nms_logo_url', value='/static/uploads/company-logo.png?v=123'))
+            db.session.commit()
+
+        resp = client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['user']['sidebar_name'] == 'Acme Fiber'
+        assert data['user']['logo_url'] == '/static/uploads/company-logo.png?v=123'
+
     def test_login_invalid_credentials(self, client):
         """Test login with wrong password."""
         resp = client.post('/api/auth/login',
