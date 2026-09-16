@@ -5,7 +5,7 @@ Tests:
   B. WebSocket authentication (missing/invalid/expired/valid token)
   C. WebSocket authorization (permission, inactive user, unknown user, OLT access)
   D. Dashboard WebSocket (authorized/unauthorized)
-  E. /broadcast endpoint (no key, wrong key, external source, valid localhost)
+  E. /broadcast endpoint (no key, wrong key, spoofed/omitted forwarded-for, valid localhost)
 
 Run with: py -3 -m pytest tests/test_security.py -v
 """
@@ -311,23 +311,31 @@ class TestDashboardWS:
 class TestBroadcast:
     """Test /broadcast security — internal key + localhost restriction.
 
-    Tests the security checks directly without TestClient (which requires httpx).
-    The /broadcast endpoint performs two checks:
-    1. Localhost restriction: client_host must be in ('', '127.0.0.1', '::1', 'localhost')
-    2. Key comparison: hmac.compare_digest(x_internal_key, expected_key)
+    The localhost check is enforced against the real ASGI peer address
+    (``request.client.host``, populated by uvicorn from the actual TCP
+    connection), not a client-supplied header — so these tests drive the
+    real endpoint through Starlette's TestClient and control the simulated
+    peer address via its `client=(host, port)` parameter, rather than just
+    replicating the check logic in isolation.
     """
 
-    _LOCALHOST_HOSTS = ('', '127.0.0.1', '::1', 'localhost')
-
-    def _check_localhost(self, client_host: str) -> bool:
-        """Replicate the localhost check from /broadcast endpoint."""
-        return client_host in self._LOCALHOST_HOSTS
+    def _client(self, peer_host='127.0.0.1'):
+        from starlette.testclient import TestClient
+        from api_async import fastapi_app
+        return TestClient(fastapi_app, client=(peer_host, 12345))
 
     def _check_key(self, provided_key: str, expected_key: str) -> bool:
         """Replicate the key check from /broadcast endpoint."""
         if not provided_key:
             return False
         return hmac.compare_digest(provided_key, expected_key)
+
+    def _post(self, tc, headers=None):
+        return tc.post(
+            "/broadcast",
+            json={"channel": "test", "event": "ping", "data": {}},
+            headers=headers or {},
+        )
 
     def test_no_internal_key_denied(self, setup_db):
         """No X-Internal-Key → denied."""
@@ -341,18 +349,46 @@ class TestBroadcast:
         assert self._check_key('definitely-wrong', _get_internal_api_key()) is False
 
     def test_valid_key_external_source_denied(self, setup_db):
-        """Valid key + external source (X-Forwarded-For) → denied by localhost check."""
-        assert self._check_localhost('203.0.113.1') is False
-
-    def test_valid_key_localhost_allowed(self, setup_db):
-        """Valid key + localhost → allowed."""
+        """Valid key + non-loopback peer → denied by the localhost check."""
         from api_async import _get_internal_api_key
         key = _get_internal_api_key()
-        assert self._check_localhost('') is True
-        assert self._check_localhost('127.0.0.1') is True
-        assert self._check_key(key, key) is True
-        # Combined: localhost + valid key → allowed
-        assert self._check_localhost('127.0.0.1') and self._check_key(key, key)
+        resp = self._post(self._client(peer_host='203.0.113.1'), headers={'X-Internal-Key': key})
+        assert resp.status_code == 403
+        assert 'localhost' in resp.json()['detail']
+
+    def test_spoofed_forwarded_for_does_not_bypass_localhost_check(self, setup_db):
+        """A non-loopback peer claiming X-Forwarded-For: 127.0.0.1 must still be denied.
+
+        The endpoint used to trust X-Forwarded-For (fully attacker-controlled)
+        for its localhost restriction; it must now be ignored entirely in
+        favor of the real ASGI peer address.
+        """
+        from api_async import _get_internal_api_key
+        key = _get_internal_api_key()
+        resp = self._post(
+            self._client(peer_host='203.0.113.1'),
+            headers={'X-Internal-Key': key, 'X-Forwarded-For': '127.0.0.1'},
+        )
+        assert resp.status_code == 403
+
+    def test_omitted_forwarded_for_no_longer_treated_as_trusted_localhost(self, setup_db):
+        """A non-loopback peer that simply omits X-Forwarded-For must be denied.
+
+        Previously an absent header defaulted to '' which was (incorrectly)
+        in the trusted-localhost set, regardless of actual origin.
+        """
+        from api_async import _get_internal_api_key
+        key = _get_internal_api_key()
+        resp = self._post(self._client(peer_host='203.0.113.1'), headers={'X-Internal-Key': key})
+        assert resp.status_code == 403
+
+    def test_valid_key_localhost_allowed(self, setup_db):
+        """Valid key + real loopback peer → allowed."""
+        from api_async import _get_internal_api_key
+        key = _get_internal_api_key()
+        resp = self._post(self._client(peer_host='127.0.0.1'), headers={'X-Internal-Key': key})
+        assert resp.status_code == 200
+        assert resp.json()['ok'] is True
 
     def test_secret_key_does_not_authenticate_broadcast(self, setup_db):
         """SECRET_KEY used as X-Internal-Key → denied (must not work)."""

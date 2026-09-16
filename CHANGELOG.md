@@ -4,6 +4,24 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-17 — Fix: Endpoint `/broadcast` Percaya Header `X-Forwarded-For` yang Bisa Dipalsukan untuk Cek Localhost (Follow-up Audit, Ditemukan Saat Temuan 3)
+
+#### Ditemukan
+- Saat Temuan 3 (audit sebelumnya) digrep tempat lain yang baca `X-Forwarded-For` manual, ketemu satu di `api_async.py::/broadcast` dengan model trust yang berbeda dan lebih berisiko: `client_host = request_client_host or ''` (dibaca dari header `X-Forwarded-For`) lalu dicek `if client_host not in ('', '127.0.0.1', '::1', 'localhost')`. Karena header yang tidak dikirim sama sekali (`None`) jatuh ke default `''`, dan `''` termasuk dalam set yang dipercaya — endpoint ini memperlakukan **caller yang sekadar tidak mengirim header sebagai localhost tepercaya**, apapun asal koneksi TCP-nya sebenarnya. Header ini juga sepenuhnya bisa dipalsukan oleh caller (`X-Forwarded-For: 127.0.0.1`)
+- Dampak nyata terbatas karena endpoint ini juga wajib mencocokkan `X-Internal-Key` (HMAC `compare_digest`) dan seharusnya hanya reachable dari `127.0.0.1:8765` — tapi cek "localhost" itu sendiri sebenarnya tidak memverifikasi apa-apa (nol nilai proteksi tambahan), karena pemanggil sah (`ws_bridge.py::_broadcast_async`) juga tidak pernah mengirim `X-Forwarded-For`, jadi cek ini "berhasil" untuk pemanggil sah murni kebetulan, bukan karena benar-benar memvalidasi asal koneksi
+
+#### Diperbaiki
+- Cek localhost diganti dari header `X-Forwarded-For` (spoofable, request-level di aplikasi) ke `request.client.host` — alamat peer ASGI sesungguhnya yang diisi oleh uvicorn dari koneksi TCP yang benar-benar terjadi, tidak bisa diatur oleh client. Import `Request` ditambahkan dari `fastapi`, handler `broadcast_message` menerima parameter `request: Request`, parameter header `request_client_host` (alias `X-Forwarded-For`) dihapus total dari signature
+- Set localhost yang dipercaya juga diperketat: `''` (header kosong/tidak ada) **dihapus** dari daftar — sekarang hanya `('127.0.0.1', '::1', 'localhost')` yang diterima, karena `request.client.host` pada koneksi ASGI nyata selalu terisi
+
+#### Diverifikasi
+- 3 test baru di `TestBroadcast` (`tests/test_security.py`), memakai Starlette `TestClient` langsung ke endpoint asli (bukan replikasi logika cek secara terpisah seperti test lama), dengan `client=(peer_host, port)` untuk mengontrol alamat peer ASGI yang disimulasikan:
+  - `test_spoofed_forwarded_for_does_not_bypass_localhost_check` — peer non-loopback yang mengirim `X-Forwarded-For: 127.0.0.1` tetap ditolak
+  - `test_omitted_forwarded_for_no_longer_treated_as_trusted_localhost` — peer non-loopback yang sama sekali tidak mengirim header tetap ditolak
+  - `test_valid_key_localhost_allowed` — diperbarui untuk memverifikasi lewat request HTTP sungguhan (peer `127.0.0.1`) alih-alih memanggil helper cek secara langsung
+- Ketiga test baru dikonfirmasi **gagal dengan hasil yang sama persis seperti sebelum diperbaiki** saat dijalankan terhadap `api_async.py` versi lama (`git stash`), dan lulus di kode baru
+- Full suite tetap hijau
+
 ### 2026-09-17 — Fix: `NameError` di `_provision_zte_multi` Kalau `extra.traffic_profile` Kosong (Follow-up Temuan 5)
 
 #### Ditemukan
