@@ -15,6 +15,10 @@ jobs:
       INTERNAL_API_KEY: ci-test-internal-key
       SECRET_KEY: ci-test-secret-key
 
+    defaults:
+      run:
+        working-directory: backend
+
     steps:
       - uses: actions/checkout@v4
 

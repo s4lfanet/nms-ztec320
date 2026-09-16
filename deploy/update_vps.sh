@@ -54,7 +54,7 @@ server {
         add_header Cache-Control "public, immutable";
     }
     location /static/ {
-        alias /opt/salfanet-nms/static/;
+        alias /opt/salfanet-nms/backend/static/;
         expires 1h;
     }
     location /ws/ {
@@ -84,9 +84,9 @@ nginx -t && systemctl reload nginx
 echo "Nginx updated with Cloudflare real_ip"
 
 echo "=== Setup cron jobs (auto-backup + auto-sync + traffic poller) ==="
-BACKUP_CRON="0 * * * * cd /opt/salfanet-nms && /opt/salfanet-nms/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
-SYNC_CRON="*/5 * * * * cd /opt/salfanet-nms && /opt/salfanet-nms/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
-TRAFFIC_CRON="*/5 * * * * cd /opt/salfanet-nms && /opt/salfanet-nms/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
+BACKUP_CRON="0 * * * * cd /opt/salfanet-nms/backend && /opt/salfanet-nms/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
+SYNC_CRON="*/5 * * * * cd /opt/salfanet-nms/backend && /opt/salfanet-nms/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
+TRAFFIC_CRON="*/5 * * * * cd /opt/salfanet-nms/backend && /opt/salfanet-nms/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
 # Write to a temp file and verify afterward, rather than piping straight
 # into `crontab -` — a bare pipe can silently install an EMPTY crontab if
 # the subshell is interrupted (e.g. a flaky SSH session mid-update),

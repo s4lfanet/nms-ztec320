@@ -131,7 +131,7 @@ if [ ! -d ".venv" ]; then
     "${PYTHON_BIN}" -m venv .venv
 fi
 .venv/bin/pip install --upgrade pip --quiet
-.venv/bin/pip install -r requirements.txt --quiet
+.venv/bin/pip install -r backend/requirements.txt --quiet
 
 # ── 4. Build frontend ──
 echo "[4/9] Building frontend..."
@@ -176,10 +176,13 @@ else
 fi
 
 # ── 5. Configuration ──
+# config.py resolves .env relative to its own file (backend/config.py), so
+# .env (and its instance/ + static/ siblings) must live under backend/, not
+# the repo root.
 echo "[5/9] Creating configuration..."
-mkdir -p instance
-if [ ! -f ".env" ]; then
-    cp .env.example .env
+mkdir -p backend/instance
+if [ ! -f "backend/.env" ]; then
+    cp backend/.env.example backend/.env
     # Generate random secrets. FLASK_ENV must be "production" here — .env.example
     # defaults to "development" (Werkzeug debugger + insecure cookies enabled),
     # which is right for local dev but wrong for a VPS install.
@@ -198,15 +201,15 @@ if [ ! -f ".env" ]; then
         -e "s/^CREDENTIAL_ENCRYPTION_KEY=.*/CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}/" \
         -e "s/^FLASK_ENV=.*/FLASK_ENV=production/" \
         -e "s/^SESSION_COOKIE_SECURE=.*/SESSION_COOKIE_SECURE=0/" \
-        .env
-    echo "  Created .env (FLASK_ENV=production) with generated SECRET_KEY, INTERNAL_API_KEY, CREDENTIAL_ENCRYPTION_KEY"
+        backend/.env
+    echo "  Created backend/.env (FLASK_ENV=production) with generated SECRET_KEY, INTERNAL_API_KEY, CREDENTIAL_ENCRYPTION_KEY"
     echo "  Note: SESSION_COOKIE_SECURE=0 (HTTP-only by default) — after enabling HTTPS"
-    echo "        (see 'Enable HTTPS' below), set it to 1 in .env and restart the service."
+    echo "        (see 'Enable HTTPS' below), set it to 1 in backend/.env and restart the service."
 else
-    echo "  .env already exists, skipping."
-    if grep -q "^FLASK_ENV=development" .env; then
-        echo "  [WARNING] Existing .env has FLASK_ENV=development — the debugger and insecure"
-        echo "            cookies are enabled. Set FLASK_ENV=production in ${APP_DIR}/.env"
+    echo "  backend/.env already exists, skipping."
+    if grep -q "^FLASK_ENV=development" backend/.env; then
+        echo "  [WARNING] Existing backend/.env has FLASK_ENV=development — the debugger and insecure"
+        echo "            cookies are enabled. Set FLASK_ENV=production in ${APP_DIR}/backend/.env"
         echo "            and restart: systemctl restart ${APP_NAME}"
     fi
 fi
@@ -225,7 +228,7 @@ After=network.target
 Type=simple
 User=${APP_USER}
 Group=${APP_USER}
-WorkingDirectory=${APP_DIR}
+WorkingDirectory=${APP_DIR}/backend
 Environment="PATH=${APP_DIR}/.venv/bin"
 ExecStart=${APP_DIR}/.venv/bin/python run_server.py --host 0.0.0.0 --port 5000 --ws-port 8765
 Restart=always
@@ -279,7 +282,7 @@ server {
 
     # Legacy static files
     location /static/ {
-        alias APP_DIR/static/;
+        alias APP_DIR/backend/static/;
         expires 1h;
     }
 
@@ -317,10 +320,10 @@ systemctl enable nginx
 
 # ── 8. Setup cron jobs (db backup + OLT config backup + auto-sync) ──
 echo "[8/9] Setting up cron jobs..."
-DB_BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 db_backup.py >> /var/log/salfanet-db-backup.log 2>&1"
-BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
-SYNC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
-TRAFFIC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
+DB_BACKUP_CRON="0 * * * * cd ${APP_DIR}/backend && ${APP_DIR}/.venv/bin/python3 db_backup.py >> /var/log/salfanet-db-backup.log 2>&1"
+BACKUP_CRON="0 * * * * cd ${APP_DIR}/backend && ${APP_DIR}/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
+SYNC_CRON="*/5 * * * * cd ${APP_DIR}/backend && ${APP_DIR}/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
+TRAFFIC_CRON="*/5 * * * * cd ${APP_DIR}/backend && ${APP_DIR}/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
 # Write to a temp file and verify afterward, rather than piping straight
 # into `crontab -` — a bare pipe can silently install an EMPTY crontab if
 # the subshell is interrupted (e.g. a flaky SSH session mid-install),
@@ -355,7 +358,7 @@ cat > /etc/logrotate.d/${APP_NAME} << LOGROTATE_EOF
 LOGROTATE_EOF
 
 if [ "$CRON_COUNT" -ge 4 ]; then
-    echo "  ✅ DB backup cron: hourly (instance/backups/, 24 hourly + 7 daily retention)"
+    echo "  ✅ DB backup cron: hourly (backend/instance/backups/, 24 hourly + 7 daily retention)"
     echo "  ✅ OLT config backup cron: hourly"
     echo "  ✅ Auto-sync cron: every 5 minutes"
     echo "  ✅ Traffic poller cron: every 5 minutes"
@@ -427,7 +430,7 @@ echo "    systemctl status ${APP_NAME}"
 echo "    systemctl restart ${APP_NAME}"
 echo "    journalctl -u ${APP_NAME} -f"
 echo ""
-echo "  Config:   ${APP_DIR}/.env"
+echo "  Config:   ${APP_DIR}/backend/.env"
 echo "  App dir:  ${APP_DIR}"
 echo ""
 echo "  Next steps:"
@@ -442,7 +445,7 @@ else
     echo "    2. Enable HTTPS:"
     echo "       certbot --nginx -d ${DOMAIN}"
 fi
-echo "    * After HTTPS is working, set SESSION_COOKIE_SECURE=1 in ${APP_DIR}/.env"
+echo "    * After HTTPS is working, set SESSION_COOKIE_SECURE=1 in ${APP_DIR}/backend/.env"
 echo "      and restart (systemctl restart ${APP_NAME}) — until then, login only"
 echo "      works over plain HTTP; a Secure cookie set without HTTPS is silently"
 echo "      dropped by the browser and breaks login."
