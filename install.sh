@@ -77,7 +77,7 @@ source .venv/bin/activate
 
 echo "[2/5] Installing Python dependencies..."
 pip install --upgrade pip --quiet
-pip install -r requirements.txt --quiet
+pip install -r backend/requirements.txt --quiet
 
 echo "[3/5] Installing frontend dependencies..."
 if [ -f "frontend/dist/index.html" ]; then
@@ -118,13 +118,15 @@ else
 fi
 
 echo "[5/5] Creating .env configuration..."
-mkdir -p instance
-if [ ! -f ".env" ]; then
-    cp .env.example .env
-    echo "  Created .env from .env.example"
-    echo "  Please edit .env with your settings before running."
+# config.py resolves .env relative to its own file (backend/config.py), so
+# .env (and instance/) must live under backend/, not the repo root.
+mkdir -p backend/instance
+if [ ! -f "backend/.env" ]; then
+    cp backend/.env.example backend/.env
+    echo "  Created backend/.env from backend/.env.example"
+    echo "  Please edit backend/.env with your settings before running."
 else
-    echo "  .env already exists, skipping."
+    echo "  backend/.env already exists, skipping."
 fi
 
 echo ""
@@ -134,7 +136,7 @@ echo "════════════════════════�
 echo ""
 echo "  To start the server:"
 echo "    source .venv/bin/activate"
-echo "    python run_server.py"
+echo "    cd backend && python run_server.py"
 echo ""
 echo "  App:       http://<your-ip>:5000"
 echo "  API Docs:  http://<your-ip>:8765/docs"
@@ -147,8 +149,8 @@ if [ "$1" = "--start" ]; then
     pkill -f "python run_server.py" 2>/dev/null || true
     pkill -f "uvicorn" 2>/dev/null || true
     sleep 1
-    nohup python run_server.py > /tmp/nms.log 2>&1 &
-    echo "  Server PID: $!"
+    (cd backend && nohup python run_server.py > /tmp/nms.log 2>&1 &)
+    echo "  Server PID: $(pgrep -f 'run_server.py' | head -1)"
     sleep 4
     if pgrep -f "run_server.py" > /dev/null; then
         echo "  ✅ Server running!"
