@@ -4,6 +4,32 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-17 — Restrukturisasi: Pisahkan `backend/` dari `frontend/` sebagai Folder Sibling
+
+#### Latar Belakang
+- Sebelumnya root repo punya ~30 file Python (`app.py`, 18 `routes_*.py`, `models.py`, `config.py`, `telnet_client.py`, dll) lepas langsung di root, bercampur dengan `migrations/`, `tests/`, `instance/`, `static/`, dokumen, dan script installer — sementara `frontend/` sudah rapi jadi satu folder sendiri. Murni penataan lokasi file, **bukan perubahan perilaku aplikasi**.
+- Dikerjakan bertahap per fase (masing-masing commit terpisah, bisa di-`git revert` independen): Fase 1 pure `git mv` (riwayat file terjaga), Fase 2 perbaikan resolusi path yang rusak akibat pemindahan, Fase 3 verifikasi penuh.
+
+#### Diperbaiki
+- **Fase 1** — Semua file/folder backend Python (`app.py`, seluruh `routes_*.py`, `models.py`, `config.py`, `telnet_client.py`, `snmp_core.py`/`snmp_collector.py`, `olt_adapters/`, `migrations/`, `tests/`, `requirements.txt`, `.env.example`, dll — 75 file total) dipindah ke `backend/` via `git mv` satu-per-satu. Zero perubahan isi file (`75 files changed, 0 insertions(+), 0 deletions(-)`), 100% terdeteksi git sebagai rename murni sehingga riwayat blame/history tiap file tetap utuh.
+- **Fase 2** — Titik-titik yang rusak akibat pemindahan, diperbaiki satu per satu:
+  - `app.py::serve_spa_root()`/`serve_spa()` dan `routes_system.py::system_update_apply()` — keduanya resolve `frontend/dist/` relatif terhadap `os.path.dirname(__file__)`, yang sekarang jadi `backend/` (bukan lagi root), sehingga salah mengarah ke `backend/frontend/dist/` yang tidak ada. **Bug di `app.py` ini ditemukan langsung lewat verifikasi live** (menjalankan `run_server.py` manual dan memukul endpoint `/login` → `503 Frontend not built`), bukan cuma dari membaca kode — persis pola bug yang sama seperti di `routes_system.py` tapi jauh lebih kritikal karena menyangkut rute utama yang menyajikan UI aplikasi, bukan cuma fitur self-update admin. Diperbaiki dengan menghitung `repo_root = os.path.dirname(os.path.dirname(__file__))` lalu `frontend_dir = os.path.join(repo_root, 'frontend')` di ketiga tempat.
+  - `install-vps.sh`, `deploy/vps-setup.sh`, `deploy/update_vps.sh`, **dan `install.sh`** (yang terakhir ini tidak disebut di brief awal, ditemukan saat grep ulang) — keempatnya masing-masing punya blok systemd unit / config Nginx / cron job / setup `.env` sendiri-sendiri (duplikat, bukan shared), dan keempatnya berasumsi `requirements.txt`, `instance/`, `static/`, `.env` ada di root. Diperbaiki konsisten di keempat script: `.venv` tetap di root repo, tapi `pip install -r backend/requirements.txt`, `WorkingDirectory=${APP_DIR}/backend` di systemd, alias Nginx `/static/` menunjuk `backend/static/`, cron job `cd` ke `backend/` dulu sebelum menjalankan `db_backup.py`/`auto_backup.py`/`auto_sync.py`/`traffic_poller.py`, dan `.env`/`.env.example`/`instance/` semua pindah ke bawah `backend/` (karena `config.py` resolve `.env` relatif terhadap lokasi filenya sendiri, yang sekarang `backend/config.py`).
+  - `.github/workflows/ci.yml` — ditambah `defaults.run.working-directory: backend` di level job, jadi semua step (`pip install`, smoke test import, `pytest`) otomatis jalan dari `backend/` tanpa perlu `cd` di tiap baris `run:`.
+  - `README.md` — diagram "Struktur Proyek" digambar ulang dengan `backend/` sebagai folder induk semua file Python, dan semua contoh command (Quick Start, Development Mode, VPS Management, Testing) yang tadinya berasumsi root = lokasi backend diberi `cd backend` di tempat yang sesuai.
+  - `AGENTS.md` — baris instruksi `pytest tests/ -v` diberi catatan "dari `backend/`".
+  - `migrations/alembic.ini` dan `migrations/env.py` — dikonfirmasi **tidak** ada `script_location` atau path lain yang di-hardcode ke lokasi lama, jadi tidak perlu diubah.
+
+#### Diverifikasi
+- Baseline sebelum restrukturisasi (dari root, sebelum Fase 1): `245 passed, 2 skipped` (209.25s)
+- Setelah Fase 2 selesai, dijalankan ulang dari `backend/`: **`245 passed, 2 skipped`** (184.15s) — angka identik dengan baseline, tidak ada test yang baru gagal atau baru skip
+- Smoke test import dari `backend/` (persis seperti step CI): `from app import app` → OK, `from api_async import fastapi_app` → OK
+- Chain migrasi Alembic dijalankan penuh dari `backend/` terhadap database SQLite kosong (scratch) — 8 revisi (`2169e93c7970` → ... → `77cd667a1e6b`) apply bersih tanpa error, berhenti di head yang sama dengan sebelum restrukturisasi
+- `run_server.py` dijalankan manual dari `backend/` (port alternatif untuk tidak bentrok dengan instance dev) — Flask `/` dan `/login` HTTP 200 menyajikan `frontend/dist/index.html` yang sesungguhnya (bukan fallback), FastAPI `/health` dan `/docs` HTTP 200 — inilah yang menangkap bug `app.py` di atas sebelum sempat lolos ke PR
+- Resolusi path `frontend_dir` di `routes_system.py::system_update_apply()` diverifikasi langsung lewat script kecil yang menghitung `repo_root`/`frontend_dir` persis seperti kode aslinya dan mengonfirmasi hasilnya menunjuk ke `frontend/dist/index.html` yang benar-benar ada di disk — alur HTTP penuhnya (`POST /api/system/update/apply`) tidak dijalankan langsung karena butuh konteks systemd/produksi yang sesungguhnya (login superadmin + restart service), sesuai catatan "kalau memungkinkan di lingkungan sandbox" pada instruksi restrukturisasi ini
+- `backend/instance/` dan `backend/static/uploads/` dikonfirmasi resolve benar (bukan cuma dibaca kodenya) lewat script verifikasi yang memanggil langsung `db_backup.DEFAULT_BACKUP_DIR` dan `routes_users._logo_dir()` dari dalam `backend/`
+- **Tidak ada perubahan logic** di file mana pun kecuali resolusi path yang memang terbukti rusak akibat pemindahan (di atas) — murni penataan lokasi file
+
 ### 2026-09-17 — Fix: Endpoint `/broadcast` Percaya Header `X-Forwarded-For` yang Bisa Dipalsukan untuk Cek Localhost (Follow-up Audit, Ditemukan Saat Temuan 3)
 
 #### Ditemukan

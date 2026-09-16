@@ -243,6 +243,9 @@ def _run_cmd(cmd, cwd=None, timeout=30):
 def system_update_check():
     """Check if a newer version is available on GitHub.
     Runs git fetch + compares local vs remote HEAD."""
+    # app_dir is backend/ — git auto-discovers the repo's .git at the
+    # parent (root) directory, so fetch/pull/rev-parse from here still
+    # operate on the whole repo.
     app_dir = os.path.dirname(os.path.abspath(__file__))
     try:
         # git fetch origin
@@ -281,8 +284,9 @@ def system_update_check():
 @super_admin_required
 def system_update_apply():
     """Apply update from GitHub: git pull, (re)build frontend if needed, restart service."""
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    frontend_dir = os.path.join(app_dir, 'frontend')
+    app_dir = os.path.dirname(os.path.abspath(__file__))      # backend/ — git pull cwd
+    repo_root = os.path.dirname(app_dir)                        # repo root — frontend/ lives here, not under backend/
+    frontend_dir = os.path.join(repo_root, 'frontend')
     try:
         # Step 1: git pull
         pull = _run_cmd(['git', 'pull', 'origin', 'main'], cwd=app_dir, timeout=60)

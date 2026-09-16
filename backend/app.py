@@ -487,7 +487,9 @@ def migrate_schema():
 def serve_spa_root():
     """Serve React SPA index.html at root."""
     from flask import send_from_directory, make_response
-    dist = os.path.join(os.path.dirname(__file__), 'frontend', 'dist')
+    # frontend/ is a sibling of backend/ (this file's directory), not a child of it.
+    repo_root = os.path.dirname(os.path.dirname(__file__))
+    dist = os.path.join(repo_root, 'frontend', 'dist')
     if not os.path.exists(dist):
         return 'Frontend not built. Run: cd frontend && npm run build', 503
     resp = make_response(send_from_directory(dist, 'index.html'))
@@ -505,7 +507,9 @@ def serve_spa(path=''):
         from flask import abort
         abort(404)
     from werkzeug.security import safe_join
-    dist = os.path.join(os.path.dirname(__file__), 'frontend', 'dist')
+    # frontend/ is a sibling of backend/ (this file's directory), not a child of it.
+    repo_root = os.path.dirname(os.path.dirname(__file__))
+    dist = os.path.join(repo_root, 'frontend', 'dist')
     if not os.path.exists(dist):
         return 'Frontend not built. Run: cd frontend && npm run build', 503
     if path:
