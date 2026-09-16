@@ -34,11 +34,11 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Statistik ONU',
-        content: 'Kartu statistik menampilkan total ONU per status: **Online**, **Offline**, **DyingGasp**, **LOS** (Loss of Signal), dan **Total**.\n\nKlik kartu untuk filter ONU berdasarkan status di halaman All ONUs.',
+        content: 'Kartu statistik menampilkan total: **OLT** (online/offline), **Total ONU** (dengan % online), **ONU Online**, dan **ONU Problem** (gabungan offline + dyinggasp + LOS).\n\nKartu ini bersifat ringkasan saja — belum bisa diklik untuk filter. Untuk filter ONU per status, buka halaman All ONUs.',
       },
       {
         title: 'OLT Cards',
-        content: 'Setiap OLT ditampilkan sebagai kartu dengan info: status online/offline, uptime, suhu, CPU, fan, jumlah ONU online/offline, dan progress bar.\n\nKlik **Sync** pada kartu OLT untuk sync OLT tersebut. Klik **Config** untuk ke halaman OLT Configuration.\n\nKlik kartu OLT untuk navigasi ke All ONUs yang difilter per OLT tersebut.',
+        content: 'Setiap OLT ditampilkan sebagai kartu dengan info: status online/offline, jumlah ONU online/offline dengan progress bar, **Model**, **Suhu**, dan **Uptime**.\n\nKlik tombol **Sync** pada kartu untuk sync OLT tersebut. Klik tombol **Config** untuk ke halaman OLT Configuration — ini yang jadi cara utama drill-down dari sebuah OLT card, karena body kartunya sendiri belum clickable.',
       },
       {
         title: 'Sync All',
@@ -47,9 +47,8 @@ export const guides: Guide[] = [
     ],
     tips: [
       'Dashboard auto-refresh setiap 30 detik — tidak perlu manual refresh',
-      'WebSocket aktif: alert baru akan otomatis muncul tanpa refresh',
-      'Klik kartu ONU untuk drill-down ke All ONUs per OLT',
-      'Sort OLT cards by status/name/problems/offline count',
+      'WebSocket aktif: alert baru dan hasil sync akan otomatis muncul tanpa refresh',
+      'Sort OLT cards by status/name/problems/offline count lewat dropdown di atas grid',
     ],
   },
   {
@@ -61,15 +60,15 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Stat Cards & Filter',
-        content: 'Kartu statistik di atas tabel menampilkan jumlah ONU per kategori: **All**, **Online**, **Offline**, **DyingGasp**, **LOS**. Klik kartu untuk filter tabel.\n\nSignal cards menampilkan distribusi RX power berdasarkan color range yang dikonfigurasi di Customization.',
+        content: 'Kartu statistik di atas tabel menampilkan **Total ONU**, **Online**, **LOS**, dan **DyingGasp** (bukan Offline — Offline hanya bisa dilihat lewat filter status di bawah). Kartu ini ringkasan saja, belum bisa diklik untuk filter tabel.\n\nSignal cards di sampingnya menampilkan distribusi RX power berdasarkan color range yang dikonfigurasi di Customization.',
       },
       {
         title: 'Search & Filter',
-        content: 'Gunakan search bar untuk cari ONU by name, OLT, serial number, PPPoE, atau type. Filter dropdown untuk OLT dan vendor.\n\nSearch di-debounce 400ms — otomatis trigger setelah berhenti mengetik.',
+        content: 'Gunakan search bar untuk cari ONU by name, OLT, serial number, PPPoE, atau type. Filter OLT berupa deretan tombol pill (bukan dropdown) di bawah search bar — belum ada filter vendor.\n\nSearch di-debounce 400ms — otomatis trigger setelah berhenti mengetik.',
       },
       {
         title: 'Tabel ONU',
-        content: 'Tabel menampilkan semua ONU dengan kolom: name, OLT, SN, type, status, RX power, PPPoE, technician, ODP port, dan actions.\n\nKlik header kolom untuk sort. Server-side pagination — 50 ONU per halaman.\n\nKlik **View** untuk detail ONU (ViewOnu page). Klik **Edit** untuk edit inline (name, PPPoE, technician, ODP port). Klik **Delete** untuk deregister ONU dari OLT.',
+        content: 'Tabel menampilkan: OLT, Name, Status, RX ONU, SN/MAC, Type, Distance, Technician, ODP, ID, dan Actions (tidak ada kolom PPPoE terpisah di tabel utama). Klik header kolom untuk sort. Server-side pagination — default 20 ONU per halaman, bisa diganti ke 10/50/100.\n\nKlik **View** untuk detail ONU (ViewOnu page). Klik **Delete** untuk deregister ONU dari OLT.\n\n**Inline edit** (langsung di tabel, tanpa buka modal) hanya untuk kolom **Technician** dan **ODP port** — klik cell-nya langsung. Untuk edit field lain (name, description, ONU ID, actual type/model, lokasi di peta) klik **Edit**, yang membuka modal terpisah, bukan inline.',
       },
       {
         title: 'Export & Signal Refresh',
@@ -78,7 +77,7 @@ export const guides: Guide[] = [
     ],
     tips: [
       'WebSocket aktif: tabel auto-refresh saat OLT sync selesai',
-      'Inline edit: klik cell Technician/ODP port untuk edit langsung di tabel',
+      'Inline edit langsung di tabel hanya untuk Technician & ODP port — field lainnya lewat modal Edit',
       'Column visibility & order bisa diatur di Customization page',
       'Export CSV include semua ONU (tidak terfilter by pagination)',
     ],
@@ -96,15 +95,15 @@ export const guides: Guide[] = [
       },
       {
         title: 'Traffic Chart',
-        content: 'Grafik traffic real-time menampilkan download/upload bandwidth. Update setiap 5 detik via WebSocket.\n\nKlik **Refresh Live** untuk re-fetch data terbaru dari OLT.',
+        content: 'Grafik traffic menampilkan download/upload bandwidth, di-polling setiap 3 detik.\n\nKlik **Refresh Live** untuk re-fetch data terbaru dari OLT.',
       },
       {
         title: 'WAN Services',
-        content: 'Menampilkan 4 WAN service slots. Klik **Edit** pada service untuk konfigurasi VLAN, mode (Router/Bridge), IP, PPPoE credentials.\n\nService 1 biasanya untuk internet, Service 2-4 untuk VLAN lain (IPTV, VoIP, dll).',
+        content: 'Menampilkan 4 WAN service slots. Klik **Edit** pada service untuk konfigurasi VLAN, mode (**PPPoE NAT** / **Wan-IP** / **Bridge - ONU Webpage**), IP, PPPoE credentials.\n\nService 1 biasanya untuk internet, Service 2-4 untuk VLAN lain (IPTV, VoIP, dll).',
       },
       {
         title: 'Actions',
-        content: '**Reboot**: restart ONU (ZTE: OMCI reboot, non-ZTE: shutdown/no-shutdown fallback). **Get Status**: fetch status lengkap dari OLT (interface info, optical, history, MAC table). **Show Config**: tampilkan running-config ONU. **Resync Config**: re-collect config dari OLT. **Clear Config**: hapus config ONU. **Reset WiFi**: reset WiFi SSID config. **Reset Factory**: factory reset ONU. **Delete**: deregister ONU dari OLT.\n\n**Replace ONU (Swap SN/MAC)**: Ganti perangkat ONU rusak dengan SN/MAC baru tanpa konfigurasi ulang. Sistem akan: backup config lama → delete ONU lama → register ONU baru → re-apply config. Vendor harus sama (ZTE→ZTE, FiberHome→FiberHome).',
+        content: '**Reboot**: restart ONU (ZTE: OMCI reboot, non-ZTE: shutdown/no-shutdown fallback). **Get Status**: fetch status lengkap dari OLT (interface info, optical, history, MAC table). **Show Config**: tampilkan running-config ONU. **Resync Config**: re-collect config dari OLT. **Clear Config**: hapus config ONU. **Disable/Enable ONU**: nonaktifkan/aktifkan port ONU tanpa deregister (perlu permission tersendiri). **Reset WiFi**: reset WiFi SSID config. **Reset Factory**: factory reset ONU. **Delete**: deregister ONU dari OLT.\n\n**Replace ONU (Swap SN/MAC)**: Ganti perangkat ONU rusak dengan SN/MAC baru tanpa konfigurasi ulang. Sistem akan: backup config lama → delete ONU lama → register ONU baru → re-apply config. Vendor harus sama (ZTE→ZTE, FiberHome→FiberHome).',
       },
       {
         title: 'Jalur FTTH (Trace Kabel ke Pelanggan)',
@@ -112,7 +111,7 @@ export const guides: Guide[] = [
       },
     ],
     tips: [
-      'EPON ONUs memiliki keterbatasan CLI — beberapa section mungkin tidak tersedia',
+      'EPON ONUs memiliki keterbatasan CLI — Remote Access, VEIP, TR069, dan Ethernet section mungkin tidak tersedia',
       'WiFi config untuk EPON diambil dari DB (tidak dari OLT running-config)',
       'Save Config untuk menyimpan perubahan ke startup-config OLT',
       'Kalau ONU belum di-assign ke ODP manapun, kartu Jalur FTTH akan bilang begitu — assign lewat halaman FTTH Infrastructure',
@@ -123,24 +122,28 @@ export const guides: Guide[] = [
     category: 'ONU Management',
     page: '/dashboard/onus/provision',
     title: 'Panduan Provision ONU',
-    description: 'Provision ONU baru dengan wizard interaktif',
+    description: 'Provision ONU dengan konfigurasi VLAN/WAN bebas (tanpa template tetap)',
     steps: [
       {
-        title: 'Pilih OLT & PON Port',
-        content: 'Pilih OLT dari dropdown, lalu pilih PON port (frame/slot/port) tempat ONU terhubung.\n\nSistem akan scan ONU yang belum terdaftar (uncfg) di PON port tersebut.',
+        title: 'Pilih OLT',
+        content: 'Pilih OLT dari dropdown dan mode registrasi (**CLI** atau **SNMP**). Sistem akan scan seluruh ONU yang belum terdaftar (uncfg) di OLT tersebut — belum ada pemilihan PON port spesifik di step ini, scan langsung jalan untuk semua PON port OLT.',
       },
       {
-        title: 'Pilih ONU & Template',
-        content: 'Pilih ONU dari daftar uncfg. Lalu pilih template konfigurasi (ZTE Single/Dual/Multi, Huawei Full, Fiberhome VEIP).\n\nTemplate menentukan VLAN, WAN mode, WiFi config, dan TR069 settings.',
+        title: 'Pilih ONU',
+        content: 'Pilih ONU dari daftar hasil scan. Untuk mode **Pre-config ONT** (`/dashboard/onus/pre-config`), step ini diganti input **Serial Number manual** — dipakai kalau mau skip proses scan OLT, bukan untuk provision ulang ONU yang sudah terdaftar.',
       },
       {
-        title: 'WiFi & Review',
-        content: 'Konfigurasi WiFi SSID: nama, auth type (Open/WPA/WPA2/Mixed), password, VLAN.\n\nReview semua config sebelum provision. Script CLI preview tersedia untuk verifikasi command yang akan dikirim ke OLT.\n\nDi step Review, tiap ONU punya dropdown **"— ODP (optional) —"** untuk langsung assign ONU tersebut ke port ODP pelanggan saat provisioning — tidak wajib diisi, bisa juga di-assign belakangan lewat menu Assign ODP di FTTH Infrastructure.',
+        title: 'VLAN & WAN (bebas, bukan template)',
+        content: 'Berbeda dari Register Wizard, wizard ini **tidak punya konsep Template**. Anda menambahkan sendiri satu-per-satu entry VLAN/WAN yang dibutuhkan: mode (Bridge / DHCP / PPPoE / PPPoE-NAT), tag/untag/Q-in-Q, dan VLAN ID — bisa lebih dari satu service sesuai kebutuhan.',
+      },
+      {
+        title: 'WiFi, TR069 & Review',
+        content: 'Konfigurasi WiFi SSID: nama, auth type (Open/WPA/WPA2/Mixed), password, VLAN, plus TR069 profile kalau perlu remote management.\n\nReview semua config sebelum provision. Script CLI preview tersedia untuk verifikasi command yang akan dikirim ke OLT.\n\nDi step Review, tiap ONU punya dropdown **"— ODP (optional) —"** untuk langsung assign ONU tersebut ke port ODP pelanggan saat provisioning — tidak wajib diisi, bisa juga di-assign belakangan lewat menu Assign ODP di FTTH Infrastructure.',
       },
     ],
     tips: [
-      'Pre-config mode: provision ONU yang sudah terdaftar tanpa re-register',
-      'Register Wizard: wizard lengkap dengan template selection',
+      'Pakai wizard ini kalau kebutuhan VLAN/WAN tidak cocok dengan template baku manapun — kalau cocok, Register Wizard (dengan Template) biasanya lebih cepat',
+      'Pre-config ONT: masukkan Serial Number manual untuk skip scan OLT, bukan untuk provision ulang ONU yang sudah terdaftar',
       'Pastikan ONU sudah online (uncfg) sebelum provision',
       'Assign ODP port saat provisioning bersifat opsional — dropdown hanya menampilkan port yang masih available',
     ],
@@ -150,19 +153,19 @@ export const guides: Guide[] = [
     category: 'ONU Management',
     page: '/dashboard/onus/register',
     title: 'Panduan Register Wizard',
-    description: 'Register ONU baru ke OLT dengan wizard multi-step',
+    description: 'Register ONU baru ke OLT dengan template konfigurasi siap pakai',
     steps: [
       {
         title: 'Select OLT',
-        content: 'Pilih OLT target dari dropdown. Hanya OLT dengan CLI enabled (SSH/Telnet) yang tersedia.\n\nSistem akan cek koneksi CLI ke OLT sebelum lanjut.',
+        content: 'Pilih OLT target dari dropdown dan mode registrasi (CLI/SNMP).\n\nSistem akan cek koneksi CLI ke OLT sebelum lanjut.',
       },
       {
         title: 'Scan ONUs',
         content: 'Sistem scan ONU uncfg di semua PON port OLT yang dipilih.\n\nPilih ONU yang ingin di-register dari daftar.',
       },
       {
-        title: 'Configure',
-        content: 'Pilih template (ZTE Single/Dual/Multi, Huawei Full, Fiberhome VEIP). Konfigurasi WiFi SSID, VLAN, WAN mode, TR069.\n\nFiberhome VEIP template menggunakan TR069 Profile dropdown untuk ACS config.',
+        title: 'Configure — 7 Service Template',
+        content: 'Pilih salah satu dari 7 template: **Bridge** (transparent bridge mode), **PPPoE** (PPPoE dial-up internet), **ZTE Single** (single SSID + VLAN), **ZTE Dual Band** (dual SSID, dual VLAN, TR069), **ZTE Multi-Service** (1-4 service termasuk IPTV, TR069), **Huawei Full** (multi VLAN, WAN DHCP), **Fiberhome VEIP** (TR069 + Internet + VoIP).\n\nDropdown **TR069 Profile** tersedia bukan cuma untuk Fiberhome VEIP — ZTE Single, ZTE Dual Band, dan ZTE Multi-Service juga punya opsi TR069 yang otomatis mengisi ACS URL/credentials/VLAN dari profile yang dipilih.',
       },
       {
         title: 'Review & Register',
@@ -171,6 +174,31 @@ export const guides: Guide[] = [
     ],
     tips: [
       'Assign ODP port saat registrasi bersifat opsional — dropdown hanya menampilkan port yang masih available',
+      'Kalau kebutuhan VLAN/WAN tidak cocok dengan 7 template ini, pakai Provision Wizard yang konfigurasinya bebas',
+    ],
+  },
+  {
+    id: 'unconfigured-onus',
+    category: 'ONU Management',
+    page: '/dashboard/onus/unconfigured',
+    title: 'Panduan Unconfigured ONUs',
+    description: 'Scan dan lihat ONU yang terdeteksi tapi belum terdaftar di sistem',
+    steps: [
+      {
+        title: 'Scan',
+        content: 'Scan semua OLT sekaligus, atau pilih satu OLT tertentu. Ada toggle mode scan **CLI** atau **SNMP** — pilih sesuai OLT yang reachable lewat CLI atau tidak.',
+      },
+      {
+        title: 'Hasil Scan',
+        content: 'ONU yang ditemukan dikelompokkan per OLT, menampilkan serial number, model, tipe yang cocok (matched type), dan PON port-nya. Ada tombol copy untuk serial number.',
+      },
+      {
+        title: 'Register / Pre-Register',
+        content: 'Klik **Register** untuk lanjut ke Register Wizard dengan OLT dan ONU sudah terisi otomatis. Klik **Pre-Register** untuk lanjut ke mode Pre-config ONT (Provision Wizard) dengan serial number sudah terisi.',
+      },
+    ],
+    tips: [
+      'Gunakan halaman ini sebagai titik awal saat mau tahu ONU baru apa saja yang siap di-provision, tanpa perlu ingat OLT dan PON port-nya satu-satu',
     ],
   },
   {
@@ -178,25 +206,30 @@ export const guides: Guide[] = [
     category: 'Infrastructure',
     page: '/dashboard/settings/olts',
     title: 'Panduan OLT Settings',
-    description: 'Kelola OLT: tambah, edit, hapus, sync',
+    description: 'Kelola OLT: tambah, edit, hapus, sync, backup, migrasi',
     steps: [
       {
         title: 'Tambah OLT',
-        content: 'Klik **Add OLT** untuk menambah OLT baru. Isi: name, IP address, vendor (ZTE/Huawei/Fiberhome), SNMP community, CLI credentials (SSH/Telnet).\n\nTest koneksi SNMP dan CLI sebelum save.',
+        content: 'Klik **Add OLT** untuk menambah OLT baru. Isi: name, IP address, model (saat ini hanya ZTE — C320/C300/C300-M/C600/C650), SNMP community, CLI credentials (SSH/Telnet).\n\nTest koneksi SNMP dan CLI sebelum save.',
       },
       {
-        title: 'Edit & Delete OLT',
-        content: 'Klik **Edit** pada kartu OLT untuk ubah konfigurasi. Klik **Delete** untuk hapus OLT (ONU terkait juga akan dihapus).\n\n**Config** untuk ke halaman OLT Configuration (uplinks, PON cards, VLANs, dll).',
+        title: 'Edit, Sync & Config',
+        content: 'Klik **Edit** pada kartu OLT untuk ubah konfigurasi. Klik **Sync** untuk collect data ONU via SNMP/CLI (progress real-time). Klik **Config** untuk ke halaman OLT Configuration (uplinks, PON cards, VLANs, dll). Klik **Delete** untuk hapus OLT (ONU terkait juga akan dihapus).\n\nSync All di bagian atas halaman untuk sync semua OLT sekaligus.',
       },
       {
-        title: 'Sync OLT',
-        content: 'Klik **Sync** pada kartu OLT untuk collect data ONU via SNMP/CLI. Progress ditampilkan real-time.\n\nSync All untuk sync semua OLT sekaligus.',
+        title: 'Backup & Config Tools',
+        content: '**Save Config**: tulis running-config ke startup-config OLT (permanen). **Export**: download file backup-config OLT. **Backup**: lihat riwayat backup config yang tersimpan.\n\n**Discover**: auto-discover PON slot yang terpasang di OLT.',
+      },
+      {
+        title: 'Migrasi ONU',
+        content: '**Migrate PON**: pindahkan ONU antar PON port dalam satu OLT yang sama.\n\n**Cross-OLT Migrate**: pindahkan ONU (beserta config-nya) ke OLT yang berbeda — berguna saat mengganti/mengganti unit OLT.',
       },
     ],
     tips: [
       'SNMP community default: public (read-only). Set write community untuk config via SNMP.',
       'CLI credentials (SSH/Telnet) diperlukan untuk ONU provisioning dan live detail',
       'Pastikan OLT reachable dari server NMS (cek firewall)',
+      'Model OLT saat ini terbatas ZTE saja — belum ada pilihan vendor lain di form Add/Edit OLT',
     ],
   },
   {
@@ -204,11 +237,15 @@ export const guides: Guide[] = [
     category: 'Infrastructure',
     page: '/dashboard/settings/olts/:oltId/config',
     title: 'Panduan OLT Configuration',
-    description: 'Konfigurasi OLT: uplinks, PON cards, VLANs, profiles',
+    description: 'Konfigurasi OLT: uplinks, PON cards, VLAN, ONU types, WAN-IP, speed profile, system',
     steps: [
       {
+        title: 'Ringkasan & Port Map',
+        content: 'Di atas tab-tab konfigurasi, ada baris statistik (Uplink/GPON/EPON/Fan/Total/Online/LOS/DyingGasp/Offline) dan diagram rack (Port Map) yang menampilkan posisi fisik slot/port OLT.',
+      },
+      {
         title: 'Uplinks Tab',
-        content: 'Lihat dan konfigurasi port uplink OLT. Menampilkan: port, status, speed, VLAN, traffic stats.\n\nKlik port untuk edit VLAN membership dan mode (access/trunk/hybrid).',
+        content: 'Lihat dan konfigurasi port uplink OLT: status, speed, VLAN, traffic stats, data optical module/SFP (suhu, voltage, TX/RX power, bias), error counter (CRC/dropped).\n\nKlik port untuk buka Port Config (speed, duplex, negotiation, flow control, admin enable/disable), edit VLAN membership/mode (access/trunk/hybrid), atau atur IP Network (assign IP ke VLAN interface).',
       },
       {
         title: 'PON Cards Tab',
@@ -216,11 +253,19 @@ export const guides: Guide[] = [
       },
       {
         title: 'VLANs Tab',
-        content: 'Kelola VLAN di OLT: tambah, edit, hapus VLAN. Set VLAN name dan description.\n\nVLAN digunakan untuk service-port ONU (internet, IPTV, VoIP).',
+        content: 'Kelola VLAN di OLT: tambah, rename, hapus VLAN (ID + Name saja — belum ada field description tersendiri untuk VLAN).\n\nVLAN digunakan untuk service-port ONU (internet, IPTV, VoIP).',
       },
       {
-        title: 'Speed Profiles & System',
-        content: '**Speed Profiles**: TCONT dan traffic profiles untuk bandwidth limit.\n\n**System**: OLT system config (hostname, timezone, NTP, SNMP).',
+        title: 'ONU Types & WAN-IP Profiles Tab',
+        content: '**ONU Types**: kelola profil tipe/kapabilitas ONU yang dikenali OLT.\n\n**WAN-IP Profiles**: kelola profil IP statis untuk WAN ONU.',
+      },
+      {
+        title: 'Speed Profiles Tab',
+        content: '**TCONT/Traffic profiles**: bandwidth limit untuk ONU GPON.\n\n**EPON SLA Profiles**: profil CIR/PIR upstream-downstream khusus untuk ONU EPON — bagian terpisah dari profile GPON di atas.',
+      },
+      {
+        title: 'System Tab',
+        content: 'Menampilkan Device info, Chassis info, Connection Status, Fan Status, dan Card Slots — bukan pengaturan hostname/timezone/NTP.\n\nDi sini juga ada pengelolaan **SNMP community** dan **CLI user** langsung di sisi OLT (tambah/hapus).',
       },
     ],
   },
@@ -233,15 +278,11 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Pilih OLT & Port Type',
-        content: 'Pilih OLT dari dropdown, lalu pilih port type: **Uplink** (port uplink OLT) atau **PON** (port PON GPON).\n\nPilih periode: **Live** (real-time, update 5 detik), **1H/6H/1D/3D/7D/30D** (historical dari database).',
+        content: 'Pilih OLT dari dropdown, lalu pilih port type: **Uplink** (port uplink OLT) atau **PON** (port PON GPON).\n\nPilih periode: **Live** (grid utama refresh tiap 10 detik), atau historical **1H/6H/1D/3D/7D/30D** dari database. Ada juga search box untuk cari interface tertentu di grid port.',
       },
       {
         title: 'Traffic Chart',
-        content: 'Grafik menampilkan download (inbound) dan upload (outbound) bandwidth dalam Kbps/Mbps.\n\nLive mode: auto-update setiap 5 detik. Historical: data dari traffic poller (5 menit interval).',
-      },
-      {
-        title: 'Port Selection',
-        content: 'Pilih port spesifik dari dropdown untuk melihat traffic per port.\n\nUplink ports: ge1-4, xge1-2. PON ports: gpon-olt_0/1/1, dll.',
+        content: 'Port ditampilkan sebagai grid kartu yang bisa diklik (bukan dropdown) — klik satu kartu untuk buka detail traffic port tersebut. Grafik menampilkan download (inbound) dan upload (outbound) bandwidth dalam **Mbps/Gbps**.\n\nDi dalam modal detail per-port, ada mode Live tersendiri yang update tiap 5 detik. Historical: data dari traffic poller (interval 5 menit).',
       },
     ],
     tips: [
@@ -259,7 +300,7 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Overview Tab',
-        content: 'Dashboard FTTH menampilkan summary: total OLT, PON ports, ODP, ONU per area.\n\nKlik area untuk drill-down ke detail infrastruktur.',
+        content: 'Menampilkan kartu ringkasan OTB/ODF, ODC, ODP, dan ODP-Port terpakai — bukan hitungan "total OLT" atau "total PON port" tersendiri. Di bawahnya ada breakdown **Per OLT** dan **Per PON Port**.\n\nKlik baris di breakdown untuk pindah ke tab Tree (belum otomatis memfilter ke OLT/PON port yang diklik, sekadar shortcut pindah tab).',
       },
       {
         title: 'Tree Tab',
@@ -267,11 +308,11 @@ export const guides: Guide[] = [
       },
       {
         title: 'PON Ports Tab',
-        content: 'Lihat semua PON port di semua OLT. Menampilkan: OLT, slot/port, ONU count, capacity, utilization.\n\nKlik PON port untuk lihat ONU terkait dan ODP yang terhubung.\n\nSaat **Add PON Port**: pilih dulu **OLT**-nya (dari OLT yang sudah terdaftar) — muncul dropdown **PON Port (dari OLT nyata)** berisi port asli hasil sync OLT tersebut (bukan ketik manual), lengkap dengan jumlah ONU di tiap port. Pilih salah satu untuk isi otomatis PON Name/Frame/Slot/Port. Kalau OLT-nya belum terdaftar atau belum pernah sync, tetap bisa isi manual seperti biasa.',
+        content: 'Lihat semua PON port di semua OLT sebagai kartu: OLT, slot/port, ONU count, capacity, utilization. Kartu ini belum bisa diklik untuk buka detail ONU/ODP terkait — untuk itu, cek tab PON Cards di halaman OLT Configuration.\n\nSaat **Add PON Port**: pilih dulu **OLT**-nya (dari OLT yang sudah terdaftar) — muncul dropdown **PON Port (dari OLT nyata)** berisi port asli hasil sync OLT tersebut (bukan ketik manual), lengkap dengan jumlah ONU di tiap port. Pilih salah satu untuk isi otomatis PON Name/Frame/Slot/Port. Kalau OLT-nya belum terdaftar atau belum pernah sync, tetap bisa isi manual seperti biasa.',
       },
       {
         title: 'OTB/ODF, ODC, ODP Tabs',
-        content: '**OTB/ODF**: Optical Terminal Box / Optical Distribution Frame — titik koneksi fiber dari OLT.\n\n**ODC**: Optical Distribution Cabinet — distribusi fiber ke area.\n\n**ODP**: Optical Distribution Point — distribusi fiber ke rumah pelanggan.\n\nKelola (tambah/edit/hapus) dan lihat port utilization. Warna tube/core (standar TIA-598) ditampilkan sampai level ODC (core dari OTB) — di level ODP warna tube/core tidak lagi relevan sehingga tidak ditampilkan.\n\nSaat tambah/edit OTB, ODC, atau ODP, ada toggle **"Fed From"**: pilih apakah node ini disambung langsung (OTB dari PON, ODC dari OTB, ODP dari ODC), atau lewat titik sambungan **JC** (lihat langkah berikutnya).',
+        content: '**OTB/ODF**: Optical Terminal Box / Optical Distribution Frame — titik koneksi fiber dari OLT.\n\n**ODC**: Optical Distribution Cabinet — distribusi fiber ke area.\n\n**ODP**: Optical Distribution Point — distribusi fiber ke rumah pelanggan.\n\nKelola (tambah/edit/hapus) dan lihat port utilization. Warna tube/core (standar TIA-598) ditampilkan sampai level ODC secara langsung; di level ODP warna ini hanya muncul kalau ODP tersebut di-feed lewat JC (feed langsung dari ODC tidak menampilkan warna tube/core lagi karena sudah dianggap satu core utuh).\n\nSaat tambah/edit OTB, ODC, atau ODP, ada toggle **"Fed From"**: pilih apakah node ini disambung langsung (OTB dari PON, ODC dari OTB, ODP dari ODC), atau lewat titik sambungan **JC** (lihat langkah berikutnya).',
       },
       {
         title: 'JC (Joint Closure / Titik Sambungan) Tab',
@@ -289,6 +330,10 @@ export const guides: Guide[] = [
         title: 'Dampak Downstream (Trace Kabel Putus)',
         content: 'Di Tree view, tiap baris OTB/JC/ODC/ODP punya ikon **orang (Users)** — klik untuk lihat berapa pelanggan yang terdampak kalau titik itu putus/bermasalah, lengkap dengan daftar nama dan status online/offline mereka.\n\nBerguna untuk prioritas perbaikan: kalau kabel utama (OTB atau JC awal) putus, langsung kelihatan berapa banyak pelanggan yang kena dibanding kalau cuma satu ODC/ODP yang bermasalah.\n\nUntuk trace jalur satu pelanggan spesifik (bukan sebaliknya), buka halaman **View ONU** pelanggan tersebut — ada kartu **Jalur FTTH** yang menampilkan rute lengkap dari OLT sampai ke pelanggan itu.',
       },
+      {
+        title: 'Export & Import',
+        content: 'Tombol **Export/Import CSV** di header halaman untuk backup atau migrasi data infrastruktur FTTH secara massal.',
+      },
     ],
     tips: [
       'JC bersifat opsional — kalau jalur fiber memang langsung tanpa titik sambungan, tidak perlu dibuat JC sama sekali, cukup OTB → ODC → ODP seperti biasa',
@@ -303,15 +348,11 @@ export const guides: Guide[] = [
     category: 'System',
     page: '/dashboard/customization',
     title: 'Panduan Customization',
-    description: 'Kustomisasi tampilan: kolom, filter, RX colors',
+    description: 'Kustomisasi tampilan: kolom, filter, RX colors, timezone',
     steps: [
       {
-        title: 'Desktop Columns',
-        content: 'Atur visibilitas dan urutan kolom di tabel All ONUs untuk tampilan desktop.\n\nDrag-and-drop untuk reorder. Toggle checkbox untuk show/hide kolom.',
-      },
-      {
-        title: 'Mobile Columns',
-        content: 'Atur kolom yang tampil di tampilan mobile (layar kecil).\n\nPilih maksimal 5 kolom untuk tampilan optimal.',
+        title: 'Desktop & Mobile',
+        content: 'Tab **Desktop**: atur visibilitas dan urutan kolom di tabel All ONUs untuk tampilan desktop (drag-and-drop untuk reorder, toggle checkbox untuk show/hide).\n\nTab **Mobile**: atur kolom yang tampil di tampilan mobile (layar kecil) — tidak ada batas jumlah kolom yang dipaksakan sistem, tapi disarankan dipilih secukupnya saja untuk tampilan optimal.',
       },
       {
         title: 'Signal Filter',
@@ -319,7 +360,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'RX Colors',
-        content: 'Konfigurasi color range untuk RX power display.\n\nSet range (min-max dBm) dan warna untuk setiap range. Preview tersedia untuk verifikasi.',
+        content: 'Konfigurasi color range untuk RX power display.\n\nSet range (min-max dBm), label, dan warna untuk setiap range. Preview tersedia untuk verifikasi.',
       },
       {
         title: 'Timezone',
@@ -336,16 +377,16 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Template List',
-        content: 'Lihat semua template konfigurasi ONU. Template menentukan VLAN, WAN mode, WiFi, TR069 settings.\n\nKlik **Add Template** untuk buat template baru. Klik template untuk edit.',
+        content: 'Lihat semua template konfigurasi ONU — 7 template bawaan (built-in) ditambah template kustom yang tersimpan di database.\n\nTemplate **bawaan** (Bridge, PPPoE, ZTE Single, ZTE Dual Band, ZTE Multi-Service, Huawei Full, Fiberhome VEIP) bersifat read-only — klik untuk lihat detail konfigurasinya saja, tidak bisa diedit dari sini.\n\nTemplate **kustom** (dibuat sendiri lewat **Add Template**, tersimpan di database) punya ikon pensil untuk Edit.',
       },
       {
         title: 'Template Types',
-        content: '**ZTE Single**: single WAN service (internet only).\n\n**ZTE Dual**: dual WAN service (internet + IPTV/VoIP).\n\n**ZTE Multi**: multi WAN service (up to 4 services).\n\n**Huawei Full**: template untuk Huawei ONU.\n\n**Fiberhome VEIP**: template dengan TR069 profile untuk Fiberhome ONU.',
+        content: '**Bridge**: transparent bridge mode.\n\n**PPPoE**: PPPoE dial-up internet.\n\n**ZTE Single**: single SSID + VLAN.\n\n**ZTE Dual Band**: dual SSID (2.4GHz + 5GHz), dual VLAN, TR069.\n\n**ZTE Multi-Service**: 1-4 service sekaligus, termasuk IPTV, TR069.\n\n**Huawei Full**: multi VLAN, WAN DHCP, untuk Huawei ONU.\n\n**Fiberhome VEIP**: TR069 + Internet + VoIP, untuk Fiberhome ONU.',
       },
     ],
     tips: [
-      'Template digunakan oleh Register Wizard dan Provision Wizard',
-      'Perubahan template tidak mempengaruhi ONU yang sudah ter-provision',
+      'Template digunakan oleh Register Wizard (dan bisa jadi acuan konfigurasi manual di Provision Wizard)',
+      'Perubahan template kustom tidak mempengaruhi ONU yang sudah ter-provision',
       'TR069 Profile dikelola terpisah di TR069 Profile page',
     ],
   },
@@ -358,11 +399,15 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Profile List',
-        content: 'Lihat semua TR069 profile. Setiap profile berisi: ACS URL, username, password, periodic inform interval, connection request URL.\n\nKlik **Add Profile** untuk buat profile baru.',
+        content: 'Lihat semua TR069 profile. Setiap profile berisi: ACS URL, username, password, VLAN, dan mode VLAN (Tag/Untag).\n\nKlik **Add Profile** untuk buat profile baru (perlu permission `manage_tr069`).',
+      },
+      {
+        title: 'Default OLT (auto-apply)',
+        content: 'Profile bisa ditandai sebagai **Default OLT** — kalau diisi, profile ini otomatis dipakai setiap kali registrasi ONT baru di OLT tersebut, tanpa perlu pilih manual satu-satu.',
       },
       {
         title: 'Usage',
-        content: 'TR069 profile digunakan oleh template Fiberhome VEIP dan Register/Provision Wizard.\n\nProfile dipilih dari dropdown saat konfigurasi ONU dengan TR069 support.',
+        content: 'TR069 profile dipakai oleh 4 template: ZTE Single, ZTE Dual Band, ZTE Multi-Service, dan Fiberhome VEIP — dipilih dari dropdown saat konfigurasi ONU di Register/Provision Wizard.',
       },
     ],
   },
@@ -371,20 +416,44 @@ export const guides: Guide[] = [
     category: 'System',
     page: '/dashboard/users',
     title: 'Panduan User Management',
-    description: 'Kelola user dan permission',
+    description: 'Kelola user dan role dengan permission granular',
     steps: [
       {
         title: 'User List',
-        content: 'Lihat semua user: admin, technician, viewer. Menampilkan: username, role, status, last login.\n\nKlik **Add User** untuk tambah user baru. Klik user untuk edit.',
+        content: 'Lihat semua user beserta role-nya, status, dan last login.\n\nKlik **Add User** untuk tambah user baru. Klik user untuk edit atau ganti role-nya.',
       },
       {
-        title: 'Roles & Permissions',
-        content: '**Admin**: akses penuh ke semua fitur.\n\n**Technician**: akses terbatas (view ONU, edit name/description, provision ONU).\n\n**Viewer**: read-only access.\n\nPermission per feature bisa diatur per user.',
+        title: 'Roles — permission granular, bukan tier tetap',
+        content: 'Buka tab **Roles** untuk kelola role. Role di sistem ini **bukan** tiga tingkat tetap "Admin/Technician/Viewer" — tiap role adalah kumpulan permission granular yang bisa dikustomisasi sendiri (17 permission tersedia: akses semua OLT, tambah/konfigurasi/hapus/reboot/reset/clear-config/disable ONU, edit name/description ONU, settings OLT, kelola template, kelola user, kelola TR069, customization, view dashboard, view ONU, terima alert).\n\nRole bawaan sistem: **Full Access** (semua permission), **Viewer** (view-only), **Limited**, dan **Technician** (akses lapangan). Admin bisa membuat role kustom baru dengan kombinasi permission apapun lewat tab Roles.',
       },
     ],
     tips: [
-      'Super admin tidak bisa dihapus atau diubah role-nya',
       'Technician bisa di-assign ke ONU spesifik via kolom Technician di All ONUs',
+      'Berhati-hati memberi permission "Kelola User" ke role kustom — user dengan permission ini bisa mengubah role atau menghapus akun manapun termasuk akun super admin, sistem saat ini tidak mengecualikan akun super admin dari itu',
+    ],
+  },
+  {
+    id: 'my-profile',
+    category: 'System',
+    page: '/dashboard/profile',
+    title: 'Panduan My Profile',
+    description: 'Ubah profil, password, dan (khusus super admin) branding sistem',
+    steps: [
+      {
+        title: 'Profil & Password',
+        content: 'Ubah nama lengkap, atau ganti password (perlu konfirmasi password baru). Kalau muncul banner paksa ganti password (biasanya untuk akun admin bawaan yang baru pertama kali dipakai), password harus diganti dulu sebelum lanjut pakai sistem.',
+      },
+      {
+        title: 'Branding (Super Admin)',
+        content: 'Khusus akun super admin: bisa ubah **Sidebar/Brand Name** dan upload logo perusahaan (PNG/JPG/WEBP/GIF, maksimal 2MB) — dipakai di halaman login, sidebar, dan topbar.',
+      },
+      {
+        title: 'Permission (Read-only)',
+        content: 'Halaman ini juga menampilkan daftar permission yang dimiliki akun Anda saat ini — read-only, untuk referensi kalau ada fitur yang tidak muncul/tidak bisa diakses.',
+      },
+    ],
+    tips: [
+      'Halaman ini hanya bisa diakses lewat menu avatar user di topbar — belum ada link-nya di sidebar',
     ],
   },
   {
@@ -396,20 +465,25 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Alert Rules',
-        content: 'Set threshold untuk alert: ONU offline, LOS, dyinggasp. OLT offline, CPU/memory/temperature tinggi.\n\nEnable/disable alert per kategori.',
+        content: 'Set threshold untuk alert: ONU offline, LOS, dyinggasp, RX power rendah/berubah, ONU unconfigured. OLT offline, CPU/memory/temperature tinggi.\n\nEnable/disable alert per kategori, dan pilih channel notifikasi per rule.',
       },
       {
-        title: 'Notification Channels',
-        content: 'Pilih channel notifikasi: **In-app** (bell icon di topbar), **WhatsApp** (via WhatsApp Gateway).\n\nSet cooldown period untuk mencegah spam notifikasi.',
+        title: 'Notification Channels — 4 tab',
+        content: 'Ada 4 channel notifikasi, masing-masing tab sendiri: **In-App** (bell icon di topbar), **Telegram Bot**, **WhatsApp** (gateway pihak ketiga), dan **WA Native** (gateway WhatsApp self-hosted, khusus super admin).\n\nCooldown/dedup antar notifikasi sudah diatur otomatis oleh sistem (tidak ada input manual untuk itu di halaman ini) — bervariasi 1-6 jam tergantung jenis alert.',
       },
       {
         title: 'Debounce & Auto-Resolve',
-        content: '**Debounce**: alert ONU offline/dyinggasp/los butuh 2 deteksi konsekutif dalam 120 detik sebelum fire. Mencegah false alert dari status flap.\n\n**Auto-Resolve**: ONU kembali online → alert lama otomatis di-resolve. OLT health normal → alert auto-resolved.',
+        content: '**Debounce**: alert ONU offline/dyinggasp/los baru fire setelah kondisi tersebut bertahan kurang lebih 120 detik sejak pertama kali terdeteksi (berapa kali "cek" yang dilewati tergantung interval cron yang dikonfigurasi di tab Cron Job). Mencegah false alert dari status flap sesaat.\n\n**Auto-Resolve**: ONU kembali online → alert lama otomatis di-resolve. OLT health normal → alert auto-resolved.',
+      },
+      {
+        title: 'Cron Job (Super Admin)',
+        content: 'Tab khusus super admin untuk atur interval pengecekan alert (10-3600 detik, ada shortcut 30/60/120/300/600s), timezone sistem, dan tombol **Re-check Now** untuk trigger pengecekan manual di luar jadwal.',
       },
     ],
     tips: [
       'Read notifications > 7 hari auto-delete saat alert check cycle',
       'Bell badge count hanya include active (non-resolved) unread notifications',
+      'Tab WA Native dan Cron Job hanya terlihat untuk akun super admin',
     ],
   },
   {
@@ -421,11 +495,7 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Alert Log',
-        content: 'Lihat riwayat alert: timestamp, type, severity, ONU/OLT, message, status (active/resolved).\n\nFilter by date range, severity, type, OLT.',
-      },
-      {
-        title: 'Export',
-        content: 'Export alert history ke CSV untuk reporting.\n\nFilter dulu sebelum export untuk export hanya data yang relevan.',
+        content: 'Lihat riwayat alert dengan kolom: Tipe, OLT, ONU, Value, dan Waktu.\n\nFilter tersedia berdasarkan **tipe alert** saja (tombol pilihan tipe + "Semua") — belum ada filter date range, severity, atau OLT terpisah di halaman ini.',
       },
     ],
   },
@@ -438,12 +508,51 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Log Entries',
-        content: 'Lihat semua aksi user: login, logout, ONU provision, config change, delete, sync, dll.\n\nMenampilkan: timestamp, user, action type, target, detail.\n\nFilter by user, action type, date range.',
+        content: 'Lihat semua aksi user: login, logout, ONU provision, config change, delete, sync, dll.\n\nMenampilkan: timestamp, user, category, action, target, detail, dan IP address.\n\nFilter tersedia lewat search box (bebas ketik, cari di action/target/detail) dan dropdown **category** (auth/olt/onu/user/role/general) — belum ada filter per user atau date range di UI.',
+      },
+    ],
+  },
+  {
+    id: 'olt-logs',
+    category: 'Activity',
+    page: '/dashboard/olt-logs',
+    title: 'Panduan OLT Logs',
+    description: 'Riwayat status, alarm, dan command log dari OLT',
+    steps: [
+      {
+        title: '5 Tab Log',
+        content: '**ONU Status History**: setiap perubahan status ONU (online/offline/dll) lengkap dengan RX power, alasan, dan sumber datanya — bisa difilter by status.\n\n**Alarm Log**, **Command Log**, **SNMP Log**, **NMS Sync Log**: masing-masing punya tab sendiri untuk troubleshooting di levelnya masing-masing.',
       },
       {
-        title: 'Export',
-        content: 'Export activity log ke CSV untuk audit trail.\n\nGunakan filter untuk export hanya data yang relevan.',
+        title: 'Pilih OLT & Jumlah Baris',
+        content: 'Tiap tab punya selector OLT dan selector jumlah baris yang ditampilkan (100/200/500/1000), plus tombol refresh manual.',
       },
+    ],
+    tips: [
+      'Gunakan Command Log kalau perlu lihat persis command CLI apa yang dikirim sistem ke OLT — berguna saat troubleshooting provisioning yang gagal',
+    ],
+  },
+  {
+    id: 'system-update',
+    category: 'System',
+    page: '/dashboard/settings/update',
+    title: 'Panduan System Update',
+    description: 'Update aplikasi dari GitHub — khusus super admin',
+    steps: [
+      {
+        title: 'Check Now',
+        content: 'Bandingkan versi lokal dengan versi terbaru di GitHub, menampilkan daftar commit yang belum masuk kalau ada update.',
+      },
+      {
+        title: 'Apply Update',
+        content: 'Jalankan `git pull` + build ulang frontend + restart service secara otomatis. Aplikasi akan sempat tidak bisa diakses beberapa detik selama restart.',
+      },
+    ],
+    prerequisites: [
+      'Hanya bisa diakses oleh akun dengan permission manage_users (super admin)',
+    ],
+    tips: [
+      'Pastikan tidak ada proses provisioning/sync yang sedang berjalan sebelum Apply Update, karena service akan restart',
     ],
   },
   {
@@ -451,20 +560,24 @@ export const guides: Guide[] = [
     category: 'System',
     page: '/dashboard/settings/cloudflare',
     title: 'Panduan Cloudflare Tunnel',
-    description: 'Kelola Cloudflare Tunnel untuk akses remote',
+    description: 'Setup Cloudflare Tunnel supaya NMS bisa diakses dari internet tanpa IP publik',
     steps: [
       {
-        title: 'Tunnel Config',
-        content: 'Lihat status Cloudflare Tunnel: tunnel ID, hostname, ingress rules.\n\nTambah/hapus hostname untuk subdomain tenant (SaaS mode).',
+        title: 'Install cloudflared',
+        content: 'Klik tombol **Install** untuk pasang aplikasi `cloudflared` di server (download & install paket .deb secara otomatis) — sekali saja per server.',
       },
       {
-        title: 'DNS Management',
-        content: 'Sistem otomatis membuat CNAME record di Cloudflare DNS saat tenant baru terdaftar.\n\nIngress rule otomatis ditambahkan untuk route subdomain ke Flask app.',
+        title: 'Configure Tunnel',
+        content: 'Buat tunnel dulu di dashboard Cloudflare Zero Trust (Networks → Tunnels → Create Tunnel), lalu salin **tunnel token**-nya ke sini bersama domain dan nama tunnel yang diinginkan. Sistem akan menyimpan config ini dan menyiapkan service tunnel-nya.',
+      },
+      {
+        title: 'Start / Stop / View Logs',
+        content: 'Setelah dikonfigurasi, kelola tunnel-nya langsung dari halaman ini: **Start** untuk mengaktifkan koneksi ke Cloudflare, **Stop** untuk memutus, dan **View Logs** untuk lihat status koneksi/troubleshooting.',
       },
     ],
     prerequisites: [
-      'Cloudflare API Token diperlukan (set di environment variable)',
-      'Cloudflare Tunnel harus sudah ter-install di server',
+      'Akun Cloudflare dengan domain yang sudah terdaftar',
+      'Tunnel token dari dashboard Cloudflare Zero Trust (bukan API Token) — dibuat manual di sisi Cloudflare, lalu ditempel ke form Configure Tunnel',
     ],
   },
 ];
