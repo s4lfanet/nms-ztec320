@@ -4,6 +4,28 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-17 — Redesign Frontend: Depth Visual, Stat Card, Ikon FontAwesome, Animasi Login
+
+#### Latar Belakang
+- Tampilan lama flat: background solid polos, card tanpa depth (cuma border tipis), stat card cuma kotak berwarna datar, ikon seluruhnya lucide-react, dan halaman login langsung lompat ke dashboard tanpa transisi apa pun setelah submit. Diminta redesign visual — bukan perubahan fungsional/logic apa pun.
+
+#### Diperbaiki
+- **`index.css` (fondasi, otomatis berlaku di semua halaman)**:
+  - `.glass-card` — dari kotak solid flat jadi layered surface: sheen tipis di atas, shadow multi-layer, dan glow bertinta warna saat hover (bukan cuma ganti warna border)
+  - `.app-mesh-bg` (baru) — layer background fixed di belakang seluruh AppShell: radial gradient blob redup + dot grid halus, dipasang sekali di `AppShell.tsx` sehingga latar app tidak lagi polos di halaman manapun
+  - `.icon-badge` (baru) — kotak ikon gradient+glow dengan varian warna (`data-color`), dipakai di `PageHeader` (otomatis muncul di ~20 halaman yang pakai komponen ini) dan di StatCard Dashboard
+  - `.stat-tile`, `.stagger-in`, `.auth-blob`/`.auth-blob-slow`, `.auth-dot-grid`, `.signal-ring`, `.animate-check-pop`/`.animate-check-draw` (baru) — utilitas animasi untuk stat card, entrance halaman login, dan transisi sukses login. Semua menghormati `prefers-reduced-motion: reduce`
+- **`Dashboard.tsx`** — StatCard didesain ulang: icon badge bergradasi per status warna, garis aksen tipis di atas card, hover lift, dan angka yang count-up halus saat data refresh (hook baru `useCountUp.ts`) alih-alih langsung loncat ke nilai baru. OltCard dapat sentuhan hover lift + shadow yang konsisten dengan card style baru
+- **`PageHeader.tsx`** — ikon halaman sekarang dibungkus `.icon-badge` (kotak gradient+glow) alih-alih ikon kecil polos di sebelah judul — otomatis berlaku di semua halaman yang pakai `PageHeader`
+- **`AuthLayout.tsx` + `Login.tsx`** (redesign penuh) — ikon fitur di panel hero diganti FontAwesome (`faBolt`, `faTowerBroadcast`, `faServer`, `faShieldHalved`); konten hero muncul staggered (logo → heading → paragraf → fitur satu-satu → status badge) alih-alih muncul sekaligus; background dapat blob gradient yang drift pelan + dot grid + signal-ping ring di sekitar logo (tema broadcast/network, bukan dekorasi generik); tombol Sign In sekarang menampilkan transisi checkmark sukses yang halus (~550ms) sebelum navigasi ke dashboard, alih-alih langsung lompat instan
+- **`package.json`** — ditambah `@fortawesome/fontawesome-svg-core`, `@fortawesome/free-solid-svg-icons`, `@fortawesome/free-regular-svg-icons`, `@fortawesome/react-fontawesome`
+- **`frontend/dist/`** — rebuild dari source baru (repo mengkomit pre-built frontend, lihat README)
+
+#### Diverifikasi
+- `tsc --noEmit`, `eslint` (file yang diubah — 0 error/warning baru; 4 lint issue yang muncul di `AppShell.tsx`/`Dashboard.tsx` sudah ada sebelumnya, tidak disentuh oleh perubahan ini), dan `vite build` semua bersih
+- Diverifikasi visual langsung: dev server + backend dijalankan bersamaan, alur login penuh (idle → invalid credentials → sukses dengan checkmark → dashboard) dan halaman Dashboard (desktop + mobile) di-screenshot lewat Playwright/Edge — background mesh, icon badge, dan animasi checkmark semua tampil sesuai desain
+- Regression check di halaman data-berat (`AllOnus`) — tidak ada elemen yang rusak, tidak ada error console baru (hanya warning WebSocket 404 yang sudah ada sebelumnya, murni keterbatasan proxy Vite dev server terhadap port FastAPI — tidak terjadi di production Nginx)
+
 ### 2026-09-17 — Restrukturisasi: Pisahkan `backend/` dari `frontend/` sebagai Folder Sibling
 
 #### Latar Belakang

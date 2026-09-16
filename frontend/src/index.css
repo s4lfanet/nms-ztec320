@@ -79,23 +79,117 @@ h1, h2, h3, h4, h5, h6,
   position: relative;
 }
 
-/* ─── Card (flat, Indigo Slate) ─── */
+/* ─── Card (Indigo Slate — layered, not flat) ─── */
+/* A faint top-to-bottom sheen plus a color-tinted shadow instead of a plain
+   dark rectangle — the tint comes from --card-tint (defaults to accent) so
+   individual cards can lean into their own status color (see .stat-tile). */
 .glass-card {
-  background: var(--bg-card);
+  --card-tint: 129, 140, 248;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0) 40%),
+    var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.03) inset,
+    0 10px 28px -8px rgba(0, 0, 0, 0.45),
+    0 1px 3px rgba(0, 0, 0, 0.3);
   position: relative;
+  transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
 }
 .glass-card:hover {
-  background: var(--bg-card-hover);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 40%),
+    var(--bg-card-hover);
   border-color: var(--border-hover);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 16px 36px -10px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(var(--card-tint), 0.06),
+    0 4px 20px -4px rgba(var(--card-tint), 0.12);
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-card { transition: none; }
 }
 
 /* Glow effect for accent elements */
 .glow-accent {
   box-shadow: 0 0 16px rgba(129, 140, 248, 0.25), 0 0 48px rgba(129, 140, 248, 0.08);
   transition: box-shadow 0.3s ease;
+}
+
+/* ─── App background — layered mesh + dot grid ───
+   Sits fixed behind the sidebar/topbar/content (AppShell mounts this once).
+   Three soft, low-opacity radial blobs in the app's own accent/status colors
+   plus a faint dot grid give the dashboard real depth instead of one flat
+   fill, without ever competing with foreground content or dense tables. */
+.app-mesh-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+.app-mesh-bg::before {
+  content: '';
+  position: absolute;
+  inset: -10%;
+  background-image:
+    radial-gradient(600px circle at 8% 0%, rgba(129, 140, 248, 0.10), transparent 55%),
+    radial-gradient(500px circle at 92% 18%, rgba(52, 211, 153, 0.06), transparent 55%),
+    radial-gradient(700px circle at 50% 100%, rgba(56, 189, 248, 0.05), transparent 60%);
+}
+.app-mesh-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 90%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 90%);
+}
+
+/* ─── Icon badge — gradient-tinted square used for stat cards, page headers,
+   empty states. Color comes from a small set of data-color values so every
+   usage stays consistent instead of one-off inline gradients per page. ─── */
+.icon-badge {
+  --ib-rgb: 129, 140, 248;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(var(--ib-rgb), 0.22), rgba(var(--ib-rgb), 0.06));
+  border: 1px solid rgba(var(--ib-rgb), 0.22);
+  color: rgb(var(--ib-rgb));
+  box-shadow: 0 4px 14px -4px rgba(var(--ib-rgb), 0.35);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+  flex-shrink: 0;
+}
+.icon-badge[data-color='success'] { --ib-rgb: 52, 211, 153; }
+.icon-badge[data-color='warning'] { --ib-rgb: 251, 191, 36; }
+.icon-badge[data-color='danger']  { --ib-rgb: 248, 113, 113; }
+.icon-badge[data-color='info']    { --ib-rgb: 56, 189, 248; }
+.icon-badge[data-color='muted']   { --ib-rgb: 146, 152, 176; }
+
+/* ─── Stat tile — StatCard's own surface: a top accent hairline + the same
+   layered card body, so the dashboard's headline numbers read as elevated
+   tiles rather than plain boxes with a colored border. ─── */
+.stat-tile {
+  position: relative;
+  overflow: hidden;
+}
+.stat-tile::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(var(--card-tint), 0.7), transparent);
+  opacity: 0.8;
+}
+.stat-tile:hover .icon-badge {
+  transform: scale(1.08) rotate(-4deg);
 }
 
 /* Dark-mode Leaflet basemap: standard OpenStreetMap tiles (no API key) inverted
@@ -140,6 +234,74 @@ h1, h2, h3, h4, h5, h6,
 .animate-slide-up { animation: slideUp 0.3s ease-out; }
 .animate-fade-in { animation: fadeIn 0.25s ease-out; }
 .animate-slide-in { animation: slideIn 0.25s ease-out; }
+
+/* ─── Staggered entrance (login hero, stat grids) ───
+   Applied with .stagger-in plus a --d custom property per item so a list
+   reveals one-by-one instead of popping in as a single block. */
+@keyframes staggerIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.stagger-in {
+  opacity: 0;
+  animation: staggerIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--d, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .stagger-in { animation-duration: 0.01ms; animation-delay: 0ms; opacity: 1; }
+}
+
+/* ─── Auth page: slow-drifting background blobs + fine dot grid ─── */
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(3%, -4%) scale(1.06); }
+}
+.auth-blob {
+  animation: drift 14s ease-in-out infinite;
+}
+.auth-blob-slow {
+  animation: drift 20s ease-in-out infinite reverse;
+}
+.auth-dot-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-blob, .auth-blob-slow { animation: none; }
+}
+
+/* ─── Auth page: signal broadcast rings (decorative, echoes network domain) ─── */
+@keyframes signalPing {
+  0% { transform: scale(0.6); opacity: 0.55; }
+  100% { transform: scale(1); opacity: 0; }
+}
+.signal-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid rgba(129, 140, 248, 0.5);
+  animation: signalPing 3.2s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .signal-ring { animation: none; opacity: 0; }
+}
+
+/* ─── Success checkmark pop (smooth post-login confirmation) ─── */
+@keyframes checkPop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-check-pop { animation: checkPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+@keyframes checkDraw {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+.animate-check-draw {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: checkDraw 0.35s 0.15s ease-out forwards;
+}
 
 /* ─── Mobile Bottom Navigation ─── */
 .bottom-nav-item {

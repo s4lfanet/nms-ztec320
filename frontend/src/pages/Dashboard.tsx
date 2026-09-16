@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useDashboardWs } from '../hooks/useDashboardWs';
+import { useCountUp } from '../hooks/useCountUp';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, EmptyState, Select } from '../components/ui';
@@ -259,15 +260,15 @@ export function Dashboard() {
       {/* Summary Stats — 4 cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
         <StatCard icon={<Server size={18} />} label="OLT" value={olts.length}
-          sub={`${onlineCount} online · ${olts.length - onlineCount} offline`} color="accent" />
+          sub={`${onlineCount} online · ${olts.length - onlineCount} offline`} color="accent" delay={0} />
         <StatCard icon={<Radio size={18} />} label="Total ONU" value={stats.total_onu}
           sub={`${stats.online_pct}% online`} color="info"
-          progress={stats.total_onu > 0 ? stats.online_pct : 0} />
+          progress={stats.total_onu > 0 ? stats.online_pct : 0} delay={60} />
         <StatCard icon={<Wifi size={18} />} label="ONU Online" value={stats.online}
-          sub={`${stats.online_pct}%`} color="success" />
+          sub={`${stats.online_pct}%`} color="success" delay={120} />
         <StatCard icon={<AlertTriangle size={18} />} label="ONU Problem" value={totalProblem}
           sub={totalProblem > 0 ? `${stats.offline} off · ${stats.dyinggasp} dyg · ${stats.los} LOS` : 'Semua normal'}
-          color={totalProblem > 0 ? 'danger' : 'muted'} />
+          color={totalProblem > 0 ? 'danger' : 'muted'} delay={180} />
       </div>
 
       {/* Signal Distribution Bar */}
@@ -367,17 +368,13 @@ export function Dashboard() {
   );
 }
 
-function StatCard({ icon, label, value, sub, color, progress }: {
+function StatCard({ icon, label, value, sub, color, progress, delay = 0 }: {
   icon: React.ReactNode; label: string; value: number; sub?: string;
-  color: string; progress?: number;
+  color: string; progress?: number; delay?: number;
 }) {
-  const border: Record<string, string> = {
-    accent: 'border-accent/20 bg-accent/5',
-    success: 'border-success/20 bg-success/5',
-    danger: 'border-danger/20 bg-danger/5',
-    warning: 'border-warning/20 bg-warning/5',
-    info: 'border-info/20 bg-info/5',
-    muted: 'border-brd',
+  const tint: Record<string, string> = {
+    accent: '129, 140, 248', success: '52, 211, 153', danger: '248, 113, 113',
+    warning: '251, 191, 36', info: '56, 189, 248', muted: '146, 152, 176',
   };
   const tc: Record<string, string> = {
     accent: 'text-accent', success: 'text-success', danger: 'text-danger',
@@ -387,19 +384,27 @@ function StatCard({ icon, label, value, sub, color, progress }: {
     accent: 'bg-accent', success: 'bg-success', info: 'bg-success',
     danger: 'bg-danger', warning: 'bg-warning', muted: 'bg-offline',
   };
+  const badgeColor = color === 'danger' && sub === 'Semua normal' ? 'success' : color;
+  const displayValue = useCountUp(value);
+
   return (
-    <div className={cn('glass-card p-3 md:p-4 border', border[color] || border.accent)}>
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-[10px] text-tx3 uppercase tracking-wide font-medium">{label}</p>
-        <span className={tc[color] || tc.accent}>{icon}</span>
+    <div
+      className="glass-card stat-tile p-3 md:p-4 stagger-in"
+      style={{ '--card-tint': tint[color] || tint.accent, '--d': `${delay}ms` } as React.CSSProperties}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <p className="text-[10px] text-tx3 uppercase tracking-wide font-semibold">{label}</p>
+        <div className="icon-badge w-8 h-8" data-color={badgeColor === 'accent' ? undefined : badgeColor}>
+          {icon}
+        </div>
       </div>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="text-2xl md:text-[26px] font-bold font-display tabular-nums leading-none">{displayValue}</div>
       {progress !== undefined && (
-        <div className="mt-1.5 h-1.5 w-full rounded-full bg-glass overflow-hidden">
-          <div className={cn('h-full rounded-full transition-all', pc[color] || 'bg-accent')} style={{ width: `${progress}%` }} />
+        <div className="mt-2.5 h-1.5 w-full rounded-full bg-glass overflow-hidden">
+          <div className={cn('h-full rounded-full transition-all duration-700 ease-out', pc[color] || 'bg-accent')} style={{ width: `${progress}%` }} />
         </div>
       )}
-      {sub && <div className={cn('text-[11px] mt-1', tc[color])}>{sub}</div>}
+      {sub && <div className={cn('text-[11px] mt-2 font-medium', tc[color])}>{sub}</div>}
     </div>
   );
 }
@@ -413,7 +418,7 @@ function OltCard({ olt, onSync, syncing, syncProgress, onConfig }: {
 
   return (
     <div className={cn(
-      'rounded-xl border bg-glass overflow-hidden transition-all hover:shadow-md animate-fade-in',
+      'rounded-xl border bg-glass overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-8px_rgba(0,0,0,0.4)] animate-fade-in',
       !olt.is_online
         ? 'border-l-4 border-l-danger border-danger/25'
         : problemCount > 0
