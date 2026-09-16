@@ -1496,6 +1496,234 @@ class TestForcedPasswordChange:
             assert admin.must_change_password in (False, None)
 
 
+class TestVendorTemplateCommandSequences:
+    """Golden-snapshot regression tests for register_vendor_template()'s
+    per-template CLI command sequences — the safety net for audit finding 5
+    (refactoring the template if/elif into separate per-vendor methods).
+
+    Each expected list was captured by RUNNING the pre-refactor code with a
+    mocked Telnet connection (recording every command _send_command was
+    asked to send) — it is not hand-derived from reading the code, so it
+    reflects actual behavior, warts and all. The refactor's one job is to
+    make these still pass unchanged: same templates, same inputs, same
+    exact command sequence out. If a future change to provisioning logic
+    is intentional, update the expected list deliberately — a silent diff
+    here means the refactor (or any later edit) changed real behavior.
+    """
+
+    def _capture(self, template, extra=None):
+        from unittest.mock import patch, MagicMock
+        from telnet_client import TelnetCollector
+
+        tc = TelnetCollector('10.0.0.1', 'admin', 'admin')
+        commands = []
+
+        def fake_send_command(self, tn, command, timeout=15):
+            commands.append(command)
+            return ''
+
+        with patch.object(TelnetCollector, '_connect', lambda self: MagicMock()), \
+             patch.object(TelnetCollector, '_send_command', fake_send_command), \
+             patch('time.sleep', lambda *a, **k: None):
+            ok, msg = tc.register_vendor_template(
+                frame=1, slot=1, port=1, onu_id=1, serial='ZTEGC1234567',
+                template=template, onu_type='All', tcont_profile='1G', vlan=100,
+                name='TestName', description='TestDesc',
+                extra=extra if extra is not None else self._default_extra(),
+                is_epon=False,
+            )
+        return ok, msg, commands
+
+    @staticmethod
+    def _default_extra():
+        return {
+            'acs_url': 'http://192.168.54.254:7547', 'acs_user': 'acs', 'acs_pass': 'acs',
+            'tr069_vlan': '200', 'tr069_vlan_mode': 'tag',
+            'pppoe_user': 'user1', 'pppoe_pass': 'pass1',
+            'vlan_profile': 'default', 'firewall_level': 'low',
+            'internet_vlan': '100', 'voip_vlan': '300',
+            'primary_vlan': '100', 'secondary_vlan': '200',
+            'ssid1_name': 'HomeWifi', 'ssid1_pass': 'StrongPass1',
+            'ssid2_name': 'GuestWifi', 'ssid2_pass': 'StrongPass2',
+            'ssid_name': 'SoloWifi', 'ssid_pass': 'SoloPass1',
+            'traffic_profile': '100M',
+        }
+
+    def test_bridge_template(self):
+        ok, msg, commands = self._capture('bridge')
+        assert ok is True
+        assert commands == [
+            'end', 'configure terminal', 'interface gpon-olt_1/1/1',
+            'onu 1 type All sn ZTEGC1234567', 'exit', 'interface gpon-onu_1/1/1:1',
+            'name TestName', 'description TestDesc',
+            'tcont 1 name VLAN0100 profile 1G', 'gemport 1 tcont 1',
+            'service-port 1 vport 1 user-vlan 100 vlan 100',
+            'end', 'enable', 'show gpon onu state gpon-olt_1/1/1',
+        ]
+
+    def test_pppoe_template(self):
+        ok, msg, commands = self._capture('pppoe')
+        assert ok is True
+        assert commands == [
+            'end', 'configure terminal', 'interface gpon-olt_1/1/1',
+            'onu 1 type All sn ZTEGC1234567', 'exit', 'interface gpon-onu_1/1/1:1',
+            'name TestName', 'description TestDesc',
+            'tcont 1 name VLAN0100 profile 1G', 'gemport 1 tcont 1',
+            'service-port 1 vport 1 user-vlan 100 vlan 100',
+            'exit', 'pon-onu-mng gpon-onu_1/1/1:1',
+            'service INTERNET gemport 1 vlan 100',
+            'vlan port eth_0/1 mode hybrid def-vlan 100',
+            'vlan port eth_0/2 mode hybrid def-vlan 100',
+            'vlan port eth_0/3 mode hybrid def-vlan 100',
+            'vlan port eth_0/4 mode hybrid def-vlan 100',
+            'wan-ip 1 mode pppoe username user1 password pass1 vlan-profile default host 1',
+            'end', 'enable', 'show gpon onu state gpon-olt_1/1/1',
+        ]
+
+    def test_fiberhome_veip_template(self):
+        ok, msg, commands = self._capture('fiberhome_veip')
+        assert ok is True
+        assert commands == [
+            'end', 'configure terminal', 'interface gpon-olt_1/1/1',
+            'onu 1 type All sn ZTEGC1234567', 'exit', 'interface gpon-onu_1/1/1:1',
+            'name TestName', 'description TestDesc', 'sn-bind enable sn',
+            'tcont 1 name  profile 1G', 'gemport 1 tcont 1',
+            'gemport 1 traffic-limit downstream 100M',
+            'tcont 2 name  profile 1G', 'gemport 2 tcont 2',
+            'tcont 3 name  profile 1G', 'gemport 3 tcont 3',
+            'service-port 1 vport 1 user-vlan 200 vlan 200',
+            'service-port 2 vport 2 user-vlan 100 vlan 100',
+            'service-port 3 vport 3 user-vlan 300 vlan 300',
+            'exit', 'pon-onu-mng gpon-onu_1/1/1:1',
+            'no service service1', 'no service service2', 'no service service3',
+            'no wan 1 service', 'no wan-ip 1', 'no pppoe 1',
+            'no wan 2 service', 'no wan-ip 2', 'no pppoe 2',
+            'no wan 3 service', 'no wan-ip 3', 'no pppoe 3',
+            'service service1 gemport 1 vlan 200',
+            'service 2 gemport 2 vlan 100',
+            'service 3 gemport 3 vlan 300',
+            'vlan port veip_1 mode hybrid',
+            'vlan port eth_0/1 mode tag vlan 100',
+            'vlan port eth_0/2 mode tag vlan 100',
+            'vlan port eth_0/3 mode tag vlan 100',
+            'vlan port eth_0/4 mode tag vlan 100',
+            'vlan port wifi_0/1 mode tag vlan 100',
+            'tr069-mgmt 1 state unlock',
+            'tr069-mgmt 1 acs http://192.168.54.254:7547 validate basic username acs password acs',
+            'tr069-mgmt 1 tag pri 0 vlan 200',
+            'end', 'enable', 'show gpon onu state gpon-olt_1/1/1',
+        ]
+
+    def test_zte_full_template(self):
+        ok, msg, commands = self._capture('zte_full')
+        assert ok is True
+        assert commands == [
+            'end', 'configure terminal', 'interface gpon-olt_1/1/1',
+            'onu 1 type All sn ZTEGC1234567', 'exit',
+            'pon', 'onu-type-if All wifi_0/1', 'onu-type-if All wifi_0/2',
+            'onu-type-if All wifi_0/5', 'onu-type-if All wifi_0/6', 'exit',
+            'interface gpon-onu_1/1/1:1', 'name TestName', 'description TestDesc',
+            'tcont 1 name VLAN0100 profile 1G', 'gemport 1 tcont 1',
+            'gemport 1 traffic-limit downstream 100M',
+            'tcont 2 name VLAN200 profile 1G', 'gemport 2 tcont 2',
+            'gemport 2 traffic-limit downstream 100M',
+            'service-port 1 vport 1 user-vlan 100 vlan 100',
+            'service-port 2 vport 2 user-vlan 200 vlan 200',
+            'exit', 'pon-onu-mng gpon-onu_1/1/1:1',
+            'no service VLAN0001', 'no service service1', 'no wan 1 service', 'no wan-ip 1', 'no pppoe 1',
+            'no service VLAN0002', 'no service service2', 'no wan 2 service', 'no wan-ip 2', 'no pppoe 2',
+            'service VLAN0100 gemport 1 iphost 1 vlan 100',
+            'service VLAN200 gemport 2 vlan 200',
+            'wan 1 service internet host 1',
+            'vlan port eth_0/1 mode tag vlan 100',
+            'vlan port eth_0/2 mode tag vlan 100',
+            'vlan port eth_0/3 mode tag vlan 100',
+            'vlan port eth_0/4 mode tag vlan 100',
+            'vlan port wifi_0/1 mode tag vlan 100',
+            'vlan port wifi_0/5 mode tag vlan 100',
+            'vlan port wifi_0/2 mode tag vlan 200',
+            'security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069',
+            'end', 'configure terminal', 'pon-onu-mng gpon-onu_1/1/1:1',
+            'interface wifi wifi_0/1 state unlock',
+            'ssid ctrl wifi_0/1 name HomeWifi hide disable',
+            'ssid auth wpa wifi_0/1 wpa2-psk', 'ssid auth wpa wifi_0/1 encrypt aes',
+            'ssid auth wpa wifi_0/1 key StrongPass1',
+            'interface wifi wifi_0/5 state unlock',
+            'ssid ctrl wifi_0/5 name GuestWifi hide disable',
+            'ssid auth wpa wifi_0/5 wpa2-psk', 'ssid auth wpa wifi_0/5 encrypt aes',
+            'ssid auth wpa wifi_0/5 key StrongPass2',
+            'end', 'enable', 'show gpon onu state gpon-olt_1/1/wifi_0/5',
+        ]
+
+    def test_zte_single_template(self):
+        ok, msg, commands = self._capture('zte_single')
+        assert ok is True
+        assert commands == [
+            'end', 'configure terminal', 'interface gpon-olt_1/1/1',
+            'onu 1 type All sn ZTEGC1234567', 'exit',
+            'pon', 'onu-type-if All wifi_0/1', 'onu-type-if All wifi_0/2', 'exit',
+            'interface gpon-onu_1/1/1:1', 'name TestName', 'description TestDesc',
+            'tcont 1 name VLAN0100 profile 1G', 'gemport 1 tcont 1',
+            'gemport 1 traffic-limit downstream 100M',
+            'service-port 1 vport 1 user-vlan 100 vlan 100',
+            'exit', 'pon-onu-mng gpon-onu_1/1/1:1',
+            'no service INTERNET', 'no service service1', 'no wan 1 service', 'no wan-ip 1', 'no pppoe 1',
+            'service INTERNET gemport 1 iphost 1 vlan 100',
+            'wan 1 service internet host 1',
+            'vlan port eth_0/1 mode hybrid def-vlan 100',
+            'vlan port eth_0/2 mode hybrid def-vlan 100',
+            'vlan port eth_0/3 mode hybrid def-vlan 100',
+            'vlan port eth_0/4 mode hybrid def-vlan 100',
+            'vlan port wifi_0/1 mode tag vlan 100',
+            'security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069',
+            'end', 'configure terminal', 'pon-onu-mng gpon-onu_1/1/1:1',
+            'interface wifi wifi_0/1 state unlock',
+            'ssid ctrl wifi_0/1 name SoloWifi hide disable',
+            'ssid auth wpa wifi_0/1 wpa2-psk', 'ssid auth wpa wifi_0/1 encrypt aes',
+            'ssid auth wpa wifi_0/1 key SoloPass1',
+            'end', 'enable', 'show gpon onu state gpon-olt_1/1/wifi_0/1',
+        ]
+
+    def test_huawei_full_template(self):
+        ok, msg, commands = self._capture('huawei_full')
+        assert ok is True
+        assert commands == [
+            'end', 'configure terminal', 'interface gpon-olt_1/1/1',
+            'onu 1 type All sn ZTEGC1234567', 'exit', 'interface gpon-onu_1/1/1:1',
+            'name TestName', 'description TestDesc', 'sn-bind enable sn',
+            'tcont 1 name  profile 1G', 'gemport 1 tcont 1',
+            'service-port 1 vport 1 user-vlan 1010 vlan 1010',
+            'service-port 2 vport 1 user-vlan 100 vlan 100',
+            'service-port 3 vport 1 user-vlan 300 vlan 300',
+            'exit', 'pon-onu-mng gpon-onu_1/1/1:1',
+            'service ServiceONU1 gemport 1',
+            'wan-ip 1 mode dhcp vlan-profile default host 1',
+            'end', 'enable', 'show gpon onu state gpon-olt_1/1/1',
+        ]
+
+    def test_zte_multi_template(self):
+        ok, msg, commands = self._capture('zte_multi')
+        assert ok is True
+        assert commands == [
+            'end', 'configure terminal', 'interface gpon-olt_1/1/1',
+            'onu 1 type All sn ZTEGC1234567', 'exit',
+            'pon', 'onu-type-if All wifi_0/1', 'onu-type-if All wifi_0/2',
+            'onu-type-if All wifi_0/5', 'onu-type-if All wifi_0/6', 'exit',
+            'interface gpon-onu_1/1/1:1', 'name TestName', 'description TestDesc',
+            'exit', 'pon-onu-mng gpon-onu_1/1/1:1',
+            'end', 'configure terminal', 'pon-onu-mng gpon-onu_1/1/1:1',
+            'interface wifi wifi_0/1 state unlock',
+            'ssid ctrl wifi_0/1 name HomeWifi hide disable',
+            'ssid auth wpa wifi_0/1 wpa2-psk', 'ssid auth wpa wifi_0/1 encrypt aes',
+            'ssid auth wpa wifi_0/1 key StrongPass1',
+            'interface wifi wifi_0/5 state unlock',
+            'ssid ctrl wifi_0/5 name GuestWifi hide disable',
+            'ssid auth wpa wifi_0/5 wpa2-psk', 'ssid auth wpa wifi_0/5 encrypt aes',
+            'ssid auth wpa wifi_0/5 key StrongPass2',
+            'end', 'enable', 'show gpon onu state gpon-olt_1/1/wifi_0/5',
+        ]
+
+
 class TestCliSanitize:
     """Unit tests for cli_sanitize.py — the choke point every free-text
     field passes through before being interpolated into a ZTE OLT CLI
@@ -1708,6 +1936,65 @@ class TestProvisioningInputSanitization:
                 'serial': 'ZTEGCTEST05', 'onu_type': 'All', 'vlan': 100,
                 'template': 'zte_single',
                 'extra': {'ssid_name': 'Evil\nno onu 1'},
+            }),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 400
+        assert resp.get_json()['success'] is False
+
+    def test_json_stringified_services_field_not_wrongly_rejected(self, client):
+        """Regression: extra['services'] arrives as a JSON-ENCODED STRING
+        (RegisterWizard.tsx does `services: JSON.stringify(next)`) for the
+        zte_multi template. Sanitizing it like an ordinary free-text field
+        rejected every real multi-service request — the quote characters
+        JSON requires tripped the dangerous-character check, and any
+        non-trivial payload blew past the 64-char generic cap. It must be
+        parsed and validated as a JSON container instead."""
+        self._login_admin(client)
+        with app.app_context():
+            olt = self._make_olt(name='JSON Container OLT', ip='10.0.0.75')
+            olt_id = olt.id
+
+        services_json = json.dumps([
+            {'enabled': True, 'service_type': 'internet', 'vlans': [100],
+             'wan_mode': 'nat', 'username': 'user1', 'password': 'pass1'},
+            {'enabled': True, 'service_type': 'iptv', 'vlans': [200], 'mvlan': 200},
+        ])
+        resp = client.post('/api/pre-register',
+            data=json.dumps({
+                'olt_id': olt_id, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                'serial': 'ZTEGCTEST06', 'onu_type': 'All', 'vlan': 100,
+                'template': 'zte_multi',
+                'extra': {'services': services_json},
+            }),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        # Must get past sanitization (a Telnet-connect failure to the fake
+        # OLT IP is fine and expected here — a 400 from our own validation
+        # is the regression this test guards against).
+        assert resp.status_code == 200
+        assert resp.get_json()['message'] != 'Input tidak valid'
+
+    def test_injection_inside_json_stringified_services_still_rejected(self, client):
+        """The JSON-container carve-out above must not become a bypass —
+        a newline smuggled inside one of the JSON array's own string
+        fields (e.g. a per-service PPPoE username) must still be caught,
+        since it flows into an f-string CLI command once parsed."""
+        self._login_admin(client)
+        with app.app_context():
+            olt = self._make_olt(name='JSON Container Injection OLT', ip='10.0.0.76')
+            olt_id = olt.id
+
+        services_json = json.dumps([
+            {'enabled': True, 'service_type': 'internet', 'vlans': [100],
+             'wan_mode': 'nat', 'username': 'evil\nreboot', 'password': 'pass1'},
+        ])
+        resp = client.post('/api/pre-register',
+            data=json.dumps({
+                'olt_id': olt_id, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                'serial': 'ZTEGCTEST07', 'onu_type': 'All', 'vlan': 100,
+                'template': 'zte_multi',
+                'extra': {'services': services_json},
             }),
             content_type='application/json',
             headers={'X-Requested-With': 'XMLHttpRequest'})
