@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { Eye, EyeOff, KeyRound, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, ArrowLeft, Check } from 'lucide-react';
 import { useAuth } from '../stores/auth';
 import { toast } from '../components/Toast';
 import { AuthLayout } from '../components/AuthLayout';
 import { Button, Card, Input } from '../components/ui';
+import { cn } from '../lib/utils';
 
 export function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const { login, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [brandName, setBrandName] = useState('');
@@ -37,8 +39,13 @@ export function Login() {
     setLoading(true);
     const ok = await login(username, password);
     if (ok) {
+      setLoading(false);
+      setSuccess(true);
       toast.success('Welcome back!');
       const u = useAuth.getState().user;
+      // Brief success beat before navigating — lets the button's checkmark
+      // transition actually be seen instead of the page swapping instantly.
+      await new Promise(r => setTimeout(r, 550));
       if (u?.is_super_admin) {
         navigate('/dashboard/admin');
       } else {
@@ -46,8 +53,8 @@ export function Login() {
       }
     } else {
       toast.error(useAuth.getState().error || 'Invalid username or password');
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -88,8 +95,20 @@ export function Login() {
             }
           />
 
-          <Button type="submit" variant="primary" loading={loading} className="w-full h-11 glow-accent">
-            {loading ? 'Signing in...' : 'Sign In'}
+          <Button
+            type="submit"
+            variant="primary"
+            loading={loading}
+            disabled={loading || success}
+            className={cn('w-full h-11 glow-accent transition-colors duration-300', success && 'cursor-default')}
+            style={success ? { background: 'var(--color-success)' } : undefined}
+          >
+            {success ? (
+              <span className="inline-flex items-center gap-1.5 animate-check-pop">
+                <Check size={18} strokeWidth={3} />
+                Berhasil masuk
+              </span>
+            ) : loading ? 'Signing in...' : 'Sign In'}
           </Button>
         </form>
 

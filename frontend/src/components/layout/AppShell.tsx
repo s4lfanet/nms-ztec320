@@ -48,10 +48,12 @@ export function AppShell() {
   return (
     <DashboardWsProvider>
       <div className="min-h-screen bg-[var(--bg-primary)] transition-colors duration-300">
+        <div className="app-mesh-bg" aria-hidden="true" />
+
         <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onToggle={() => setCollapsed(!collapsed)} onMobileClose={() => setMobileOpen(false)} />
 
         <div className={cn(
-          'transition-all duration-300 min-h-screen',
+          'relative z-10 transition-all duration-300 min-h-screen',
           collapsed ? 'lg:ml-[70px]' : 'lg:ml-[260px]',
         )}>
           <Topbar onMenuClick={() => setMobileOpen(!mobileOpen)} />

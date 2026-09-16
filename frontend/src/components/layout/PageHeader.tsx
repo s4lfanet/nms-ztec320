@@ -17,13 +17,20 @@ interface PageHeaderProps {
  */
 export function PageHeader({ title, description, breadcrumbs, icon, action, className }: PageHeaderProps) {
   return (
-    <div className={cn('flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between', className)}>
-      <div className="min-w-0">
-        {breadcrumbs && <Breadcrumb items={breadcrumbs} />}
-        <h1 className="text-xl md:text-2xl font-bold font-display flex items-center gap-2 text-tx1">
-          {icon}{title}
-        </h1>
-        {description && <p className="text-sm text-tx3 mt-1 max-w-2xl">{description}</p>}
+    <div className={cn('flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between animate-fade-in', className)}>
+      <div className="min-w-0 flex items-start gap-3">
+        {icon && (
+          <div className="icon-badge w-10 h-10 md:w-11 md:h-11 shrink-0 mt-0.5">
+            {icon}
+          </div>
+        )}
+        <div className="min-w-0">
+          {breadcrumbs && <Breadcrumb items={breadcrumbs} />}
+          <h1 className="text-xl md:text-2xl font-bold font-display text-tx1">
+            {title}
+          </h1>
+          {description && <p className="text-sm text-tx3 mt-1 max-w-2xl">{description}</p>}
+        </div>
       </div>
       {action && <div className="flex items-center gap-2 flex-wrap flex-shrink-0">{action}</div>}
     </div>
