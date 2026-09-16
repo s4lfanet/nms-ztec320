@@ -145,13 +145,15 @@ fi
 echo "[4/8] Setting up Python environment..."
 "${PYTHON_BIN}" -m venv "${APP_DIR}/.venv"
 "${APP_DIR}/.venv/bin/pip" install --quiet --upgrade pip
-"${APP_DIR}/.venv/bin/pip" install --quiet -r "${APP_DIR}/requirements.txt"
+"${APP_DIR}/.venv/bin/pip" install --quiet -r "${APP_DIR}/backend/requirements.txt"
 
 # ── 5. Create instance directory & .env ──
+# config.py resolves .env relative to its own file (backend/config.py), so
+# .env (and instance/) must live under backend/, not the repo root.
 echo "[5/8] Creating configuration..."
-mkdir -p "${APP_DIR}/instance"
-if [ ! -f "${APP_DIR}/.env" ]; then
-    cp "${APP_DIR}/.env.example" "${APP_DIR}/.env"
+mkdir -p "${APP_DIR}/backend/instance"
+if [ ! -f "${APP_DIR}/backend/.env" ]; then
+    cp "${APP_DIR}/backend/.env.example" "${APP_DIR}/backend/.env"
     # .env.example defaults to FLASK_ENV=development (debugger + insecure
     # cookies) — wrong for a VPS deploy, so force production here.
     SECRET_KEY=$("${PYTHON_BIN}" -c "import secrets; print(secrets.token_hex(32))")
@@ -167,15 +169,15 @@ if [ ! -f "${APP_DIR}/.env" ]; then
         -e "s/^CREDENTIAL_ENCRYPTION_KEY=.*/CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}/" \
         -e "s/^FLASK_ENV=.*/FLASK_ENV=production/" \
         -e "s/^SESSION_COOKIE_SECURE=.*/SESSION_COOKIE_SECURE=0/" \
-        "${APP_DIR}/.env"
-    echo "  Created .env (FLASK_ENV=production) with generated SECRET_KEY, INTERNAL_API_KEY, CREDENTIAL_ENCRYPTION_KEY"
+        "${APP_DIR}/backend/.env"
+    echo "  Created backend/.env (FLASK_ENV=production) with generated SECRET_KEY, INTERNAL_API_KEY, CREDENTIAL_ENCRYPTION_KEY"
     echo "  Note: SESSION_COOKIE_SECURE=0 (HTTP-only by default) — after enabling HTTPS,"
-    echo "        set it to 1 in ${APP_DIR}/.env and restart the service."
+    echo "        set it to 1 in ${APP_DIR}/backend/.env and restart the service."
 fi
 
 # Set permissions
 chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
-chmod 600 "${APP_DIR}/.env"
+chmod 600 "${APP_DIR}/backend/.env"
 
 # ── 6. Systemd service ──
 echo "[6/8] Installing systemd service..."
@@ -188,7 +190,7 @@ After=network.target
 Type=simple
 User=${APP_USER}
 Group=${APP_USER}
-WorkingDirectory=${APP_DIR}
+WorkingDirectory=${APP_DIR}/backend
 Environment="PATH=${APP_DIR}/.venv/bin"
 ExecStart=${APP_DIR}/.venv/bin/python run_server.py --host 0.0.0.0 --port 5000 --ws-port 8765
 Restart=always
@@ -239,7 +241,7 @@ server {
     }
 
     location /static/ {
-        alias ${APP_DIR}/static/;
+        alias ${APP_DIR}/backend/static/;
         expires 1h;
     }
 
@@ -279,10 +281,10 @@ sleep 5
 
 # ── 9. Setup cron jobs (db backup + OLT config backup + auto-sync + traffic poller) ──
 echo "[9/9] Setting up cron jobs..."
-DB_BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 db_backup.py >> /var/log/salfanet-db-backup.log 2>&1"
-BACKUP_CRON="0 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
-SYNC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
-TRAFFIC_CRON="*/5 * * * * cd ${APP_DIR} && ${APP_DIR}/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
+DB_BACKUP_CRON="0 * * * * cd ${APP_DIR}/backend && ${APP_DIR}/.venv/bin/python3 db_backup.py >> /var/log/salfanet-db-backup.log 2>&1"
+BACKUP_CRON="0 * * * * cd ${APP_DIR}/backend && ${APP_DIR}/.venv/bin/python3 auto_backup.py >> /var/log/salfanet-backup.log 2>&1"
+SYNC_CRON="*/5 * * * * cd ${APP_DIR}/backend && ${APP_DIR}/.venv/bin/python3 auto_sync.py >> /var/log/salfanet-sync.log 2>&1"
+TRAFFIC_CRON="*/5 * * * * cd ${APP_DIR}/backend && ${APP_DIR}/.venv/bin/python3 traffic_poller.py >> /var/log/salfanet-traffic.log 2>&1"
 # Write to a temp file and verify afterward, rather than piping straight
 # into `crontab -` — a bare pipe can silently install an EMPTY crontab if
 # the subshell is interrupted (e.g. a flaky SSH session mid-install),
@@ -315,7 +317,7 @@ cat > /etc/logrotate.d/${APP_NAME} << LOGROTATE_EOF
 LOGROTATE_EOF
 
 if [ "$CRON_COUNT" -ge 4 ]; then
-    echo "  ✅ DB backup cron: hourly (instance/backups/, 24 hourly + 7 daily retention)"
+    echo "  ✅ DB backup cron: hourly (backend/instance/backups/, 24 hourly + 7 daily retention)"
     echo "  ✅ OLT config backup cron: hourly"
     echo "  ✅ Auto-sync cron: every 5 minutes"
     echo "  ✅ Traffic poller cron: every 5 minutes"
@@ -380,7 +382,7 @@ echo "    systemctl status ${APP_NAME}"
 echo "    systemctl restart ${APP_NAME}"
 echo "    journalctl -u ${APP_NAME} -f"
 echo ""
-echo "  Config:  ${APP_DIR}/.env"
+echo "  Config:  ${APP_DIR}/backend/.env"
 echo ""
 if [ -n "$DOMAIN" ]; then
     echo "  HTTPS:   sudo certbot --nginx -d ${DOMAIN}"

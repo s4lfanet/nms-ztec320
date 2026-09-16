@@ -138,51 +138,56 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 ## Struktur Proyek
 
 ```text
-├── app.py                 # Flask app setup, error handlers, security headers, startup (517 lines)
-├── routes_auth.py         # Blueprint: login, logout, API auth
-├── routes_onu.py          # Blueprint: ONU CRUD, provisioning, actions, traffic
-├── routes_olt_ports.py    # Blueprint: uplink/PON port, VLAN, ONU type, speed/WAN-IP/SLA profiles
-├── routes_olt_settings.py # Blueprint: OLT CRUD, write-config, backup, CLI users
-├── routes_olt_sync.py     # Blueprint: OLT sync trigger/status/history, connection test
-├── routes_olt_spa_data.py # Blueprint: DB-backed SPA lookups (live uplink traffic, VLANs, WAN-IP)
-├── routes_templates.py    # Blueprint: provisioning templates, TR069 profiles
-├── routes_users.py        # Blueprint: profile, users, roles, permissions
-├── routes_system.py       # Blueprint: action logs, customization, system update/config, DB backup API
-├── routes_notifications.py # Blueprint: notifications, maintenance windows, uptime/SLA, alert rules, bot config
-├── routes_dashboard.py    # Blueprint: dashboard summary, all-ONUs list, users/technicians lookup
-├── routes_public.py       # Blueprint: public branding endpoint (no auth)
-├── routes_whatsapp.py     # Blueprint: WhatsApp Native gateway management
-├── routes_cloudflare.py   # Blueprint: Cloudflare Tunnel config
-├── routes_ftth.py         # Blueprint: FTTH infrastructure (OTB/ODC/ODP, tree, map, import/export)
-├── routes_traffic.py      # Blueprint: traffic grid/history/live, metrics history
-├── models.py              # SQLAlchemy models (OLT, ONU, Alert, FTTH, Users, etc.)
-├── sync_lock.py            # Distributed sync lock (prevent concurrent syncs)
-├── snmp_core.py           # SNMP core collector (pysnmp 7.x Slim API)
-├── snmp_collector.py      # Compatibility shim + create_cli_collector() SSH/Telnet dispatch
-├── telnet_client.py       # ZTE CLI collector & provisioning (SSH+Telnet)
-├── alerts.py              # Alert engine + notification (Telegram, WA, in-app)
-├── services_sync.py       # Sync service (background thread management)
-├── sync_helper.py         # Sync result persistence to DB
-├── cache.py               # Redis caching layer (in-memory fallback for dev)
-├── auto_sync.py           # Cron-based auto-sync
-├── auto_backup.py         # Automatic OLT config backup
-├── db_backup.py           # Automatic app database backup (SQLite/PostgreSQL, hourly cron)
-├── traffic_poller.py      # Traffic polling via Telnet CLI
-├── ws_bridge.py           # WebSocket bridge for real-time events
-├── api_async.py           # FastAPI app (WebSocket + Swagger docs)
-├── api_docs.py            # FastAPI endpoint documentation
-├── extensions.py          # Shared Flask extensions (db, login_manager, migrate)
-├── helpers.py             # Shared helpers (permissions, rate limiting, logging)
-├── logging_config.py      # Structured logging (JSON for prod, human-readable for dev)
-├── run_server.py          # Hybrid server launcher (Flask + FastAPI)
-├── olt_adapters/          # ZTE adapter package
-│   ├── __init__.py        # Auto-registers ZTE adapter
-│   ├── base.py            # BaseOLTAdapter abstract class
-│   ├── registry.py        # RackAdapterRegistry
-│   ├── normalized.py      # Normalized data classes (RackData, Slot, Port, Fan, PSU)
-│   ├── snmp_oids.py       # ZTE SNMP OID mappings
-│   └── zte_adapter.py     # ZTE adapter (delegates to snmp_collector)
-├── metrics_service.py     # SNMP poll metrics tracking
+├── backend/                # Flask + FastAPI backend (Python)
+│   ├── app.py               # Flask app setup, error handlers, security headers, startup (517 lines)
+│   ├── routes_auth.py       # Blueprint: login, logout, API auth
+│   ├── routes_onu.py        # Blueprint: ONU CRUD, provisioning, actions, traffic
+│   ├── routes_olt_ports.py  # Blueprint: uplink/PON port, VLAN, ONU type, speed/WAN-IP/SLA profiles
+│   ├── routes_olt_settings.py # Blueprint: OLT CRUD, write-config, backup, CLI users
+│   ├── routes_olt_sync.py   # Blueprint: OLT sync trigger/status/history, connection test
+│   ├── routes_olt_spa_data.py # Blueprint: DB-backed SPA lookups (live uplink traffic, VLANs, WAN-IP)
+│   ├── routes_templates.py  # Blueprint: provisioning templates, TR069 profiles
+│   ├── routes_users.py      # Blueprint: profile, users, roles, permissions
+│   ├── routes_system.py     # Blueprint: action logs, customization, system update/config, DB backup API
+│   ├── routes_notifications.py # Blueprint: notifications, maintenance windows, uptime/SLA, alert rules, bot config
+│   ├── routes_dashboard.py  # Blueprint: dashboard summary, all-ONUs list, users/technicians lookup
+│   ├── routes_public.py     # Blueprint: public branding endpoint (no auth)
+│   ├── routes_whatsapp.py   # Blueprint: WhatsApp Native gateway management
+│   ├── routes_cloudflare.py # Blueprint: Cloudflare Tunnel config
+│   ├── routes_ftth.py       # Blueprint: FTTH infrastructure (OTB/ODC/ODP, tree, map, import/export)
+│   ├── routes_traffic.py    # Blueprint: traffic grid/history/live, metrics history
+│   ├── models.py            # SQLAlchemy models (OLT, ONU, Alert, FTTH, Users, etc.)
+│   ├── sync_lock.py          # Distributed sync lock (prevent concurrent syncs)
+│   ├── snmp_core.py         # SNMP core collector (pysnmp 7.x Slim API)
+│   ├── snmp_collector.py    # Compatibility shim + create_cli_collector() SSH/Telnet dispatch
+│   ├── telnet_client.py     # ZTE CLI collector & provisioning (SSH+Telnet)
+│   ├── alerts.py            # Alert engine + notification (Telegram, WA, in-app)
+│   ├── services_sync.py     # Sync service (background thread management)
+│   ├── sync_helper.py       # Sync result persistence to DB
+│   ├── cache.py             # Redis caching layer (in-memory fallback for dev)
+│   ├── auto_sync.py         # Cron-based auto-sync
+│   ├── auto_backup.py       # Automatic OLT config backup
+│   ├── db_backup.py         # Automatic app database backup (SQLite/PostgreSQL, hourly cron)
+│   ├── traffic_poller.py    # Traffic polling via Telnet CLI
+│   ├── ws_bridge.py         # WebSocket bridge for real-time events
+│   ├── api_async.py         # FastAPI app (WebSocket + Swagger docs)
+│   ├── api_docs.py           # FastAPI endpoint documentation
+│   ├── extensions.py        # Shared Flask extensions (db, login_manager, migrate)
+│   ├── helpers.py           # Shared helpers (permissions, rate limiting, logging)
+│   ├── logging_config.py    # Structured logging (JSON for prod, human-readable for dev)
+│   ├── run_server.py        # Hybrid server launcher (Flask + FastAPI)
+│   ├── olt_adapters/        # ZTE adapter package
+│   │   ├── __init__.py      # Auto-registers ZTE adapter
+│   │   ├── base.py          # BaseOLTAdapter abstract class
+│   │   ├── registry.py      # RackAdapterRegistry
+│   │   ├── normalized.py    # Normalized data classes (RackData, Slot, Port, Fan, PSU)
+│   │   ├── snmp_oids.py     # ZTE SNMP OID mappings
+│   │   └── zte_adapter.py   # ZTE adapter (delegates to snmp_collector)
+│   ├── metrics_service.py   # SNMP poll metrics tracking
+│   ├── migrations/           # Alembic database migrations
+│   ├── tests/                 # pytest unit tests (test_basic, test_provisioning, test_security)
+│   ├── requirements.txt     # Python dependencies
+│   └── .env.example           # Environment config template
 ├── frontend/              # React SPA
 │   ├── src/
 │   │   ├── pages/         # Dashboard, AllOnus, ViewOnu, Settings, Customization, etc.
@@ -202,12 +207,8 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 │   ├── nginx-fibernms.conf # Nginx reverse proxy config
 │   ├── deploy-frontend.ps1 # Frontend build & deploy script
 │   └── .env.template      # Production env template
-├── migrations/            # Alembic database migrations
-├── tests/                 # pytest unit tests (test_basic, test_provisioning, test_security)
-├── requirements.txt       # Python dependencies
 ├── install-vps.sh         # One-click VPS installer
-├── uninstall-vps.sh       # VPS uninstaller
-└── .env.example           # Environment config template
+└── uninstall-vps.sh       # VPS uninstaller
 ```
 
 ## Quick Start
@@ -267,15 +268,17 @@ python -m venv .venv
 # Linux/macOS
 source .venv/bin/activate
 
+cd backend
 pip install -r requirements.txt
 
 # 2. Frontend setup
-cd frontend
+cd ../frontend
 npm install
 npm run build
 cd ..
 
 # 3. Configure environment
+cd backend
 cp .env.example .env
 # Edit .env with your settings
 
@@ -296,6 +299,7 @@ python app.py
 
 ```bash
 # Terminal 1: Backend
+cd backend
 python app.py
 
 # Terminal 2: Frontend dev server
@@ -326,6 +330,8 @@ git pull origin main
 cd frontend && npm run build && cd ..
 systemctl restart salfanet-nms
 ```
+
+(pip dependencies for the backend live in `backend/requirements.txt` — reinstall with `cd backend && ../.venv/bin/pip install -r requirements.txt` if `requirements.txt` changed.)
 
 ### Uninstall (remove everything)
 
@@ -419,7 +425,7 @@ Services: backend (Flask+FastAPI), PostgreSQL, Redis, Nginx
 > standard `browser → Nginx → Flask` chain above is one hop — if you add
 > another proxy/load balancer in front of Nginx, increase `x_for` to match
 > or the app will read the wrong hop and a client can spoof it. See
-> `.env.example`.
+> `backend/.env.example`.
 
 ### VPS Deployment (Ubuntu)
 
@@ -429,10 +435,10 @@ sudo bash deploy/vps-setup.sh your-domain.com
 
 # Or manually:
 # 1. Copy files to /opt/fibernms/
-# 2. Create Python venv, install requirements
+# 2. Create Python venv, install backend/requirements.txt
 # 3. Build frontend: cd frontend && npm ci && npm run build
 # 4. Configure nginx (use deploy/nginx-fibernms.conf)
-# 5. Create systemd service
+# 5. Create systemd service (WorkingDirectory=/opt/fibernms/backend)
 # 6. sudo certbot --nginx -d your-domain.com (for HTTPS)
 ```
 
@@ -446,7 +452,7 @@ After=network.target
 [Service]
 Type=simple
 User=fibernms
-WorkingDirectory=/opt/fibernms
+WorkingDirectory=/opt/fibernms/backend
 Environment="PATH=/opt/fibernms/.venv/bin"
 ExecStart=/opt/fibernms/.venv/bin/python run_server.py
 Restart=always
@@ -488,6 +494,7 @@ WantedBy=multi-user.target
 
 ```bash
 # Backend tests
+cd backend
 py -3 -m pytest tests/ -v
 
 # Frontend tests
