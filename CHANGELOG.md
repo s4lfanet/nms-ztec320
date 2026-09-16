@@ -4,6 +4,30 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-17 — Insiden: VPS Produksi Down Setelah Deploy Restrukturisasi `backend/` (Root Cause + Perbaikan)
+
+#### Ditemukan
+- Deploy commit `24b387e` (redesign frontend) ke VPS produksi via `git pull` + `systemctl restart` menyebabkan service **crash-loop total** (`can't open file '/opt/salfanet-nms/run_server.py': No such file or directory`). Situs down sepenuhnya untuk semua request
+- Root cause: restrukturisasi `backend/` (PR #3, sudah di-merge sebelumnya) memperbaiki *installer scripts* (`install-vps.sh`, `deploy/vps-setup.sh`) supaya instalasi BARU menulis systemd unit/Nginx config/cron yang benar — tapi **deploy rutin (`git pull` + restart) tidak pernah menjalankan ulang installer**, sehingga systemd unit, Nginx config, dan crontab yang SUDAH TERPASANG di VPS produksi ini tetap menunjuk ke path lama (`WorkingDirectory=/opt/salfanet-nms`, bukan `/opt/salfanet-nms/backend`). Ini murni celah proses deploy yang tidak tercakup saat restrukturisasi dikerjakan (fokus waktu itu ke kebenaran struktur repo + CI, bukan ke migrasi server yang sudah berjalan)
+- File live yang tidak di-track git (`.env`, `instance/` — termasuk `nms.db` produksi asli ~13.6MB, `static/uploads/company-logo.png`) juga masih di lokasi lama karena `git pull` tidak pernah menyentuh file untracked/gitignored
+- Root crontab (4 job: `db_backup.py`, `auto_backup.py`, `auto_sync.py`, `traffic_poller.py`) masih `cd /opt/salfanet-nms` (path lama) — akan gagal silent di run berikutnya kalau tidak ketahuan sekarang
+
+#### Diperbaiki
+- Service dihentikan sementara, lalu `.env`/`instance/`/`static/` dipindah manual ke `backend/` di VPS (bukan lewat git, karena memang bukan file yang di-track)
+- `/etc/systemd/system/salfanet-nms.service`: `WorkingDirectory` dan `EnvironmentFile` diarahkan ke `/opt/salfanet-nms/backend`
+- `/etc/nginx/sites-available/salfanet-nms`: alias `/static/` diarahkan ke `backend/static/`
+- Root crontab: keempat job diubah `cd /opt/salfanet-nms` → `cd /opt/salfanet-nms/backend`
+- `daemon-reload` + restart service + reload Nginx
+- Dibersihkan juga sisa artifak lama di root VPS yang tidak ikut ke-cleanup otomatis oleh `git pull` karena memang untracked: `nms.db` kosong (0 byte, peninggalan sebelum konvensi `instance/`), serta `__pycache__`/`migrations`/`tests` versi lama (cache bytecode Python, tidak lagi dipakai)
+
+#### Diverifikasi
+- Flask (`/`, `/login`) HTTP 200, FastAPI `/health` HTTP 200, Nginx port 80 HTTP 200, file statis (`/static/uploads/company-logo.png`) HTTP 200
+- `auto_sync.py` dites langsung dari `backend/` dengan path baru — berhasil connect dan sync OLT sungguhan
+- `git rev-parse HEAD` di VPS cocok dengan commit terbaru, `git status` bersih, cwd proses `run_server.py` yang berjalan dikonfirmasi `/opt/salfanet-nms/backend`, root direktori VPS sekarang persis sama strukturnya dengan repo
+
+#### Catatan untuk Deploy Restrukturisasi Berikutnya (Pelajaran)
+- Kalau ada restrukturisasi path serupa di masa depan, **checklist deploy ke server yang SUDAH terpasang** (bukan instalasi baru) harus eksplisit disiapkan sebagai bagian dari PR — bukan diasumsikan `git pull` saja cukup. Idealnya: script migrasi one-time terpisah (pindah file live + update systemd/Nginx/cron) yang dijalankan sekali saat deploy pertama pasca-restrukturisasi
+
 ### 2026-09-17 — Redesign Frontend: Depth Visual, Stat Card, Ikon FontAwesome, Animasi Login
 
 #### Latar Belakang
