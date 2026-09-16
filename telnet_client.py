@@ -2180,7 +2180,13 @@ class TelnetCollector:
         services = [s for s in services if s.get('enabled')]
 
         # Per-service download/upload profiles (fallback to global)
-        global_download = extra.get('traffic_profile', '') or traffic_profile
+        # `extra.get(..., '')` already supplies its own empty-string default —
+        # the previous `or traffic_profile` fallback referenced a name that
+        # was never defined in this method's scope (a pre-existing bug,
+        # preserved as-is by the Finding 5 refactor and now fixed on its
+        # own: it raised NameError whenever extra['traffic_profile'] was
+        # empty/missing instead of just leaving the download limit unset).
+        global_download = extra.get('traffic_profile', '')
         global_upload = tcont_profile
 
         # Determine if any non-bridge service exists (for firewall/security-mgmt)

@@ -1723,6 +1723,20 @@ class TestVendorTemplateCommandSequences:
             'end', 'enable', 'show gpon onu state gpon-olt_1/1/wifi_0/5',
         ]
 
+    def test_zte_multi_does_not_crash_when_traffic_profile_missing(self):
+        """Regression: _provision_zte_multi's `global_download = extra.get(
+        'traffic_profile', '') or traffic_profile` referenced a bare
+        `traffic_profile` name that was never defined in this method's
+        scope — a NameError waiting to happen whenever a caller's extra
+        dict omits (or empties) traffic_profile. The golden-snapshot tests
+        above never caught it because their shared default extra always
+        supplies a truthy traffic_profile, short-circuiting the `or`
+        before it touched the undefined name."""
+        extra = self._default_extra()
+        extra.pop('traffic_profile', None)  # exactly the condition that used to crash
+        ok, msg, commands = self._capture('zte_multi', extra=extra)
+        assert ok is True, f'expected success, got: {msg}'
+
 
 class TestCliSanitize:
     """Unit tests for cli_sanitize.py — the choke point every free-text

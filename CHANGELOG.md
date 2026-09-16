@@ -4,6 +4,18 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-17 — Fix: `NameError` di `_provision_zte_multi` Kalau `extra.traffic_profile` Kosong (Follow-up Temuan 5)
+
+#### Ditemukan
+- Saat refactor Temuan 5 (audit sebelumnya), ditemukan tapi sengaja tidak diperbaiki: `global_download = extra.get('traffic_profile', '') or traffic_profile` di `_provision_zte_multi` — variabel `traffic_profile` di ruas kanan `or` tidak pernah didefinisikan di scope method ini. Provisioning ONU dengan template `zte_multi` akan `NameError` kalau `extra.traffic_profile` kosong/tidak dikirim
+
+#### Diperbaiki
+- Dihapus fallback `or traffic_profile` yang menunjuk ke nama tidak terdefinisi — `extra.get('traffic_profile', '')` sudah punya default `''` sendiri, jadi cukup `global_download = extra.get('traffic_profile', '')`. Kalau nanti kosong, kode di bawahnya sudah didesain untuk melewati command `traffic-limit downstream` (bukan wajib ada)
+
+#### Diverifikasi
+- 1 test baru: provisioning `zte_multi` dengan `extra.traffic_profile` dihapus dari payload — dikonfirmasi **gagal dengan `NameError` yang sama persis di kode lama**, dan **lulus di kode baru**
+- Full suite tetap hijau
+
 ### 2026-09-16 — Refactor: Pisahkan Dispatch Template Vendor di `register_vendor_template` (Audit Temuan 5)
 
 #### Latar Belakang
