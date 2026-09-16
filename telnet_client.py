@@ -1724,508 +1724,17 @@ class TelnetCollector:
             if description:
                 sc(f'description {description}')
 
-            if template == 'bridge':
-                sc_tcont(1, service_name, tcont_profile)
-                sc('gemport 1 tcont 1')
-                sc(f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
-
-            elif template == 'pppoe':
-                sc_tcont(1, service_name, tcont_profile)
-                sc('gemport 1 tcont 1')
-                sc(f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
-                self._send_command(tn, 'exit')  # exit ONU interface
-                self._send_command(tn, f'pon-onu-mng {onu_if}')
-                sc(f'service INTERNET gemport 1 vlan {vlan}')
-                sc_warn(f'vlan port eth_0/1 mode hybrid def-vlan {vlan}')
-                sc_warn(f'vlan port eth_0/2 mode hybrid def-vlan {vlan}')
-                sc_warn(f'vlan port eth_0/3 mode hybrid def-vlan {vlan}')
-                sc_warn(f'vlan port eth_0/4 mode hybrid def-vlan {vlan}')
-                pppoe_user = extra.get('pppoe_user', '')
-                pppoe_pass = extra.get('pppoe_pass', '')
-                vlan_profile = extra.get('vlan_profile', 'pppoe')
-                if pppoe_user:
-                    sc(f'wan-ip 1 mode pppoe username {pppoe_user} password {pppoe_pass} vlan-profile {vlan_profile} host 1')
-                else:
-                    sc(f'wan-ip 1 mode pppoe vlan-profile {vlan_profile} host 1')
-
-            elif template == 'fiberhome_veip':
-                # Read from vlans array if present, fall back to individual fields
-                vlans_arr = extra.get('vlans', [])
-                if isinstance(vlans_arr, str):
-                    import json as _j
-                    try: vlans_arr = _j.loads(vlans_arr)
-                    except: vlans_arr = []
-                if vlans_arr and len(vlans_arr) >= 3:
-                    tr069_vlan = str(vlans_arr[0].get('vlan', '') or 1010)
-                    internet_vlan = str(vlans_arr[1].get('vlan', '') or 30)
-                    voip_vlan = str(vlans_arr[2].get('vlan', '') or 151)
-                else:
-                    tr069_vlan = str(extra.get('tr069_vlan') or 1010)
-                    internet_vlan = str(extra.get('internet_vlan') or 30)
-                    voip_vlan = str(extra.get('voip_vlan') or 151)
-                acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
-                acs_user = extra.get('acs_user', '') or 'acs'
-                acs_pass = extra.get('acs_pass', '') or 'acs'
-                traffic_profile = extra.get('traffic_profile', '')
-                # WAN config for internet service
-                wan_mode = extra.get('wan_mode', 'bridge')  # bridge|pppoe|dhcp|static
-                pppoe_user = extra.get('pppoe_user', '')
-                pppoe_pass = extra.get('pppoe_pass', '')
-                vlan_profile = extra.get('vlan_profile', '')
-                wan_ip_mode = extra.get('wan_ip_mode', '')  # PPPoE|DHCP|STATIC
-                # sn-bind enable sn
-                sc('sn-bind enable sn')
-                # TCONTs (no name — matching running-config)
-                sc_tcont(1, '', tcont_profile)
-                sc('gemport 1 tcont 1')
-                if traffic_profile:
-                    sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
-                sc_tcont(2, '', tcont_profile)
-                sc('gemport 2 tcont 2')
-                sc_tcont(3, '', tcont_profile)
-                sc('gemport 3 tcont 3')
-                sc(f'service-port 1 vport 1 user-vlan {tr069_vlan} vlan {tr069_vlan}')
-                sc(f'service-port 2 vport 2 user-vlan {internet_vlan} vlan {internet_vlan}')
-                sc(f'service-port 3 vport 3 user-vlan {voip_vlan} vlan {voip_vlan}')
-                self._send_command(tn, 'exit')
-                self._send_command(tn, f'pon-onu-mng {onu_if}')
-                # Safe-replace: delete old service entries to prevent error 63869
-                for sn in ['service1', 'service2', 'service3']:
-                    self._send_command(tn, f'no service {sn}', timeout=10)
-                for n in [1, 2, 3]:
-                    self._send_command(tn, f'no wan {n} service', timeout=10)
-                    self._send_command(tn, f'no wan-ip {n}', timeout=10)
-                    self._send_command(tn, f'no pppoe {n}', timeout=10)
-                import time as _t; _t.sleep(1)
-                # Service names matching running-config: service1, 2, 3
-                sc(f'service service1 gemport 1 vlan {tr069_vlan}')
-                sc(f'service 2 gemport 2 vlan {internet_vlan}')
-                sc(f'service 3 gemport 3 vlan {voip_vlan}')
-                sc('vlan port veip_1 mode hybrid')
-                sc_warn(f'vlan port eth_0/1 mode tag vlan {internet_vlan}')
-                sc_warn(f'vlan port eth_0/2 mode tag vlan {internet_vlan}')
-                sc_warn(f'vlan port eth_0/3 mode tag vlan {internet_vlan}')
-                sc_warn(f'vlan port eth_0/4 mode tag vlan {internet_vlan}')
-                sc_warn(f'vlan port wifi_0/1 mode tag vlan {internet_vlan}')
-                # WAN config for internet service (VEIP mode — always host 1)
-                if wan_mode == 'pppoe' and pppoe_user:
-                    if vlan_profile:
-                        sc(f'wan-ip 2 mode pppoe username {pppoe_user} password {pppoe_pass} vlan-profile {vlan_profile} host 1')
-                        sc('wan-ip 2 ping-response enable traceroute-response enable')
-                    else:
-                        # No vlan-profile — use pppoe nat mode instead
-                        sc(f'pppoe 2 nat enable user {pppoe_user} password {pppoe_pass}')
-                        sc('wan 2 service internet host 1')
-                elif wan_mode == 'dhcp' or wan_ip_mode == 'DHCP':
-                    if vlan_profile:
-                        sc(f'wan-ip 2 mode dhcp vlan-profile {vlan_profile} host 1')
-                        sc('wan-ip 2 ping-response enable traceroute-response enable')
-                elif wan_ip_mode == 'STATIC':
-                    ip_addr = extra.get('ip_address', '')
-                    subnet = extra.get('subnet_mask', '')
-                    ip_prof = extra.get('ip_profile', '')
-                    if ip_prof and vlan_profile:
-                        sc(f'wan-ip 2 mode static ip-profile {ip_prof} vlan-profile {vlan_profile} host 1')
-                    elif ip_addr and vlan_profile:
-                        sc(f'wan-ip 2 mode static ip-address {ip_addr} mask {subnet} vlan-profile {vlan_profile} host 1')
-                    sc('wan-ip 2 ping-response enable traceroute-response enable')
-                # TR069 uses tr069-mgmt VLAN tagging — no separate wan-ip needed
-                # (wan-ip 1 on same host 1 would conflict with wan-ip 2)
-                sc('tr069-mgmt 1 state unlock')
-                sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
-                sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
-
-            elif template == 'zte_full':
-                primary_vlan = int(extra.get('primary_vlan') or 30)
-                secondary_vlan = int(extra.get('secondary_vlan') or 151)
-                enable_dual_ssid = extra.get('enable_dual_ssid', 'true') == 'true'
-                ssid1_name = extra.get('ssid1_name', '')
-                ssid1_pass = extra.get('ssid1_pass', '12345678')
-                ssid1_auth = extra.get('ssid1_auth', 'wpa2')
-                ssid2_name = extra.get('ssid2_name', '')
-                ssid2_pass = extra.get('ssid2_pass', '')
-                ssid2_auth = extra.get('ssid2_auth', 'open')
-                enable_pppoe = extra.get('enable_pppoe', '') == 'true'
-                pppoe_user = extra.get('pppoe_user', '')
-                pppoe_pass = extra.get('pppoe_pass', '')
-                enable_tr069 = extra.get('enable_tr069', '') == 'true'
-                acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
-                acs_user = extra.get('acs_user', '') or 'acs'
-                acs_pass = extra.get('acs_pass', '') or 'acs'
-                tr069_vlan = int(extra.get('tr069_vlan') or 0)
-                enable_firewall = extra.get('enable_firewall', '') == 'true'
-                firewall_level = extra.get('firewall_level', 'low')
-                traffic_profile = extra.get('traffic_profile', '')
-
-                # Interface config: TCONT, Gemport, Service-port
-                tcont1_name = f'VLAN{primary_vlan:04d}'
-                sc_tcont(1, tcont1_name, tcont_profile)
-                sc('gemport 1 tcont 1')
-                if traffic_profile:
-                    sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
-                tcont2_name = f'VLAN{secondary_vlan}'
-                sc_tcont(2, tcont2_name, tcont_profile)
-                sc('gemport 2 tcont 2')
-                if traffic_profile:
-                    sc(f'gemport 2 traffic-limit downstream {traffic_profile}')
-                sc(f'service-port 1 vport 1 user-vlan {primary_vlan} vlan {primary_vlan}')
-                sc(f'service-port 2 vport 2 user-vlan {secondary_vlan} vlan {secondary_vlan}')
-                self._send_command(tn, 'exit')
-
-                # pon-onu-mng config
-                self._send_command(tn, f'pon-onu-mng {onu_if}')
-                # Safe-replace: delete old service entries to prevent error 63869
-                for n in [1, 2]:
-                    self._send_command(tn, f'no service VLAN{n:04d}', timeout=10)
-                    self._send_command(tn, f'no service service{n}', timeout=10)
-                    self._send_command(tn, f'no wan {n} service', timeout=10)
-                    self._send_command(tn, f'no wan-ip {n}', timeout=10)
-                    self._send_command(tn, f'no pppoe {n}', timeout=10)
-                import time as _t; _t.sleep(1)
-                service1_name = f'VLAN{primary_vlan:04d}'
-                use_veip = extra.get('use_veip', '') == 'true'
-                if use_veip:
-                    sc(f'service {service1_name} gemport 1 vlan {primary_vlan}')
-                else:
-                    sc(f'service {service1_name} gemport 1 iphost 1 vlan {primary_vlan}')
-                service2_name = f'VLAN{secondary_vlan}'
-                sc(f'service {service2_name} gemport 2 vlan {secondary_vlan}')
-                if use_veip:
-                    sc('vlan port veip_1 mode hybrid')
-                    sc('vlan port veip_1 vlan 1')
-
-                # PPPoE first (creates WAN connection)
-                if enable_pppoe and pppoe_user and pppoe_pass:
-                    sc(f'pppoe 1 nat enable user {pppoe_user} password {pppoe_pass}')
-
-                # WAN service AFTER pppoe so service type is not overridden
-                # Include tr069 in service type when TR069 is enabled so GenieACS can connect
-                if enable_tr069:
-                    sc('wan 1 service tr069 internet host 1')
-                else:
-                    sc('wan 1 service internet host 1')
-
-                # ETH port VLAN tagging — use lan_vlans if provided, else default to primary_vlan
-                lan_vlans_raw = extra.get('lan_vlans', '[]')
-                if isinstance(lan_vlans_raw, str):
-                    lan_vlans = _json_ssid.loads(lan_vlans_raw) if lan_vlans_raw else []
-                else:
-                    lan_vlans = lan_vlans_raw or []
-                for eth_port in range(1, 5):
-                    port_vlan = lan_vlans[eth_port - 1] if eth_port - 1 < len(lan_vlans) and lan_vlans[eth_port - 1] else primary_vlan
-                    sc_warn(f'vlan port eth_0/{eth_port} mode tag vlan {port_vlan}')
-
-                # WiFi VLAN tagging — use per-SSID VLAN from ssids_list if provided
-                for s in ssids_list:
-                    if s.get('name') and s.get('vlan'):
-                        wp = s.get('port', 'wifi_0/1')
-                        sc_warn(f'vlan port {wp} mode tag vlan {s["vlan"]}')
-                # Default: tag wifi_0/1 and wifi_0/5 to primary_vlan if no per-SSID VLAN
-                if not any(s.get('vlan') for s in ssids_list if s.get('name')):
-                    sc_warn(f'vlan port wifi_0/1 mode tag vlan {primary_vlan}')  # 2.4GHz
-                    sc_warn(f'vlan port wifi_0/5 mode tag vlan {primary_vlan}')  # 5GHz
-                    if enable_dual_ssid:
-                        sc_warn(f'vlan port wifi_0/2 mode tag vlan {secondary_vlan}')  # 2.4GHz guest
-
-                # Firewall
-                if enable_firewall:
-                    sc(f'firewall enable level {firewall_level} anti-hack disable')
-
-                # TR069
-                if enable_tr069:
-                    sc('tr069-mgmt 1 state unlock')
-                    sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
-                    tr069_vlan_mode = extra.get('tr069_vlan_mode', 'untag')
-                    if tr069_vlan_mode == 'tag' and tr069_vlan:
-                        sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
-                    else:
-                        sc('tr069-mgmt 1 untag')
-
-                # Security management (enable remote access: web ftp telnet ssh https snmp tr069)
-                sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
-
-            elif template == 'zte_single':
-                ssid_name = extra.get('ssid_name', '')
-                ssid_pass = extra.get('ssid_pass', '')
-                ssid_auth = extra.get('ssid_auth', 'wpa2')
-                enable_pppoe = extra.get('enable_pppoe', '') == 'true'
-                pppoe_user = extra.get('pppoe_user', '')
-                pppoe_pass = extra.get('pppoe_pass', '')
-                enable_tr069 = extra.get('enable_tr069', '') == 'true'
-                acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
-                acs_user = extra.get('acs_user', '') or 'acs'
-                acs_pass = extra.get('acs_pass', '') or 'acs'
-                tr069_vlan = int(extra.get('tr069_vlan') or 0)
-                enable_firewall = extra.get('enable_firewall', '') == 'true'
-                firewall_level = extra.get('firewall_level', 'low')
-                traffic_profile = extra.get('traffic_profile', '')
-
-                sc_tcont(1, service_name, tcont_profile)
-                sc('gemport 1 tcont 1')
-                if traffic_profile:
-                    sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
-                sc(f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
-                self._send_command(tn, 'exit')
-                self._send_command(tn, f'pon-onu-mng {onu_if}')
-                # Safe-replace: delete old service entries to prevent error 63869
-                self._send_command(tn, 'no service INTERNET', timeout=10)
-                self._send_command(tn, 'no service service1', timeout=10)
-                self._send_command(tn, 'no wan 1 service', timeout=10)
-                self._send_command(tn, 'no wan-ip 1', timeout=10)
-                self._send_command(tn, 'no pppoe 1', timeout=10)
-                import time as _t; _t.sleep(1)
-                use_veip = extra.get('use_veip', '') == 'true'
-                if use_veip:
-                    sc(f'service INTERNET gemport 1 vlan {vlan}')
-                    sc('vlan port veip_1 mode hybrid')
-                    sc('vlan port veip_1 vlan 1')
-                else:
-                    sc(f'service INTERNET gemport 1 iphost 1 vlan {vlan}')
-
-                # PPPoE first (creates WAN connection)
-                if enable_pppoe and pppoe_user and pppoe_pass:
-                    sc(f'pppoe 1 nat enable user {pppoe_user} password {pppoe_pass}')
-
-                # WAN service AFTER pppoe so service type is not overridden
-                # Include tr069 in service type when TR069 is enabled so GenieACS can connect
-                if enable_tr069:
-                    sc('wan 1 service tr069 internet host 1')
-                else:
-                    sc('wan 1 service internet host 1')
-
-                # ETH port VLAN
-                sc_warn(f'vlan port eth_0/1 mode hybrid def-vlan {vlan}')
-                sc_warn(f'vlan port eth_0/2 mode hybrid def-vlan {vlan}')
-                sc_warn(f'vlan port eth_0/3 mode hybrid def-vlan {vlan}')
-                sc_warn(f'vlan port eth_0/4 mode hybrid def-vlan {vlan}')
-
-                # WiFi VLAN tagging (non-fatal: wifi port may not exist in ONU type)
-                if ssid_name:
-                    sc_warn(f'vlan port wifi_0/1 mode tag vlan {vlan}')
-
-                # Firewall
-                if enable_firewall:
-                    sc(f'firewall enable level {firewall_level} anti-hack disable')
-
-                # TR069
-                if enable_tr069:
-                    sc('tr069-mgmt 1 state unlock')
-                    sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
-                    tr069_vlan_mode = extra.get('tr069_vlan_mode', 'untag')
-                    if tr069_vlan_mode == 'tag' and tr069_vlan:
-                        sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
-                    else:
-                        sc('tr069-mgmt 1 untag')
-
-                # Security management (enable remote access: web ftp telnet ssh https snmp tr069)
-                sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
-
-            elif template == 'huawei_full':
-                vlan_profile = extra.get('vlan_profile', 'genieacs')
-                # Dynamic VLAN list from extra.vlans (array of {vlan, label})
-                # Backward compat: if no vlans list, build from old mgmt/internet/voip fields
-                vlans_raw = extra.get('vlans', [])
-                if not vlans_raw:
-                    vlans_raw = [
-                        {'vlan': extra.get('mgmt_vlan', 1010), 'label': 'Mgmt'},
-                        {'vlan': extra.get('internet_vlan', 30), 'label': 'Internet'},
-                        {'vlan': extra.get('voip_vlan', 151), 'label': 'VoIP'},
-                    ]
-                # sn-bind enable sn
-                sc('sn-bind enable sn')
-                # Single TCONT/GEM — all service-ports share vport 1
-                sc_tcont(1, '', tcont_profile)
-                sc('gemport 1 tcont 1')
-                for idx, v in enumerate(vlans_raw, 1):
-                    vid = v.get('vlan', v) if isinstance(v, dict) else v
-                    sc(f'service-port {idx} vport 1 user-vlan {vid} vlan {vid}')
-                self._send_command(tn, 'exit')
-                self._send_command(tn, f'pon-onu-mng {onu_if}')
-                # Service binding — no VLAN in service definition (matching running-config)
-                sc('service ServiceONU1 gemport 1')
-                # WAN IP via DHCP with VLAN profile (GenieACS manages TR069)
-                sc(f'wan-ip 1 mode dhcp vlan-profile {vlan_profile} host 1')
-
-            elif template == 'zte_multi':
-                # Multi-service WAN config (matching r-config CLI output exactly)
-                # Service types: internet, tr069, iptv, bridge
-                # TR069 service type: wan-ip mode dhcp with VLAN profile + separate tr069-mgmt config
-                # WAN modes: wan (WAN-IP), nat (PPPoE NAT), webpage (setup via ONT)
-                import json as _json
-                services_raw = extra.get('services', '[]')
-                if isinstance(services_raw, str):
-                    services = _json.loads(services_raw)
-                else:
-                    services = services_raw
-                services = [s for s in services if s.get('enabled')]
-
-                # Per-service download/upload profiles (fallback to global)
-                global_download = extra.get('traffic_profile', '') or traffic_profile
-                global_upload = tcont_profile
-
-                # Determine if any non-bridge service exists (for firewall/security-mgmt)
-                has_non_bridge = any(s.get('service_type', 'internet') != 'bridge' for s in services)
-                # Determine if TR069 profile is enabled
-                tr069_enabled = extra.get('enable_tr069') == 'true'
-
-                # Phase 1: Interface config — TCONT, Gemport, Service-port per service
-                for idx, svc in enumerate(services):
-                    n = idx + 1
-                    svc_vlans = svc.get('vlans', [])
-                    primary_vlan = int(svc_vlans[0]) if svc_vlans else vlan
-                    svc_type = svc.get('service_type', 'internet')
-                    # Service name: simple "service{N}" matching r-config output
-                    svc_name = f'service{n}'
-                    # Upload profile (TCONT) — per-service or global
-                    up_profile = svc.get('profile_upload', '') or global_upload
-                    down_profile = svc.get('profile_download', '') or global_download
-                    sc(f'tcont {n} name {svc_name} profile {up_profile}')
-                    sc(f'gemport {n} tcont {n}')
-                    if down_profile:
-                        sc(f'gemport {n} traffic-limit downstream {down_profile}')
-                    # IPTV: service-port uses MVLAN as VLAN (not selected VLAN)
-                    if svc_type == 'iptv':
-                        mvlan = int(svc.get('mvlan', 0))
-                        if mvlan:
-                            sc(f'service-port {n} vport {n} user-vlan {mvlan} vlan {mvlan}')
-                        else:
-                            sc(f'service-port {n} vport {n} user-vlan {primary_vlan} vlan {primary_vlan}')
-                    else:
-                        vlan_mode = svc.get('vlan_mode', 'tag')
-                        cvlan_val = int(svc.get('cvlan', 0))
-                        if vlan_mode == 'qinq' and cvlan_val:
-                            sc(f'service-port {n} vport {n} user-vlan {cvlan_val} vlan {primary_vlan} QinQ')
-                        elif vlan_mode == 'untag':
-                            sc(f'service-port {n} vport {n} untag')
-                        else:
-                            sc(f'service-port {n} vport {n} user-vlan {primary_vlan} vlan {primary_vlan}')
-                self._send_command(tn, 'exit')  # exit ONU interface
-
-                # Phase 2: pon-onu-mng config
-                self._send_command(tn, f'pon-onu-mng {onu_if}')
-                use_veip = extra.get('use_veip', '') == 'true'
-                for idx, svc in enumerate(services):
-                    n = idx + 1
-                    svc_vlans = svc.get('vlans', [])
-                    primary_vlan = int(svc_vlans[0]) if svc_vlans else vlan
-                    svc_type = svc.get('service_type', 'internet')
-                    wan_mode = svc.get('wan_mode', 'webpage')
-                    wan_ip_mode = svc.get('wan_ip_mode', 'PPPoE')
-                    vlan_profile = svc.get('vlan_profile', '')
-                    username = svc.get('username', '')
-                    password = svc.get('password', '')
-                    svc_name = f'service{n}'
-
-                    # Calculate VLAN for service definition
-                    if svc_type == 'iptv':
-                        mvlan = int(svc.get('mvlan', 0))
-                        svc_vlan_for_service = mvlan if mvlan else primary_vlan
-                    else:
-                        svc_vlan_for_service = primary_vlan
-
-                    # VLAN mode handling for service definition
-                    svc_vlan_mode = svc.get('vlan_mode', 'tag')
-                    svc_cvlan = int(svc.get('cvlan', 0))
-                    if svc_vlan_mode == 'untag':
-                        vlan_suffix = ''
-                    elif svc_vlan_mode == 'qinq' and svc_cvlan:
-                        vlan_suffix = f' vlan {svc_vlan_for_service} cvlan {svc_cvlan}'
-                    else:
-                        vlan_suffix = f' vlan {svc_vlan_for_service}'
-
-                    # Service definition — services with WAN-IP/PPPoE need iphost, bridge/iptv don't
-                    needs_iphost = (not use_veip) and (svc_type in ('internet', 'tr069') and wan_mode in ('nat', 'wan'))
-                    if needs_iphost:
-                        sc(f'service {svc_name} gemport {n} iphost {n}{vlan_suffix}')
-                    elif not use_veip and n == 1:
-                        sc(f'service {svc_name} gemport {n} iphost 1{vlan_suffix}')
-                    else:
-                        sc(f'service {svc_name} gemport {n}{vlan_suffix}')
-
-                    # WAN config based on service type and wan_mode
-                    if svc_type == 'bridge':
-                        # Bridge: no wan-ip, but apply VLAN to ETH ports so traffic flows
-                        if not use_veip:
-                            for eth_port in (1, 2, 3, 4):
-                                sc_warn(f'vlan port eth_0/{eth_port} mode hybrid def-vlan {svc_vlan_for_service}')
-                    elif svc_type == 'tr069' and vlan_profile:
-                        # TR069: force DHCP via WAN-IP with VLAN profile
-                        sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
-                        sc(f'wan-ip {n} ping-response enable traceroute-response enable')
-                    elif svc_type == 'internet' and wan_mode == 'nat':
-                        # PPPoE NAT
-                        if username:
-                            sc(f'pppoe {n} nat enable user {username} password {password}')
-                            sc(f'wan {n} service internet host {n}')
-                    elif svc_type == 'internet' and wan_mode == 'wan':
-                        if wan_ip_mode == 'PPPoE' and username:
-                            sc(f'wan-ip {n} mode pppoe username {username} password {password} vlan-profile {vlan_profile} host {n}')
-                            sc(f'wan-ip {n} ping-response enable traceroute-response enable')
-                        elif wan_ip_mode == 'DHCP':
-                            sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
-                            sc(f'wan-ip {n} ping-response enable traceroute-response enable')
-                        elif wan_ip_mode == 'STATIC':
-                            ip_addr = svc.get('ip_address', '')
-                            subnet_mask = svc.get('subnet_mask', '')
-                            ip_profile = svc.get('ip_profile', '')
-                            if ip_profile:
-                                sc(f'wan-ip {n} mode static ip-profile {ip_profile} vlan-profile {vlan_profile} host {n}')
-                            elif ip_addr:
-                                sc(f'wan-ip {n} mode static ip-address {ip_addr} mask {subnet_mask} vlan-profile {vlan_profile} host {n}')
-                            sc(f'wan-ip {n} ping-response enable traceroute-response enable')
-                    # webpage mode = setup via ONT — no wan-ip command
-
-                # VEIP config (only for non-ZTE ONUs)
-                if use_veip:
-                    sc('vlan port veip_1 mode hybrid')
-                    sc('vlan port veip_1 vlan 1')
-
-                # LAN port VLAN tagging — use lan_vlans if provided, else auto-tag from services
-                lan_vlans_raw = extra.get('lan_vlans', '[]')
-                if isinstance(lan_vlans_raw, str):
-                    lan_vlans = _json_ssid.loads(lan_vlans_raw) if lan_vlans_raw else []
-                else:
-                    lan_vlans = lan_vlans_raw or []
-                if lan_vlans:
-                    for eth_port in range(1, 5):
-                        port_vlan = lan_vlans[eth_port - 1] if eth_port - 1 < len(lan_vlans) and lan_vlans[eth_port - 1] else None
-                        if port_vlan:
-                            sc_warn(f'vlan port eth_0/{eth_port} mode tag vlan {port_vlan}')
-                else:
-                    # Auto-tag: ETH port N → service N VLAN (if not already tagged by bridge service)
-                    for idx, svc in enumerate(services):
-                        n = idx + 1
-                        if n <= 4:
-                            svc_vlans = svc.get('vlans', [])
-                            pv = int(svc_vlans[0]) if svc_vlans else vlan
-                            svc_type = svc.get('service_type', 'internet')
-                            if svc_type != 'bridge':  # bridge already tagged above
-                                sc_warn(f'vlan port eth_0/{n} mode tag vlan {pv}')
-
-                # WiFi VLAN tagging — per-SSID VLAN from ssids_list
-                for s in ssids_list:
-                    if s.get('name') and s.get('vlan'):
-                        wp = s.get('port', 'wifi_0/1')
-                        sc_warn(f'vlan port {wp} mode tag vlan {s["vlan"]}')
-
-                # Global: firewall + security-mgmt (only if non-bridge service exists)
-                if has_non_bridge:
-                    sc('firewall enable level low')
-                    sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
-
-                # TR069 management (if TR069 profile enabled globally)
-                if tr069_enabled:
-                    sc('tr069-mgmt 1 state unlock')
-                    acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
-                    acs_user = extra.get('acs_user', '') or 'acs'
-                    acs_pass = extra.get('acs_pass', '') or 'acs'
-                    sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
-                    tr069_vlan = extra.get('tr069_vlan', '') or extra.get('acs_vlan', '')
-                    tr069_vlan_mode = extra.get('tr069_vlan_mode', 'tag')
-                    if tr069_vlan and tr069_vlan_mode == 'tag':
-                        sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
-                    else:
-                        sc('tr069-mgmt 1 untag')
+            provision_fn = {
+                'bridge': self._provision_bridge,
+                'pppoe': self._provision_pppoe,
+                'fiberhome_veip': self._provision_fiberhome_veip,
+                'zte_full': self._provision_zte_full,
+                'zte_single': self._provision_zte_single,
+                'huawei_full': self._provision_huawei_full,
+                'zte_multi': self._provision_zte_multi,
+            }.get(template)
+            if provision_fn:
+                provision_fn(tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list)
 
             # Step 5: SSID config — separate session after delay for ONU config state "success"
             # OMCI SSID commands require ONU to have processed initial config first
@@ -2326,6 +1835,519 @@ class TelnetCollector:
         except Exception as e:
             logger.debug(f"_verify_onu_registered: {e}")
             return None
+
+    def _provision_bridge(self, tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list):
+        """Extracted verbatim from register_vendor_template's 'bridge' branch (Finding 5 refactor — behavior-preserving)."""
+        sc_tcont(1, service_name, tcont_profile)
+        sc('gemport 1 tcont 1')
+        sc(f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
+
+    def _provision_pppoe(self, tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list):
+        """Extracted verbatim from register_vendor_template's 'pppoe' branch (Finding 5 refactor — behavior-preserving)."""
+        sc_tcont(1, service_name, tcont_profile)
+        sc('gemport 1 tcont 1')
+        sc(f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
+        self._send_command(tn, 'exit')  # exit ONU interface
+        self._send_command(tn, f'pon-onu-mng {onu_if}')
+        sc(f'service INTERNET gemport 1 vlan {vlan}')
+        sc_warn(f'vlan port eth_0/1 mode hybrid def-vlan {vlan}')
+        sc_warn(f'vlan port eth_0/2 mode hybrid def-vlan {vlan}')
+        sc_warn(f'vlan port eth_0/3 mode hybrid def-vlan {vlan}')
+        sc_warn(f'vlan port eth_0/4 mode hybrid def-vlan {vlan}')
+        pppoe_user = extra.get('pppoe_user', '')
+        pppoe_pass = extra.get('pppoe_pass', '')
+        vlan_profile = extra.get('vlan_profile', 'pppoe')
+        if pppoe_user:
+            sc(f'wan-ip 1 mode pppoe username {pppoe_user} password {pppoe_pass} vlan-profile {vlan_profile} host 1')
+        else:
+            sc(f'wan-ip 1 mode pppoe vlan-profile {vlan_profile} host 1')
+
+    def _provision_fiberhome_veip(self, tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list):
+        """Extracted verbatim from register_vendor_template's 'fiberhome_veip' branch (Finding 5 refactor — behavior-preserving)."""
+        # Read from vlans array if present, fall back to individual fields
+        vlans_arr = extra.get('vlans', [])
+        if isinstance(vlans_arr, str):
+            import json as _j
+            try: vlans_arr = _j.loads(vlans_arr)
+            except: vlans_arr = []
+        if vlans_arr and len(vlans_arr) >= 3:
+            tr069_vlan = str(vlans_arr[0].get('vlan', '') or 1010)
+            internet_vlan = str(vlans_arr[1].get('vlan', '') or 30)
+            voip_vlan = str(vlans_arr[2].get('vlan', '') or 151)
+        else:
+            tr069_vlan = str(extra.get('tr069_vlan') or 1010)
+            internet_vlan = str(extra.get('internet_vlan') or 30)
+            voip_vlan = str(extra.get('voip_vlan') or 151)
+        acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
+        acs_user = extra.get('acs_user', '') or 'acs'
+        acs_pass = extra.get('acs_pass', '') or 'acs'
+        traffic_profile = extra.get('traffic_profile', '')
+        # WAN config for internet service
+        wan_mode = extra.get('wan_mode', 'bridge')  # bridge|pppoe|dhcp|static
+        pppoe_user = extra.get('pppoe_user', '')
+        pppoe_pass = extra.get('pppoe_pass', '')
+        vlan_profile = extra.get('vlan_profile', '')
+        wan_ip_mode = extra.get('wan_ip_mode', '')  # PPPoE|DHCP|STATIC
+        # sn-bind enable sn
+        sc('sn-bind enable sn')
+        # TCONTs (no name — matching running-config)
+        sc_tcont(1, '', tcont_profile)
+        sc('gemport 1 tcont 1')
+        if traffic_profile:
+            sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
+        sc_tcont(2, '', tcont_profile)
+        sc('gemport 2 tcont 2')
+        sc_tcont(3, '', tcont_profile)
+        sc('gemport 3 tcont 3')
+        sc(f'service-port 1 vport 1 user-vlan {tr069_vlan} vlan {tr069_vlan}')
+        sc(f'service-port 2 vport 2 user-vlan {internet_vlan} vlan {internet_vlan}')
+        sc(f'service-port 3 vport 3 user-vlan {voip_vlan} vlan {voip_vlan}')
+        self._send_command(tn, 'exit')
+        self._send_command(tn, f'pon-onu-mng {onu_if}')
+        # Safe-replace: delete old service entries to prevent error 63869
+        for sn in ['service1', 'service2', 'service3']:
+            self._send_command(tn, f'no service {sn}', timeout=10)
+        for n in [1, 2, 3]:
+            self._send_command(tn, f'no wan {n} service', timeout=10)
+            self._send_command(tn, f'no wan-ip {n}', timeout=10)
+            self._send_command(tn, f'no pppoe {n}', timeout=10)
+        import time as _t; _t.sleep(1)
+        # Service names matching running-config: service1, 2, 3
+        sc(f'service service1 gemport 1 vlan {tr069_vlan}')
+        sc(f'service 2 gemport 2 vlan {internet_vlan}')
+        sc(f'service 3 gemport 3 vlan {voip_vlan}')
+        sc('vlan port veip_1 mode hybrid')
+        sc_warn(f'vlan port eth_0/1 mode tag vlan {internet_vlan}')
+        sc_warn(f'vlan port eth_0/2 mode tag vlan {internet_vlan}')
+        sc_warn(f'vlan port eth_0/3 mode tag vlan {internet_vlan}')
+        sc_warn(f'vlan port eth_0/4 mode tag vlan {internet_vlan}')
+        sc_warn(f'vlan port wifi_0/1 mode tag vlan {internet_vlan}')
+        # WAN config for internet service (VEIP mode — always host 1)
+        if wan_mode == 'pppoe' and pppoe_user:
+            if vlan_profile:
+                sc(f'wan-ip 2 mode pppoe username {pppoe_user} password {pppoe_pass} vlan-profile {vlan_profile} host 1')
+                sc('wan-ip 2 ping-response enable traceroute-response enable')
+            else:
+                # No vlan-profile — use pppoe nat mode instead
+                sc(f'pppoe 2 nat enable user {pppoe_user} password {pppoe_pass}')
+                sc('wan 2 service internet host 1')
+        elif wan_mode == 'dhcp' or wan_ip_mode == 'DHCP':
+            if vlan_profile:
+                sc(f'wan-ip 2 mode dhcp vlan-profile {vlan_profile} host 1')
+                sc('wan-ip 2 ping-response enable traceroute-response enable')
+        elif wan_ip_mode == 'STATIC':
+            ip_addr = extra.get('ip_address', '')
+            subnet = extra.get('subnet_mask', '')
+            ip_prof = extra.get('ip_profile', '')
+            if ip_prof and vlan_profile:
+                sc(f'wan-ip 2 mode static ip-profile {ip_prof} vlan-profile {vlan_profile} host 1')
+            elif ip_addr and vlan_profile:
+                sc(f'wan-ip 2 mode static ip-address {ip_addr} mask {subnet} vlan-profile {vlan_profile} host 1')
+            sc('wan-ip 2 ping-response enable traceroute-response enable')
+        # TR069 uses tr069-mgmt VLAN tagging — no separate wan-ip needed
+        # (wan-ip 1 on same host 1 would conflict with wan-ip 2)
+        sc('tr069-mgmt 1 state unlock')
+        sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
+        sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+
+    def _provision_zte_full(self, tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list):
+        """Extracted verbatim from register_vendor_template's 'zte_full' branch (Finding 5 refactor — behavior-preserving)."""
+        primary_vlan = int(extra.get('primary_vlan') or 30)
+        secondary_vlan = int(extra.get('secondary_vlan') or 151)
+        enable_dual_ssid = extra.get('enable_dual_ssid', 'true') == 'true'
+        ssid1_name = extra.get('ssid1_name', '')
+        ssid1_pass = extra.get('ssid1_pass', '12345678')
+        ssid1_auth = extra.get('ssid1_auth', 'wpa2')
+        ssid2_name = extra.get('ssid2_name', '')
+        ssid2_pass = extra.get('ssid2_pass', '')
+        ssid2_auth = extra.get('ssid2_auth', 'open')
+        enable_pppoe = extra.get('enable_pppoe', '') == 'true'
+        pppoe_user = extra.get('pppoe_user', '')
+        pppoe_pass = extra.get('pppoe_pass', '')
+        enable_tr069 = extra.get('enable_tr069', '') == 'true'
+        acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
+        acs_user = extra.get('acs_user', '') or 'acs'
+        acs_pass = extra.get('acs_pass', '') or 'acs'
+        tr069_vlan = int(extra.get('tr069_vlan') or 0)
+        enable_firewall = extra.get('enable_firewall', '') == 'true'
+        firewall_level = extra.get('firewall_level', 'low')
+        traffic_profile = extra.get('traffic_profile', '')
+
+        # Interface config: TCONT, Gemport, Service-port
+        tcont1_name = f'VLAN{primary_vlan:04d}'
+        sc_tcont(1, tcont1_name, tcont_profile)
+        sc('gemport 1 tcont 1')
+        if traffic_profile:
+            sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
+        tcont2_name = f'VLAN{secondary_vlan}'
+        sc_tcont(2, tcont2_name, tcont_profile)
+        sc('gemport 2 tcont 2')
+        if traffic_profile:
+            sc(f'gemport 2 traffic-limit downstream {traffic_profile}')
+        sc(f'service-port 1 vport 1 user-vlan {primary_vlan} vlan {primary_vlan}')
+        sc(f'service-port 2 vport 2 user-vlan {secondary_vlan} vlan {secondary_vlan}')
+        self._send_command(tn, 'exit')
+
+        # pon-onu-mng config
+        self._send_command(tn, f'pon-onu-mng {onu_if}')
+        # Safe-replace: delete old service entries to prevent error 63869
+        for n in [1, 2]:
+            self._send_command(tn, f'no service VLAN{n:04d}', timeout=10)
+            self._send_command(tn, f'no service service{n}', timeout=10)
+            self._send_command(tn, f'no wan {n} service', timeout=10)
+            self._send_command(tn, f'no wan-ip {n}', timeout=10)
+            self._send_command(tn, f'no pppoe {n}', timeout=10)
+        import time as _t; _t.sleep(1)
+        service1_name = f'VLAN{primary_vlan:04d}'
+        use_veip = extra.get('use_veip', '') == 'true'
+        if use_veip:
+            sc(f'service {service1_name} gemport 1 vlan {primary_vlan}')
+        else:
+            sc(f'service {service1_name} gemport 1 iphost 1 vlan {primary_vlan}')
+        service2_name = f'VLAN{secondary_vlan}'
+        sc(f'service {service2_name} gemport 2 vlan {secondary_vlan}')
+        if use_veip:
+            sc('vlan port veip_1 mode hybrid')
+            sc('vlan port veip_1 vlan 1')
+
+        # PPPoE first (creates WAN connection)
+        if enable_pppoe and pppoe_user and pppoe_pass:
+            sc(f'pppoe 1 nat enable user {pppoe_user} password {pppoe_pass}')
+
+        # WAN service AFTER pppoe so service type is not overridden
+        # Include tr069 in service type when TR069 is enabled so GenieACS can connect
+        if enable_tr069:
+            sc('wan 1 service tr069 internet host 1')
+        else:
+            sc('wan 1 service internet host 1')
+
+        # ETH port VLAN tagging — use lan_vlans if provided, else default to primary_vlan
+        lan_vlans_raw = extra.get('lan_vlans', '[]')
+        if isinstance(lan_vlans_raw, str):
+            import json as _json_ssid
+            lan_vlans = _json_ssid.loads(lan_vlans_raw) if lan_vlans_raw else []
+        else:
+            lan_vlans = lan_vlans_raw or []
+        for eth_port in range(1, 5):
+            port_vlan = lan_vlans[eth_port - 1] if eth_port - 1 < len(lan_vlans) and lan_vlans[eth_port - 1] else primary_vlan
+            sc_warn(f'vlan port eth_0/{eth_port} mode tag vlan {port_vlan}')
+
+        # WiFi VLAN tagging — use per-SSID VLAN from ssids_list if provided
+        for s in ssids_list:
+            if s.get('name') and s.get('vlan'):
+                wp = s.get('port', 'wifi_0/1')
+                sc_warn(f'vlan port {wp} mode tag vlan {s["vlan"]}')
+        # Default: tag wifi_0/1 and wifi_0/5 to primary_vlan if no per-SSID VLAN
+        if not any(s.get('vlan') for s in ssids_list if s.get('name')):
+            sc_warn(f'vlan port wifi_0/1 mode tag vlan {primary_vlan}')  # 2.4GHz
+            sc_warn(f'vlan port wifi_0/5 mode tag vlan {primary_vlan}')  # 5GHz
+            if enable_dual_ssid:
+                sc_warn(f'vlan port wifi_0/2 mode tag vlan {secondary_vlan}')  # 2.4GHz guest
+
+        # Firewall
+        if enable_firewall:
+            sc(f'firewall enable level {firewall_level} anti-hack disable')
+
+        # TR069
+        if enable_tr069:
+            sc('tr069-mgmt 1 state unlock')
+            sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
+            tr069_vlan_mode = extra.get('tr069_vlan_mode', 'untag')
+            if tr069_vlan_mode == 'tag' and tr069_vlan:
+                sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+            else:
+                sc('tr069-mgmt 1 untag')
+
+        # Security management (enable remote access: web ftp telnet ssh https snmp tr069)
+        sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
+
+    def _provision_zte_single(self, tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list):
+        """Extracted verbatim from register_vendor_template's 'zte_single' branch (Finding 5 refactor — behavior-preserving)."""
+        ssid_name = extra.get('ssid_name', '')
+        ssid_pass = extra.get('ssid_pass', '')
+        ssid_auth = extra.get('ssid_auth', 'wpa2')
+        enable_pppoe = extra.get('enable_pppoe', '') == 'true'
+        pppoe_user = extra.get('pppoe_user', '')
+        pppoe_pass = extra.get('pppoe_pass', '')
+        enable_tr069 = extra.get('enable_tr069', '') == 'true'
+        acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
+        acs_user = extra.get('acs_user', '') or 'acs'
+        acs_pass = extra.get('acs_pass', '') or 'acs'
+        tr069_vlan = int(extra.get('tr069_vlan') or 0)
+        enable_firewall = extra.get('enable_firewall', '') == 'true'
+        firewall_level = extra.get('firewall_level', 'low')
+        traffic_profile = extra.get('traffic_profile', '')
+
+        sc_tcont(1, service_name, tcont_profile)
+        sc('gemport 1 tcont 1')
+        if traffic_profile:
+            sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
+        sc(f'service-port 1 vport 1 user-vlan {vlan} vlan {vlan}')
+        self._send_command(tn, 'exit')
+        self._send_command(tn, f'pon-onu-mng {onu_if}')
+        # Safe-replace: delete old service entries to prevent error 63869
+        self._send_command(tn, 'no service INTERNET', timeout=10)
+        self._send_command(tn, 'no service service1', timeout=10)
+        self._send_command(tn, 'no wan 1 service', timeout=10)
+        self._send_command(tn, 'no wan-ip 1', timeout=10)
+        self._send_command(tn, 'no pppoe 1', timeout=10)
+        import time as _t; _t.sleep(1)
+        use_veip = extra.get('use_veip', '') == 'true'
+        if use_veip:
+            sc(f'service INTERNET gemport 1 vlan {vlan}')
+            sc('vlan port veip_1 mode hybrid')
+            sc('vlan port veip_1 vlan 1')
+        else:
+            sc(f'service INTERNET gemport 1 iphost 1 vlan {vlan}')
+
+        # PPPoE first (creates WAN connection)
+        if enable_pppoe and pppoe_user and pppoe_pass:
+            sc(f'pppoe 1 nat enable user {pppoe_user} password {pppoe_pass}')
+
+        # WAN service AFTER pppoe so service type is not overridden
+        # Include tr069 in service type when TR069 is enabled so GenieACS can connect
+        if enable_tr069:
+            sc('wan 1 service tr069 internet host 1')
+        else:
+            sc('wan 1 service internet host 1')
+
+        # ETH port VLAN
+        sc_warn(f'vlan port eth_0/1 mode hybrid def-vlan {vlan}')
+        sc_warn(f'vlan port eth_0/2 mode hybrid def-vlan {vlan}')
+        sc_warn(f'vlan port eth_0/3 mode hybrid def-vlan {vlan}')
+        sc_warn(f'vlan port eth_0/4 mode hybrid def-vlan {vlan}')
+
+        # WiFi VLAN tagging (non-fatal: wifi port may not exist in ONU type)
+        if ssid_name:
+            sc_warn(f'vlan port wifi_0/1 mode tag vlan {vlan}')
+
+        # Firewall
+        if enable_firewall:
+            sc(f'firewall enable level {firewall_level} anti-hack disable')
+
+        # TR069
+        if enable_tr069:
+            sc('tr069-mgmt 1 state unlock')
+            sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
+            tr069_vlan_mode = extra.get('tr069_vlan_mode', 'untag')
+            if tr069_vlan_mode == 'tag' and tr069_vlan:
+                sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+            else:
+                sc('tr069-mgmt 1 untag')
+
+        # Security management (enable remote access: web ftp telnet ssh https snmp tr069)
+        sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
+
+    def _provision_huawei_full(self, tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list):
+        """Extracted verbatim from register_vendor_template's 'huawei_full' branch (Finding 5 refactor — behavior-preserving)."""
+        vlan_profile = extra.get('vlan_profile', 'genieacs')
+        # Dynamic VLAN list from extra.vlans (array of {vlan, label})
+        # Backward compat: if no vlans list, build from old mgmt/internet/voip fields
+        vlans_raw = extra.get('vlans', [])
+        if not vlans_raw:
+            vlans_raw = [
+                {'vlan': extra.get('mgmt_vlan', 1010), 'label': 'Mgmt'},
+                {'vlan': extra.get('internet_vlan', 30), 'label': 'Internet'},
+                {'vlan': extra.get('voip_vlan', 151), 'label': 'VoIP'},
+            ]
+        # sn-bind enable sn
+        sc('sn-bind enable sn')
+        # Single TCONT/GEM — all service-ports share vport 1
+        sc_tcont(1, '', tcont_profile)
+        sc('gemport 1 tcont 1')
+        for idx, v in enumerate(vlans_raw, 1):
+            vid = v.get('vlan', v) if isinstance(v, dict) else v
+            sc(f'service-port {idx} vport 1 user-vlan {vid} vlan {vid}')
+        self._send_command(tn, 'exit')
+        self._send_command(tn, f'pon-onu-mng {onu_if}')
+        # Service binding — no VLAN in service definition (matching running-config)
+        sc('service ServiceONU1 gemport 1')
+        # WAN IP via DHCP with VLAN profile (GenieACS manages TR069)
+        sc(f'wan-ip 1 mode dhcp vlan-profile {vlan_profile} host 1')
+
+    def _provision_zte_multi(self, tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list):
+        """Extracted verbatim from register_vendor_template's 'zte_multi' branch (Finding 5 refactor — behavior-preserving)."""
+        # Multi-service WAN config (matching r-config CLI output exactly)
+        # Service types: internet, tr069, iptv, bridge
+        # TR069 service type: wan-ip mode dhcp with VLAN profile + separate tr069-mgmt config
+        # WAN modes: wan (WAN-IP), nat (PPPoE NAT), webpage (setup via ONT)
+        import json as _json
+        services_raw = extra.get('services', '[]')
+        if isinstance(services_raw, str):
+            services = _json.loads(services_raw)
+        else:
+            services = services_raw
+        services = [s for s in services if s.get('enabled')]
+
+        # Per-service download/upload profiles (fallback to global)
+        global_download = extra.get('traffic_profile', '') or traffic_profile
+        global_upload = tcont_profile
+
+        # Determine if any non-bridge service exists (for firewall/security-mgmt)
+        has_non_bridge = any(s.get('service_type', 'internet') != 'bridge' for s in services)
+        # Determine if TR069 profile is enabled
+        tr069_enabled = extra.get('enable_tr069') == 'true'
+
+        # Phase 1: Interface config — TCONT, Gemport, Service-port per service
+        for idx, svc in enumerate(services):
+            n = idx + 1
+            svc_vlans = svc.get('vlans', [])
+            primary_vlan = int(svc_vlans[0]) if svc_vlans else vlan
+            svc_type = svc.get('service_type', 'internet')
+            # Service name: simple "service{N}" matching r-config output
+            svc_name = f'service{n}'
+            # Upload profile (TCONT) — per-service or global
+            up_profile = svc.get('profile_upload', '') or global_upload
+            down_profile = svc.get('profile_download', '') or global_download
+            sc(f'tcont {n} name {svc_name} profile {up_profile}')
+            sc(f'gemport {n} tcont {n}')
+            if down_profile:
+                sc(f'gemport {n} traffic-limit downstream {down_profile}')
+            # IPTV: service-port uses MVLAN as VLAN (not selected VLAN)
+            if svc_type == 'iptv':
+                mvlan = int(svc.get('mvlan', 0))
+                if mvlan:
+                    sc(f'service-port {n} vport {n} user-vlan {mvlan} vlan {mvlan}')
+                else:
+                    sc(f'service-port {n} vport {n} user-vlan {primary_vlan} vlan {primary_vlan}')
+            else:
+                vlan_mode = svc.get('vlan_mode', 'tag')
+                cvlan_val = int(svc.get('cvlan', 0))
+                if vlan_mode == 'qinq' and cvlan_val:
+                    sc(f'service-port {n} vport {n} user-vlan {cvlan_val} vlan {primary_vlan} QinQ')
+                elif vlan_mode == 'untag':
+                    sc(f'service-port {n} vport {n} untag')
+                else:
+                    sc(f'service-port {n} vport {n} user-vlan {primary_vlan} vlan {primary_vlan}')
+        self._send_command(tn, 'exit')  # exit ONU interface
+
+        # Phase 2: pon-onu-mng config
+        self._send_command(tn, f'pon-onu-mng {onu_if}')
+        use_veip = extra.get('use_veip', '') == 'true'
+        for idx, svc in enumerate(services):
+            n = idx + 1
+            svc_vlans = svc.get('vlans', [])
+            primary_vlan = int(svc_vlans[0]) if svc_vlans else vlan
+            svc_type = svc.get('service_type', 'internet')
+            wan_mode = svc.get('wan_mode', 'webpage')
+            wan_ip_mode = svc.get('wan_ip_mode', 'PPPoE')
+            vlan_profile = svc.get('vlan_profile', '')
+            username = svc.get('username', '')
+            password = svc.get('password', '')
+            svc_name = f'service{n}'
+
+            # Calculate VLAN for service definition
+            if svc_type == 'iptv':
+                mvlan = int(svc.get('mvlan', 0))
+                svc_vlan_for_service = mvlan if mvlan else primary_vlan
+            else:
+                svc_vlan_for_service = primary_vlan
+
+            # VLAN mode handling for service definition
+            svc_vlan_mode = svc.get('vlan_mode', 'tag')
+            svc_cvlan = int(svc.get('cvlan', 0))
+            if svc_vlan_mode == 'untag':
+                vlan_suffix = ''
+            elif svc_vlan_mode == 'qinq' and svc_cvlan:
+                vlan_suffix = f' vlan {svc_vlan_for_service} cvlan {svc_cvlan}'
+            else:
+                vlan_suffix = f' vlan {svc_vlan_for_service}'
+
+            # Service definition — services with WAN-IP/PPPoE need iphost, bridge/iptv don't
+            needs_iphost = (not use_veip) and (svc_type in ('internet', 'tr069') and wan_mode in ('nat', 'wan'))
+            if needs_iphost:
+                sc(f'service {svc_name} gemport {n} iphost {n}{vlan_suffix}')
+            elif not use_veip and n == 1:
+                sc(f'service {svc_name} gemport {n} iphost 1{vlan_suffix}')
+            else:
+                sc(f'service {svc_name} gemport {n}{vlan_suffix}')
+
+            # WAN config based on service type and wan_mode
+            if svc_type == 'bridge':
+                # Bridge: no wan-ip, but apply VLAN to ETH ports so traffic flows
+                if not use_veip:
+                    for eth_port in (1, 2, 3, 4):
+                        sc_warn(f'vlan port eth_0/{eth_port} mode hybrid def-vlan {svc_vlan_for_service}')
+            elif svc_type == 'tr069' and vlan_profile:
+                # TR069: force DHCP via WAN-IP with VLAN profile
+                sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
+                sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+            elif svc_type == 'internet' and wan_mode == 'nat':
+                # PPPoE NAT
+                if username:
+                    sc(f'pppoe {n} nat enable user {username} password {password}')
+                    sc(f'wan {n} service internet host {n}')
+            elif svc_type == 'internet' and wan_mode == 'wan':
+                if wan_ip_mode == 'PPPoE' and username:
+                    sc(f'wan-ip {n} mode pppoe username {username} password {password} vlan-profile {vlan_profile} host {n}')
+                    sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+                elif wan_ip_mode == 'DHCP':
+                    sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
+                    sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+                elif wan_ip_mode == 'STATIC':
+                    ip_addr = svc.get('ip_address', '')
+                    subnet_mask = svc.get('subnet_mask', '')
+                    ip_profile = svc.get('ip_profile', '')
+                    if ip_profile:
+                        sc(f'wan-ip {n} mode static ip-profile {ip_profile} vlan-profile {vlan_profile} host {n}')
+                    elif ip_addr:
+                        sc(f'wan-ip {n} mode static ip-address {ip_addr} mask {subnet_mask} vlan-profile {vlan_profile} host {n}')
+                    sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+            # webpage mode = setup via ONT — no wan-ip command
+
+        # VEIP config (only for non-ZTE ONUs)
+        if use_veip:
+            sc('vlan port veip_1 mode hybrid')
+            sc('vlan port veip_1 vlan 1')
+
+        # LAN port VLAN tagging — use lan_vlans if provided, else auto-tag from services
+        lan_vlans_raw = extra.get('lan_vlans', '[]')
+        if isinstance(lan_vlans_raw, str):
+            import json as _json_ssid
+            lan_vlans = _json_ssid.loads(lan_vlans_raw) if lan_vlans_raw else []
+        else:
+            lan_vlans = lan_vlans_raw or []
+        if lan_vlans:
+            for eth_port in range(1, 5):
+                port_vlan = lan_vlans[eth_port - 1] if eth_port - 1 < len(lan_vlans) and lan_vlans[eth_port - 1] else None
+                if port_vlan:
+                    sc_warn(f'vlan port eth_0/{eth_port} mode tag vlan {port_vlan}')
+        else:
+            # Auto-tag: ETH port N → service N VLAN (if not already tagged by bridge service)
+            for idx, svc in enumerate(services):
+                n = idx + 1
+                if n <= 4:
+                    svc_vlans = svc.get('vlans', [])
+                    pv = int(svc_vlans[0]) if svc_vlans else vlan
+                    svc_type = svc.get('service_type', 'internet')
+                    if svc_type != 'bridge':  # bridge already tagged above
+                        sc_warn(f'vlan port eth_0/{n} mode tag vlan {pv}')
+
+        # WiFi VLAN tagging — per-SSID VLAN from ssids_list
+        for s in ssids_list:
+            if s.get('name') and s.get('vlan'):
+                wp = s.get('port', 'wifi_0/1')
+                sc_warn(f'vlan port {wp} mode tag vlan {s["vlan"]}')
+
+        # Global: firewall + security-mgmt (only if non-bridge service exists)
+        if has_non_bridge:
+            sc('firewall enable level low')
+            sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
+
+        # TR069 management (if TR069 profile enabled globally)
+        if tr069_enabled:
+            sc('tr069-mgmt 1 state unlock')
+            acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
+            acs_user = extra.get('acs_user', '') or 'acs'
+            acs_pass = extra.get('acs_pass', '') or 'acs'
+            sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
+            tr069_vlan = extra.get('tr069_vlan', '') or extra.get('acs_vlan', '')
+            tr069_vlan_mode = extra.get('tr069_vlan_mode', 'tag')
+            if tr069_vlan and tr069_vlan_mode == 'tag':
+                sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+            else:
+                sc('tr069-mgmt 1 untag')
+
 
     def register_unified(self, frame, slot, port, onu_id, serial, onu_type,
                          tcont_profile, services, use_veip=None,
