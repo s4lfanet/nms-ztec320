@@ -4,6 +4,26 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Refactor: Pisahkan Dispatch Template Vendor di `register_vendor_template` (Audit Temuan 5)
+
+#### Latar Belakang
+- `telnet_client.py` (~6.700 baris) menangani 7 template vendor/service (`bridge`, `pppoe`, `fiberhome_veip`, `zte_full`, `zte_single`, `huawei_full`, `zte_multi`) dalam satu blok `if/elif` raksasa (~500 baris) di dalam `register_vendor_template`. Bukan bug, tapi risiko regresi tinggi tiap kali menambah/mengubah template — perubahan di satu vendor gampang tidak sengaja menyenggol vendor lain di fungsi yang sama
+
+#### Diperbaiki
+- **Safety net dulu, baru refactor**: sebelum menyentuh kode, ditulis 7 test golden-snapshot (`TestVendorTemplateCommandSequences`) yang menangkap urutan PERINTAH CLI PERSIS yang dikirim tiap template (lewat koneksi Telnet yang di-mock) — diambil dari perilaku kode LAMA yang sedang berjalan, bukan dari membaca kode. Ini jadi bukti konkret "identik sebelum/sesudah", bukan cuma review manual
+- Ketujuh blok `elif template == 'X':` diekstrak apa adanya (copy-paste, tidak ada perubahan logika) jadi method terpisah `_provision_bridge`, `_provision_pppoe`, `_provision_fiberhome_veip`, `_provision_zte_full`, `_provision_zte_single`, `_provision_huawei_full`, `_provision_zte_multi` — dipanggil dari satu dictionary dispatcher `provision_fn = {...}.get(template)`. Closure `sc`/`sc_warn`/`sc_tcont` (pembangun perintah CLI, tetap didefinisikan di `register_vendor_template`) diteruskan sebagai parameter, bukan diubah strukturnya
+- **Test golden menangkap 1 bug ekstraksi nyata**: alias `_json_ssid` (`import json as _json_ssid`) yang tadinya berada di scope fungsi induk jadi tidak terjangkau di 2 method hasil ekstraksi (`_provision_zte_full`, `_provision_zte_multi`) — `NameError` langsung ketahuan dari test yang gagal, diperbaiki dengan `import json as _json_ssid` lokal di kedua method tersebut (mengikuti gaya lazy-import yang sudah ada di file ini)
+
+#### Ditemukan Sekaligus (Bonus, Mendesak — Sudah Di-ship Terpisah)
+- Saat menyiapkan test golden, ditemukan bug regresi AKTIF DI PRODUKSI dari Temuan 1 (lihat entri terpisah "Hotfix" di atas) — `extra.services` yang dikirim sebagai JSON string ditolak salah oleh sanitasi CLI. Sudah di-hotfix dan di-deploy sebelum melanjutkan refactor ini
+
+#### Ditemukan Tapi SENGAJA TIDAK Diperbaiki (Di Luar Cakupan Refactor Murni)
+- Bug laten di blok `zte_multi` (dipertahankan apa adanya): `global_download = extra.get('traffic_profile', '') or traffic_profile` — variabel `traffic_profile` di ruas kanan `or` **tidak pernah didefinisikan** di scope manapun. Kalau `extra.traffic_profile` kosong/tidak diisi, baris ini akan `NameError`. Test golden tidak menangkap ini karena payload uji selalu menyertakan `traffic_profile` yang truthy (jadi `or` short-circuit sebelum sempat mengevaluasi nama yang undefined). Ini bug PRA-EXISTING (sudah ada sebelum refactor), sengaja dipertahankan identik sesuai aturan "refactor murni, perilaku tidak boleh berubah" — layak jadi perbaikan terpisah kalau diminta
+
+#### Diverifikasi
+- 7 test golden-snapshot lulus, membuktikan urutan perintah CLI identik byte-per-byte untuk semua 7 template dibanding sebelum refactor
+- Full suite tetap 242 passed/2 skipped (termasuk `tests/test_provisioning.py` yang juga menyentuh `register_vendor_template`)
+
 ### 2026-09-16 — Hotfix: Sanitasi CLI Salah Menolak `extra.services` yang Dikirim sebagai JSON String (Regresi dari Temuan 1)
 
 #### Ditemukan
