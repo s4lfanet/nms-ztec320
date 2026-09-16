@@ -4,6 +4,31 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-17 — Audit & Overhaul Konten Halaman Panduan (`guides.ts`)
+
+#### Latar Belakang
+- Diminta audit menyeluruh: apakah isi halaman Panduan (in-app help center, `/dashboard/guide`) masih sesuai dengan fitur sungguhan di aplikasi. Diaudit lewat 4 agent paralel yang membaca setiap page component + backend terkait secara langsung dan membandingkan tiap klaim di `guides.ts` baris-per-baris.
+
+#### Ditemukan
+- **Ke-18 entri panduan yang ada saat itu semuanya punya minimal satu ketidaksesuaian nyata** dengan kode aktual — bukan cuma typo, beberapa di antaranya menyesatkan:
+  - `cloudflare`: mendeskripsikan fitur SaaS multi-tenant (hostname per-tenant, auto CNAME, API Token via env var) yang **tidak ada sama sekali**. Kenyataan: wizard single-tunnel per-server (install cloudflared → paste tunnel token → start/stop/logs)
+  - `user-management`: mengklaim sistem role tetap "Admin/Technician/Viewer" dengan super admin yang katanya "tidak bisa dihapus/diubah role-nya". Kenyataan: sistem role kustom dengan 17 permission granular (tab **Roles** tidak disebut sama sekali), role default sebenarnya "Full Access/Viewer/Limited/Technician", dan `routes_users.py` **tidak** melindungi akun super admin dari dihapus/diganti role oleh user lain yang punya permission `manage_users`
+  - `provision-wizard`: isinya ternyata mendeskripsikan **Register Wizard** (konsep Template, step pilih PON port) — Provision Wizard yang asli tidak punya template sama sekali, konfigurasinya VLAN/WAN bebas
+  - Klaim berulang "klik stat card untuk filter" di `dashboard` dan `all-onus` — tidak ada satupun stat card yang benar-benar clickable
+  - Klaim fitur Export CSV di `alert-history` dan `action-logs` — keduanya tidak punya tombol export
+  - Field TR069 Profile "periodic inform interval"/"connection request URL" — tidak ada di manapun di codebase, kemungkinan halusinasi
+  - Detail teknis salah tersebar di banyak entri: vendor OLT (klaim ZTE/Huawei/Fiberhome, kenyataan ZTE-only), jumlah tab OLT Configuration (klaim 4, kenyataan 7 — "ONU Types" dan "WAN-IP Profiles" tidak disebut), satuan traffic (klaim Kbps/Mbps, kenyataan Mbps/Gbps), mekanisme update traffic chart (klaim WebSocket 5 detik, kenyataan polling 3 detik), channel notifikasi alert (klaim 2, kenyataan 4 — Telegram Bot dan WA Native terlewat), dan lainnya
+- **5 halaman nyata yang reachable dari sidebar/routing tidak punya entri panduan sama sekali**: Unconfigured ONUs, My Profile, System Update, OLT Logs, dan Add ONU (yang terakhir ternyata route yatim — tidak ada link-nya di sidebar manapun, kemungkinan legacy)
+
+#### Diperbaiki
+- `frontend/src/data/guides.ts` ditulis ulang penuh: ke-18 entri lama dikoreksi sesuai temuan di atas (setiap koreksi diverifikasi ke file:baris kode sumbernya oleh agent audit sebelum ditulis ulang), ditambah 4 entri baru (`unconfigured-onus`, `my-profile`, `system-update`, `olt-logs`) — total 21 entri. `AddOnu` sengaja tidak dibuatkan panduan karena route-nya sendiri tidak reachable dari navigasi manapun saat ini
+- Setiap entri baru/revisi memakai istilah dan label tombol persis seperti di UI sungguhan (bukan parafrase), termasuk kasus di mana istilah "resmi" di halaman berbeda dari nama tab internalnya (mis. FTTH "PON" vs "PON Ports")
+
+#### Diverifikasi
+- `tsc --noEmit` dan `vite build` bersih
+- Script sanity-check: 21 guide, tidak ada id duplikat, semua kategori valid, semua path `page` dicocokkan satu-satu ke tabel routing `App.tsx` — semua match
+- Verifikasi visual: dev server + backend dijalankan bersamaan, halaman Panduan di-screenshot (list 21 entri dengan hitungan kategori yang benar, lalu detail entri User Management di-expand) — markdown bold, step bernomor, dan kotak Tips semua render benar, tidak ada console error baru
+
 ### 2026-09-17 — Insiden: VPS Produksi Down Setelah Deploy Restrukturisasi `backend/` (Root Cause + Perbaikan)
 
 #### Ditemukan
