@@ -20,7 +20,7 @@ import logging
 from typing import Optional, Tuple
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Header
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Query, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -417,8 +417,8 @@ async def health_check():
 @fastapi_app.post("/broadcast")
 async def broadcast_message(
     req: BroadcastRequest,
+    request: Request,
     x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key"),
-    request_client_host: Optional[str] = Header(None, alias="X-Forwarded-For"),
 ):
     """Internal API — broadcast a message to a WebSocket channel.
 
@@ -427,9 +427,11 @@ async def broadcast_message(
     Requires X-Internal-Key header matching INTERNAL_API_KEY (no SECRET_KEY fallback).
     Restricted to localhost requests only.
     """
-    # Restrict to localhost (Flask runs in same process)
-    client_host = request_client_host or ''
-    if client_host not in ('', '127.0.0.1', '::1', 'localhost'):
+    # Restrict to localhost using the real ASGI peer address (uvicorn-populated,
+    # not a client-controllable header — X-Forwarded-For was spoofable and an
+    # absent header was wrongly treated as trusted localhost).
+    client_host = request.client.host if request.client else ''
+    if client_host not in ('127.0.0.1', '::1', 'localhost'):
         raise HTTPException(status_code=403, detail="Forbidden: broadcast only allowed from localhost")
     expected_key = _get_internal_api_key()
     if not x_internal_key or not hmac.compare_digest(x_internal_key, expected_key):
