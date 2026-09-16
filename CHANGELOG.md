@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-16 — Hotfix: Sanitasi CLI Salah Menolak `extra.services` yang Dikirim sebagai JSON String (Regresi dari Temuan 1)
+
+#### Ditemukan
+- Saat menyiapkan test regresi untuk refactor Temuan 5 (audit sebelumnya), ditemukan bug aktif di produksi: `RegisterWizard.tsx` mengirim `extra.services` (dan berpotensi `extra.vlans`/`extra.ssids`/`extra.lan_vlans`) sebagai **string hasil `JSON.stringify(...)`** — bukan array/objek JSON bersarang biasa — karena `telnet_client.py` memang mem-parsing-nya sendiri lewat `json.loads()`
+- Sanitasi CLI dari Temuan 1 (`cli_sanitize.py::sanitize_cli_dict`) memperlakukan string ini seperti field teks bebas biasa — tanda kutip yang wajib ada di JSON kena tolak sebagai karakter berbahaya, dan payload multi-service dengan mudah melebihi batas 64 karakter. **Dikonfirmasi lewat test terhadap endpoint sungguhan**: payload `zte_multi` yang sah (persis seperti yang dikirim RegisterWizard) ditolak 400 "services: maksimal 64 karakter" — provisioning ONU dengan banyak service jadi tidak bisa dipakai sama sekali sejak Temuan 1 di-deploy
+
+#### Diperbaiki
+- `cli_sanitize.py::sanitize_cli_dict` sekarang mengenali field kontainer JSON yang dikenal (`services`, `vlans`, `ssids`, `lan_vlans`): kalau nilainya string, di-parse dulu lewat `json.loads()`, baru hasil parse-nya disanitasi secara rekursif (bukan string mentahnya) — field JSON-nya gagal parse tetap ditolak jelas, tapi field STRING DI DALAM struktur JSON itu (mis. `services[0].username`) tetap disanitasi penuh, jadi celah injeksi yang ditutup Temuan 1 tidak terbuka lagi lewat jalur ini
+
+#### Diverifikasi
+- 2 test baru: payload `extra.services` yang sah (JSON string, banyak service) sekarang lolos sanitasi; percobaan injeksi newline yang disisipkan DI DALAM salah satu field JSON tersebut tetap ditolak 400
+- Dikonfirmasi kedua test **gagal di kode yang sedang live di produksi** (kode Temuan 1 sebelum hotfix ini) dan **lulus setelah fix**
+
 ### 2026-09-16 — Security Hardening: Warning Rate-Limit Login Tidak Akurat Tanpa Redis di Deployment Multi-Worker (Audit Temuan 4)
 
 #### Latar Belakang

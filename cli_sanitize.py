@@ -16,6 +16,7 @@ Whitelist, not blacklist: rather than trying to enumerate every dangerous
 character, only a known-safe set is allowed through. That way a character
 nobody thought of yet still gets rejected instead of silently interpolated.
 """
+import json as _json
 
 # Printable ASCII, minus control characters (0x00-0x1F, 0x7F) and the CLI/
 # shell metacharacters below. This is deliberately generous — WiFi/PPPoE
@@ -48,6 +49,18 @@ FIELD_MAX_LEN = {
     'acs_pass': 64,
     'acs_url': 128,
 }
+
+# Some legacy provisioning fields carry a JSON-encoded array as a STRING
+# value rather than an already-parsed list — e.g. extra['services'] arrives
+# as '[{"enabled": true, "username": "...", ...}]' because the frontend
+# double-encodes it (see RegisterWizard.tsx: `services: JSON.stringify(...)`)
+# and telnet_client.py json.loads()s it itself. Treating a value like that
+# as an ordinary free-text field would reject it outright — the quote
+# characters JSON requires trip the dangerous-character check, and a
+# multi-service payload easily blows past the generic length cap. For these
+# specific field names, parse the JSON first and sanitize the resulting
+# structure's actual string leaves instead of the raw encoded text.
+JSON_CONTAINER_FIELDS = frozenset({'services', 'vlans', 'ssids', 'lan_vlans'})
 
 
 class CliValidationError(ValueError):
@@ -130,7 +143,13 @@ def sanitize_cli_dict(value, default_max_len=64, _path=''):
         for k, v in value.items():
             key_path = f'{_path}.{k}' if _path else str(k)
             max_len = FIELD_MAX_LEN.get(k, default_max_len)
-            if isinstance(v, str):
+            if isinstance(v, str) and k in JSON_CONTAINER_FIELDS:
+                try:
+                    parsed = _json.loads(v)
+                except (TypeError, ValueError):
+                    raise CliValidationError(key_path, "harus berupa JSON array yang valid")
+                out[k] = sanitize_cli_dict(parsed, default_max_len, key_path)
+            elif isinstance(v, str):
                 out[k] = sanitize_cli_text(v, key_path, max_len=max_len)
             elif isinstance(v, (dict, list)):
                 out[k] = sanitize_cli_dict(v, max_len, key_path)
