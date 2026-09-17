@@ -7,7 +7,7 @@ import {
   Activity, AlertTriangle, Wifi, WifiOff, Zap, CircleDashed, Gauge, RefreshCw,
   UserX, LayoutGrid, List, GitMerge, Scissors, Users, Cpu, Home
 } from 'lucide-react';
-import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath, type FTTHJc, type FTTHJcSplice, type FTTHOdcTree, type FTTHOdpTree, type FTTHJcTree } from '../lib/api';
+import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath, type FTTHJc, type FTTHJcSplice, type FTTHOdcTree, type FTTHOdpTree, type FTTHJcTree, type FTTHFiberCore } from '../lib/api';
 import { cn } from '../lib/utils';
 import { coreColorInfo } from '../lib/fiberColor';
 import { toast } from '../components/Toast';
@@ -1313,6 +1313,80 @@ function CoreColorTag({ coreNumber, fibersPerTube, tubeLabel }: { coreNumber: nu
   );
 }
 
+// ─── Core status panel (Status Core) — shown in Edit OTB/ODC/JC once the
+// node exists. Purely a status/history view: the actual core assignment
+// still comes from feed_source/*_core_number on children, this just shows
+// what the backend has lazily tracked from those. ───
+const CORE_STATUS_STYLE: Record<string, string> = {
+  available: 'bg-glass text-tx3 border-brd',
+  used: 'bg-accent/15 text-accent border-accent/30',
+  reserved: 'bg-warning/15 text-warning border-warning/30',
+  damaged: 'bg-danger/15 text-danger border-danger/30',
+};
+
+function CoreStatusPanel({ ownerType, ownerId, totalCores }: { ownerType: 'otb' | 'odc' | 'jc'; ownerId: number; totalCores: number }) {
+  const { data } = useQuery({
+    queryKey: ['ftth-cores', ownerType, ownerId],
+    queryFn: () => api.ftthCores(ownerType, ownerId),
+  });
+  const [historyForId, setHistoryForId] = useState<number | null>(null);
+  const cores = data?.cores || [];
+  const coreByNumber = new Map(cores.map(c => [c.core_number, c] as const));
+  const selectedCore = historyForId !== null ? cores.find(c => c.id === historyForId) : null;
+  const { data: historyData } = useQuery({
+    queryKey: ['ftth-core-history', historyForId],
+    queryFn: () => api.ftthCoreHistory(historyForId as number),
+    enabled: historyForId !== null,
+  });
+
+  if (!totalCores || totalCores <= 0) return null;
+
+  return (
+    <div>
+      <p className="label-sm mb-1.5">Status Core (dari penggunaan tercatat)</p>
+      <div className="flex flex-wrap gap-1">
+        {Array.from({ length: totalCores }, (_, i) => i + 1).map(n => {
+          const core = coreByNumber.get(n);
+          const status = core?.status || 'available';
+          return (
+            <button
+              key={n} type="button"
+              disabled={!core}
+              onClick={() => core && setHistoryForId(core.id === historyForId ? null : core.id)}
+              className={cn('w-7 h-7 rounded text-[10px] font-medium border flex items-center justify-center transition-colors', CORE_STATUS_STYLE[status], core && 'cursor-pointer hover:opacity-80')}
+              title={`Core ${n}: ${status}${core?.assigned_to_type ? ` — ${core.assigned_to_type} #${core.assigned_to_id}` : ''}`}
+            >
+              {n}
+            </button>
+          );
+        })}
+      </div>
+      {selectedCore && (
+        <div className="mt-2 p-2.5 rounded-lg bg-glass border border-brd text-xs">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="font-medium text-tx1">Riwayat Core {selectedCore.core_number}</span>
+            <button type="button" onClick={() => setHistoryForId(null)} className="text-tx3 hover:text-tx1"><X size={12} /></button>
+          </div>
+          {(historyData?.history || []).length === 0 ? (
+            <p className="text-tx3">Belum ada riwayat perubahan status.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-32 overflow-y-auto">
+              {(historyData?.history || []).map(h => (
+                <div key={h.id} className="text-tx3 leading-tight">
+                  <span className="text-tx2 font-medium">{h.action}</span>{' '}
+                  ({h.previous_status || '-'} → {h.new_status || '-'})
+                  {h.performed_by && <span> oleh {h.performed_by}</span>}
+                  {h.reason && <span className="italic"> — {h.reason}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── PON Modal ───
 function PonModal({ item, otbList, olts, onClose, onSaved }: { item: FTTHPonPort | null; otbList: FTTHOtb[]; olts: { olt_id: number; olt_name: string }[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({
@@ -1462,6 +1536,7 @@ function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jc
         <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 850" /></FormField>
         <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
+      {item && <CoreStatusPanel ownerType="otb" ownerId={item.id} totalCores={parseInt(String(form.total_cores)) || 0} />}
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1584,6 +1659,7 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
         <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 300" /></FormField>
         <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
+      {item && <CoreStatusPanel ownerType="odc" ownerId={item.id} totalCores={parseInt(String(form.total_cores)) || 0} />}
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1825,6 +1901,7 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
         <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 150" /></FormField>
         <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
+      {item && <CoreStatusPanel ownerType="jc" ownerId={item.id} totalCores={parseInt(String(form.total_cores)) || 0} />}
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
 
       {item && (

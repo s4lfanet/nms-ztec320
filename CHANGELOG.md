@@ -4,6 +4,29 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-17 — FTTH: Status Core Individual + Riwayat Assignment (Fase 3 Adopsi Struktur salfanet-radius)
+
+#### Konteks
+- Fase 3, paling berisiko dari 4 fase yang direncanakan. salfanet-radius menormalisasi core fiber total (tiap core row FK sendiri, splice pakai FK ke core). Di nms-ztec320, integer core_number (`otb_core_number`, `odc_core_number`, `jc_core_number`, `core_in`/`core_out`) adalah tulang punggung trace/impact/tree/CSV yang sudah teruji di 38 test FTTH — mengganti jadi FK berarti menulis ulang hampir seluruh `routes_ftth.py`, risiko tinggi. Dipilih pendekatan **aditif**: tabel status+riwayat baru yang mengikuti (bukan menggantikan) integer core_number yang sudah ada.
+
+#### Ditambahkan
+- 2 tabel baru: `FTTHFiberCore` (status per core: available/used/reserved/damaged, siapa yang pakai, opsional attenuation/notes — unique constraint per owner+core_number) dan `FTTHCoreAssignmentHistory` (riwayat: aksi assigned/unassigned/status_change, status sebelum/sesudah, siapa yang melakukan, kapan). `owner_type` sengaja dibatasi `otb`/`odc`/`jc` saja — ODP tidak masuk karena sisi keluar ODP itu **port** (sudah ditrack `FTTHODPPort`), bukan core mentah
+- Migration Alembic baru (`c3d4e5f6a7b8`) — `op.create_table` murni, tidak perlu `add_col()` (tabel baru otomatis tercakup `db.create_all()`)
+- Helper `_touch_core()`/`_release_core()` di `backend/routes_ftth.py` — upsert status (lazy-create row kalau belum ada) + catat riwayat kalau status berubah. Dipasang di **setiap** titik yang sudah set/clear sebuah `*_core_number`: create/update/delete OTB, ODC, ODP, ODP-port, dan create/update/delete JC-splice (termasuk sisi `core_in` di parent JC-nya, bukan cuma `core_out` di JC itu sendiri)
+- Endpoint baru read-only: `GET /api/ftth/cores/<owner_type>/<owner_id>` dan `GET /api/ftth/cores/<core_id>/history`
+- Panel **Status Core** baru di modal Edit OTB/ODC/JC (`frontend/src/pages/FtthInfrastructure.tsx`) — grid nomor core dengan warna status, klik untuk lihat riwayat singkat. Murni tampilan status, bukan tempat mengubah assignment (assignment tetap lewat "Fed From" seperti biasa)
+- Update entri panduan `ftth`
+
+#### Batasan yang Disadari (Trade-off Sengaja, Bukan Bug)
+- Saat OTB/ODC dihapus dan cascade menghapus ODC/ODP di bawahnya (sudah perilaku lama, lewat SQLAlchemy `cascade='all, delete-orphan'`), core yang dimiliki ODC/ODP yang ikut ter-cascade-delete **tidak** ikut dibersihkan dari `FTTHFiberCore` (hanya core milik node yang di-`DELETE` langsung lewat API yang dibersihkan). Baris jadi orphan tapi tidak berbahaya (bukan FK yang di-enforce ketat, tidak dibaca ulang oleh trace/impact/tree yang tetap 100% jalan dari integer core_number seperti sebelumnya) — diterima sebagai batasan lapisan tracking tambahan ini, bukan sumber kebenaran topologi.
+
+#### Diverifikasi
+- 10 test baru (`tests/test_ftth_fiber_core.py`) — core ter-assign saat ODC/JC-splice dibuat, riwayat tercatat benar (termasuk `performed_by`), core dilepas saat delete/reassign, lazy-create tidak duplikat, unique constraint DB bekerja, kedua sisi splice (core_out di JC + core_in di parent) ter-touch
+- Full suite: **266 passed, 2 skipped** (baseline 256 + 10 baru, nol regresi) — 48 test FTTH semuanya hijau
+- Migration diverifikasi upgrade → downgrade → upgrade bersih di scratch DB
+- Verifikasi visual end-to-end: dibuat OTB+ODC nyata lewat API, dibuka modal Edit OTB — core yang dipakai ODC benar tersorot warna "used", diklik core-nya, riwayat "assigned (- → used) oleh admin" tampil benar. Nol error console
+- `tsc --noEmit` dan `vite build` bersih
+
 ### 2026-09-17 — FTTH: Panjang & Redaman Kabel per Segmen (Fase 2 Adopsi Struktur salfanet-radius)
 
 #### Konteks

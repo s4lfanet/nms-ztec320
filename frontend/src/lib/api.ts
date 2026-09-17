@@ -143,6 +143,8 @@ export const api = {
   ftthJcSpliceUpdate: (jcId: number, spliceId: number, data: Partial<{ core_in: number; core_out: number; label: string; tube_in_label: string; tube_out_label: string }>) => request<{ success: boolean; splice: FTTHJcSplice }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthJcSpliceDelete: (jcId: number, spliceId: number) => request<{ success: boolean }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'DELETE' }),
   ftthAvailableOnus: (oltId?: number) => request<{ success: boolean; onus: FTTHAvailableOnu[] }>(`/api/ftth/available-onus${oltId ? '?olt_id=' + oltId : ''}`),
+  ftthCores: (ownerType: 'otb' | 'odc' | 'jc', ownerId: number) => request<{ success: boolean; cores: FTTHFiberCore[] }>(`/api/ftth/cores/${ownerType}/${ownerId}`),
+  ftthCoreHistory: (coreId: number) => request<{ success: boolean; history: FTTHCoreHistoryEntry[] }>(`/api/ftth/cores/${coreId}/history`),
   ftthTraceOnu: (onuId: number) => request<{ success: boolean; complete: boolean; hops: FTTHTraceHop[]; message?: string; total_attenuation_db: number | null }>(`/api/ftth/trace/onu/${onuId}`),
   ftthImpact: (nodeType: 'otb' | 'jc' | 'odc' | 'odp', nodeId: number) => request<{ success: boolean; total: number; online: number; offline: number; customers: Array<{ id: number; name: string; serial: string; status: string }>; truncated: boolean }>(`/api/ftth/impact/${nodeType}/${nodeId}`),
   ftthPonList: () => request<{ success: boolean; items: FTTHPonPort[] }>('/api/ftth/pon'),
@@ -965,6 +967,31 @@ export interface FTTHTraceHop {
   message?: string;     // gap: what's missing
   cable_attenuation_db?: number | null;       // otb/odc/jc/odp: this segment's own incoming-cable loss
   drop_cable_attenuation_db?: number | null;  // odp: the ODP-port's own drop-cable loss to the customer
+}
+
+export interface FTTHFiberCore {
+  id: number;
+  owner_type: 'otb' | 'odc' | 'jc';
+  owner_id: number;
+  core_number: number;
+  status: 'available' | 'used' | 'reserved' | 'damaged';
+  assigned_to_type: string | null;
+  assigned_to_id: number | null;
+  attenuation_db: number | null;
+  notes: string;
+  updated_at: string | null;
+}
+
+export interface FTTHCoreHistoryEntry {
+  id: number;
+  action: 'assigned' | 'unassigned' | 'status_change';
+  previous_status: string | null;
+  new_status: string | null;
+  assigned_to_type: string | null;
+  assigned_to_id: number | null;
+  performed_by: string;
+  reason: string;
+  created_at: string | null;
 }
 
 export interface FTTHOdpTree extends FTTHOdp { ports: FTTHOdpPort[] }

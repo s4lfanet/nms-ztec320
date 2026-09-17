@@ -17,6 +17,7 @@ from models import (
     AlertHistory, BotConfig, FTTHOTB, FTTHOTBPort, FTTHODC, FTTHODP, FTTHODPPort,
     FTTHPonPort, FTTHFiberPath, FTTHJC, FTTHJCSplice, SystemConfig, ActionLog,
     MetricHistory, TrafficLog, TrafficLogHourly, OLTConfigBackup,
+    FTTHFiberCore, FTTHCoreAssignmentHistory,
 )
 from extensions import logger
 from helpers import (
@@ -280,6 +281,54 @@ def _jc_creates_cycle(jc_id, start_parent_type, start_parent_id, _max_depth=25):
     return depth >= _max_depth
 
 
+_CORE_OWNER_TYPES = frozenset({'otb', 'odc', 'jc'})
+
+
+def _touch_core(owner_type, owner_id, core_number, new_status,
+                 assigned_to_type=None, assigned_to_id=None, reason=''):
+    """Upsert the FTTHFiberCore row for (owner_type, owner_id, core_number) to
+    new_status, lazily creating it if this is the first time this core has
+    been referenced (mirrors the _ensure_otb_ports lazy-backfill pattern).
+    Logs a FTTHCoreAssignmentHistory row whenever the status actually
+    changes. Purely additive/supplementary — the real topology is still
+    governed by the *_core_number fields on OTB/ODC/ODP/JCSplice; this is
+    a best-effort status+history layer on top, so failures here should
+    never block the caller's actual save. Does not commit — caller's
+    existing db.session.commit() covers this too.
+    """
+    if not owner_type or owner_type not in _CORE_OWNER_TYPES or not owner_id or not core_number:
+        return
+    core = FTTHFiberCore.query.filter_by(owner_type=owner_type, owner_id=owner_id, core_number=core_number).first()
+    previous_status = core.status if core else None
+    if not core:
+        core = FTTHFiberCore(owner_type=owner_type, owner_id=owner_id, core_number=core_number, status=new_status,
+                              assigned_to_type=assigned_to_type, assigned_to_id=assigned_to_id)
+        db.session.add(core)
+        db.session.flush()
+    else:
+        core.status = new_status
+        core.assigned_to_type = assigned_to_type
+        core.assigned_to_id = assigned_to_id
+    if previous_status != new_status:
+        if previous_status in (None, 'available') and new_status == 'used':
+            action = 'assigned'
+        elif previous_status == 'used' and new_status == 'available':
+            action = 'unassigned'
+        else:
+            action = 'status_change'
+        performed_by = getattr(current_user, 'username', '') if current_user and current_user.is_authenticated else ''
+        db.session.add(FTTHCoreAssignmentHistory(
+            core_id=core.id, action=action, previous_status=previous_status, new_status=new_status,
+            assigned_to_type=assigned_to_type, assigned_to_id=assigned_to_id,
+            performed_by=performed_by, reason=reason,
+        ))
+
+
+def _release_core(owner_type, owner_id, core_number, reason=''):
+    """Convenience wrapper: mark a core available again (detach/delete paths)."""
+    _touch_core(owner_type, owner_id, core_number, 'available', reason=reason)
+
+
 def _odp_port_to_dict(p):
     onu = ONU.query.get(p.onu_id) if p.onu_id else None
     jc = db.session.get(FTTHJC, p.jc_id) if p.jc_id else None
@@ -347,6 +396,8 @@ def ftth_otb_create():
     db.session.add(o)
     db.session.flush()
     _ensure_otb_ports(o)
+    if o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
+        _touch_core('jc', o.jc_id, o.jc_core_number, 'used', 'otb', o.id)
     db.session.commit()
     return jsonify({'success': True, 'item': _otb_to_dict(o)})
 
@@ -357,6 +408,7 @@ def ftth_otb_create():
 def ftth_otb_update(otb_id):
     o = db.session.get(FTTHOTB, otb_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
+    old_feed_source, old_jc_id, old_jc_core_number = o.feed_source, o.jc_id, o.jc_core_number
     d = request.get_json() or {}
     for k in ['name', 'type', 'model', 'location', 'pon_port', 'description']:
         if k in d: setattr(o, k, d[k])
@@ -379,6 +431,11 @@ def ftth_otb_update(otb_id):
         if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
     if 'total_cores' in d:
         _ensure_otb_ports(o)
+    if old_feed_source == 'jc' and old_jc_id and old_jc_core_number and \
+       (o.feed_source != 'jc' or o.jc_id != old_jc_id or o.jc_core_number != old_jc_core_number):
+        _release_core('jc', old_jc_id, old_jc_core_number, reason='OTB feed changed')
+    if o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
+        _touch_core('jc', o.jc_id, o.jc_core_number, 'used', 'otb', o.id)
     db.session.commit()
     return jsonify({'success': True, 'item': _otb_to_dict(o)})
 
@@ -416,6 +473,9 @@ def ftth_otb_delete(otb_id):
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
     for jc in FTTHJC.query.filter_by(parent_type='otb', parent_id=otb_id).all():
         jc.parent_type = None; jc.parent_id = None
+    if o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
+        _release_core('jc', o.jc_id, o.jc_core_number, reason='OTB deleted')
+    FTTHFiberCore.query.filter_by(owner_type='otb', owner_id=otb_id).delete()
     db.session.delete(o)
     db.session.commit()
     return jsonify({'success': True})
@@ -456,6 +516,11 @@ def ftth_odc_create():
     )
     db.session.add(o)
     db.session.commit()
+    if o.feed_source == 'otb' and o.otb_id and o.otb_core_number:
+        _touch_core('otb', o.otb_id, o.otb_core_number, 'used', 'odc', o.id)
+    elif o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
+        _touch_core('jc', o.jc_id, o.jc_core_number, 'used', 'odc', o.id)
+    db.session.commit()
     return jsonify({'success': True, 'item': _odc_to_dict(o)})
 
 
@@ -465,6 +530,8 @@ def ftth_odc_create():
 def ftth_odc_update(odc_id):
     o = db.session.get(FTTHODC, odc_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
+    old_feed_source, old_otb_id, old_otb_core_number = o.feed_source, o.otb_id, o.otb_core_number
+    old_jc_id, old_jc_core_number = o.jc_id, o.jc_core_number
     d = request.get_json() or {}
     for k in ['name', 'model', 'location', 'splitter_model', 'splitter_ratio_type', 'description']:
         if k in d: setattr(o, k, d[k])
@@ -485,6 +552,17 @@ def ftth_odc_update(odc_id):
         if 'otb_id' in d: o.otb_id = d['otb_id']
         if 'jc_id' in d: o.jc_id = d['jc_id']
         if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
+    # Release whichever old reservation no longer applies, then claim the new one.
+    if old_feed_source == 'otb' and old_otb_id and old_otb_core_number and \
+       (o.feed_source != 'otb' or o.otb_id != old_otb_id or o.otb_core_number != old_otb_core_number):
+        _release_core('otb', old_otb_id, old_otb_core_number, reason='ODC feed changed')
+    if old_feed_source == 'jc' and old_jc_id and old_jc_core_number and \
+       (o.feed_source != 'jc' or o.jc_id != old_jc_id or o.jc_core_number != old_jc_core_number):
+        _release_core('jc', old_jc_id, old_jc_core_number, reason='ODC feed changed')
+    if o.feed_source == 'otb' and o.otb_id and o.otb_core_number:
+        _touch_core('otb', o.otb_id, o.otb_core_number, 'used', 'odc', o.id)
+    elif o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
+        _touch_core('jc', o.jc_id, o.jc_core_number, 'used', 'odc', o.id)
     db.session.commit()
     return jsonify({'success': True, 'item': _odc_to_dict(o)})
 
@@ -497,6 +575,11 @@ def ftth_odc_delete(odc_id):
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
     for jc in FTTHJC.query.filter_by(parent_type='odc', parent_id=odc_id).all():
         jc.parent_type = None; jc.parent_id = None
+    if o.feed_source == 'otb' and o.otb_id and o.otb_core_number:
+        _release_core('otb', o.otb_id, o.otb_core_number, reason='ODC deleted')
+    elif o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
+        _release_core('jc', o.jc_id, o.jc_core_number, reason='ODC deleted')
+    FTTHFiberCore.query.filter_by(owner_type='odc', owner_id=odc_id).delete()
     db.session.delete(o)
     db.session.commit()
     return jsonify({'success': True})
@@ -539,6 +622,10 @@ def ftth_odp_create():
     # Auto-create ports
     for i in range(1, o.total_ports + 1):
         db.session.add(FTTHODPPort(odp_id=o.id, port_number=i, status='available'))
+    if o.feed_source == 'odc' and o.odc_id and o.odc_core_number:
+        _touch_core('odc', o.odc_id, o.odc_core_number, 'used', 'odp', o.id)
+    elif o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
+        _touch_core('jc', o.jc_id, o.jc_core_number, 'used', 'odp', o.id)
     db.session.commit()
     return jsonify({'success': True, 'item': _odp_to_dict(o)})
 
@@ -549,6 +636,8 @@ def ftth_odp_create():
 def ftth_odp_update(odp_id):
     o = db.session.get(FTTHODP, odp_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
+    old_feed_source, old_odc_id, old_odc_core_number = o.feed_source, o.odc_id, o.odc_core_number
+    old_jc_id, old_jc_core_number = o.jc_id, o.jc_core_number
     d = request.get_json() or {}
     for k in ['name', 'model', 'location', 'splitter_model', 'splitter_ratio_type', 'description']:
         if k in d: setattr(o, k, d[k])
@@ -574,6 +663,16 @@ def ftth_odp_update(odp_id):
         existing = FTTHODPPort.query.filter_by(odp_id=o.id).count()
         for i in range(existing + 1, o.total_ports + 1):
             db.session.add(FTTHODPPort(odp_id=o.id, port_number=i, status='available'))
+    if old_feed_source == 'odc' and old_odc_id and old_odc_core_number and \
+       (o.feed_source != 'odc' or o.odc_id != old_odc_id or o.odc_core_number != old_odc_core_number):
+        _release_core('odc', old_odc_id, old_odc_core_number, reason='ODP feed changed')
+    if old_feed_source == 'jc' and old_jc_id and old_jc_core_number and \
+       (o.feed_source != 'jc' or o.jc_id != old_jc_id or o.jc_core_number != old_jc_core_number):
+        _release_core('jc', old_jc_id, old_jc_core_number, reason='ODP feed changed')
+    if o.feed_source == 'odc' and o.odc_id and o.odc_core_number:
+        _touch_core('odc', o.odc_id, o.odc_core_number, 'used', 'odp', o.id)
+    elif o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
+        _touch_core('jc', o.jc_id, o.jc_core_number, 'used', 'odp', o.id)
     db.session.commit()
     return jsonify({'success': True, 'item': _odp_to_dict(o)})
 
@@ -584,6 +683,10 @@ def ftth_odp_update(odp_id):
 def ftth_odp_delete(odp_id):
     o = db.session.get(FTTHODP, odp_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
+    if o.feed_source == 'odc' and o.odc_id and o.odc_core_number:
+        _release_core('odc', o.odc_id, o.odc_core_number, reason='ODP deleted')
+    elif o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
+        _release_core('jc', o.jc_id, o.jc_core_number, reason='ODP deleted')
     db.session.delete(o)
     db.session.commit()
     return jsonify({'success': True})
@@ -602,6 +705,7 @@ def ftth_odp_ports(odp_id):
 def ftth_odp_port_update(port_id):
     p = db.session.get(FTTHODPPort, port_id)
     if not p: return jsonify({'success': False, 'message': 'Not found'}), 404
+    old_feed_source, old_jc_id, old_jc_core_number = p.feed_source, p.jc_id, p.jc_core_number
     d = request.get_json() or {}
     for k in ['port_number', 'onu_id', 'status', 'customer_name', 'customer_phone', 'description', 'cable_length_meters', 'cable_attenuation_per_km']:
         if k in d: setattr(p, k, d[k])
@@ -619,6 +723,11 @@ def ftth_odp_port_update(port_id):
         p.status = 'used'
     elif p.status == 'used':
         p.status = 'available'
+    if old_feed_source == 'jc' and old_jc_id and old_jc_core_number and \
+       (p.feed_source != 'jc' or p.jc_id != old_jc_id or p.jc_core_number != old_jc_core_number):
+        _release_core('jc', old_jc_id, old_jc_core_number, reason='ODP port feed changed')
+    if p.feed_source == 'jc' and p.jc_id and p.jc_core_number:
+        _touch_core('jc', p.jc_id, p.jc_core_number, 'used', 'odp_port', p.id)
     db.session.commit()
     return jsonify({'success': True, 'port': _odp_port_to_dict(p)})
 
@@ -631,6 +740,8 @@ def ftth_odp_port_delete(port_id):
     if not p: return jsonify({'success': False, 'message': 'Not found'}), 404
     for jc in FTTHJC.query.filter_by(parent_type='odp_port', parent_id=port_id).all():
         jc.parent_type = None; jc.parent_id = None
+    if p.feed_source == 'jc' and p.jc_id and p.jc_core_number:
+        _release_core('jc', p.jc_id, p.jc_core_number, reason='ODP port deleted')
     db.session.delete(p)
     db.session.commit()
     return jsonify({'success': True})
@@ -702,6 +813,15 @@ def ftth_jc_delete(jc_id):
         port.jc_id = None; port.jc_core_number = None
     for child in FTTHJC.query.filter_by(parent_type='jc', parent_id=j.id).all():
         child.parent_type = None; child.parent_id = None
+    # Release whatever core(s) this JC's own splices were consuming from its
+    # parent, and drop the FTTHFiberCore rows this JC itself owned (its
+    # outgoing splice cores) — the JC is gone, so tracking them no longer
+    # means anything.
+    if j.parent_type in _CORE_OWNER_TYPES and j.parent_id:
+        for s in FTTHJCSplice.query.filter_by(jc_id=j.id).all():
+            if s.core_in:
+                _release_core(j.parent_type, j.parent_id, s.core_in, reason='JC deleted')
+    FTTHFiberCore.query.filter_by(owner_type='jc', owner_id=j.id).delete()
     db.session.delete(j)
     db.session.commit()
     return jsonify({'success': True})
@@ -721,6 +841,10 @@ def ftth_jc_splice_create(jc_id):
     s = FTTHJCSplice(jc_id=jc_id, core_in=d['core_in'], core_out=d['core_out'], label=d.get('label', ''),
                       tube_in_label=d.get('tube_in_label', ''), tube_out_label=d.get('tube_out_label', ''))
     db.session.add(s)
+    db.session.flush()
+    _touch_core('jc', jc_id, s.core_out, 'used', 'jc_splice', s.id)
+    if j.parent_type in _CORE_OWNER_TYPES and j.parent_id:
+        _touch_core(j.parent_type, j.parent_id, s.core_in, 'used', 'jc', j.id)
     db.session.commit()
     return jsonify({'success': True, 'splice': _jc_splice_to_dict(s)})
 
@@ -731,12 +855,20 @@ def ftth_jc_splice_create(jc_id):
 def ftth_jc_splice_update(jc_id, splice_id):
     s = db.session.get(FTTHJCSplice, splice_id)
     if not s or s.jc_id != jc_id: return jsonify({'success': False, 'message': 'Not found'}), 404
+    j = db.session.get(FTTHJC, jc_id)
+    old_core_in, old_core_out = s.core_in, s.core_out
     d = request.get_json() or {}
     if 'core_out' in d and d['core_out'] != s.core_out:
         if FTTHJCSplice.query.filter_by(jc_id=jc_id, core_out=d['core_out']).first():
             return jsonify({'success': False, 'message': f"Core out {d['core_out']} is already used by another splice in this JC"}), 400
     for k in ['core_in', 'core_out', 'label', 'tube_in_label', 'tube_out_label']:
         if k in d: setattr(s, k, d[k])
+    if old_core_out != s.core_out:
+        _release_core('jc', jc_id, old_core_out, reason='splice core_out changed')
+        _touch_core('jc', jc_id, s.core_out, 'used', 'jc_splice', s.id)
+    if old_core_in != s.core_in and j and j.parent_type in _CORE_OWNER_TYPES and j.parent_id:
+        _release_core(j.parent_type, j.parent_id, old_core_in, reason='splice core_in changed')
+        _touch_core(j.parent_type, j.parent_id, s.core_in, 'used', 'jc', j.id)
     db.session.commit()
     return jsonify({'success': True, 'splice': _jc_splice_to_dict(s)})
 
@@ -747,6 +879,7 @@ def ftth_jc_splice_update(jc_id, splice_id):
 def ftth_jc_splice_delete(jc_id, splice_id):
     s = db.session.get(FTTHJCSplice, splice_id)
     if not s or s.jc_id != jc_id: return jsonify({'success': False, 'message': 'Not found'}), 404
+    j = db.session.get(FTTHJC, jc_id)
     # Detach anything downstream that was fed from exactly this spliced-out core
     for odc in FTTHODC.query.filter_by(feed_source='jc', jc_id=jc_id, jc_core_number=s.core_out).all():
         odc.jc_id = None; odc.jc_core_number = None
@@ -756,9 +889,45 @@ def ftth_jc_splice_delete(jc_id, splice_id):
         otb.jc_id = None; otb.jc_core_number = None
     for port in FTTHODPPort.query.filter_by(feed_source='jc', jc_id=jc_id, jc_core_number=s.core_out).all():
         port.jc_id = None; port.jc_core_number = None
+    _release_core('jc', jc_id, s.core_out, reason='splice deleted')
+    if j and j.parent_type in _CORE_OWNER_TYPES and j.parent_id and s.core_in:
+        _release_core(j.parent_type, j.parent_id, s.core_in, reason='splice deleted')
     db.session.delete(s)
     db.session.commit()
     return jsonify({'success': True})
+
+
+def _fiber_core_to_dict(c):
+    return {
+        'id': c.id, 'owner_type': c.owner_type, 'owner_id': c.owner_id, 'core_number': c.core_number,
+        'status': c.status, 'assigned_to_type': c.assigned_to_type, 'assigned_to_id': c.assigned_to_id,
+        'attenuation_db': c.attenuation_db, 'notes': c.notes or '',
+        'updated_at': utc_iso(c.updated_at) if c.updated_at else None,
+    }
+
+
+@bp.route('/api/ftth/cores/<owner_type>/<int:owner_id>', methods=['GET'])
+@login_required
+def ftth_cores_list(owner_type, owner_id):
+    if owner_type not in _CORE_OWNER_TYPES:
+        return jsonify({'success': False, 'message': 'Invalid owner_type'}), 400
+    items = FTTHFiberCore.query.filter_by(owner_type=owner_type, owner_id=owner_id).order_by(FTTHFiberCore.core_number).all()
+    return jsonify({'success': True, 'cores': [_fiber_core_to_dict(c) for c in items]})
+
+
+@bp.route('/api/ftth/cores/<int:core_id>/history', methods=['GET'])
+@login_required
+def ftth_core_history(core_id):
+    core = db.session.get(FTTHFiberCore, core_id)
+    if not core:
+        return jsonify({'success': False, 'message': 'Not found'}), 404
+    rows = FTTHCoreAssignmentHistory.query.filter_by(core_id=core_id).order_by(FTTHCoreAssignmentHistory.created_at.desc()).all()
+    return jsonify({'success': True, 'history': [{
+        'id': h.id, 'action': h.action, 'previous_status': h.previous_status, 'new_status': h.new_status,
+        'assigned_to_type': h.assigned_to_type, 'assigned_to_id': h.assigned_to_id,
+        'performed_by': h.performed_by or '', 'reason': h.reason or '',
+        'created_at': utc_iso(h.created_at) if h.created_at else None,
+    } for h in rows]})
 
 
 def _build_odp_dict_full(odp):
