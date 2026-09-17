@@ -1634,6 +1634,13 @@ function FtthPathCard({ onuId }: { onuId: number }) {
           </div>
         ))}
       </div>
+      {data.complete && (
+        data.total_attenuation_db !== null ? (
+          <p className="text-xs text-tx3 mt-3">Total redaman jalur (kalkulasi): <span className="font-medium text-tx1">{data.total_attenuation_db.toFixed(2)} dB</span></p>
+        ) : (
+          <p className="text-xs text-tx3 mt-3">Total redaman jalur belum bisa dihitung — data panjang kabel belum lengkap di salah satu titik (isi lewat FTTH Infrastructure).</p>
+        )
+      )}
     </Card>
   );
 }

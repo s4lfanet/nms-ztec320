@@ -107,7 +107,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Jalur FTTH (Trace Kabel ke Pelanggan)',
-        content: 'Kartu **Jalur FTTH** menampilkan rute lengkap dari OLT sampai ke ONU ini: OLT → PON → OTB (core) → JC (splice, kalau ada) → ODC (core) → ODP (port) → pelanggan.\n\nBerguna saat ada komplain pelanggan — langsung kelihatan titik fisik mana saja yang dilewati tanpa perlu buka Tree view manual.\n\nKalau ada bagian rantai yang belum lengkap datanya (mis. ODP belum di-assign ke ODC/JC), muncul kotak merah menandai persis di titik mana data yang kurang.',
+        content: 'Kartu **Jalur FTTH** menampilkan rute lengkap dari OLT sampai ke ONU ini: OLT → PON → OTB (core) → JC (splice, kalau ada) → ODC (core) → ODP (port) → pelanggan.\n\nBerguna saat ada komplain pelanggan — langsung kelihatan titik fisik mana saja yang dilewati tanpa perlu buka Tree view manual.\n\nKalau ada bagian rantai yang belum lengkap datanya (mis. ODP belum di-assign ke ODC/JC), muncul kotak merah menandai persis di titik mana data yang kurang.\n\nKalau semua titik di jalur ini sudah diisi **Panjang Kabel** (di FTTH Infrastructure), total redaman jalur (dB) otomatis ditampilkan di bawah kartu ini.',
       },
     ],
     tips: [
@@ -317,6 +317,10 @@ export const guides: Guide[] = [
       {
         title: 'Budget Optik Splitter (ODC & ODP, opsional)',
         content: 'Selain **Splitter Model** (label bebas seperti "1:8"), ODC dan ODP juga punya field angka untuk hitungan power budget: **Ratio Splitter** (Even/Uneven — rata atau tidak rata antar output), **Tap Loss** dan **Through Loss** (dB). Semua opsional — kosongkan kalau belum punya data spec splitter-nya.',
+      },
+      {
+        title: 'Panjang & Redaman Kabel (opsional)',
+        content: 'Tiap node (OTB, ODC, ODP, port ODP, JC) punya field **Panjang Kabel Masuk (m)** dan **Redaman (dB/km)** — merepresentasikan kabel yang masuk ke node itu dari parent-nya. Default redaman 0.35 dB/km (standar fiber single-mode).\n\nKalau semua node di satu jalur pelanggan sudah diisi panjangnya, total redaman jalur otomatis dihitung dan ditampilkan di kartu **Jalur FTTH** pada halaman View ONU pelanggan tersebut. Kalau ada satu saja yang kosong, total tidak ditampilkan (bukan menampilkan angka yang salah).',
       },
       {
         title: 'JC (Joint Closure / Titik Sambungan) Tab',

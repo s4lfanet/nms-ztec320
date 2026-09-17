@@ -140,6 +140,25 @@ def ftth_stats():
     })
 
 
+def _cable_fields(o):
+    """Incoming-cable length/attenuation dict fragment, shared by every FTTH
+    node dict helper (OTB/ODC/ODP/ODP-port/JC each own exactly one incoming
+    feed). cable_attenuation_db is computed on read, not stored — the two
+    raw fields (length, dB/km) stay the single source of truth."""
+    length = o.cable_length_meters
+    per_km = o.cable_attenuation_per_km if o.cable_attenuation_per_km is not None else 0.35
+    # Not rounded here — this value gets summed across hops in the trace's
+    # total_attenuation_db; rounding per-segment first would let rounding
+    # error compound across a long chain. Round once, only at the final sum
+    # (and let the frontend round for display of a single segment).
+    attenuation_db = (length / 1000.0) * per_km if length is not None else None
+    return {
+        'cable_length_meters': length,
+        'cable_attenuation_per_km': per_km,
+        'cable_attenuation_db': attenuation_db,
+    }
+
+
 def _otb_to_dict(o):
     odc_count = FTTHODC.query.filter_by(otb_id=o.id).count()
     total_cores = o.total_cores or 0
@@ -158,6 +177,7 @@ def _otb_to_dict(o):
         'used_cores': odc_count,
         'available_cores': max(0, total_cores - odc_count),
         'is_active': odc_count > 0,
+        **_cable_fields(o),
     }
 
 
@@ -183,6 +203,7 @@ def _odc_to_dict(o):
         'used_cores': odp_count,
         'available_cores': max(0, total_cores - odp_count),
         'is_active': odp_count > 0,
+        **_cable_fields(o),
     }
 
 
@@ -206,6 +227,7 @@ def _odp_to_dict(o):
         'used_ports': used_ports_count,
         'available_ports': max(0, total_ports - used_ports_count),
         'is_active': used_ports_count > 0,
+        **_cable_fields(o),
     }
 
 
@@ -232,6 +254,7 @@ def _jc_to_dict(j):
         'description': j.description or '',
         'splice_count': len(splices),
         'splices': [_jc_splice_to_dict(s) for s in splices],
+        **_cable_fields(j),
     }
 
 
@@ -272,6 +295,7 @@ def _odp_port_to_dict(p):
         'onu_serial': onu.serial_number if onu else '',
         'onu_status': onu.status if onu else '',
         'onu_id_str': onu.onu_id_str if onu else '',
+        **_cable_fields(p),
     }
 
 
@@ -316,6 +340,8 @@ def ftth_otb_create():
         feed_source=feed_source,
         jc_id=d.get('jc_id') if feed_source == 'jc' else None,
         jc_core_number=d.get('jc_core_number') if feed_source == 'jc' else None,
+        cable_length_meters=d.get('cable_length_meters'),
+        cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
     db.session.add(o)
@@ -334,7 +360,7 @@ def ftth_otb_update(otb_id):
     d = request.get_json() or {}
     for k in ['name', 'type', 'model', 'location', 'pon_port', 'description']:
         if k in d: setattr(o, k, d[k])
-    for k in ['latitude', 'longitude']:
+    for k in ['latitude', 'longitude', 'cable_length_meters', 'cable_attenuation_per_km']:
         if k in d: setattr(o, k, d[k])
     for k in ['total_cores', 'fibers_per_tube']:
         if k in d: setattr(o, k, d[k])
@@ -424,6 +450,8 @@ def ftth_odc_create():
         splitter_ratio_type=d.get('splitter_ratio_type', 'even'),
         splitter_tap_loss_db=d.get('splitter_tap_loss_db'),
         splitter_through_loss_db=d.get('splitter_through_loss_db'),
+        cable_length_meters=d.get('cable_length_meters'),
+        cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
     db.session.add(o)
@@ -440,7 +468,7 @@ def ftth_odc_update(odc_id):
     d = request.get_json() or {}
     for k in ['name', 'model', 'location', 'splitter_model', 'splitter_ratio_type', 'description']:
         if k in d: setattr(o, k, d[k])
-    for k in ['latitude', 'longitude', 'splitter_tap_loss_db', 'splitter_through_loss_db']:
+    for k in ['latitude', 'longitude', 'splitter_tap_loss_db', 'splitter_through_loss_db', 'cable_length_meters', 'cable_attenuation_per_km']:
         if k in d: setattr(o, k, d[k])
     for k in ['otb_core_number', 'total_cores', 'fibers_per_tube']:
         if k in d: setattr(o, k, d[k])
@@ -502,6 +530,8 @@ def ftth_odp_create():
         splitter_ratio_type=d.get('splitter_ratio_type', 'even'),
         splitter_tap_loss_db=d.get('splitter_tap_loss_db'),
         splitter_through_loss_db=d.get('splitter_through_loss_db'),
+        cable_length_meters=d.get('cable_length_meters'),
+        cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
     db.session.add(o)
@@ -522,7 +552,7 @@ def ftth_odp_update(odp_id):
     d = request.get_json() or {}
     for k in ['name', 'model', 'location', 'splitter_model', 'splitter_ratio_type', 'description']:
         if k in d: setattr(o, k, d[k])
-    for k in ['latitude', 'longitude', 'splitter_tap_loss_db', 'splitter_through_loss_db']:
+    for k in ['latitude', 'longitude', 'splitter_tap_loss_db', 'splitter_through_loss_db', 'cable_length_meters', 'cable_attenuation_per_km']:
         if k in d: setattr(o, k, d[k])
     for k in ['odc_core_number', 'total_ports']:
         if k in d: setattr(o, k, d[k])
@@ -573,7 +603,7 @@ def ftth_odp_port_update(port_id):
     p = db.session.get(FTTHODPPort, port_id)
     if not p: return jsonify({'success': False, 'message': 'Not found'}), 404
     d = request.get_json() or {}
-    for k in ['port_number', 'onu_id', 'status', 'customer_name', 'customer_phone', 'description']:
+    for k in ['port_number', 'onu_id', 'status', 'customer_name', 'customer_phone', 'description', 'cable_length_meters', 'cable_attenuation_per_km']:
         if k in d: setattr(p, k, d[k])
     if 'feed_source' in d:
         p.feed_source = d['feed_source']
@@ -623,6 +653,8 @@ def ftth_jc_create():
         location=d.get('location', ''), latitude=d.get('latitude'), longitude=d.get('longitude'),
         total_cores=d.get('total_cores', 12), fibers_per_tube=d.get('fibers_per_tube', 12),
         parent_type=d.get('parent_type'), parent_id=d.get('parent_id'),
+        cable_length_meters=d.get('cable_length_meters'),
+        cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
     db.session.add(j)
@@ -644,7 +676,7 @@ def ftth_jc_update(jc_id):
             return jsonify({'success': False, 'message': 'This would create a circular JC chain'}), 400
     for k in ['name', 'closure_type', 'location', 'description']:
         if k in d: setattr(j, k, d[k])
-    for k in ['latitude', 'longitude']:
+    for k in ['latitude', 'longitude', 'cable_length_meters', 'cable_attenuation_per_km']:
         if k in d: setattr(j, k, d[k])
     for k in ['total_cores', 'fibers_per_tube', 'parent_type', 'parent_id']:
         if k in d: setattr(j, k, d[k])
@@ -783,7 +815,8 @@ def _trace_upstream_from_odp(odp, _depth=0):
             otb = db.session.get(FTTHOTB, node_id)
             if not otb:
                 return
-            hops.insert(0, {'type': 'otb', 'id': otb.id, 'name': otb.name, 'core': core_number})
+            hops.insert(0, {'type': 'otb', 'id': otb.id, 'name': otb.name, 'core': core_number,
+                             'cable_attenuation_db': _cable_fields(otb)['cable_attenuation_db']})
             if otb.feed_source == 'jc' and otb.jc_id:
                 climb('jc', otb.jc_id, otb.jc_core_number, depth + 1)
             else:
@@ -806,7 +839,8 @@ def _trace_upstream_from_odp(odp, _depth=0):
             odc = db.session.get(FTTHODC, node_id)
             if not odc:
                 return
-            hops.insert(0, {'type': 'odc', 'id': odc.id, 'name': odc.name, 'core': core_number})
+            hops.insert(0, {'type': 'odc', 'id': odc.id, 'name': odc.name, 'core': core_number,
+                             'cable_attenuation_db': _cable_fields(odc)['cable_attenuation_db']})
             if odc.feed_source == 'otb' and odc.otb_id:
                 climb('otb', odc.otb_id, odc.otb_core_number, depth + 1)
             elif odc.feed_source == 'jc' and odc.jc_id:
@@ -823,6 +857,7 @@ def _trace_upstream_from_odp(odp, _depth=0):
                 'type': 'jc', 'id': jc.id, 'name': jc.name,
                 'core_out': core_number, 'core_in': splice.core_in if splice else None,
                 'splice_label': splice.label if splice else '',
+                'cable_attenuation_db': _cable_fields(jc)['cable_attenuation_db'],
             })
             if not splice:
                 hops.insert(0, {'type': 'gap', 'message': f'{jc.name} tidak punya splice untuk core {core_number}'})
@@ -833,7 +868,8 @@ def _trace_upstream_from_odp(odp, _depth=0):
                 hops.insert(0, {'type': 'gap', 'message': f'{jc.name} belum ada "Fed From" (parent)'})
             return
 
-    hops.append({'type': 'odp', 'id': odp.id, 'name': odp.name, 'port': None})
+    hops.append({'type': 'odp', 'id': odp.id, 'name': odp.name, 'port': None,
+                 'cable_attenuation_db': _cable_fields(odp)['cable_attenuation_db']})
     if odp.feed_source == 'odc' and odp.odc_id:
         climb('odc', odp.odc_id, odp.odc_core_number, _depth)
     elif odp.feed_source == 'jc' and odp.jc_id:
@@ -860,6 +896,10 @@ def ftth_trace_onu(onu_id):
     hops = _trace_upstream_from_odp(odp) if odp else [{'type': 'gap', 'message': 'ODP untuk port ini tidak ditemukan'}]
     if hops and hops[-1].get('type') == 'odp':
         hops[-1]['port'] = port.port_number
+        # The ODP-port's own drop-cable segment (ODP -> customer) is a
+        # distinct physical run from the ODP's own incoming feed above —
+        # tracked separately on FTTHODPPort, folded in here as its own key.
+        hops[-1]['drop_cable_attenuation_db'] = _cable_fields(port)['cable_attenuation_db']
     if port.feed_source == 'jc' and port.jc_id:
         jc = db.session.get(FTTHJC, port.jc_id)
         if jc:
@@ -868,6 +908,7 @@ def ftth_trace_onu(onu_id):
                 'type': 'jc', 'id': jc.id, 'name': jc.name,
                 'core_out': port.jc_core_number, 'core_in': splice.core_in if splice else None,
                 'splice_label': splice.label if splice else '',
+                'cable_attenuation_db': _cable_fields(jc)['cable_attenuation_db'],
             })
             if not splice:
                 hops.append({'type': 'gap', 'message': f'{jc.name} tidak punya splice untuk core {port.jc_core_number}'})
@@ -875,7 +916,19 @@ def ftth_trace_onu(onu_id):
             hops.append({'type': 'gap', 'message': 'JC drop cable untuk port ini tidak ditemukan'})
     hops.append({'type': 'onu', 'id': onu.id, 'name': onu.name or onu.serial_number or '', 'serial': onu.serial_number or '', 'status': onu.status or ''})
     complete = not any(h.get('type') == 'gap' for h in hops)
-    return jsonify({'success': True, 'complete': complete, 'hops': hops})
+    # Cumulative attenuation across the whole path — only meaningful (and only
+    # returned) when every segment along the way has cable length data; a
+    # partial sum would understate the real loss, so show nothing rather than
+    # a misleading number.
+    segment_values = []
+    for h in hops:
+        if h.get('type') in ('otb', 'odc', 'jc'):
+            segment_values.append(h.get('cable_attenuation_db'))
+        elif h.get('type') == 'odp':
+            segment_values.append(h.get('cable_attenuation_db'))
+            segment_values.append(h.get('drop_cable_attenuation_db'))
+    total_attenuation_db = round(sum(segment_values), 3) if segment_values and all(v is not None for v in segment_values) else None
+    return jsonify({'success': True, 'complete': complete, 'hops': hops, 'total_attenuation_db': total_attenuation_db})
 
 
 def _collect_downstream_onus(node_type, node_id, _depth=0, _seen=None):

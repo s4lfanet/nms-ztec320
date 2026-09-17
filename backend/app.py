@@ -440,6 +440,11 @@ def migrate_schema():
     add_col('ftth_odp', 'splitter_tap_loss_db', 'REAL', None)
     add_col('ftth_odp', 'splitter_through_loss_db', 'REAL', None)
 
+    # FTTH OTB/ODC/ODP/ODP-port/JC - incoming cable length + attenuation
+    for _ftth_cable_table in ('ftth_otb', 'ftth_odc', 'ftth_odp', 'ftth_odp_port', 'ftth_jc'):
+        add_col(_ftth_cable_table, 'cable_length_meters', 'REAL', None)
+        add_col(_ftth_cable_table, 'cable_attenuation_per_km', 'REAL', '0.35')
+
     # Ensure critical indexes exist (db.create_all only creates indexes for new tables)
     def ensure_index(index_name, table, *columns):
         try:
