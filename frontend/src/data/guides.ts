@@ -304,7 +304,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Tree Tab',
-        content: 'Tampilan pohon (hierarki) dari seluruh rantai fiber: OLT/PON → (opsional lewat JC) → OTB/ODF → (opsional lewat JC) → ODC → (opsional lewat JC) → ODP → (opsional lewat JC) → port pelanggan. Setiap segmen bisa punya JC di tengahnya, termasuk sebelum OTB (feeder trunk) dan sebelum pelanggan (kabel drop).\n\nKlik panah untuk expand/collapse tiap node. Ikon di setiap baris untuk tambah ODC, tambah JC, tambah ODP, edit, atau hapus — tergantung jenis node-nya. Node JC ditandai warna ungu dengan ikon sambungan. Baris OTB yang di-feed dari JC (bukan langsung dari PON) menampilkan anotasi "Fed by JC" menggantikan info OLT.',
+        content: 'Tampilan pohon (hierarki) dari seluruh rantai fiber: OLT/PON → (opsional lewat JC) → OTB/ODF → (opsional lewat JC) → ODC → (opsional lewat JC) → ODP → (opsional lewat JC) → port pelanggan. Setiap segmen bisa punya JC di tengahnya, termasuk sebelum OTB (feeder trunk) dan sebelum pelanggan (kabel drop). ODP sendiri juga bisa berjenjang (ODP diberi makan dari port ODP lain, bukan langsung dari ODC) — lihat langkah "ODP Berjenjang" di bawah.\n\nKlik panah untuk expand/collapse tiap node. Ikon di setiap baris untuk tambah ODC, tambah JC, tambah ODP, edit, atau hapus — tergantung jenis node-nya. Node JC ditandai warna ungu dengan ikon sambungan. Baris OTB yang di-feed dari JC (bukan langsung dari PON) menampilkan anotasi "Fed by JC" menggantikan info OLT.',
       },
       {
         title: 'PON Ports Tab',
@@ -313,6 +313,10 @@ export const guides: Guide[] = [
       {
         title: 'OTB/ODF, ODC, ODP Tabs',
         content: '**OTB/ODF**: Optical Terminal Box / Optical Distribution Frame — titik koneksi fiber dari OLT.\n\n**ODC**: Optical Distribution Cabinet — distribusi fiber ke area.\n\n**ODP**: Optical Distribution Point — distribusi fiber ke rumah pelanggan.\n\nKelola (tambah/edit/hapus) dan lihat port utilization. Warna tube/core (standar TIA-598) ditampilkan sampai level ODC secara langsung; di level ODP warna ini hanya muncul kalau ODP tersebut di-feed lewat JC (feed langsung dari ODC tidak menampilkan warna tube/core lagi karena sudah dianggap satu core utuh).\n\nSaat tambah/edit OTB, ODC, atau ODP, ada toggle **"Fed From"**: pilih apakah node ini disambung langsung (OTB dari PON, ODC dari OTB, ODP dari ODC), atau lewat titik sambungan **JC** (lihat langkah berikutnya).',
+      },
+      {
+        title: 'ODP Berjenjang / Splitter Cascade (opsional)',
+        content: 'Selain OTB/ODC/JC, sebuah ODP juga bisa punya "Fed From" = **ODP Lain (Cascade)** — dipakai kalau di lapangan ada ODP kedua yang splitter-nya disambung ke salah satu **port keluaran** ODP pertama (bukan ke core mentah, karena output ODP sudah berupa cahaya yang di-split).\n\nSaat pilih ODP Lain, isi dulu **ODP Parent**-nya, lalu pilih **port** mana dari ODP itu yang jadi sumber ODP baru ini. Satu port hanya bisa dipakai untuk salah satu: jadi feed ODP anak, atau dipasangi ONU pelanggan langsung — tidak bisa dua-duanya.\n\nDi Tree view, ODP yang punya anak cascade menampilkan panah expand/collapse dan ikon tambah ODP baru untuk cascade lebih lanjut (berjenjang beberapa level). Menghapus ODP parent tidak menghapus ODP anaknya — anaknya cuma "dilepas" (port parent-nya jadi kosong), sama seperti perilaku JC.',
       },
       {
         title: 'Budget Optik Splitter (ODC & ODP, opsional)',

@@ -805,8 +805,11 @@ class FTTHODC(db.Model):
 
 
 class FTTHODP(db.Model):
-    """ODP (Optical Distribution Point) — fed by core from ODC, or from a
-    FTTHJC splice (feed_source='jc'). Has splitter + ports for ONUs."""
+    """ODP (Optical Distribution Point) — fed by core from ODC, from a
+    FTTHJC splice (feed_source='jc'), or by a PORT on another ODP
+    (feed_source='odp', splitter cascade — this ODP's whole splitter hangs
+    off one output port of its parent ODP, not off a raw core, since a
+    port is already split light). Has splitter + ports for ONUs."""
     __tablename__ = 'ftth_odp'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), nullable=False)
@@ -816,9 +819,10 @@ class FTTHODP(db.Model):
     longitude = db.Column(db.Float, nullable=True)
     odc_id = db.Column(db.Integer, db.ForeignKey('ftth_odc.id'), nullable=True)
     odc_core_number = db.Column(db.Integer, default=1)  # which core from ODC (feed_source='odc')
-    feed_source = db.Column(db.String(10), default='odc', nullable=False)  # 'odc' or 'jc'
+    feed_source = db.Column(db.String(10), default='odc', nullable=False)  # 'odc', 'jc', or 'odp'
     jc_id = db.Column(db.Integer, db.ForeignKey('ftth_jc.id'), nullable=True)
     jc_core_number = db.Column(db.Integer, nullable=True)  # which spliced-out core from the JC (feed_source='jc')
+    parent_odp_port_id = db.Column(db.Integer, db.ForeignKey('ftth_odp_port.id', use_alter=True, name='fk_ftth_odp_parent_odp_port_id'), nullable=True)  # which port on the parent ODP (feed_source='odp')
     total_ports = db.Column(db.Integer, default=8)
     splitter_model = db.Column(db.String(50), default='')  # e.g. 1:4, 1:8, 1:16, 1:32
     # Optical budget (opsional) — see FTTHODC for rationale.
@@ -831,6 +835,7 @@ class FTTHODP(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     odc = db.relationship('FTTHODC', backref=db.backref('odps', lazy=True, cascade='all, delete-orphan'))
     jc = db.relationship('FTTHJC', foreign_keys=[jc_id], backref=db.backref('fed_odps', lazy=True))
+    parent_odp_port = db.relationship('FTTHODPPort', foreign_keys=[parent_odp_port_id], backref=db.backref('fed_odps', lazy=True))
 
 
 class FTTHJC(db.Model):
@@ -902,7 +907,7 @@ class FTTHODPPort(db.Model):
     cable_length_meters = db.Column(db.Float, nullable=True)  # drop cable to the customer
     cable_attenuation_per_km = db.Column(db.Float, nullable=True, default=0.35)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    odp = db.relationship('FTTHODP', backref=db.backref('ports', lazy=True, cascade='all, delete-orphan'))
+    odp = db.relationship('FTTHODP', foreign_keys=[odp_id], backref=db.backref('ports', lazy=True, cascade='all, delete-orphan'))
     onu = db.relationship('ONU', backref=db.backref('odp_port', uselist=False))
     jc = db.relationship('FTTHJC', foreign_keys=[jc_id], backref=db.backref('fed_odp_ports', lazy=True))
 

@@ -212,6 +212,8 @@ def _odp_to_dict(o):
     used_ports_count = FTTHODPPort.query.filter_by(odp_id=o.id, status='used').count()
     total_ports = o.total_ports or 0
     jc = db.session.get(FTTHJC, o.jc_id) if o.jc_id else None
+    parent_port = db.session.get(FTTHODPPort, o.parent_odp_port_id) if o.parent_odp_port_id else None
+    parent_odp = db.session.get(FTTHODP, parent_port.odp_id) if parent_port else None
     return {
         'id': o.id, 'name': o.name, 'model': o.model,
         'location': o.location, 'latitude': o.latitude, 'longitude': o.longitude,
@@ -220,6 +222,10 @@ def _odp_to_dict(o):
         'feed_source': o.feed_source or 'odc',
         'jc_id': o.jc_id, 'jc_name': jc.name if jc else '',
         'jc_core_number': o.jc_core_number,
+        'parent_odp_port_id': o.parent_odp_port_id,
+        'parent_odp_id': parent_odp.id if parent_odp else None,
+        'parent_odp_name': parent_odp.name if parent_odp else '',
+        'parent_odp_port_number': parent_port.port_number if parent_port else None,
         'total_ports': total_ports, 'splitter_model': o.splitter_model,
         'splitter_ratio_type': o.splitter_ratio_type or 'even',
         'splitter_tap_loss_db': o.splitter_tap_loss_db,
@@ -281,6 +287,39 @@ def _jc_creates_cycle(jc_id, start_parent_type, start_parent_id, _max_depth=25):
     return depth >= _max_depth
 
 
+def _odp_creates_cycle(odp_id, start_parent_odp_id, _max_depth=25):
+    """Would setting odp_id's parent feed to a port on start_parent_odp_id
+    create an ODP->ODP cycle? Walk up the proposed parent chain (each hop
+    resolved via parent_odp_port_id -> that port's own ODP) looking for
+    odp_id."""
+    current_id, depth = start_parent_odp_id, 0
+    while current_id and depth < _max_depth:
+        if current_id == odp_id:
+            return True
+        parent = db.session.get(FTTHODP, current_id)
+        if not parent or parent.feed_source != 'odp' or not parent.parent_odp_port_id:
+            break
+        port = db.session.get(FTTHODPPort, parent.parent_odp_port_id)
+        current_id = port.odp_id if port else None
+        depth += 1
+    return depth >= _max_depth
+
+
+def _odp_parent_port_conflict(port_id, exclude_odp_id=None):
+    """A FTTHODPPort can't simultaneously feed a child ODP and be assigned
+    to a customer ONU directly — return a human-readable message if
+    port_id is unavailable to become a parent feed, else None."""
+    port = db.session.get(FTTHODPPort, port_id)
+    if not port:
+        return 'Port ODP tujuan tidak ditemukan'
+    if port.onu_id or port.status == 'used':
+        return 'Port ini sudah dipakai untuk ONU pelanggan, tidak bisa jadi feed ODP lain'
+    existing = FTTHODP.query.filter_by(feed_source='odp', parent_odp_port_id=port_id).first()
+    if existing and existing.id != exclude_odp_id:
+        return f'Port ini sudah dipakai untuk feed ODP "{existing.name}"'
+    return None
+
+
 _CORE_OWNER_TYPES = frozenset({'otb', 'odc', 'jc'})
 
 
@@ -332,6 +371,7 @@ def _release_core(owner_type, owner_id, core_number, reason=''):
 def _odp_port_to_dict(p):
     onu = ONU.query.get(p.onu_id) if p.onu_id else None
     jc = db.session.get(FTTHJC, p.jc_id) if p.jc_id else None
+    fed_odp = FTTHODP.query.filter_by(feed_source='odp', parent_odp_port_id=p.id).first()
     return {
         'id': p.id, 'odp_id': p.odp_id, 'port_number': p.port_number,
         'onu_id': p.onu_id, 'status': p.status,
@@ -344,6 +384,8 @@ def _odp_port_to_dict(p):
         'onu_serial': onu.serial_number if onu else '',
         'onu_status': onu.status if onu else '',
         'onu_id_str': onu.onu_id_str if onu else '',
+        'fed_odp_id': fed_odp.id if fed_odp else None,
+        'fed_odp_name': fed_odp.name if fed_odp else '',
         **_cable_fields(p),
     }
 
@@ -601,6 +643,11 @@ def ftth_odp_list():
 def ftth_odp_create():
     d = request.get_json() or {}
     feed_source = d.get('feed_source', 'odc')
+    parent_odp_port_id = d.get('parent_odp_port_id') if feed_source == 'odp' else None
+    if feed_source == 'odp' and parent_odp_port_id:
+        conflict = _odp_parent_port_conflict(parent_odp_port_id)
+        if conflict:
+            return jsonify({'success': False, 'message': conflict}), 400
     o = FTTHODP(
         name=d.get('name', ''), model=d.get('model', ''),
         location=d.get('location', ''), latitude=d.get('latitude'), longitude=d.get('longitude'),
@@ -609,6 +656,7 @@ def ftth_odp_create():
         feed_source=feed_source,
         jc_id=d.get('jc_id') if feed_source == 'jc' else None,
         jc_core_number=d.get('jc_core_number') if feed_source == 'jc' else None,
+        parent_odp_port_id=parent_odp_port_id,
         total_ports=d.get('total_ports', 8), splitter_model=d.get('splitter_model', ''),
         splitter_ratio_type=d.get('splitter_ratio_type', 'even'),
         splitter_tap_loss_db=d.get('splitter_tap_loss_db'),
@@ -646,18 +694,41 @@ def ftth_odp_update(odp_id):
     for k in ['odc_core_number', 'total_ports']:
         if k in d: setattr(o, k, d[k])
     if 'feed_source' in d:
-        o.feed_source = d['feed_source']
+        new_feed_source = d['feed_source']
+        if new_feed_source == 'odp':
+            new_parent_port_id = d.get('parent_odp_port_id', o.parent_odp_port_id)
+            if new_parent_port_id:
+                port = db.session.get(FTTHODPPort, new_parent_port_id)
+                if port and (port.odp_id == o.id or _odp_creates_cycle(o.id, port.odp_id)):
+                    return jsonify({'success': False, 'message': 'This would create a circular ODP chain'}), 400
+                conflict = _odp_parent_port_conflict(new_parent_port_id, exclude_odp_id=o.id)
+                if conflict:
+                    return jsonify({'success': False, 'message': conflict}), 400
+        o.feed_source = new_feed_source
         if o.feed_source == 'odc':
-            o.jc_id = None; o.jc_core_number = None
+            o.jc_id = None; o.jc_core_number = None; o.parent_odp_port_id = None
             if 'odc_id' in d: o.odc_id = d['odc_id']
         elif o.feed_source == 'jc':
-            o.odc_id = None
+            o.odc_id = None; o.parent_odp_port_id = None
             if 'jc_id' in d: o.jc_id = d['jc_id']
             if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
+        elif o.feed_source == 'odp':
+            o.odc_id = None; o.jc_id = None; o.jc_core_number = None
+            if 'parent_odp_port_id' in d: o.parent_odp_port_id = d['parent_odp_port_id']
     else:
         if 'odc_id' in d: o.odc_id = d['odc_id']
         if 'jc_id' in d: o.jc_id = d['jc_id']
         if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
+        if 'parent_odp_port_id' in d and o.feed_source == 'odp':
+            new_parent_port_id = d['parent_odp_port_id']
+            if new_parent_port_id:
+                port = db.session.get(FTTHODPPort, new_parent_port_id)
+                if port and (port.odp_id == o.id or _odp_creates_cycle(o.id, port.odp_id)):
+                    return jsonify({'success': False, 'message': 'This would create a circular ODP chain'}), 400
+                conflict = _odp_parent_port_conflict(new_parent_port_id, exclude_odp_id=o.id)
+                if conflict:
+                    return jsonify({'success': False, 'message': conflict}), 400
+            o.parent_odp_port_id = new_parent_port_id
     # Auto-create missing ports if total_ports increased
     if 'total_ports' in d:
         existing = FTTHODPPort.query.filter_by(odp_id=o.id).count()
@@ -687,6 +758,12 @@ def ftth_odp_delete(odp_id):
         _release_core('odc', o.odc_id, o.odc_core_number, reason='ODP deleted')
     elif o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
         _release_core('jc', o.jc_id, o.jc_core_number, reason='ODP deleted')
+    # Detach (don't cascade-delete) any child ODP fed from one of this ODP's
+    # ports — the ports are about to be cascade-deleted along with o.
+    own_port_ids = [p.id for p in FTTHODPPort.query.filter_by(odp_id=o.id).all()]
+    if own_port_ids:
+        for child in FTTHODP.query.filter_by(feed_source='odp').filter(FTTHODP.parent_odp_port_id.in_(own_port_ids)).all():
+            child.parent_odp_port_id = None
     db.session.delete(o)
     db.session.commit()
     return jsonify({'success': True})
@@ -707,6 +784,10 @@ def ftth_odp_port_update(port_id):
     if not p: return jsonify({'success': False, 'message': 'Not found'}), 404
     old_feed_source, old_jc_id, old_jc_core_number = p.feed_source, p.jc_id, p.jc_core_number
     d = request.get_json() or {}
+    if d.get('onu_id'):
+        fed_odp = FTTHODP.query.filter_by(feed_source='odp', parent_odp_port_id=p.id).first()
+        if fed_odp:
+            return jsonify({'success': False, 'message': f'Port ini sudah jadi feed ODP "{fed_odp.name}", tidak bisa dipakai untuk ONU pelanggan'}), 400
     for k in ['port_number', 'onu_id', 'status', 'customer_name', 'customer_phone', 'description', 'cable_length_meters', 'cable_attenuation_per_km']:
         if k in d: setattr(p, k, d[k])
     if 'feed_source' in d:
@@ -930,10 +1011,16 @@ def ftth_core_history(core_id):
     } for h in rows]})
 
 
-def _build_odp_dict_full(odp):
+def _build_odp_dict_full(odp, _depth=0):
     d = _odp_to_dict(odp)
     ports = FTTHODPPort.query.filter_by(odp_id=odp.id).order_by(FTTHODPPort.port_number).all()
     d['ports'] = [_odp_port_to_dict(p) for p in ports]
+    if _depth > 20:  # guard against a pathological/cyclic ODP->ODP chain
+        d['odps'] = []
+        return d
+    port_ids = [p.id for p in ports]
+    child_odps = FTTHODP.query.filter_by(feed_source='odp').filter(FTTHODP.parent_odp_port_id.in_(port_ids)).order_by(FTTHODP.name).all() if port_ids else []
+    d['odps'] = [_build_odp_dict_full(child, _depth + 1) for child in child_odps]
     return d
 
 
@@ -1036,15 +1123,37 @@ def _trace_upstream_from_odp(odp, _depth=0):
             else:
                 hops.insert(0, {'type': 'gap', 'message': f'{jc.name} belum ada "Fed From" (parent)'})
             return
+        if node_type == 'odp':
+            parent_odp = db.session.get(FTTHODP, node_id)
+            if not parent_odp:
+                return
+            port = db.session.get(FTTHODPPort, core_number) if core_number else None  # core_number carries parent_odp_port_id for this branch
+            hops.insert(0, {'type': 'odp', 'id': parent_odp.id, 'name': parent_odp.name, 'port': port.port_number if port else None,
+                             'cable_attenuation_db': _cable_fields(parent_odp)['cable_attenuation_db']})
+            _climb_from_odp_feed(parent_odp, hops, depth)
+            return
+
+    def _climb_from_odp_feed(node_odp, hops_list, depth):
+        """Resolve one ODP's own upstream feed (ODC / JC / another ODP's
+        port) and continue the climb. Shared by the trace entry point and
+        by the 'odp' branch of climb() so a multi-level ODP cascade
+        (ODP -> ODP -> ODC -> ...) walks all the way up."""
+        if node_odp.feed_source == 'odc' and node_odp.odc_id:
+            climb('odc', node_odp.odc_id, node_odp.odc_core_number, depth)
+        elif node_odp.feed_source == 'jc' and node_odp.jc_id:
+            climb('jc', node_odp.jc_id, node_odp.jc_core_number, depth)
+        elif node_odp.feed_source == 'odp' and node_odp.parent_odp_port_id:
+            port = db.session.get(FTTHODPPort, node_odp.parent_odp_port_id)
+            if port:
+                climb('odp', port.odp_id, port.id, depth + 1)
+            else:
+                hops_list.insert(0, {'type': 'gap', 'message': f'{node_odp.name} terhubung ke port ODP yang tidak ditemukan'})
+        else:
+            hops_list.insert(0, {'type': 'gap', 'message': f'{node_odp.name} belum tersambung ke ODC/JC/ODP manapun'})
 
     hops.append({'type': 'odp', 'id': odp.id, 'name': odp.name, 'port': None,
                  'cable_attenuation_db': _cable_fields(odp)['cable_attenuation_db']})
-    if odp.feed_source == 'odc' and odp.odc_id:
-        climb('odc', odp.odc_id, odp.odc_core_number, _depth)
-    elif odp.feed_source == 'jc' and odp.jc_id:
-        climb('jc', odp.jc_id, odp.jc_core_number, _depth)
-    else:
-        hops.insert(0, {'type': 'gap', 'message': f'{odp.name} belum tersambung ke ODC/JC manapun'})
+    _climb_from_odp_feed(odp, hops, _depth)
     return hops
 
 
@@ -1116,6 +1225,9 @@ def _collect_downstream_onus(node_type, node_id, _depth=0, _seen=None):
                 onu = db.session.get(ONU, p.onu_id)
                 if onu:
                     onus.append(onu)
+        for child_odp in FTTHODP.query.filter_by(feed_source='odp').join(
+                FTTHODPPort, FTTHODP.parent_odp_port_id == FTTHODPPort.id).filter(FTTHODPPort.odp_id == node_id).all():
+            onus.extend(_collect_downstream_onus('odp', child_odp.id, _depth + 1, _seen))
     elif node_type == 'odc':
         for odp in FTTHODP.query.filter_by(feed_source='odc', odc_id=node_id).all():
             onus.extend(_collect_downstream_onus('odp', odp.id, _depth + 1, _seen))
@@ -1231,6 +1343,12 @@ def ftth_map():
             j_ll = _node_latlng('jc', odp.jc_id)
             if j_ll and odp.latitude:
                 lines.append({'from_lat': j_ll[0], 'from_lng': j_ll[1], 'to_lat': odp.latitude, 'to_lng': odp.longitude, 'from_type': 'jc', 'to_type': 'odp', 'from_id': odp.jc_id, 'to_id': odp.id, 'label': f'Core {odp.jc_core_number}'})
+        elif odp.feed_source == 'odp' and odp.parent_odp_port_id:
+            port = db.session.get(FTTHODPPort, odp.parent_odp_port_id)
+            if port:
+                parent_odp = db.session.get(FTTHODP, port.odp_id)
+                if parent_odp and parent_odp.latitude and odp.latitude:
+                    lines.append({'from_lat': parent_odp.latitude, 'from_lng': parent_odp.longitude, 'to_lat': odp.latitude, 'to_lng': odp.longitude, 'from_type': 'odp', 'to_type': 'odp', 'from_id': parent_odp.id, 'to_id': odp.id, 'label': f'Port {port.port_number}'})
     # JC ← parent (otb/odc/jc) connection lines
     for j in jc_list:
         if j.parent_type and j.parent_id:

@@ -4,6 +4,33 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-17 — FTTH: ODP Berjenjang / Splitter Cascade (Fase 4 Adopsi Struktur salfanet-radius)
+
+#### Konteks
+- Fase 4, fase terakhir dan paling luas perubahannya dari rencana adopsi 4 fase. salfanet-radius memodelkan ODP berjenjang lewat istilah "core" di semua level. Di nms-ztec320 dipilih pendekatan berbeda: ODP berikutnya diberi makan lewat **port** ODP sebelumnya (bukan core mentah), karena keluaran splitter sudah berupa cahaya yang di-split — port adalah representasi yang sudah ada (`FTTHODPPort`) dan konsisten dengan model yang sudah teruji.
+
+#### Ditambahkan
+- Kolom baru di `FTTHODP` (`backend/models.py`): `parent_odp_port_id` (FK ke `FTTHODPPort.id`, nullable, `use_alter=True` karena membentuk siklus FK dua arah dengan `FTTHODPPort.odp_id`); nilai baru `'odp'` untuk `feed_source`
+- Migration Alembic baru (`d4e5f6a7b8c9`) + mirror `add_col()` di `app.py:migrate_schema()`
+- `_odp_creates_cycle()` di `backend/routes_ftth.py` — mirror `_jc_creates_cycle`, jalan di rantai `parent_odp_port_id`; dipasang di endpoint create/update ODP untuk menolak cascade yang membentuk siklus (self-parent maupun tidak langsung)
+- `_odp_parent_port_conflict()` — validasi satu `FTTHODPPort` tidak bisa dipakai dobel: jadi feed ODP anak DAN dipasangi ONU pelanggan langsung. Dicek dua arah: saat set `feed_source='odp'` di ODP (`ftth_odp_create`/`update`) dan saat set `onu_id` di port (`ftth_odp_port_update`)
+- `_build_odp_dict_full` jadi rekursif (field `odps` baru, depth guard >20 sama seperti `_build_jc_dict_full`) — tree endpoint menampilkan cascade ODP berlapis
+- `climb()` di trace upstream dapat cabang `'odp'` baru; logic resolve feed satu ODP dipisah jadi helper `_climb_from_odp_feed()` supaya rantai ODP→ODP→ODC (berapa pun levelnya) ter-trace berurutan, dengan tiap ODP muncul sebagai hop `type: 'odp'` tersendiri
+- `_collect_downstream_onus` dapat cabang rekursi ke ODP anak — dampak downstream terhitung benar lewat berapa pun level cascade
+- `ftth_map()` emit edge baru `odp → odp` untuk garis peta (frontend `LeafletMap.tsx` sudah generik, tidak perlu diubah)
+- `ftth_odp_delete` men-detach (bukan cascade-delete) ODP anak — `parent_odp_port_id` di anak jadi `NULL`, ODP anaknya sendiri tetap ada
+- Frontend (`frontend/src/pages/FtthInfrastructure.tsx`): `FeedSourceToggle` dapat prop opsional `extraOptions` untuk tombol tambahan (3 pemanggil lain tidak berubah); `OdpModal` dapat opsi "ODP Lain (Cascade)" — pilih ODP parent lalu port yang tersedia; `OdpRow` jadi rekursif dengan expand/collapse dan tombol tambah cascade, seperti `OdcRow`/`JcRow`
+- Update entri panduan `ftth`
+
+#### Diperbaiki (ditemukan saat menulis test)
+- Relationship `FTTHODPPort.odp` di `backend/models.py` awalnya ambigu setelah `parent_odp_port_id` ditambahkan — dua kolom FK berbeda kini menghubungkan `ftth_odp` dan `ftth_odp_port` (`ftth_odp_port.odp_id` dan `ftth_odp.parent_odp_port_id`), SQLAlchemy tidak bisa menentukan mana yang dipakai relationship `ports`. Diperbaiki dengan `foreign_keys=[odp_id]` eksplisit di relationship tersebut.
+
+#### Diverifikasi
+- 11 test baru (`tests/test_ftth_odp_cascade.py`) — cycle prevention (self-parent, tidak langsung), tree nesting + regression shape untuk ODP non-cascading, trace 2 level ODP, dampak downstream 2 level ODP, validasi konflik port dua arah, delete detach-not-cascade
+- Full suite: **277 passed, 2 skipped** (baseline 266 + 11 baru, nol regresi)
+- Migration diverifikasi upgrade → downgrade → upgrade bersih di scratch DB
+- `tsc --noEmit` dan `vite build` bersih
+
 ### 2026-09-17 — FTTH: Status Core Individual + Riwayat Assignment (Fase 3 Adopsi Struktur salfanet-radius)
 
 #### Konteks
