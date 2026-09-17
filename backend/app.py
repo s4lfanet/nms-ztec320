@@ -432,6 +432,14 @@ def migrate_schema():
     add_col('ftth_odp_port', 'jc_id', 'INTEGER', None)
     add_col('ftth_odp_port', 'jc_core_number', 'INTEGER', None)
 
+    # FTTH ODC/ODP - optical budget fields (splitter ratio type + tap/through loss)
+    add_col('ftth_odc', 'splitter_ratio_type', 'VARCHAR(10)', "'even'")
+    add_col('ftth_odc', 'splitter_tap_loss_db', 'REAL', None)
+    add_col('ftth_odc', 'splitter_through_loss_db', 'REAL', None)
+    add_col('ftth_odp', 'splitter_ratio_type', 'VARCHAR(10)', "'even'")
+    add_col('ftth_odp', 'splitter_tap_loss_db', 'REAL', None)
+    add_col('ftth_odp', 'splitter_through_loss_db', 'REAL', None)
+
     # Ensure critical indexes exist (db.create_all only creates indexes for new tables)
     def ensure_index(index_name, table, *columns):
         try:

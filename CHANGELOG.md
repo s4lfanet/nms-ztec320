@@ -4,6 +4,24 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-17 — FTTH: Budget Optik Splitter di ODC & ODP (Fase 1 Adopsi Struktur salfanet-radius)
+
+#### Konteks
+- Dibandingkan struktur FTTH dengan repo `salfanet-radius` (platform RADIUS/billing ISP dengan model fiber lebih detail). Fase 1 dari rencana adopsi bertahap: field numerik untuk hitungan power budget splitter (setara `fbtRatioType`/`fbtTapLoss`/`fbtThroughLoss` di salfanet-radius), murni aditif — tidak menyentuh `splitter_model` (label bebas "1:8" dsb) yang sudah ada, dan tidak mengubah mekanisme referensi core/trace/impact yang sudah stabil di 32 test FTTH existing.
+
+#### Ditambahkan
+- Kolom baru (nullable, opsional) di `FTTHODC` dan `FTTHODP` (`backend/models.py`): `splitter_ratio_type` (`'even'`/`'uneven'`, default `'even'`), `splitter_tap_loss_db`, `splitter_through_loss_db`
+- Migration Alembic baru (`f1a2b3c4d5e6`) + mirror `add_col()` di `app.py:migrate_schema()` untuk instalasi yang belum lewat Alembic
+- Endpoint create/update ODC & ODP (`backend/routes_ftth.py`) terima & kembalikan field baru
+- Form **Add/Edit ODC** dan **Add/Edit ODP** (`frontend/src/pages/FtthInfrastructure.tsx`) dapat 3 input baru: dropdown Ratio Splitter, input Tap Loss (dB), input Through Loss (dB) — semua opsional
+- Update entri panduan `ftth` (`frontend/src/data/guides.ts`)
+
+#### Diverifikasi
+- 6 test baru (`tests/test_ftth_optical_budget.py`) — save/load round-trip dan default value saat field tidak diisi, untuk ODC & ODP
+- Full suite: **251 passed, 2 skipped** (baseline 245 + 6 baru, nol regresi)
+- Migration diverifikasi upgrade → downgrade → upgrade bersih di scratch DB
+- `tsc --noEmit` dan `vite build` bersih
+
 ### 2026-09-17 — Audit & Overhaul Konten Halaman Panduan (`guides.ts`)
 
 #### Latar Belakang

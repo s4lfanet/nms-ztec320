@@ -1481,6 +1481,9 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
     jc_id: item?.jc_id || (parentKind === 'jc' ? parent?.id : '') || '', jc_core_number: item?.jc_core_number || '',
     total_cores: item?.total_cores || 8, fibers_per_tube: item?.fibers_per_tube || 12,
     splitter_model: item?.splitter_model || '',
+    splitter_ratio_type: item?.splitter_ratio_type || 'even',
+    splitter_tap_loss_db: item?.splitter_tap_loss_db ?? '',
+    splitter_through_loss_db: item?.splitter_through_loss_db ?? '',
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1498,6 +1501,8 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
     d.jc_core_number = form.jc_core_number === '' ? null : parseInt(String(form.jc_core_number));
     d.total_cores = parseInt(String(form.total_cores));
     d.fibers_per_tube = parseInt(String(form.fibers_per_tube));
+    d.splitter_tap_loss_db = form.splitter_tap_loss_db === '' ? null : parseFloat(String(form.splitter_tap_loss_db));
+    d.splitter_through_loss_db = form.splitter_through_loss_db === '' ? null : parseFloat(String(form.splitter_through_loss_db));
     mut.mutate(d);
   };
   const selectedOtb = otbList.find(x => x.id === Number(form.otb_id));
@@ -1508,6 +1513,16 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Model"><input className="input-field" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} /></FormField>
         <FormField label="Splitter Model"><input className="input-field" value={form.splitter_model} onChange={e => setForm({ ...form, splitter_model: e.target.value })} placeholder="1:8, 1:16" /></FormField>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <FormField label="Ratio Splitter">
+          <select className="input-field" value={form.splitter_ratio_type} onChange={e => setForm({ ...form, splitter_ratio_type: e.target.value })}>
+            <option value="even">Even (rata)</option>
+            <option value="uneven">Uneven (tidak rata)</option>
+          </select>
+        </FormField>
+        <FormField label="Tap Loss (dB, opsional)"><input className="input-field" type="number" step="0.1" value={form.splitter_tap_loss_db} onChange={e => setForm({ ...form, splitter_tap_loss_db: e.target.value })} placeholder="mis. 10.5" /></FormField>
+        <FormField label="Through Loss (dB, opsional)"><input className="input-field" type="number" step="0.1" value={form.splitter_through_loss_db} onChange={e => setForm({ ...form, splitter_through_loss_db: e.target.value })} placeholder="mis. 1.2" /></FormField>
       </div>
       <FormField label="Location"><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Street address or landmark" /></FormField>
       <FormField label="Coordinates (GPS / Map)">
@@ -1558,6 +1573,9 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, onClose, onSaved 
     odc_id: item?.odc_id || (parentKind === 'odc' ? parent?.id : '') || '', odc_core_number: item?.odc_core_number || 1,
     jc_id: item?.jc_id || (parentKind === 'jc' ? parent?.id : '') || '', jc_core_number: item?.jc_core_number || '',
     total_ports: item?.total_ports || 8, splitter_model: item?.splitter_model || '',
+    splitter_ratio_type: item?.splitter_ratio_type || 'even',
+    splitter_tap_loss_db: item?.splitter_tap_loss_db ?? '',
+    splitter_through_loss_db: item?.splitter_through_loss_db ?? '',
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1574,6 +1592,8 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, onClose, onSaved 
     d.jc_id = form.jc_id === '' ? null : parseInt(String(form.jc_id));
     d.jc_core_number = form.jc_core_number === '' ? null : parseInt(String(form.jc_core_number));
     d.total_ports = parseInt(String(form.total_ports));
+    d.splitter_tap_loss_db = form.splitter_tap_loss_db === '' ? null : parseFloat(String(form.splitter_tap_loss_db));
+    d.splitter_through_loss_db = form.splitter_through_loss_db === '' ? null : parseFloat(String(form.splitter_through_loss_db));
     mut.mutate(d);
   };
   const selectedJc = jcList.find(x => x.id === Number(form.jc_id));
@@ -1583,6 +1603,16 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, onClose, onSaved 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Model"><input className="input-field" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} /></FormField>
         <FormField label="Splitter Model"><input className="input-field" value={form.splitter_model} onChange={e => setForm({ ...form, splitter_model: e.target.value })} placeholder="1:4, 1:8, 1:16, 1:32" /></FormField>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <FormField label="Ratio Splitter">
+          <select className="input-field" value={form.splitter_ratio_type} onChange={e => setForm({ ...form, splitter_ratio_type: e.target.value })}>
+            <option value="even">Even (rata)</option>
+            <option value="uneven">Uneven (tidak rata)</option>
+          </select>
+        </FormField>
+        <FormField label="Tap Loss (dB, opsional)"><input className="input-field" type="number" step="0.1" value={form.splitter_tap_loss_db} onChange={e => setForm({ ...form, splitter_tap_loss_db: e.target.value })} placeholder="mis. 10.5" /></FormField>
+        <FormField label="Through Loss (dB, opsional)"><input className="input-field" type="number" step="0.1" value={form.splitter_through_loss_db} onChange={e => setForm({ ...form, splitter_through_loss_db: e.target.value })} placeholder="mis. 1.2" /></FormField>
       </div>
       <FormField label="Location"><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Pole number, address" /></FormField>
       <FormField label="Coordinates (GPS / Map)">
