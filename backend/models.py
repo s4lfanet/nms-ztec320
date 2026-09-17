@@ -958,6 +958,48 @@ class FTTHFiberPath(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
+class FTTHFiberCore(db.Model):
+    """Per-core status tracking for a node's own outgoing cable (OTB/ODC/JC
+    only — ODP's outgoing side is ports, already tracked by FTTHODPPort, so
+    ODP is deliberately not an owner_type here). Purely additive: the actual
+    topology is still governed by the existing feed_source/*_core_number
+    fields on OTB/ODC/ODP/JCSplice — this table is a supplementary
+    status+history layer, lazily created/kept in sync by _touch_core() in
+    routes_ftth.py whenever one of those fields is set or cleared."""
+    __tablename__ = 'ftth_fiber_core'
+    id = db.Column(db.Integer, primary_key=True)
+    owner_type = db.Column(db.String(10), nullable=False)  # otb, odc, jc
+    owner_id = db.Column(db.Integer, nullable=False)
+    core_number = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(15), default='available', nullable=False)  # available, used, reserved, damaged
+    assigned_to_type = db.Column(db.String(10), nullable=True)  # odc, odp, jc, jc_splice
+    assigned_to_id = db.Column(db.Integer, nullable=True)
+    attenuation_db = db.Column(db.Float, nullable=True)
+    notes = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint('owner_type', 'owner_id', 'core_number', name='uq_fiber_core_owner_num'),
+    )
+
+
+class FTTHCoreAssignmentHistory(db.Model):
+    """Audit trail of status changes on a FTTHFiberCore row."""
+    __tablename__ = 'ftth_core_assignment_history'
+    id = db.Column(db.Integer, primary_key=True)
+    core_id = db.Column(db.Integer, db.ForeignKey('ftth_fiber_core.id'), nullable=False)
+    action = db.Column(db.String(20), nullable=False)  # assigned, unassigned, status_change
+    previous_status = db.Column(db.String(15), nullable=True)
+    new_status = db.Column(db.String(15), nullable=True)
+    assigned_to_type = db.Column(db.String(10), nullable=True)
+    assigned_to_id = db.Column(db.Integer, nullable=True)
+    performed_by = db.Column(db.String(100), default='')
+    reason = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    core = db.relationship('FTTHFiberCore', backref=db.backref('history', lazy=True, cascade='all, delete-orphan'))
+
+
 class SystemConfig(db.Model):
     """System-wide configuration key-value store"""
     __tablename__ = 'system_config'
