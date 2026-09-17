@@ -175,6 +175,9 @@ def _odc_to_dict(o):
         'jc_core_number': o.jc_core_number,
         'total_cores': total_cores, 'fibers_per_tube': o.fibers_per_tube or 12,
         'splitter_model': o.splitter_model,
+        'splitter_ratio_type': o.splitter_ratio_type or 'even',
+        'splitter_tap_loss_db': o.splitter_tap_loss_db,
+        'splitter_through_loss_db': o.splitter_through_loss_db,
         'description': o.description or '',
         'odp_count': odp_count,
         'used_cores': odp_count,
@@ -196,6 +199,9 @@ def _odp_to_dict(o):
         'jc_id': o.jc_id, 'jc_name': jc.name if jc else '',
         'jc_core_number': o.jc_core_number,
         'total_ports': total_ports, 'splitter_model': o.splitter_model,
+        'splitter_ratio_type': o.splitter_ratio_type or 'even',
+        'splitter_tap_loss_db': o.splitter_tap_loss_db,
+        'splitter_through_loss_db': o.splitter_through_loss_db,
         'description': o.description or '',
         'used_ports': used_ports_count,
         'available_ports': max(0, total_ports - used_ports_count),
@@ -415,6 +421,9 @@ def ftth_odc_create():
         jc_core_number=d.get('jc_core_number') if feed_source == 'jc' else None,
         total_cores=d.get('total_cores', 8), fibers_per_tube=d.get('fibers_per_tube', 12),
         splitter_model=d.get('splitter_model', ''),
+        splitter_ratio_type=d.get('splitter_ratio_type', 'even'),
+        splitter_tap_loss_db=d.get('splitter_tap_loss_db'),
+        splitter_through_loss_db=d.get('splitter_through_loss_db'),
         description=d.get('description', ''),
     )
     db.session.add(o)
@@ -429,9 +438,9 @@ def ftth_odc_update(odc_id):
     o = db.session.get(FTTHODC, odc_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
     d = request.get_json() or {}
-    for k in ['name', 'model', 'location', 'splitter_model', 'description']:
+    for k in ['name', 'model', 'location', 'splitter_model', 'splitter_ratio_type', 'description']:
         if k in d: setattr(o, k, d[k])
-    for k in ['latitude', 'longitude']:
+    for k in ['latitude', 'longitude', 'splitter_tap_loss_db', 'splitter_through_loss_db']:
         if k in d: setattr(o, k, d[k])
     for k in ['otb_core_number', 'total_cores', 'fibers_per_tube']:
         if k in d: setattr(o, k, d[k])
@@ -490,6 +499,9 @@ def ftth_odp_create():
         jc_id=d.get('jc_id') if feed_source == 'jc' else None,
         jc_core_number=d.get('jc_core_number') if feed_source == 'jc' else None,
         total_ports=d.get('total_ports', 8), splitter_model=d.get('splitter_model', ''),
+        splitter_ratio_type=d.get('splitter_ratio_type', 'even'),
+        splitter_tap_loss_db=d.get('splitter_tap_loss_db'),
+        splitter_through_loss_db=d.get('splitter_through_loss_db'),
         description=d.get('description', ''),
     )
     db.session.add(o)
@@ -508,9 +520,9 @@ def ftth_odp_update(odp_id):
     o = db.session.get(FTTHODP, odp_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
     d = request.get_json() or {}
-    for k in ['name', 'model', 'location', 'splitter_model', 'description']:
+    for k in ['name', 'model', 'location', 'splitter_model', 'splitter_ratio_type', 'description']:
         if k in d: setattr(o, k, d[k])
-    for k in ['latitude', 'longitude']:
+    for k in ['latitude', 'longitude', 'splitter_tap_loss_db', 'splitter_through_loss_db']:
         if k in d: setattr(o, k, d[k])
     for k in ['odc_core_number', 'total_ports']:
         if k in d: setattr(o, k, d[k])

@@ -845,6 +845,9 @@ export interface FTTHOdc {
   total_cores: number;
   fibers_per_tube: number;
   splitter_model: string;
+  splitter_ratio_type: 'even' | 'uneven';
+  splitter_tap_loss_db: number | null;
+  splitter_through_loss_db: number | null;
   description: string;
   odp_count: number;
   used_cores: number;
@@ -868,6 +871,9 @@ export interface FTTHOdp {
   jc_core_number: number | null;
   total_ports: number;
   splitter_model: string;
+  splitter_ratio_type: 'even' | 'uneven';
+  splitter_tap_loss_db: number | null;
+  splitter_through_loss_db: number | null;
   description: string;
   used_ports: number;
   available_ports: number;

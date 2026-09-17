@@ -785,6 +785,11 @@ class FTTHODC(db.Model):
     total_cores = db.Column(db.Integer, default=8)
     fibers_per_tube = db.Column(db.Integer, default=12, nullable=False)  # TIA-598 tube grouping for the ODC's own outgoing cable
     splitter_model = db.Column(db.String(50), default='')  # e.g. 1:8, 1:16
+    # Optical budget (opsional) — splitter_model above stays a free-text label;
+    # these are the numeric fields power-budget calculations actually need.
+    splitter_ratio_type = db.Column(db.String(10), default='even')  # 'even' or 'uneven'
+    splitter_tap_loss_db = db.Column(db.Float, nullable=True)
+    splitter_through_loss_db = db.Column(db.Float, nullable=True)
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     otb = db.relationship('FTTHOTB', backref=db.backref('odcs', lazy=True, cascade='all, delete-orphan'))
@@ -808,6 +813,10 @@ class FTTHODP(db.Model):
     jc_core_number = db.Column(db.Integer, nullable=True)  # which spliced-out core from the JC (feed_source='jc')
     total_ports = db.Column(db.Integer, default=8)
     splitter_model = db.Column(db.String(50), default='')  # e.g. 1:4, 1:8, 1:16, 1:32
+    # Optical budget (opsional) — see FTTHODC for rationale.
+    splitter_ratio_type = db.Column(db.String(10), default='even')  # 'even' or 'uneven'
+    splitter_tap_loss_db = db.Column(db.Float, nullable=True)
+    splitter_through_loss_db = db.Column(db.Float, nullable=True)
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     odc = db.relationship('FTTHODC', backref=db.backref('odps', lazy=True, cascade='all, delete-orphan'))
