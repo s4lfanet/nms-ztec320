@@ -445,6 +445,9 @@ def migrate_schema():
         add_col(_ftth_cable_table, 'cable_length_meters', 'REAL', None)
         add_col(_ftth_cable_table, 'cable_attenuation_per_km', 'REAL', '0.35')
 
+    # FTTH ODP - splitter cascade (ODP fed from a port on another ODP)
+    add_col('ftth_odp', 'parent_odp_port_id', 'INTEGER', None)
+
     # Ensure critical indexes exist (db.create_all only creates indexes for new tables)
     def ensure_index(index_name, table, *columns):
         try:

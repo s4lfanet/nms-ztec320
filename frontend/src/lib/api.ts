@@ -873,10 +873,14 @@ export interface FTTHOdp {
   odc_id: number | null;
   odc_name: string;
   odc_core_number: number;
-  feed_source: 'odc' | 'jc';
+  feed_source: 'odc' | 'jc' | 'odp';
   jc_id: number | null;
   jc_name: string;
   jc_core_number: number | null;
+  parent_odp_port_id: number | null;
+  parent_odp_id: number | null;
+  parent_odp_name: string;
+  parent_odp_port_number: number | null;
   total_ports: number;
   splitter_model: string;
   splitter_ratio_type: 'even' | 'uneven';
@@ -938,6 +942,8 @@ export interface FTTHOdpPort {
   onu_serial: string;
   onu_status: string;
   onu_id_str: string;
+  fed_odp_id: number | null;
+  fed_odp_name: string;
   cable_length_meters: number | null;
   cable_attenuation_per_km: number;
   cable_attenuation_db: number | null;
@@ -994,7 +1000,7 @@ export interface FTTHCoreHistoryEntry {
   created_at: string | null;
 }
 
-export interface FTTHOdpTree extends FTTHOdp { ports: FTTHOdpPort[] }
+export interface FTTHOdpTree extends FTTHOdp { ports: FTTHOdpPort[]; odps: FTTHOdpTree[] }
 export interface FTTHOdcTree extends FTTHOdc { odps: FTTHOdpTree[]; jcs: FTTHJcTree[] }
 export interface FTTHJcTree extends FTTHJc { splices: FTTHJcSplice[]; odcs: FTTHOdcTree[]; odps: FTTHOdpTree[]; jcs: FTTHJcTree[] }
 
