@@ -954,13 +954,19 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
 }) {
   const qc = useQueryClient();
   const [editingPort, setEditingPort] = useState<FTTHOdpPort | null>(null);
-  const [portFeed, setPortFeed] = useState({ feed_source: 'direct' as 'direct' | 'jc', jc_id: '' as string | number, jc_core_number: '' as string | number });
+  const [portFeed, setPortFeed] = useState({
+    feed_source: 'direct' as 'direct' | 'jc', jc_id: '' as string | number, jc_core_number: '' as string | number,
+    cable_length_meters: '' as string | number, cable_attenuation_per_km: 0.35 as string | number,
+  });
   const [showLink, setShowLink] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'diagram' | 'list'>('diagram');
 
   const openEditPort = (p: FTTHOdpPort) => {
     setEditingPort(p);
-    setPortFeed({ feed_source: p.feed_source || 'direct', jc_id: p.jc_id || '', jc_core_number: p.jc_core_number || '' });
+    setPortFeed({
+      feed_source: p.feed_source || 'direct', jc_id: p.jc_id || '', jc_core_number: p.jc_core_number || '',
+      cable_length_meters: p.cable_length_meters ?? '', cable_attenuation_per_km: p.cable_attenuation_per_km ?? 0.35,
+    });
   };
   const selectedPortJc = jcList.find(j => j.id === Number(portFeed.jc_id));
 
@@ -1129,6 +1135,10 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
                     {selectedPortJc && portFeed.jc_core_number !== '' && <p className="text-xs col-span-full"><CoreColorTag coreNumber={Number(portFeed.jc_core_number)} fibersPerTube={selectedPortJc.fibers_per_tube} /></p>}
                   </div>
                 )}
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField label="Panjang Drop Cable (m, opsional)"><input className="input-field" type="number" step="1" value={portFeed.cable_length_meters} onChange={e => setPortFeed({ ...portFeed, cable_length_meters: e.target.value })} placeholder="mis. 50" /></FormField>
+                  <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={portFeed.cable_attenuation_per_km} onChange={e => setPortFeed({ ...portFeed, cable_attenuation_per_km: e.target.value })} /></FormField>
+                </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <button onClick={() => setEditingPort(null)} className="btn-cancel text-sm">Cancel</button>
                   <button onClick={() => saveMut.mutate({
@@ -1136,6 +1146,8 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
                     feed_source: portFeed.feed_source,
                     jc_id: portFeed.jc_id === '' ? null : Number(portFeed.jc_id),
                     jc_core_number: portFeed.jc_core_number === '' ? null : Number(portFeed.jc_core_number),
+                    cable_length_meters: portFeed.cable_length_meters === '' ? null : Number(portFeed.cable_length_meters),
+                    cable_attenuation_per_km: Number(portFeed.cable_attenuation_per_km) || 0.35,
                   })} className="btn-primary text-sm">Save</button>
                 </div>
               </div>
@@ -1386,6 +1398,8 @@ function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jc
     fibers_per_tube: item?.fibers_per_tube || 12,
     feed_source: initialFeedSource,
     jc_id: item?.jc_id || '', jc_core_number: item?.jc_core_number || '',
+    cable_length_meters: item?.cable_length_meters ?? '',
+    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? 0.35,
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1401,6 +1415,8 @@ function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jc
     d.fibers_per_tube = parseInt(String(form.fibers_per_tube));
     d.jc_id = form.jc_id === '' ? null : parseInt(String(form.jc_id));
     d.jc_core_number = form.jc_core_number === '' ? null : parseInt(String(form.jc_core_number));
+    d.cable_length_meters = form.cable_length_meters === '' ? null : parseFloat(String(form.cable_length_meters));
+    d.cable_attenuation_per_km = parseFloat(String(form.cable_attenuation_per_km)) || 0.35;
     mut.mutate(d);
   };
   const selectedJc = jcList.find(x => x.id === Number(form.jc_id));
@@ -1442,6 +1458,10 @@ function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jc
         <FormField label="Fibers per Tube"><input className="input-field" type="number" min={1} value={form.fibers_per_tube} onChange={e => setForm({ ...form, fibers_per_tube: parseInt(e.target.value) || 12 })} /></FormField>
       </div>
       <p className="text-[11px] text-tx3 -mt-1">Warna tube/core mengikuti standar TIA-598 (12 warna), dihitung otomatis dari nomor core — biasanya 12 per tube.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 850" /></FormField>
+        <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
+      </div>
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1484,6 +1504,8 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
     splitter_ratio_type: item?.splitter_ratio_type || 'even',
     splitter_tap_loss_db: item?.splitter_tap_loss_db ?? '',
     splitter_through_loss_db: item?.splitter_through_loss_db ?? '',
+    cable_length_meters: item?.cable_length_meters ?? '',
+    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? 0.35,
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1503,6 +1525,8 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
     d.fibers_per_tube = parseInt(String(form.fibers_per_tube));
     d.splitter_tap_loss_db = form.splitter_tap_loss_db === '' ? null : parseFloat(String(form.splitter_tap_loss_db));
     d.splitter_through_loss_db = form.splitter_through_loss_db === '' ? null : parseFloat(String(form.splitter_through_loss_db));
+    d.cable_length_meters = form.cable_length_meters === '' ? null : parseFloat(String(form.cable_length_meters));
+    d.cable_attenuation_per_km = parseFloat(String(form.cable_attenuation_per_km)) || 0.35;
     mut.mutate(d);
   };
   const selectedOtb = otbList.find(x => x.id === Number(form.otb_id));
@@ -1556,6 +1580,10 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
       )}
       {form.feed_source === 'jc' && selectedJc && form.jc_core_number !== '' && <p className="text-xs -mt-1"><CoreColorTag coreNumber={Number(form.jc_core_number)} fibersPerTube={selectedJc.fibers_per_tube} /></p>}
       {form.feed_source !== 'jc' && selectedOtb && <p className="text-xs -mt-1"><CoreColorTag coreNumber={form.otb_core_number} fibersPerTube={selectedOtb.fibers_per_tube} /></p>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 300" /></FormField>
+        <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
+      </div>
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1576,6 +1604,8 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, onClose, onSaved 
     splitter_ratio_type: item?.splitter_ratio_type || 'even',
     splitter_tap_loss_db: item?.splitter_tap_loss_db ?? '',
     splitter_through_loss_db: item?.splitter_through_loss_db ?? '',
+    cable_length_meters: item?.cable_length_meters ?? '',
+    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? 0.35,
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1594,6 +1624,8 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, onClose, onSaved 
     d.total_ports = parseInt(String(form.total_ports));
     d.splitter_tap_loss_db = form.splitter_tap_loss_db === '' ? null : parseFloat(String(form.splitter_tap_loss_db));
     d.splitter_through_loss_db = form.splitter_through_loss_db === '' ? null : parseFloat(String(form.splitter_through_loss_db));
+    d.cable_length_meters = form.cable_length_meters === '' ? null : parseFloat(String(form.cable_length_meters));
+    d.cable_attenuation_per_km = parseFloat(String(form.cable_attenuation_per_km)) || 0.35;
     mut.mutate(d);
   };
   const selectedJc = jcList.find(x => x.id === Number(form.jc_id));
@@ -1645,6 +1677,10 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, onClose, onSaved 
         </div>
       )}
       {form.feed_source === 'jc' && selectedJc && form.jc_core_number !== '' && <p className="text-xs -mt-1"><CoreColorTag coreNumber={Number(form.jc_core_number)} fibersPerTube={selectedJc.fibers_per_tube} /></p>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 100" /></FormField>
+        <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
+      </div>
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1668,6 +1704,8 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
     fibers_per_tube: item?.fibers_per_tube || 12,
     parent_type: item?.parent_type || parentKind || '',
     parent_id: item?.parent_id || parent?.id || '',
+    cable_length_meters: item?.cable_length_meters ?? '',
+    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? 0.35,
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1683,6 +1721,8 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
     d.fibers_per_tube = parseInt(String(form.fibers_per_tube)) || 12;
     d.parent_type = form.parent_type || null;
     d.parent_id = form.parent_id === '' ? null : parseInt(String(form.parent_id));
+    d.cable_length_meters = form.cable_length_meters === '' ? null : parseFloat(String(form.cable_length_meters));
+    d.cable_attenuation_per_km = parseFloat(String(form.cable_attenuation_per_km)) || 0.35;
     mut.mutate(d);
   };
 
@@ -1781,6 +1821,10 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
           )}
         </FormField>
       )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 150" /></FormField>
+        <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
+      </div>
       <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
 
       {item && (

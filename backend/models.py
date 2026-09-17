@@ -760,6 +760,12 @@ class FTTHOTB(db.Model):
     feed_source = db.Column(db.String(10), default='pon', nullable=False)  # 'pon' (direct, via FTTHPonPort) or 'jc'
     jc_id = db.Column(db.Integer, db.ForeignKey('ftth_jc.id'), nullable=True)
     jc_core_number = db.Column(db.Integer, nullable=True)
+    # Incoming cable (opsional) — length/loss of the run feeding this node, for
+    # cumulative power-budget calculation along a trace. Not stored as a
+    # separate polymorphic "segment" entity: each node already owns exactly
+    # one incoming feed (via feed_source above), so these describe that feed.
+    cable_length_meters = db.Column(db.Float, nullable=True)
+    cable_attenuation_per_km = db.Column(db.Float, nullable=True, default=0.35)  # dB/km, SM fiber typical
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('ftth_otbs', lazy=True))
@@ -790,6 +796,8 @@ class FTTHODC(db.Model):
     splitter_ratio_type = db.Column(db.String(10), default='even')  # 'even' or 'uneven'
     splitter_tap_loss_db = db.Column(db.Float, nullable=True)
     splitter_through_loss_db = db.Column(db.Float, nullable=True)
+    cable_length_meters = db.Column(db.Float, nullable=True)
+    cable_attenuation_per_km = db.Column(db.Float, nullable=True, default=0.35)
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     otb = db.relationship('FTTHOTB', backref=db.backref('odcs', lazy=True, cascade='all, delete-orphan'))
@@ -817,6 +825,8 @@ class FTTHODP(db.Model):
     splitter_ratio_type = db.Column(db.String(10), default='even')  # 'even' or 'uneven'
     splitter_tap_loss_db = db.Column(db.Float, nullable=True)
     splitter_through_loss_db = db.Column(db.Float, nullable=True)
+    cable_length_meters = db.Column(db.Float, nullable=True)
+    cable_attenuation_per_km = db.Column(db.Float, nullable=True, default=0.35)
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     odc = db.relationship('FTTHODC', backref=db.backref('odps', lazy=True, cascade='all, delete-orphan'))
@@ -842,6 +852,8 @@ class FTTHJC(db.Model):
     fibers_per_tube = db.Column(db.Integer, default=12, nullable=False)  # TIA-598 tube grouping — a JC can hold several tubes
     parent_type = db.Column(db.String(10), nullable=True)  # pon, otb, odc, odp_port, jc
     parent_id = db.Column(db.Integer, nullable=True)
+    cable_length_meters = db.Column(db.Float, nullable=True)  # incoming cable, from parent to this JC
+    cable_attenuation_per_km = db.Column(db.Float, nullable=True, default=0.35)
     description = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -887,6 +899,8 @@ class FTTHODPPort(db.Model):
     feed_source = db.Column(db.String(10), default='direct', nullable=False)  # 'direct' (drop cable) or 'jc'
     jc_id = db.Column(db.Integer, db.ForeignKey('ftth_jc.id'), nullable=True)
     jc_core_number = db.Column(db.Integer, nullable=True)
+    cable_length_meters = db.Column(db.Float, nullable=True)  # drop cable to the customer
+    cable_attenuation_per_km = db.Column(db.Float, nullable=True, default=0.35)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     odp = db.relationship('FTTHODP', backref=db.backref('ports', lazy=True, cascade='all, delete-orphan'))
     onu = db.relationship('ONU', backref=db.backref('odp_port', uselist=False))

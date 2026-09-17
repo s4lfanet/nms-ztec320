@@ -143,7 +143,7 @@ export const api = {
   ftthJcSpliceUpdate: (jcId: number, spliceId: number, data: Partial<{ core_in: number; core_out: number; label: string; tube_in_label: string; tube_out_label: string }>) => request<{ success: boolean; splice: FTTHJcSplice }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthJcSpliceDelete: (jcId: number, spliceId: number) => request<{ success: boolean }>(`/api/ftth/jc/${jcId}/splice/${spliceId}`, { method: 'DELETE' }),
   ftthAvailableOnus: (oltId?: number) => request<{ success: boolean; onus: FTTHAvailableOnu[] }>(`/api/ftth/available-onus${oltId ? '?olt_id=' + oltId : ''}`),
-  ftthTraceOnu: (onuId: number) => request<{ success: boolean; complete: boolean; hops: FTTHTraceHop[]; message?: string }>(`/api/ftth/trace/onu/${onuId}`),
+  ftthTraceOnu: (onuId: number) => request<{ success: boolean; complete: boolean; hops: FTTHTraceHop[]; message?: string; total_attenuation_db: number | null }>(`/api/ftth/trace/onu/${onuId}`),
   ftthImpact: (nodeType: 'otb' | 'jc' | 'odc' | 'odp', nodeId: number) => request<{ success: boolean; total: number; online: number; offline: number; customers: Array<{ id: number; name: string; serial: string; status: string }>; truncated: boolean }>(`/api/ftth/impact/${nodeType}/${nodeId}`),
   ftthPonList: () => request<{ success: boolean; items: FTTHPonPort[] }>('/api/ftth/pon'),
   ftthPonRealPorts: (oltId: number) => request<{ success: boolean; olt_name: string; ports: FTTHRealPonPort[] }>(`/api/ftth/pon/real/${oltId}`),
@@ -810,6 +810,9 @@ export interface FTTHOtb {
   jc_id: number | null;
   jc_name: string;
   jc_core_number: number | null;
+  cable_length_meters: number | null;
+  cable_attenuation_per_km: number;
+  cable_attenuation_db: number | null;
   description: string;
   odc_count: number;
   used_cores: number;
@@ -848,6 +851,9 @@ export interface FTTHOdc {
   splitter_ratio_type: 'even' | 'uneven';
   splitter_tap_loss_db: number | null;
   splitter_through_loss_db: number | null;
+  cable_length_meters: number | null;
+  cable_attenuation_per_km: number;
+  cable_attenuation_db: number | null;
   description: string;
   odp_count: number;
   used_cores: number;
@@ -874,6 +880,9 @@ export interface FTTHOdp {
   splitter_ratio_type: 'even' | 'uneven';
   splitter_tap_loss_db: number | null;
   splitter_through_loss_db: number | null;
+  cable_length_meters: number | null;
+  cable_attenuation_per_km: number;
+  cable_attenuation_db: number | null;
   description: string;
   used_ports: number;
   available_ports: number;
@@ -892,6 +901,9 @@ export interface FTTHJc {
   parent_type: 'pon' | 'otb' | 'odc' | 'odp_port' | 'jc' | null;
   parent_id: number | null;
   parent_name: string;
+  cable_length_meters: number | null;
+  cable_attenuation_per_km: number;
+  cable_attenuation_db: number | null;
   description: string;
   splice_count: number;
   splices: FTTHJcSplice[];
@@ -924,6 +936,9 @@ export interface FTTHOdpPort {
   onu_serial: string;
   onu_status: string;
   onu_id_str: string;
+  cable_length_meters: number | null;
+  cable_attenuation_per_km: number;
+  cable_attenuation_db: number | null;
 }
 
 export interface FTTHAvailableOnu {
@@ -948,6 +963,8 @@ export interface FTTHTraceHop {
   serial?: string;      // onu
   status?: string;      // onu
   message?: string;     // gap: what's missing
+  cable_attenuation_db?: number | null;       // otb/odc/jc/odp: this segment's own incoming-cable loss
+  drop_cable_attenuation_db?: number | null;  // odp: the ODP-port's own drop-cable loss to the customer
 }
 
 export interface FTTHOdpTree extends FTTHOdp { ports: FTTHOdpPort[] }

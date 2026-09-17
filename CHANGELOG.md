@@ -4,6 +4,30 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-17 — FTTH: Panjang & Redaman Kabel per Segmen (Fase 2 Adopsi Struktur salfanet-radius)
+
+#### Konteks
+- Fase 2 dari rencana adopsi bertahap struktur FTTH salfanet-radius. Alih-alih tabel `cable_segments` polimorfik terpisah (butuh CRUD API sendiri), dipilih pendekatan lebih sederhana: kolom panjang & redaman langsung di tiap node yang sudah punya konsep "feed dari parent" — merepresentasikan kabel yang masuk ke node itu.
+
+#### Ditambahkan
+- Kolom baru (nullable, opsional) di `FTTHOTB`, `FTTHODC`, `FTTHODP`, `FTTHODPPort`, `FTTHJC` (`backend/models.py`): `cable_length_meters`, `cable_attenuation_per_km` (default 0.35 dB/km, standar fiber single-mode)
+- Migration Alembic baru (`a7b8c9d0e1f2`) + mirror `add_col()` di `app.py:migrate_schema()`
+- Helper `_cable_fields()` di `backend/routes_ftth.py`, dipakai di semua 5 dict output — menghitung `cable_attenuation_db` on-the-fly dari panjang × redaman (tidak disimpan terpisah)
+- Endpoint create/update OTB/ODC/ODP/ODP-port/JC terima field baru
+- **Trace "Jalur FTTH"** (`GET /api/ftth/trace/onu/<id>`) sekarang menghitung `total_attenuation_db` — dijumlah dari setiap hop di sepanjang jalur; kalau ada satu segmen saja yang belum diisi panjangnya, total sengaja ditampilkan `null` (bukan angka yang salah/kurang)
+- Form Add/Edit di kelima modal (`frontend/src/pages/FtthInfrastructure.tsx`) dapat 2 input baru opsional: Panjang Kabel Masuk (m) dan Redaman (dB/km)
+- Kartu **Jalur FTTH** di halaman View ONU (`ViewOnu.tsx`) menampilkan total redaman jalur kalau data lengkap, atau pesan "data belum lengkap" kalau tidak
+- Update entri panduan `ftth` dan `view-onu`
+
+#### Diperbaiki (ditemukan saat menulis test)
+- Perhitungan attenuation semula dibulatkan per-segmen sebelum dijumlahkan di trace — menyebabkan galat pembulatan terakumulasi di jalur panjang (mis. total jadi 0.629 dB alih-alih 0.63 dB yang benar). Diperbaiki: `_cable_fields()` tidak lagi membulatkan nilai per-segmen, pembulatan hanya terjadi sekali di total akhir.
+
+#### Diverifikasi
+- 5 test baru (`tests/test_ftth_cable_attenuation.py`) — round-trip save/load, default value, total attenuation benar untuk jalur lengkap, dan `null` saat satu segmen kosong
+- Full suite: **256 passed, 2 skipped** (baseline 251 + 5 baru, nol regresi) — termasuk 38 test FTTH semuanya hijau
+- Migration diverifikasi upgrade → downgrade → upgrade bersih di scratch DB
+- `tsc --noEmit` dan `vite build` bersih
+
 ### 2026-09-17 — FTTH: Budget Optik Splitter di ODC & ODP (Fase 1 Adopsi Struktur salfanet-radius)
 
 #### Konteks
