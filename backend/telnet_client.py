@@ -795,36 +795,28 @@ class TelnetCollector:
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
-            tn.write('configure terminal\n')
-            tn.read_until(b'#', timeout=5)
+            self._send_command(tn, 'configure terminal', timeout=10)
 
             if is_zte:
                 # ZTE ONU: use OMCI reboot via pon-onu-mng
-                tn.write(f'pon-onu-mng {iface}\n')
-                tn.read_until(b'#', timeout=5)
-                tn.write('reboot\n')
-                output = tn.read_until(b'#', timeout=20).decode('utf-8', errors='replace')
-                tn.write('exit\n')
-                tn.read_until(b'#', timeout=5)
+                self._send_command(tn, f'pon-onu-mng {iface}', timeout=10)
+                output, err = self._send_cmd_check(tn, 'reboot', timeout=20)
+                self._send_command(tn, 'exit', timeout=5)
             else:
                 # Non-ZTE ONU (FiberHome, Huawei, etc.): shutdown + delay + no shutdown
                 # This forces the ONU to go offline and re-register — effectively a reboot
-                tn.write(f'interface {iface}\n')
-                tn.read_until(b'#', timeout=5)
-                tn.write('shutdown\n')
-                tn.read_until(b'#', timeout=10)
+                self._send_command(tn, f'interface {iface}', timeout=10)
+                self._send_command(tn, 'shutdown', timeout=10)
                 import time as _time
                 _time.sleep(2)
-                tn.write('no shutdown\n')
-                output = tn.read_until(b'#', timeout=10).decode('utf-8', errors='replace')
-                tn.write('exit\n')
-                tn.read_until(b'#', timeout=5)
+                output, err = self._send_cmd_check(tn, 'no shutdown', timeout=10)
+                self._send_command(tn, 'exit', timeout=5)
 
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('exit\n'); tn.close()
-            if 'error' in output.lower() and 'ambiguous' not in output.lower():
-                return False, f'CLI error: {output.strip()[:100]}'
+            self._send_command(tn, 'exit', timeout=5)
+            self._send_command(tn, 'exit', timeout=5)
+            tn.close()
+            if err and 'ambiguous' not in err.lower():
+                return False, f'CLI error: {err.strip()[:100]}'
             method_desc = 'OMCI reboot' if is_zte else 'shutdown/no-shutdown (non-ZTE fallback)'
             return True, f'ONU {iface} rebooted successfully ({method_desc})'
         except Exception as e:

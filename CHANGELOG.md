@@ -4,6 +4,23 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-21 — Fix: modal footer tersembunyi di mobile & ONU Reboot tidak bereaksi
+
+#### Ditemukan
+- Di tampilan mobile (viewport sempit, bottom nav Home/ONUs/OLT/System), tombol Cancel/Save pada modal edit (contoh: Edit Service WAN di halaman View ONU) tersembunyi/terpotong. Root cause bukan sekadar kurang ruang — `Modal` (`frontend/src/components/ui/Modal.tsx`) dirender inline di dalam `<Outlet/>`, yang duduk di dalam wrapper `relative z-10` milik `AppShell`. Wrapper itu punya `position:relative` + `z-index`, jadi membentuk stacking context baru — semua z-index di dalam modal (termasuk `z-50` pada `.modal-wrapper`) jadi terjebak dan hanya dibandingkan sesama elemen di dalam wrapper itu, tidak pernah bisa mengalahkan bottom nav bar (`z-30`) yang merupakan sibling di LUAR wrapper. Akibatnya footer modal selalu tergambar di BAWAH bottom nav, seberapa pun tinggi z-index modal itu sendiri diset — dikonfirmasi visual lewat screenshot mobile-viewport sebelum & sesudah perbaikan.
+- Tombol **Reboot** ONU (`View ONU` → Action Buttons) kadang tidak melakukan apa-apa tanpa pesan error. Root cause: `TelnetCollector.reset_onu()` (`backend/telnet_client.py`) adalah satu-satunya method CLI yang masih pakai `tn.write()`/`tn.read_until()` mentah, bukan `_send_command()`/`_send_cmd_check()` seperti method lain (`disable_onu`, `enable_onu`, `deregister_onu`) — artinya tidak pernah memanggil `drain()`. Bug `drain()` ini sudah pernah dikonfirmasi live di produksi sebelumnya (lihat `tests/test_telnet_buffer_drain.py`): `read_until()` bisa berhenti di karakter '#' yang muncul di TENGAH isi respons suatu command, meninggalkan sisa respons (termasuk prompt asli) masih mengendap di buffer — lalu ikut terbaca oleh command BERIKUTNYA. Untuk `reset_onu`, ini berarti command `reboot` yang sesungguhnya bisa jadi membaca sisa buffer dari langkah `pon-onu-mng` sebelumnya alih-alih respons `reboot` yang asli — tidak ada pesan error (karena sisa buffer itu juga tidak mengandung kata "error"), tapi ONU-nya sendiri tidak pernah benar-benar menerima command reboot.
+
+#### Diperbaiki
+- `Modal.tsx`: dirender lewat `createPortal(..., document.body)` — pola yang sudah dipakai di `ZteRackDiagram.tsx` — supaya modal keluar dari stacking context `AppShell`, dan `z-index`-nya benar-benar dibandingkan di level root document (menang telak atas bottom nav).
+- `.modal-wrapper` (`index.css`): tambah `padding-bottom: env(safe-area-inset-bottom)` (pola yang sama seperti `.mobile-bottom-nav`) supaya footer modal tidak mepet ke area gesture-bar/home-indicator perangkat. `max-height` modal card diganti dari `vh` ke `dvh` (`max-h-[90dvh] md:max-h-[85dvh]`) supaya tidak overflow saat browser chrome mobile (address bar) sedang tampil.
+- `TelnetCollector.reset_onu()`: ditulis ulang memakai `_send_command()`/`_send_cmd_check()` (otomatis `drain()` sebelum tiap command), menggantikan seluruh `tn.write()`/`tn.read_until()` manual — perilaku ZTE (OMCI reboot via `pon-onu-mng`) dan non-ZTE (`shutdown`+`no shutdown`) tetap sama persis, hanya mekanisme baca/tulis CLI-nya yang diperbaiki.
+
+#### Diverifikasi
+- Test baru `TestResetOnuDrainsBeforeEachCommand` di `tests/test_telnet_buffer_drain.py` — mensimulasikan respons `pon-onu-mng` yang menyisakan buffer, lalu memverifikasi command `reboot` tetap membaca responsnya sendiri yang asli (bukan sisa buffer). Dikonfirmasi test ini **gagal** kalau dijalankan terhadap kode lama (sebelum fix) dan **lolos** setelah fix — bukan sekadar tautologi.
+- Full suite: **278 passed, 2 skipped** (baseline 277 + 1 baru, nol regresi)
+- Verifikasi visual: screenshot mobile-viewport (iPhone 14 Pro emulation) sebelum fix menunjukkan tombol Save tertutup bottom nav; setelah fix, Cancel/Save tampil penuh di atas bottom nav. Desktop (viewport lebar) dicek tetap center seperti semula, tidak ada regresi.
+- `tsc --noEmit` dan `vite build` bersih.
+
 ### 2026-09-17 — FTTH: ODP Berjenjang / Splitter Cascade (Fase 4 Adopsi Struktur salfanet-radius)
 
 #### Konteks

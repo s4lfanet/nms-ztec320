@@ -636,6 +636,11 @@ html.light .glow-accent {
 }
 
 /* ─── Modal wrapper ─── */
+/* padding-bottom reserves the device safe area (home indicator / gesture
+   bar) so a bottom-sheet modal's footer (Cancel/Save) never lands under it
+   — same fix already applied to .mobile-bottom-nav. Also caps height with
+   dvh (not vh) so mobile browser chrome showing/hiding doesn't push the
+   footer off-screen. */
 .modal-wrapper {
   position: fixed;
   inset: 0;
@@ -644,11 +649,14 @@ html.light .glow-accent {
   align-items: flex-end;
   justify-content: center;
   padding: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  max-height: 100dvh;
 }
 @media (min-width: 768px) {
   .modal-wrapper {
     align-items: center;
     padding: 1rem;
+    padding-bottom: 1rem;
   }
 }
 
