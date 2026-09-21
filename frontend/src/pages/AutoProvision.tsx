@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Zap, ToggleLeft, ToggleRight, Server, Terminal, RefreshCw, Save } from 'lucide-react';
+import { Zap, ToggleLeft, ToggleRight, Server, Terminal, RefreshCw, Save, X } from 'lucide-react';
 import { toast } from '../components/Toast';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, Input, Select, CodeBlock, Skeleton } from '../components/ui';
+import { Button, Card, Select, CodeBlock, Skeleton } from '../components/ui';
 
 interface ZtpConfig {
   ztp_enabled: boolean;
-  ztp_vlan: string;
+  ztp_vlans: number[];
   ztp_vlan_mode: string;
   ztp_profile: string;
   ztp_traffic_profile: string;
@@ -16,20 +16,36 @@ interface ZtpConfig {
   ztp_allowed_olts: number[];
 }
 
+interface ZtpOptions {
+  vlans: { vlan_id: number; name: string }[];
+  tcont_profiles: string[];
+  traffic_profiles: string[];
+  sla_profiles: string[];
+}
+
 const DEFAULT_FORM: ZtpConfig = {
-  ztp_enabled: false, ztp_vlan: '150', ztp_vlan_mode: 'tag',
-  ztp_profile: 'UP-1G', ztp_traffic_profile: 'DOWN-1G', ztp_epon_sla: 'UP-1G',
+  ztp_enabled: false, ztp_vlans: [], ztp_vlan_mode: 'tag',
+  ztp_profile: '', ztp_traffic_profile: '', ztp_epon_sla: '',
   ztp_allowed_olts: [],
 };
 
 export function AutoProvision() {
   const qc = useQueryClient();
   const [form, setForm] = useState<ZtpConfig>(DEFAULT_FORM);
+  const [vlanSelect, setVlanSelect] = useState('');
 
   const { data: configData, isLoading } = useQuery({
     queryKey: ['ztp-config'],
     queryFn: async () => {
       const res = await fetch('/api/ztp-config', { credentials: 'include' });
+      return res.json();
+    },
+  });
+
+  const { data: optionsData } = useQuery({
+    queryKey: ['ztp-options'],
+    queryFn: async () => {
+      const res = await fetch('/api/ztp-options', { credentials: 'include' });
       return res.json();
     },
   });
@@ -44,6 +60,12 @@ export function AutoProvision() {
   });
 
   const olts: { id: number; name: string }[] = configData?.olts || [];
+  const options: ZtpOptions = optionsData?.success ? {
+    vlans: optionsData.vlans || [],
+    tcont_profiles: optionsData.tcont_profiles || [],
+    traffic_profiles: optionsData.traffic_profiles || [],
+    sla_profiles: optionsData.sla_profiles || [],
+  } : { vlans: [], tcont_profiles: [], traffic_profiles: [], sla_profiles: [] };
 
   useEffect(() => {
     if (configData?.config) setForm({ ...DEFAULT_FORM, ...configData.config });
@@ -72,7 +94,33 @@ export function AutoProvision() {
     }));
   };
 
+  const addVlan = (id: number) => {
+    if (!id || form.ztp_vlans.includes(id)) return;
+    setForm(prev => ({ ...prev, ztp_vlans: [...prev.ztp_vlans, id].sort((a, b) => a - b) }));
+  };
+  const removeVlan = (id: number) => {
+    setForm(prev => ({ ...prev, ztp_vlans: prev.ztp_vlans.filter(x => x !== id) }));
+  };
+
+  const vlanLabel = (id: number) => {
+    const v = options.vlans.find(x => x.vlan_id === id);
+    return v?.name ? `${id} (${v.name})` : String(id);
+  };
+
+  const profileOptions = (list: string[]) => [
+    ...list.map(p => ({ value: p, label: p })),
+    // allow values that were saved but are no longer in the OLT DB so they
+    // don't silently disappear from the dropdown
+    ...([] as { value: string; label: string }[]),
+  ];
+  const ensureOption = (list: string[], current: string) =>
+    current && !list.includes(current) ? [...list, current].sort() : list;
+
   if (isLoading) return <Skeleton className="h-64" />;
+
+  const tcontOpts = ensureOption(options.tcont_profiles, form.ztp_profile);
+  const trafficOpts = ensureOption(options.traffic_profiles, form.ztp_traffic_profile);
+  const slaOpts = ensureOption(options.sla_profiles, form.ztp_epon_sla);
 
   return (
     <PageContainer className="max-w-6xl">
@@ -98,7 +146,7 @@ export function AutoProvision() {
               </button>
             }
           >
-            <p className="text-xs text-tx3 -mt-2 mb-4">Bot mengecek ONU baru tiap 1 menit saat aktif.</p>
+            <p className="text-xs text-tx3 -mt-2 mb-4">Bot mengecek ONU baru tiap 1 menit saat aktif. VLAN & profile diambil dari data actual OLT (hasil sync).</p>
 
             <div className="space-y-4">
               <div>
@@ -121,10 +169,45 @@ export function AutoProvision() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-brd pt-4">
-                <Input label="VLAN Internet" type="number" value={form.ztp_vlan}
-                  onChange={e => setForm(f => ({ ...f, ztp_vlan: e.target.value }))}
-                  disabled={!form.ztp_enabled} placeholder="mis. 150" />
+              <div className="border-t border-brd pt-4">
+                <label className="label-sm mb-2 block">VLAN Internet (boleh lebih dari 1)</label>
+                {form.ztp_vlans.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {form.ztp_vlans.map(v => (
+                      <span key={v} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-accent/15 border border-accent/30 text-xs">
+                        {vlanLabel(v)}
+                        <button type="button" onClick={() => removeVlan(v)} disabled={!form.ztp_enabled}
+                          className="text-tx3 hover:text-red-400 disabled:opacity-40"><X size={12} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <select
+                    value={vlanSelect}
+                    onChange={e => setVlanSelect(e.target.value)}
+                    disabled={!form.ztp_enabled || options.vlans.length === 0}
+                    className="flex-1 rounded-lg border border-brd bg-glass px-3 py-2 text-sm disabled:opacity-50"
+                  >
+                    <option value="">{options.vlans.length === 0 ? '— sync OLT dulu —' : '— pilih VLAN —'}</option>
+                    {options.vlans
+                      .filter(v => !form.ztp_vlans.includes(v.vlan_id))
+                      .map(v => (
+                        <option key={v.vlan_id} value={v.vlan_id}>
+                          {v.vlan_id}{v.name ? ` (${v.name})` : ''}
+                        </option>
+                      ))}
+                  </select>
+                  <Button variant="secondary" type="button"
+                    disabled={!form.ztp_enabled || !vlanSelect}
+                    onClick={() => { addVlan(Number(vlanSelect)); setVlanSelect(''); }}>
+                    Tambah
+                  </Button>
+                </div>
+                <p className="text-[10px] text-tx3 mt-1">Tiap VLAN akan dibuatkan satu service pada ONU yang ter-register.</p>
+              </div>
+
+              <div className="border-t border-brd pt-4">
                 <Select label="Mode VLAN" value={form.ztp_vlan_mode}
                   onChange={e => setForm(f => ({ ...f, ztp_vlan_mode: e.target.value }))}
                   disabled={!form.ztp_enabled}
@@ -132,15 +215,21 @@ export function AutoProvision() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-brd pt-4">
-                <Input label="GPON Upload" value={form.ztp_profile}
+                <Select label="GPON Upload (TCONT)"
+                  value={form.ztp_profile}
                   onChange={e => setForm(f => ({ ...f, ztp_profile: e.target.value }))}
-                  disabled={!form.ztp_enabled} placeholder="mis. UP-1G" />
-                <Input label="GPON Download" value={form.ztp_traffic_profile}
+                  disabled={!form.ztp_enabled}
+                  options={profileOptions(tcontOpts)} />
+                <Select label="GPON Download (Traffic)"
+                  value={form.ztp_traffic_profile}
                   onChange={e => setForm(f => ({ ...f, ztp_traffic_profile: e.target.value }))}
-                  disabled={!form.ztp_enabled} placeholder="mis. DOWN-1G" />
-                <Input label="EPON SLA" value={form.ztp_epon_sla}
+                  disabled={!form.ztp_enabled}
+                  options={profileOptions(trafficOpts)} />
+                <Select label="EPON SLA"
+                  value={form.ztp_epon_sla}
                   onChange={e => setForm(f => ({ ...f, ztp_epon_sla: e.target.value }))}
-                  disabled={!form.ztp_enabled} placeholder="mis. UP-1G" />
+                  disabled={!form.ztp_enabled}
+                  options={profileOptions(slaOpts)} />
               </div>
 
               <Button variant="primary" className="w-full justify-center" loading={saveMutation.isPending}

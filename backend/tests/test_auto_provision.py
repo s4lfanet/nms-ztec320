@@ -11,13 +11,14 @@ Run with: py -3 -m pytest tests/test_auto_provision.py -v
 """
 import os
 import sys
+import json
 import pytest
 from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import app, db
-from models import User, Role, OLT, ONU, ONUType, SystemConfig
+from models import User, Role, OLT, ONU, ONUType, ONUVlan, SpeedProfile, SystemConfig
 from auto_provision import _run_ztp_pass
 
 app.config['TESTING'] = True
@@ -76,23 +77,31 @@ def client():
 
 def _make_olt(**kwargs):
     with app.app_context():
-        olt = OLT(name='ZTP-OLT', ip_address='192.168.1.1', telnet_enabled=True,
+        name = kwargs.pop('name', 'ZTP-OLT')
+        ip = kwargs.pop('ip_address', '192.168.1.1')
+        olt = OLT(name=name, ip_address=ip, telnet_enabled=True,
                   cli_username='admin', cli_password='admin', vendor='ZTE', model='C320', **kwargs)
         db.session.add(olt)
         db.session.commit()
         return olt.id
 
 
-def _set_ztp_config(olt_id, enabled=True, vlan_mode='tag'):
+def _set_ztp_config(olt_id, enabled=True, vlan_mode='tag', vlans='150'):
     with app.app_context():
         for key, value in {
             'ztp_enabled': 'true' if enabled else 'false',
-            'ztp_vlan': '150', 'ztp_vlan_mode': vlan_mode,
+            'ztp_vlans': vlans, 'ztp_vlan_mode': vlan_mode,
             'ztp_profile': 'UP-1G', 'ztp_traffic_profile': 'DOWN-1G', 'ztp_epon_sla': 'UP-1G',
             'ztp_allowed_olts': str(olt_id),
         }.items():
             db.session.add(SystemConfig(key=key, value=value))
         db.session.commit()
+
+
+def _login_admin(client):
+    client.post('/api/auth/login',
+                data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+                content_type='application/json')
 
 
 class TestZtpGates:
@@ -247,6 +256,26 @@ class TestZtpRegistersUnconfiguredOnus:
             assert services[0]['vlan_mode'] == 'untag'
             assert services[0]['vlan'] == 150
 
+    def test_multiple_vlans_create_one_service_per_vlan(self, client):
+        olt_id = _make_olt()
+        _set_ztp_config(olt_id, vlans='30,151,200')
+        with patch('snmp_collector.create_cli_collector') as mock_create:
+            mock_tc = MagicMock()
+            mock_tc.collect_unregistered_onus.return_value = [
+                {'pon_port': '1/1/3', 'sn': 'ZTEGC40DF35B', 'is_epon': False, 'model': ''},
+            ]
+            mock_tc.get_next_available_onu_id.return_value = 1
+            mock_tc.register_unified.return_value = (True, 'OK')
+            mock_create.return_value = mock_tc
+
+            with app.app_context():
+                _run_ztp_pass(app)
+
+            services = mock_tc.register_unified.call_args.kwargs['services']
+            assert len(services) == 3
+            assert [s['vlan'] for s in services] == [30, 151, 200]
+            assert all(s['vlan_mode'] == 'tag' for s in services)
+
 
 class TestZtpSkipsAlreadyKnownOnus:
     def test_skips_serial_already_in_db(self, client):
@@ -284,3 +313,62 @@ class TestZtpSkipsAlreadyKnownOnus:
 
         with app.app_context():
             assert ONU.query.filter_by(serial_number='ZTEGFAIL001').first() is None
+
+
+class TestZtpOptionsEndpoint:
+    def test_returns_vlans_and_profiles_from_allowed_olts(self, client):
+        olt_id = _make_olt()
+        with app.app_context():
+            db.session.add(SystemConfig(key='ztp_allowed_olts', value=str(olt_id)))
+            db.session.add(ONUVlan(olt_id=olt_id, vlan_id=30, vlan_name='Internet'))
+            db.session.add(ONUVlan(olt_id=olt_id, vlan_id=151, vlan_name='VoIP'))
+            db.session.add(SpeedProfile(olt_id=olt_id, profile_type='tcont', name='UP-1G'))
+            db.session.add(SpeedProfile(olt_id=olt_id, profile_type='traffic', name='DOWN-1G'))
+            db.session.add(SpeedProfile(olt_id=olt_id, profile_type='sla', name='EPON-SLA'))
+            db.session.commit()
+
+        _login_admin(client)
+        resp = client.get('/api/ztp-options')
+        data = resp.get_json()
+        assert data['success'] is True
+        vlan_ids = [v['vlan_id'] for v in data['vlans']]
+        assert 30 in vlan_ids and 151 in vlan_ids
+        assert 'UP-1G' in data['tcont_profiles']
+        assert 'DOWN-1G' in data['traffic_profiles']
+        assert 'EPON-SLA' in data['sla_profiles']
+
+    def test_merges_and_deduplicates_across_olts(self, client):
+        olt1 = _make_olt(name='OLT-A')
+        olt2 = _make_olt(name='OLT-B', ip_address='192.168.1.2')
+        with app.app_context():
+            db.session.add(SystemConfig(key='ztp_allowed_olts', value=f'{olt1},{olt2}'))
+            # Same VLAN ID on both OLTs — should appear once
+            db.session.add(ONUVlan(olt_id=olt1, vlan_id=30, vlan_name='V30-A'))
+            db.session.add(ONUVlan(olt_id=olt2, vlan_id=30, vlan_name='V30-B'))
+            db.session.add(ONUVlan(olt_id=olt2, vlan_id=100, vlan_name='V100'))
+            # Same tcont profile on both — deduplicated
+            db.session.add(SpeedProfile(olt_id=olt1, profile_type='tcont', name='UP-1G'))
+            db.session.add(SpeedProfile(olt_id=olt2, profile_type='tcont', name='UP-1G'))
+            db.session.add(SpeedProfile(olt_id=olt2, profile_type='tcont', name='UP-2G'))
+            db.session.commit()
+
+        _login_admin(client)
+        resp = client.get('/api/ztp-options')
+        data = resp.get_json()
+        vlan_ids = [v['vlan_id'] for v in data['vlans']]
+        assert vlan_ids.count(30) == 1  # deduplicated
+        assert 100 in vlan_ids
+        assert data['tcont_profiles'] == ['UP-1G', 'UP-2G']  # sorted, deduplicated
+
+    def test_empty_when_no_olts_allowed(self, client):
+        olt_id = _make_olt()
+        with app.app_context():
+            db.session.add(ONUVlan(olt_id=olt_id, vlan_id=30, vlan_name='Internet'))
+            db.session.commit()
+        # No ztp_allowed_olts set
+        _login_admin(client)
+        resp = client.get('/api/ztp-options')
+        data = resp.get_json()
+        assert data['success'] is True
+        assert data['vlans'] == []
+        assert data['tcont_profiles'] == []

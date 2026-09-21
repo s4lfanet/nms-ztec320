@@ -82,10 +82,19 @@ def _run_ztp_pass(app):
         return
 
     vlan_mode = _cfg('ztp_vlan_mode', 'tag')
-    default_vlan = _cfg('ztp_vlan', '150')
-    tcont_profile = _cfg('ztp_profile', 'UP-1G')
-    traffic_profile = _cfg('ztp_traffic_profile', 'DOWN-1G')
-    epon_sla = _cfg('ztp_epon_sla', 'UP-1G')
+    vlans_str = _cfg('ztp_vlans', '')
+    vlan_ids = [int(x) for x in vlans_str.split(',') if x.strip().isdigit()]
+    # Backward-compat: fall back to the old single-vlan key if the new
+    # multi-vlan key is empty (e.g. config saved before this redesign).
+    if not vlan_ids:
+        legacy = _cfg('ztp_vlan', '')
+        if legacy and legacy.isdigit():
+            vlan_ids = [int(legacy)]
+    if not vlan_ids:
+        return
+    tcont_profile = _cfg('ztp_profile', '')
+    traffic_profile = _cfg('ztp_traffic_profile', '')
+    epon_sla = _cfg('ztp_epon_sla', '')
 
     olts = OLT.query.filter(OLT.id.in_(allowed_ids), OLT.monitoring_enabled == True).all()  # noqa: E712
     for olt in olts:
@@ -131,13 +140,16 @@ def _run_ztp_pass(app):
                 continue
 
             name = f"AutoReg_{sn[-4:]}"
-            services = [{'service_type': 'internet', 'vlan': default_vlan, 'wan_mode': 'bridge', 'vlan_mode': vlan_mode}]
+            services = [
+                {'service_type': 'internet', 'vlan': v, 'wan_mode': 'bridge', 'vlan_mode': vlan_mode}
+                for v in vlan_ids
+            ]
             try:
                 clean = _sanitize_provisioning_input(
                     name=name, description='Auto Provisioned (ZTP)',
                     tcont_profile=tcont_profile, traffic_profile=traffic_profile,
                     sla_profile=epon_sla, services=services, serial=sn, onu_type=onu_type,
-                    vlan=int(default_vlan) if str(default_vlan).isdigit() else 100,
+                    vlan=vlan_ids[0],
                 )
             except CliValidationError as e:
                 _log(app, f"Dilewati: data ONU {mode_label} SN={sn} tidak valid ({e})")
