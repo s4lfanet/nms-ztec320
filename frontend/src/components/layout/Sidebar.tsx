@@ -39,7 +39,6 @@ const navItems: NavItem[] = [
     label: 'Infrastructure', icon: <Server size={20} />, permission: 'view_dashboard',
     children: [
       { label: 'OLT Settings', path: '/dashboard/settings/olts', permission: 'settings_ip_olts' },
-      { label: 'Auto Provision', path: '/dashboard/settings/auto-provision', permission: 'settings_ip_olts' },
       { label: 'FTTH Overview', path: '/dashboard/ftth', permission: 'view_dashboard' },
       { label: 'PON Ports', path: '/dashboard/ftth?tab=pon', permission: 'view_dashboard' },
       { label: 'OTB/ODF', path: '/dashboard/ftth?tab=otb', permission: 'view_dashboard' },

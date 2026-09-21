@@ -1,1 +1,0 @@
-import{f as e}from"./index-C7f0XFj6.js";function t(){let{user:t}=e(),n=new Set(t?.permissions||[]);return e=>t?.is_super_admin||n.has(`all_olt`)?!0:n.has(e)}export{t};

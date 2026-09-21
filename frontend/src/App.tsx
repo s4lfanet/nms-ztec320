@@ -31,7 +31,6 @@ const UnconfiguredOnus = lazy(() => import('./pages/UnconfiguredOnus').then(m =>
 const OnuWizard = lazy(() => import('./pages/OnuWizard').then(m => ({ default: m.OnuWizard })));
 const SystemUpdate = lazy(() => import('./pages/SystemUpdate').then(m => ({ default: m.SystemUpdate })));
 const OltLogs = lazy(() => import('./pages/OltLogs').then(m => ({ default: m.OltLogs })));
-const AutoProvision = lazy(() => import('./pages/AutoProvision').then(m => ({ default: m.AutoProvision })));
 
 const routePermissions: Record<string, string> = {
   '/dashboard/onus/add': 'add_onu',
@@ -51,7 +50,6 @@ const routePermissions: Record<string, string> = {
   '/dashboard/settings/alerts': 'customization',
   '/dashboard/settings/cloudflare': 'customization',
   '/dashboard/settings/update': 'manage_users',
-  '/dashboard/settings/auto-provision': 'settings_ip_olts',
 };
 
 const routePatterns: { pattern: RegExp; perm: string }[] = [
@@ -173,7 +171,6 @@ export default function App() {
         <Route path="profile" element={<MyProfile />} />
         <Route path="settings/alerts" element={<AlertSettings />} />
         <Route path="settings/cloudflare" element={<CloudflareTunnel />} />
-        <Route path="settings/auto-provision" element={<AutoProvision />} />
         <Route path="alerts/history" element={<AlertHistoryPage />} />
         <Route path="ftth" element={<FtthInfrastructure />} />
         <Route path="templates" element={<Templates />} />
