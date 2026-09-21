@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-21 — Fix: ONU Reboot masih belum benar-benar reboot (root cause kedua)
+
+#### Ditemukan
+- Setelah fix buffer-drain sebelumnya, user tes ulang reboot ONU ZTE `1/1/3:2` — status di Mikrotik tetap online, ONU tidak reboot. Didiagnosis langsung ke OLT produksi (`172.16.88.2`) lewat script diagnostik yang menjalankan urutan command `reset_onu` secara manual dan mencetak raw output tiap langkah: command `reboot` di bawah context `pon-onu-mng` pada firmware OLT ini ternyata **tidak langsung reboot** — dia menampilkan prompt interaktif `Confirm to reboot? [yes/no]:` dan menunggu jawaban. Kode lama (juga versi yang sudah di-drain-fix) langsung lanjut kirim `exit` tanpa pernah menjawab prompt itu — akibatnya OLT diam di prompt konfirmasi, `exit` ditolak (`%Error: Invalid input`), dan ONU **tidak pernah benar-benar reboot** meski response tetap dianggap sukses (tidak ada kata "error" di teks prompt-nya).
+- Dikonfirmasi ulang dengan menjawab `yes` secara manual: ONU langsung `LOS` (Loss of Signal, sedang reboot) lalu kembali `working` (online) ~30 detik kemudian — membuktikan root cause dan fix ini benar.
+
+#### Diperbaiki
+- `TelnetCollector.reset_onu()` (`backend/telnet_client.py`, cabang ZTE): setelah kirim `reboot`, cek apakah responsnya mengandung prompt konfirmasi (`'confirm'` + `'yes'`, case-insensitive) — kalau ya, kirim `yes` sebelum lanjut ke urutan `exit`. Cabang non-ZTE (`shutdown`/`no shutdown`) tidak terpengaruh, tidak ada prompt konfirmasi di situ.
+
+#### Diverifikasi
+- 2 test baru di `tests/test_telnet_buffer_drain.py` (`TestResetOnuAnswersRebootConfirmation`): satu mensimulasikan OLT yang minta konfirmasi dan memverifikasi `yes` terkirim tepat setelah `reboot`; satu lagi memverifikasi tidak ada `yes` yang terkirim kalau OLT tidak minta konfirmasi (firmware lain yang langsung reboot). Dikonfirmasi test pertama **gagal** terhadap kode sebelum fix ini dan **lolos** sesudahnya.
+- Diverifikasi langsung di produksi: reboot manual (via script yang menjawab `yes`) membuat ONU `1/1/3:2` beralih LOS → working, konsisten dengan reboot fisik yang sungguhan terjadi.
+
+#### Catatan
+- Pola yang sama (raw `tn.write`/`tn.read_until`, tanpa penanganan prompt konfirmasi) juga dipakai di `restore_factory_onu()` — kemungkinan rentan bug serupa (mis. command `restore factory` di bawah `pon-onu-mng` juga bisa saja minta konfirmasi di firmware ini), tapi belum dikonfirmasi live dan belum diperbaiki di sesi ini karena scope-nya lebih besar (banyak command berurutan) dan belum ada laporan bug untuk fitur itu.
+
 ### 2026-09-21 — Fix: modal footer tersembunyi di mobile & ONU Reboot tidak bereaksi
 
 #### Ditemukan

@@ -167,3 +167,60 @@ class TestResetOnuDrainsBeforeEachCommand:
         assert 'more leftover junk' not in reboot_output, (
             f"'reboot' command read a leftover tail from the previous command instead: {reboot_output!r}"
         )
+
+
+class TestResetOnuAnswersRebootConfirmation:
+    """Confirmed live against production (ZTE C320, 2026-09-21): this OLT's
+    'reboot' command under pon-onu-mng doesn't reboot immediately — it
+    prompts 'Confirm to reboot? [yes/no]:' and waits. The old code never
+    answered it, so reset_onu moved straight on to 'exit' (itself then
+    rejected as invalid input at that prompt) and reported success with
+    the ONU never actually rebooting — confirmed by querying the OLT
+    directly and seeing the ONU stay 'working' (online) the whole time.
+    The fix must detect that prompt and answer 'yes'."""
+
+    def test_sends_yes_when_olt_prompts_for_reboot_confirmation(self):
+        tc = TelnetCollector.__new__(TelnetCollector)  # skip __init__ (needs OLT creds)
+        tn = FakeLeakyTn()
+        tc._connect = lambda: tn
+
+        tn.queue_response(b'configure terminal echo\nreal-prompt#')  # 1: configure terminal
+        tn.queue_response(b'pon-onu-mng echo\nreal-prompt#')  # 2: pon-onu-mng
+        # 3: reboot — no '#' at all (the OLT is just sitting at the
+        # confirmation prompt, matching the real device's raw response).
+        tn.queue_response(b'reboot echo\nConfirm to reboot? [yes/no]:')
+        # 4: yes — the confirmation being answered; genuine completion.
+        tn.queue_response(b'yes echo\nreal-prompt#')
+        tn.queue_response(b'exit1-prompt#')  # 5: exit (pon-onu-mng)
+        tn.queue_response(b'exit2-prompt#')  # 6: exit (config terminal)
+        tn.queue_response(b'exit3-prompt#')  # 7: exit (privileged)
+
+        success, msg = tc.reset_onu(1, 1, 3, 2, is_epon=False, serial_number='ZTEGDD9BD0FD')
+
+        assert success is True, f'reset_onu unexpectedly failed: {msg}'
+        assert 'yes\n' in tn.writes, f"'yes' was never sent to answer the confirmation prompt — writes: {tn.writes!r}"
+        # The confirmation write must come right after the 'reboot' write,
+        # not get skipped over straight to 'exit'.
+        reboot_idx = tn.writes.index('reboot\n')
+        assert tn.writes[reboot_idx + 1] == 'yes\n', (
+            f"expected 'yes' immediately after 'reboot', got: {tn.writes[reboot_idx:reboot_idx + 2]!r}"
+        )
+
+    def test_no_confirmation_prompt_still_works(self):
+        """Some firmware may reboot immediately with no confirmation step —
+        the fix must not send a stray 'yes' in that case."""
+        tc = TelnetCollector.__new__(TelnetCollector)
+        tn = FakeLeakyTn()
+        tc._connect = lambda: tn
+
+        tn.queue_response(b'configure terminal echo\nreal-prompt#')
+        tn.queue_response(b'pon-onu-mng echo\nreal-prompt#')
+        tn.queue_response(b'reboot echo\nStart to reboot the ONU!\nreal-prompt#')
+        tn.queue_response(b'exit1-prompt#')
+        tn.queue_response(b'exit2-prompt#')
+        tn.queue_response(b'exit3-prompt#')
+
+        success, msg = tc.reset_onu(1, 1, 3, 2, is_epon=False, serial_number='ZTEGDD9BD0FD')
+
+        assert success is True, f'reset_onu unexpectedly failed: {msg}'
+        assert 'yes\n' not in tn.writes, f"'yes' should not be sent when there was no confirmation prompt: {tn.writes!r}"

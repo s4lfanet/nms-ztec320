@@ -801,6 +801,14 @@ class TelnetCollector:
                 # ZTE ONU: use OMCI reboot via pon-onu-mng
                 self._send_command(tn, f'pon-onu-mng {iface}', timeout=10)
                 output, err = self._send_cmd_check(tn, 'reboot', timeout=20)
+                # This OLT firmware prompts for interactive confirmation
+                # before actually rebooting ("Confirm to reboot? [yes/no]:").
+                # Without answering it, the ONU just sits there and the
+                # command silently never takes effect — confirmed live: the
+                # ONU stayed online while the code moved straight on to
+                # 'exit', reporting success with no actual reboot.
+                if 'confirm' in output.lower() and 'yes' in output.lower():
+                    output, err = self._send_cmd_check(tn, 'yes', timeout=20)
                 self._send_command(tn, 'exit', timeout=5)
             else:
                 # Non-ZTE ONU (FiberHome, Huawei, etc.): shutdown + delay + no shutdown
