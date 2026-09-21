@@ -42,12 +42,15 @@ export function AutoProvision() {
     },
   });
 
-  const { data: optionsData } = useQuery({
-    queryKey: ['ztp-options'],
+  const savedAllowedOlts = configData?.config?.ztp_allowed_olts || [];
+
+  const { data: optionsData, refetch: refetchOptions } = useQuery({
+    queryKey: ['ztp-options', savedAllowedOlts],
     queryFn: async () => {
       const res = await fetch('/api/ztp-options', { credentials: 'include' });
       return res.json();
     },
+    enabled: savedAllowedOlts.length > 0,
   });
 
   const { data: logData, refetch: refetchLogs, isFetching: loadingLogs } = useQuery({
@@ -81,7 +84,7 @@ export function AutoProvision() {
       if (!data.success) throw new Error(data.message || 'Gagal menyimpan');
       return data;
     },
-    onSuccess: (d) => { toast.success(d.message || 'Pengaturan disimpan'); qc.invalidateQueries({ queryKey: ['ztp-config'] }); },
+    onSuccess: (d) => { toast.success(d.message || 'Pengaturan disimpan'); qc.invalidateQueries({ queryKey: ['ztp-config'] }); qc.invalidateQueries({ queryKey: ['ztp-options'] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -170,7 +173,13 @@ export function AutoProvision() {
               </div>
 
               <div className="border-t border-brd pt-4">
-                <label className="label-sm mb-2 block">VLAN Internet (boleh lebih dari 1)</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label-sm block">VLAN Internet (boleh lebih dari 1)</label>
+                  <button type="button" onClick={() => refetchOptions()} disabled={!form.ztp_enabled}
+                    className="text-[10px] text-accent hover:underline disabled:opacity-40 flex items-center gap-1">
+                    <RefreshCw size={10} /> Refresh
+                  </button>
+                </div>
                 {form.ztp_vlans.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-2">
                     {form.ztp_vlans.map(v => (
@@ -189,7 +198,11 @@ export function AutoProvision() {
                     disabled={!form.ztp_enabled || options.vlans.length === 0}
                     className="flex-1 rounded-lg border border-brd bg-glass px-3 py-2 text-sm disabled:opacity-50"
                   >
-                    <option value="">{options.vlans.length === 0 ? '— sync OLT dulu —' : '— pilih VLAN —'}</option>
+                    <option value="">{
+                      savedAllowedOlts.length === 0 ? '— pilih OLT target dulu —' :
+                      options.vlans.length === 0 ? '— sync OLT dari OLT Settings dulu —' :
+                      '— pilih VLAN —'
+                    }</option>
                     {options.vlans
                       .filter(v => !form.ztp_vlans.includes(v.vlan_id))
                       .map(v => (
