@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -29,14 +30,21 @@ export function Modal({ open, onClose, title, icon, children, size = 'md', foote
 
   if (!open) return null;
 
-  return (
+  // Portal to document.body — rendering inline would nest the modal inside
+  // AppShell's `relative z-10` content wrapper, which creates its own
+  // stacking context. That traps the modal's z-50 so it compares only
+  // against siblings *inside* that wrapper — it can never out-rank the
+  // mobile bottom nav bar (a sibling of the wrapper, z-30), so on mobile
+  // the nav visually painted over the modal's footer (Cancel/Save hidden
+  // behind it) no matter how high modal-wrapper's own z-index was set.
+  return createPortal(
     <>
       <div className="modal-overlay" onClick={onClose} />
       <div className="modal-wrapper">
         <div
           className={cn(
             'relative glass-card w-full flex flex-col rounded-t-2xl md:rounded-2xl',
-            'max-h-[90vh] md:max-h-[85vh] animate-slide-up md:animate-fade-in',
+            'max-h-[90dvh] md:max-h-[85dvh] animate-slide-up md:animate-fade-in',
             sizeMap[size],
           )}
           onClick={e => e.stopPropagation()}
@@ -55,6 +63,7 @@ export function Modal({ open, onClose, title, icon, children, size = 'md', foote
           {footer && <div className="modal-footer justify-end">{footer}</div>}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

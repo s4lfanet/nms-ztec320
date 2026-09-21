@@ -84,6 +84,9 @@ class FakeLeakyTn:
         self.buffer = b''
         return result
 
+    def close(self):
+        pass
+
 
 class TestSendCommandDrainsBeforeEachCommand:
     def test_leftover_tail_does_not_leak_into_next_command(self):
@@ -109,3 +112,58 @@ class TestSendCommandDrainsBeforeEachCommand:
         # response, not the leftover tail from command 1 ("more veip data").
         assert 'more veip data' not in out2, f"leftover from command 1 leaked into command 2: {out2!r}"
         assert 'Current IP address: 172.16.8.22' in out2
+
+
+class TestResetOnuDrainsBeforeEachCommand:
+    """reset_onu() (the ONU Reboot button) used to be the one CLI method in
+    telnet_client.py written with raw tn.write()/tn.read_until() calls
+    instead of _send_command()/_send_cmd_check() — meaning it never called
+    drain(), leaving it exposed to the exact leak documented above: a
+    context-switch command's response (e.g. entering pon-onu-mng) could
+    still contain a stray unconsumed tail when the real 'reboot' command
+    was sent, letting reset_onu silently read old buffered text (no error,
+    no reboot) instead of the OLT's actual reboot confirmation. This is
+    a silent failure — success/msg alone look identical either way — so
+    the test spies on the 'reboot' command's own response to prove it's
+    the genuine confirmation and not a leaked tail from the previous step."""
+
+    def test_leftover_tail_does_not_shadow_reboot_confirmation(self):
+        from unittest.mock import patch
+
+        tc = TelnetCollector.__new__(TelnetCollector)  # skip __init__ (needs OLT creds)
+        tn = FakeLeakyTn()
+        tc._connect = lambda: tn
+
+        tn.queue_response(b'configure terminal echo\nreal-prompt#')  # 1: configure terminal
+        # 2: pon-onu-mng <iface> — contains a stray '#' mid-output, leaving a
+        # tail (more junk + its own real prompt) unconsumed in the buffer.
+        tn.queue_response(
+            b'pon-onu-mng echo\nsome status#with-hash-embedded\n'
+            b'more leftover junk\nreal-prompt#'
+        )
+        # 3: reboot — the genuine response that must actually be read.
+        tn.queue_response(b'reboot echo\nStart to reboot the ONU!\nreal-prompt#')
+        tn.queue_response(b'exit1-prompt#')  # 4: exit (pon-onu-mng)
+        tn.queue_response(b'exit2-prompt#')  # 5: exit (config terminal)
+        tn.queue_response(b'exit3-prompt#')  # 6: exit (privileged)
+
+        captured = {}
+        real_check = TelnetCollector._send_cmd_check
+
+        def spy_check(self, tn_, command, timeout=15):
+            output, err = real_check(self, tn_, command, timeout=timeout)
+            if command == 'reboot':
+                captured['output'] = output
+            return output, err
+
+        with patch.object(TelnetCollector, '_send_cmd_check', spy_check):
+            success, msg = tc.reset_onu(1, 2, 3, 5, is_epon=False, serial_number='ZTEGC1234567')
+
+        assert success is True, f'reset_onu unexpectedly failed: {msg}'
+        reboot_output = captured.get('output', '')
+        assert 'Start to reboot the ONU!' in reboot_output, (
+            f"'reboot' command did not receive its own real response — got: {reboot_output!r}"
+        )
+        assert 'more leftover junk' not in reboot_output, (
+            f"'reboot' command read a leftover tail from the previous command instead: {reboot_output!r}"
+        )
