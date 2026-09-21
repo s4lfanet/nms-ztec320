@@ -125,6 +125,35 @@ class SimpleTelnet:
         self.buffer = b''
         return result
 
+    def read_until_idle(self, idle_timeout=2.0, max_timeout=60.0):
+        """Read all available data until the connection goes idle (no new
+        data received for idle_timeout seconds) or max_timeout is reached.
+
+        Use this for long outputs like 'show running-config' whose content
+        may contain '#' bytes (e.g. WiFi passwords such as 'mypass#') that
+        would prematurely terminate read_until(b'#'), silently truncating
+        the output and losing every config section after the first '#' in
+        the content. Returns all accumulated bytes (including any data left
+        in the buffer from a prior read_until call)."""
+        import time as _time
+        end_time = _time.monotonic() + max_timeout
+        result = bytearray()
+        # Include any buffered data first
+        result += self.buffer
+        self.buffer = b''
+        while _time.monotonic() < end_time:
+            self.sock.settimeout(idle_timeout)
+            try:
+                data = self.sock.recv(8192)
+                if not data:
+                    break
+                result += self._handle_iac(data)
+            except socket.timeout:
+                break
+            except Exception:
+                break
+        return bytes(result)
+
     def write(self, data):
         if isinstance(data, str):
             data = data.encode()
@@ -275,7 +304,31 @@ class SimpleSSH:
         result = self.buffer
         self.buffer = b''
         return result
-    
+
+    def read_until_idle(self, idle_timeout=2.0, max_timeout=60.0):
+        """Read all available data until the connection goes idle (no new
+        data received for idle_timeout seconds) or max_timeout is reached.
+        See SimpleTelnet.read_until_idle for rationale (long outputs whose
+        content contains '#' bytes such as WiFi passwords)."""
+        import time as _time
+        end_time = _time.monotonic() + max_timeout
+        result = bytearray()
+        result += self.buffer
+        self.buffer = b''
+        last_data = _time.monotonic()
+        while _time.monotonic() < end_time:
+            if self.shell and self.shell.recv_ready():
+                data = self.shell.recv(8192)
+                if not data:
+                    break
+                result += data
+                last_data = _time.monotonic()
+            else:
+                _time.sleep(0.1)
+                if _time.monotonic() - last_data >= idle_timeout:
+                    break
+        return bytes(result)
+
     def write(self, data):
         if isinstance(data, str):
             data = data.encode()
@@ -442,6 +495,31 @@ class TelnetCollector:
         if lines and (lines[-1].strip().endswith('#') or lines[-1].strip().endswith('>')): lines = lines[:-1]
         return '\n'.join(lines)
 
+    def _send_command_idle(self, tn, command, idle_timeout=2.0, max_timeout=60.0):
+        """Send a command and read the FULL response by waiting until the
+        connection goes idle (no data for idle_timeout seconds) instead of
+        stopping at the first '#' byte.
+
+        Use this for long outputs like 'show running-config' whose content
+        may contain '#' bytes (e.g. WiFi passwords such as 'mypass#') that
+        would prematurely terminate the normal read_until(b'#') used by
+        _send_command — silently truncating the output and losing every
+        config section after the first '#' in the content. This was the
+        root cause of missing pon-onu-mng sections for ONUs whose config
+        block appeared after a '#'-containing WiFi password in the full
+        running-config output."""
+        if hasattr(tn, 'drain'):
+            tn.drain()
+        tn.write(command + '\n')
+        output = tn.read_until_idle(idle_timeout=idle_timeout, max_timeout=max_timeout).decode('utf-8', errors='replace')
+        output = output.replace('\r\n', '\n').replace('\r', '')
+        lines = output.split('\n')
+        if lines: lines = lines[1:]  # strip echoed command line
+        # strip trailing prompt line (ends with # or >)
+        if lines and (lines[-1].strip().endswith('#') or lines[-1].strip().endswith('>')):
+            lines = lines[:-1]
+        return '\n'.join(lines)
+
     def _send_cmd_check(self, tn, command, timeout=15):
         """Send command and check for CLI errors. Returns (output, error_msg)."""
         output = self._send_command(tn, command, timeout=timeout)
@@ -588,7 +666,7 @@ class TelnetCollector:
 
             # Step 2d: Get PPPoE username from global running-config pon-onu-mng sections
             try:
-                global_cfg = self._send_command(tn, 'show running-config', timeout=30)
+                global_cfg = self._send_command_idle(tn, 'show running-config')
                 if global_cfg and '%Error' not in global_cfg:
                     current_iface = None
                     for line in global_cfg.split('\n'):
@@ -2834,7 +2912,7 @@ class TelnetCollector:
             svi_vlans = set()  # VLANs with L3 interface
             onu_profiles = []  # ONU profile VLAN mappings
 
-            cfg = self._send_command(tn, 'show running-config', timeout=30)
+            cfg = self._send_command_idle(tn, 'show running-config')
             cfg_lines = cfg.split('\n')
             in_vlan_db = False
             current_vlan = None
@@ -3089,7 +3167,7 @@ class TelnetCollector:
                 # show running-config works from EXEC mode — no need to enter configure terminal
                 logger.debug('WAN IP profile command not supported, falling back to running-config')
                 try:
-                    cfg = self._send_command(tn, 'show running-config', timeout=30)
+                    cfg = self._send_command_idle(tn, 'show running-config')
                     # Parse 'onu profile vlan <name> tag-mode tag cvlan <N> [pri <N>]'
                     for line in cfg.split('\n'):
                         ls = line.strip()
@@ -4673,7 +4751,7 @@ class TelnetCollector:
             cfg_ponmng = self._send_command(tn, f'show running-config pon-onu-mng {iface}', timeout=15)
             if '%Error' in cfg_ponmng or 'Invalid' in cfg_ponmng:
                 # Fallback: full running-config, extract only pon-onu-mng section
-                global_cfg = self._send_command(tn, 'show running-config', timeout=30)
+                global_cfg = self._send_command_idle(tn, 'show running-config')
                 cfg_ponmng = ''
                 in_section = False
                 for line in global_cfg.split('\n'):
@@ -6110,7 +6188,7 @@ class TelnetCollector:
             #     pppoe 1 nat enable user server2 password salfanet
             #     !
             try:
-                global_cfg = self._send_command(tn, 'show running-config', timeout=30)
+                global_cfg = self._send_command_idle(tn, 'show running-config')
                 if global_cfg and '%Error' not in global_cfg:
                     # Parse pon-onu-mng blocks to extract PPPoE per ONU
                     current_iface = None
@@ -6550,7 +6628,7 @@ class TelnetCollector:
         if not tn:
             return [], 'Telnet connection failed'
         try:
-            out = self._send_command(tn, 'show running-config', timeout=20)
+            out = self._send_command_idle(tn, 'show running-config', max_timeout=30)
             tn.close()
             communities = []
             for line in out.split('\n'):
