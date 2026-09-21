@@ -4,6 +4,26 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-21 — Fitur baru: Auto Provisioning (ZTP) — registrasi otomatis ONU GPON & EPON
+
+#### Konteks
+- Diminta pelajari fitur "auto regis EPON" di `backup-nms-2026-09-03`. Ternyata ini fitur utuh (backend + frontend + halaman baru) yang sempat live di produksi tapi **tidak pernah di-commit ke git sama sekali** — filenya `??` untracked bahkan di backup itu sendiri. Bukan hotfix kecil, tapi kapabilitas penuh yang hilang total dari riwayat proyek.
+- Di-porting sebagai re-implementasi bersih terhadap kode saat ini (bukan copy-paste mentah dari backup) — memakai mekanisme yang sudah ada dan sudah teruji (`register_unified()`, `ONUType.pon_type`, `_sanitize_provisioning_input()`, pola background-thread `alerts.py`) alih-alih pola lama backup (cron eksternal tidak ter-track, matching tipe ONU manual berbasis prefix string).
+- Sesuai instruksi: **tidak ada file lain yang sudah berjalan normal yang diubah** di luar 4 baris tambahan murni (import blueprint + registrasi di `app.py`, start thread di `run_server.py`, lazy-import + route di `App.tsx`, 1 item menu di `Sidebar.tsx`).
+
+#### Ditambahkan
+- **`backend/auto_provision.py`** (baru) — background thread `run_ztp_monitor()`, jalan tiap 60 detik, no-op kecuali `ztp_enabled` diaktifkan dari halaman pengaturan. Untuk tiap OLT yang diizinkan: scan ONU belum terkonfigurasi (`collect_unregistered_onus()`, sudah ada), deteksi EPON via flag `is_epon` → `onu_type='ALL-EPON'`; GPON dicocokkan ke `ONUType` terdaftar (`pon_type='gpon'`) dengan fallback ke `'All'`. Registrasi lewat `register_unified()` yang sudah ada, payload melewati `_sanitize_provisioning_input()` (choke point keamanan CLI yang sama dipakai `/api/provision/unified`). Log ke `instance/ztp.log` (untuk live log viewer) + logger standar.
+- **`backend/routes_auto_provision.py`** (baru) — `GET/POST /api/ztp-config` (baca/simpan setting di `SystemConfig`, tabel yang sudah ada, tidak perlu migration), `GET /api/ztp-logs` (tail 200 baris log terakhir). Digerbangi permission `settings_ip_olts`.
+- **`frontend/src/pages/AutoProvision.tsx`** (baru) — halaman "Auto Provision" di Infrastructure: toggle on/off, checklist OLT target, VLAN + mode (tag/untag), profile upload/download GPON, SLA EPON, live log viewer. Dibangun ulang dengan komponen desain system saat ini (`PageContainer`/`PageHeader`/`Card`/`Button`/`Input`/`Select`/`CodeBlock`), bukan style mentah dari backup.
+- Thread ZTP di-start di `run_server.py` persis seperti pola alert monitor yang sudah ada — tidak perlu setup cron eksternal di VPS (beda dari implementasi lama backup).
+
+#### Diverifikasi
+- 8 test baru (`tests/test_auto_provision.py`) — gate enabled/allowed-OLT, registrasi EPON dengan tipe `ALL-EPON`, matching tipe GPON by model + fallback, payload service bawa `vlan_mode`, skip serial yang sudah ada di DB, kegagalan registrasi tidak menyimpan row.
+- Ditemukan & diperbaiki 1 bug nyata saat menulis test: `auto_provision.py` awalnya `from extensions import db` — salah, `extensions.db` tidak pernah di-`init_app()` (proyek ini pakai `models.db` sebagai instance asli). Tanpa fix ini, setiap registrasi sukses akan crash saat simpan ke DB (`RuntimeError: current Flask app is not registered with this SQLAlchemy instance`). Dikonfirmasi test gagal sebelum fix, lolos sesudahnya.
+- Full suite: **291 passed, 2 skipped** (baseline 283 + 8 baru, nol regresi)
+- Tidak perlu migration Alembic — memakai tabel `SystemConfig`/`ONUType` yang sudah ada.
+- Verifikasi visual end-to-end: halaman render sesuai desain system, toggle+field enable/disable berfungsi, simpan pengaturan sukses (toast dikonfirmasi), live log viewer menampilkan aktivitas nyata dari test run. `tsc --noEmit` dan `vite build` bersih (chunk `AutoProvision` ter-code-split terpisah, sesuai pola lazy-load semua halaman lain).
+
 ### 2026-09-21 — Fix: bulk update ONU (All ONUs) kirim command CLI salah untuk EPON
 
 #### Ditemukan
