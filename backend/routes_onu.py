@@ -205,17 +205,30 @@ def update_onu(onu_id):
     data = request.get_json()
     logger.info(f"[update_onu] ONU {onu_id} payload={data} by user={current_user.username}")
     olt = db.session.get(OLT, onu.olt_id) if onu.olt_id else None
+    is_epon = (onu.card or '').lower() == 'epon'
     cli_cmds = []  # Collect CLI commands to send to OLT after DB save
+    needs_epon_desc_update = False
     if 'name' in data:
         if not current_user.has_permission('edit_onu_name'):
             return jsonify({'success': False, 'message': 'Permission denied: edit_onu_name'}), 403
         onu.name = data['name']
-        cli_cmds.append(f'name {data["name"]}')
+        if is_epon:
+            needs_epon_desc_update = True
+        else:
+            cli_cmds.append(f'name {data["name"]}')
     if 'description' in data:
         if not current_user.has_permission('edit_onu_description'):
             return jsonify({'success': False, 'message': 'Permission denied: edit_onu_description'}), 403
         onu.description = data['description']
-        cli_cmds.append(f'description {data["description"]}')
+        if is_epon:
+            needs_epon_desc_update = True
+        else:
+            cli_cmds.append(f'description {data["description"]}')
+    if is_epon and needs_epon_desc_update:
+        # EPON ONUs don't support separate 'name'/'description' CLI commands —
+        # both are set together via a single 'property description $$Name$$Desc'
+        # command (matches the fix already applied in update_onu_field() below).
+        cli_cmds.append(f'property description $${onu.name or ""}$${onu.description or ""}')
     if 'pppoe' in data:
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403

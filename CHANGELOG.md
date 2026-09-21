@@ -4,6 +4,20 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-21 — Fix: bulk update ONU (All ONUs) kirim command CLI salah untuk EPON
+
+#### Ditemukan
+- Diminta bandingkan project ini dengan backup produksi `backup-nms-2026-09-03` (checkout penuh `/opt/salfanet-nms` per 3 Sept). Backup itu HEAD-nya di commit `44a1a58` (233 commit di belakang main sekarang), TAPI working tree-nya juga punya ~20 file dengan **perubahan belum commit** — artinya ada hotfix yang sempat live di produksi tapi tidak pernah ke-commit ke git sama sekali.
+- Salah satunya: `update_onu_field()` (`backend/routes_onu.py`, dipakai inline-editor Name/Description di halaman View ONU) sudah benar mengirim command gabungan `property description $$Name$$Desc` untuk ONU EPON (fix ini sudah didokumentasikan di CHANGELOG 2026-08-05) — tapi endpoint bulk `update_onu()` (dipakai modal Edit di halaman **All ONUs**) **tidak pernah dapat fix yang sama**, masih kirim command `name ...`/`description ...` terpisah yang tidak didukung ONU EPON.
+
+#### Diperbaiki
+- `update_onu()` (`backend/routes_onu.py`): tambah pengecekan `is_epon` yang sama seperti `update_onu_field()` — untuk ONU EPON, perubahan name dan/atau description digabung jadi satu command `property description $$Name$$Desc`, bukan command terpisah.
+
+#### Diverifikasi
+- 3 test baru (`tests/test_onu_update_epon.py`) — ONU EPON dapat command gabungan yang benar, ONU GPON tetap dapat command terpisah seperti sebelumnya (regresi guard), edit name-saja pada ONU EPON tetap menyertakan description lama yang belum diubah. Dikonfirmasi 2 dari 3 test **gagal** terhadap kode sebelum fix ini (reproduksi bug asli) dan **lolos** sesudahnya.
+- Full suite: **283 passed, 2 skipped** (baseline 280 + 3 baru, nol regresi)
+- `backup-nms-2026-09-03/` ditambahkan ke `.gitignore` — folder referensi backup produksi, bukan bagian dari repo.
+
 ### 2026-09-21 — Fix: ONU Reboot masih belum benar-benar reboot (root cause kedua)
 
 #### Ditemukan
