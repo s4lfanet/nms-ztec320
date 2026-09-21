@@ -120,6 +120,15 @@ def start_servers(flask_port: int = 5000, ws_port: int = 8765,
     alert_thread.start()
     logger.info("Alert monitor started")
 
+    # Start ZTP auto-provision monitor (background thread — no-op unless
+    # enabled from the Auto Provision settings page)
+    from auto_provision import run_ztp_monitor
+    ztp_thread = threading.Thread(
+        target=run_ztp_monitor, args=(flask_app,), daemon=True, name="ztp-monitor"
+    )
+    ztp_thread.start()
+    logger.info("ZTP auto-provision monitor started")
+
     # Start Flask in a background thread
     flask_thread = threading.Thread(
         target=run_flask,
