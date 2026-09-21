@@ -20,6 +20,7 @@ export const guideCategories = [
   'Templates',
   'Traffic',
   'Infrastructure',
+  'Auto Provisioning',
   'System',
   'Activity',
 ] as const;
@@ -569,6 +570,47 @@ export const guides: Guide[] = [
     ],
     tips: [
       'Pastikan tidak ada proses provisioning/sync yang sedang berjalan sebelum Apply Update, karena service akan restart',
+    ],
+  },
+  {
+    id: 'auto-provision',
+    category: 'Auto Provisioning',
+    page: '/dashboard/settings/auto-provision',
+    title: 'Panduan Auto Provisioning (ZTP)',
+    description: 'Registrasi otomatis modem GPON & EPON yang belum terkonfigurasi — tanpa perlu registrasi manual satu-satu',
+    steps: [
+      {
+        title: 'Cara Kerja',
+        content: 'Auto Provisioning (ZTP) adalah bot background yang berjalan tiap **1 menit**. Saat aktif, bot akan: (1) scan ONU yang belum terdaftar (uncfg) di OLT yang diizinkan, (2) deteksi tipe ONU (GPON atau EPON), (3) pilih ONU type yang cocok, (4) ambil ONU ID kosong berikutnya, (5) register ONU via CLI dengan konfigurasi yang sudah diatur di halaman ini, (6) auto-sync OLT + save config supaya ONU baru langsung muncul di sistem.\n\nBot hanya memproses ONU yang **benar-benar baru** — ONU yang serial number-nya sudah ada di database (di OLT manapun) dilewati. Registrasi yang gagal (mis. ONU ID penuh, CLI error) tidak disimpan ke database.',
+      },
+      {
+        title: 'Aktifkan & Pilih OLT Target',
+        content: 'Toggle **ON** di pojok kanan atas kartu untuk mengaktifkan bot. Centang OLT mana saja yang boleh di-auto-register — bisa pilih lebih dari satu. Hanya OLT dengan **CLI enabled** dan **monitoring enabled** yang akan diproses; OLT yang tidak memenuhi syarat diam-diam dilewati.\n\nPilih OLT target sebelum mengisi VLAN/profile di bawah, karena dropdown VLAN & profile diambil dari data actual OLT yang dipilih.',
+      },
+      {
+        title: 'VLAN Internet (multi-VLAN)',
+        content: 'Pilih satu atau lebih VLAN dari dropdown. Dropdown ini diisi dari **data actual OLT** hasil sync — bukan ketik manual. Jika dropdown kosong, pastikan OLT sudah di-sync dari halaman **OLT Settings** dulu (tombol Sync), lalu klik **Refresh** di samping label.\n\nSetiap VLAN yang dipilih akan dibuatkan **satu service** tersendiri pada ONU yang ter-register. Misal pilih VLAN 30 + 151 → ONU baru akan punya 2 service (service-port 1 untuk VLAN 30, service-port 2 untuk VLAN 151).\n\n**Mode VLAN**: Tag (standar, dengan VLAN tag) atau Untag (transparan, tanpa VLAN tag).',
+      },
+      {
+        title: 'Profile Speed (GPON & EPON)',
+        content: '**GPON Upload (TCONT)** dan **GPON Download (Traffic)**: profile bandwidth untuk ONU GPON. Diambil dari data actual OLT (hasil sync) — jika OLT punya profile tersimpan, tampil sebagai dropdown; jika tidak (mis. OLT belum pernah sync atau tidak punya profile), field menjadi **text input** manual.\n\n**EPON SLA**: profile CIR/PIR untuk ONU EPON. Sama seperti GPON — dropdown kalau ada data, text input kalau kosong. Untuk OLT yang hanya GPON (tidak ada card EPON), field ini biasanya kosong dan bisa diisi manual atau dibiarkan kosong (tidak dipakai untuk ONU GPON).\n\nKlik **Refresh** di section VLAN untuk re-fetch data terbaru dari OLT setelah sync.',
+      },
+      {
+        title: 'Live Logs',
+        content: 'Panel **Live Logs** di sebelah kanan menampilkan aktivitas bot secara real-time: kapan ONU baru terdeteksi, kapan registrasi berhasil/gagal, dan pesan error. Auto-refresh tiap 10 detik saat ZTP aktif.\n\nGunakan tombol refresh manual (ikon lingkaran) untuk re-fetch log kapan saja.',
+      },
+    ],
+    prerequisites: [
+      'OLT target sudah di-sync minimal sekali dari halaman OLT Settings — supaya data VLAN dan speed profile tersimpan di database dan muncul di dropdown',
+      'OLT target punya CLI enabled dan credentials yang benar — bot registrasi ONU via CLI, bukan SNMP',
+      'Akun Anda punya permission **settings_ip_olts** (kelola OLT) untuk akses halaman ini',
+    ],
+    tips: [
+      'Bot hanya memproses ONU yang serial number-nya belum ada di database — ONU yang sudah terdaftar di OLT manapun dilewati',
+      'VLAN & profile diambil dari hasil sync OLT — kalau dropdown kosong, sync OLT dulu lalu klik Refresh',
+      'Untuk OLT yang hanya GPON (tidak ada card EPON), field EPON SLA bisa dikosongkan — tidak dipakai untuk ONU GPON',
+      'Bot berjalan tiap 1 menit — setelah aktifkan, tunggu maksimal 1 menit untuk pass pertama, atau lihat Live Logs untuk konfirmasi',
+      'Registrasi yang gagal tidak disimpan ke database — ONU tetap dalam keadaan uncfg dan akan dicoba lagi di pass berikutnya',
     ],
   },
   {
