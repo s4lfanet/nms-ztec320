@@ -141,6 +141,12 @@ def api_onu_live_detail(onu_id):
                     onu.tx_power = live_detail['tx_power']; updated = True
                 if live_detail.get('onu_type') and not onu.onu_type:
                     onu.onu_type = live_detail['onu_type']; updated = True
+                # collect_onu_detail() already reads this from 'Equipment ID' in
+                # 'show gpon remote-onu equip' — it just never got applied here,
+                # so actual_type stayed blank until the next full OLT sync (which
+                # may be hours away) even though this per-ONU refresh had it.
+                if live_detail.get('actual_type') and not onu.actual_type:
+                    onu.actual_type = live_detail['actual_type']; updated = True
                 # Read-back WiFi config from ONU running-config
                 wifi_entries = live_detail.get('wifi_entries', [])
                 if wifi_entries:
