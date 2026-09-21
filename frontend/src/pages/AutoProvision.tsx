@@ -4,7 +4,7 @@ import { Zap, ToggleLeft, ToggleRight, Server, Terminal, RefreshCw, Save, X } fr
 import { toast } from '../components/Toast';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, Select, CodeBlock, Skeleton } from '../components/ui';
+import { Button, Card, Input, Select, CodeBlock, Skeleton } from '../components/ui';
 
 interface ZtpConfig {
   ztp_enabled: boolean;
@@ -228,21 +228,39 @@ export function AutoProvision() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-brd pt-4">
-                <Select label="GPON Upload (TCONT)"
-                  value={form.ztp_profile}
-                  onChange={e => setForm(f => ({ ...f, ztp_profile: e.target.value }))}
-                  disabled={!form.ztp_enabled}
-                  options={profileOptions(tcontOpts)} />
-                <Select label="GPON Download (Traffic)"
-                  value={form.ztp_traffic_profile}
-                  onChange={e => setForm(f => ({ ...f, ztp_traffic_profile: e.target.value }))}
-                  disabled={!form.ztp_enabled}
-                  options={profileOptions(trafficOpts)} />
-                <Select label="EPON SLA"
-                  value={form.ztp_epon_sla}
-                  onChange={e => setForm(f => ({ ...f, ztp_epon_sla: e.target.value }))}
-                  disabled={!form.ztp_enabled}
-                  options={profileOptions(slaOpts)} />
+                {tcontOpts.length > 0 ? (
+                  <Select label="GPON Upload (TCONT)"
+                    value={form.ztp_profile}
+                    onChange={e => setForm(f => ({ ...f, ztp_profile: e.target.value }))}
+                    disabled={!form.ztp_enabled}
+                    options={profileOptions(tcontOpts)} />
+                ) : (
+                  <Input label="GPON Upload (TCONT)" value={form.ztp_profile}
+                    onChange={e => setForm(f => ({ ...f, ztp_profile: e.target.value }))}
+                    disabled={!form.ztp_enabled} placeholder="mis. UP-1G" />
+                )}
+                {trafficOpts.length > 0 ? (
+                  <Select label="GPON Download (Traffic)"
+                    value={form.ztp_traffic_profile}
+                    onChange={e => setForm(f => ({ ...f, ztp_traffic_profile: e.target.value }))}
+                    disabled={!form.ztp_enabled}
+                    options={profileOptions(trafficOpts)} />
+                ) : (
+                  <Input label="GPON Download (Traffic)" value={form.ztp_traffic_profile}
+                    onChange={e => setForm(f => ({ ...f, ztp_traffic_profile: e.target.value }))}
+                    disabled={!form.ztp_enabled} placeholder="mis. DOWN-1G" />
+                )}
+                {slaOpts.length > 0 ? (
+                  <Select label="EPON SLA"
+                    value={form.ztp_epon_sla}
+                    onChange={e => setForm(f => ({ ...f, ztp_epon_sla: e.target.value }))}
+                    disabled={!form.ztp_enabled}
+                    options={profileOptions(slaOpts)} />
+                ) : (
+                  <Input label="EPON SLA" value={form.ztp_epon_sla}
+                    onChange={e => setForm(f => ({ ...f, ztp_epon_sla: e.target.value }))}
+                    disabled={!form.ztp_enabled} placeholder="mis. UP-1G" />
+                )}
               </div>
 
               <Button variant="primary" className="w-full justify-center" loading={saveMutation.isPending}
