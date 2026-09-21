@@ -4671,26 +4671,15 @@ class TelnetCollector:
             # 'show running-config pon-onu-mng {iface}' does NOT work on V2.1.0
             # Try it first (fast on newer firmware), fall back to full running-config
             cfg_ponmng = self._send_command(tn, f'show running-config pon-onu-mng {iface}', timeout=15)
-            # Whether we actually got this ONU's pon-onu-mng block from somewhere
-            # (fast path or fallback) — distinct from "we got it and it's genuinely
-            # empty" (a real bridge-mode ONU). On OLTs with a large enough ONU count,
-            # 'show running-config' truncates well before reaching every interface
-            # (confirmed live: the OLT itself stops sending after ~120KB/~3900 lines
-            # regardless of read timeout — a device-side limit, not a client
-            # timeout issue) — so a later ONU's section silently never appears and
-            # this must NOT be treated the same as a confirmed-bridge ONU below.
-            ponmng_section_found = True
             if '%Error' in cfg_ponmng or 'Invalid' in cfg_ponmng:
                 # Fallback: full running-config, extract only pon-onu-mng section
                 global_cfg = self._send_command(tn, 'show running-config', timeout=30)
                 cfg_ponmng = ''
                 in_section = False
-                ponmng_section_found = False
                 for line in global_cfg.split('\n'):
                     ls = line.strip()
                     if ls == f'pon-onu-mng {iface}':
                         in_section = True
-                        ponmng_section_found = True
                         cfg_ponmng += line + '\n'
                         continue
                     elif in_section and (ls.startswith('pon-onu-mng ') or ls == '!' or ls == 'end'):
@@ -4703,7 +4692,6 @@ class TelnetCollector:
 
             result['running_config_raw'] = cfg_interface.strip()
             result['ponmng_config_raw'] = cfg_ponmng.strip()
-            result['ponmng_data_available'] = ponmng_section_found
 
             # ── 4. Parse interface section: tcont, gemport, service-port ──
             result['services'] = []
@@ -5102,17 +5090,8 @@ class TelnetCollector:
                         svc['pppoe_password'] = svc_pppoe_mode.get('password', '')
                         svc['pppoe_nat'] = nat
                         svc['pppoe_host'] = svc_pppoe_mode.get('host_id', '1')
-                    elif ponmng_section_found:
-                        # We genuinely read this ONU's pon-onu-mng block and it has
-                        # no wan-ip/pppoe line — a confirmed bridge-mode ONU.
-                        svc['mode'] = 'Bridge / ONU Webpage'
                     else:
-                        # pon-onu-mng data was never actually retrieved (OLT
-                        # truncated 'show running-config' before reaching this
-                        # ONU) — showing 'Bridge' here would be a guess, not a
-                        # fact, and silently misrepresent whatever mode (e.g.
-                        # PPPoE NAT) is really configured. Say so instead.
-                        svc['mode'] = 'Unknown (OLT config unavailable — try Resync)'
+                        svc['mode'] = 'Bridge / ONU Webpage'
 
             # ── 8b. Fetch actual WAN IP via show gpon onu iphost ──
             # ── 8b. Fetch actual WAN IP via show gpon remote-onu ip-host ──
@@ -5337,19 +5316,6 @@ class TelnetCollector:
                         mng_lines.append('  ' + ls)
                 if mng_lines:
                     full_cfg_parts.append(f'pon-onu-mng {iface}\n' + '\n'.join(mng_lines) + '\n!')
-            elif not ponmng_section_found:
-                # Don't silently omit this section — that reads as "nothing is
-                # configured here" (confirmed live: a customer's real, working
-                # PPPoE/WiFi/TR069 config went missing from this exact view
-                # because of it) when the truth is just "the OLT never sent it
-                # back" (see ponmng_section_found above — 'show running-config'
-                # gets cut off by the OLT itself on OLTs with enough ONUs).
-                full_cfg_parts.append(
-                    f'! pon-onu-mng {iface}: NOT SHOWN — the OLT truncated its '
-                    f'config output before reaching this ONU\'s section (this '
-                    f'ONU\'s WiFi/PPPoE/TR069 config may still be fully applied '
-                    f'on the OLT; it just could not be read back here)'
-                )
 
             result['running_config_raw'] = '\n'.join(full_cfg_parts) if full_cfg_parts else f'(no running config for {iface})'
 
