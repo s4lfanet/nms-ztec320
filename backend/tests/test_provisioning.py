@@ -1102,3 +1102,53 @@ class TestOnuLiveDetailSyncLock:
         assert data['live_detail']['name'] == 'Customer C'
         mock_tc.collect_onu_detail.assert_called_once()
         mock_release.assert_not_called()
+
+
+# ==================== ONU Live Detail — actual_type Never Persisted ====================
+# Found while auditing a user report (2026-09-21): collect_onu_detail()
+# already reads the real model string from 'Equipment ID' in 'show gpon
+# remote-onu equip' and returns it as live_detail['actual_type'] — but the
+# live-detail endpoint only ever applied live_detail['onu_type'] to the DB,
+# never live_detail['actual_type']. So actual_type stayed blank in the UI
+# until the next full OLT sync happened to catch it (which can be hours
+# away on a busy OLT), even though a single "Refresh Live" already had it.
+
+class TestOnuLiveDetailPersistsActualType:
+    def _make_onu(self, olt_id):
+        with app.app_context():
+            onu = ONU(olt_id=olt_id, frame=1, slot=1, port=1, onu_id=1, serial_number='ZTEGLIVE003')
+            db.session.add(onu)
+            db.session.commit()
+            return onu.id
+
+    def test_actual_type_saved_when_blank(self, auth_client, test_olt):
+        onu_id = self._make_onu(test_olt)
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.collect_onu_detail.return_value = {'name': 'Customer D', 'actual_type': 'F679DV9.2'}
+            mock_cli.return_value = mock_tc
+            resp = auth_client.get(f'/api/onu/{onu_id}/live-detail')
+
+        assert resp.status_code == 200
+        with app.app_context():
+            onu = db.session.get(ONU, onu_id)
+            assert onu.actual_type == 'F679DV9.2'
+
+    def test_existing_actual_type_not_overwritten(self, auth_client, test_olt):
+        """Mirrors the existing onu_type behavior: a value already on the
+        record (e.g. a manual override) isn't silently replaced by a live
+        refresh."""
+        onu_id = self._make_onu(test_olt)
+        with app.app_context():
+            onu = db.session.get(ONU, onu_id)
+            onu.actual_type = 'ManuallySet'
+            db.session.commit()
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.collect_onu_detail.return_value = {'name': 'Customer D', 'actual_type': 'F679DV9.2'}
+            mock_cli.return_value = mock_tc
+            auth_client.get(f'/api/onu/{onu_id}/live-detail')
+
+        with app.app_context():
+            onu = db.session.get(ONU, onu_id)
+            assert onu.actual_type == 'ManuallySet'

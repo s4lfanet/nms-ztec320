@@ -4,6 +4,31 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-21 — Fix: WAN mode salah tampil "Bridge" + actual_type tidak tersimpan dari live-detail
+
+#### Ditemukan
+- Laporan user: registrasi ONU GPON `1/1/8:6` pilih **PPPoE NAT**, tapi View ONU menampilkan mode **"Bridge / ONU Webpage"**, `actual_type` kosong, dan ACS/TR069 tidak muncul. Juga error 404 di `/api/onu/180/live-detail` dan 409 di `/api/olt/1/sync`.
+- Diaudit dan dipastikan **tidak terkait fitur Auto Provisioning** yang baru di-deploy — dikonfirmasi via `git diff` bahwa tidak ada perubahan hari ini yang menyentuh `wan_mode`/`actual_type`/`pppoe`/registrasi sama sekali.
+- 404/409 ternyata **bukan bug** — dari Activity Log, user sendiri melakukan clear-config → delete → re-register ONU ini dalam window ~3 menit; ONU memang belum ada di DB saat itu, 404 adalah respons yang benar.
+- Root cause WAN mode/actual_type didiagnosis langsung ke OLT produksi (read-only, tanpa mengubah config pelanggan):
+  - `show gpon remote-onu ip-host {iface}` dan `show gpon remote-onu equip {iface}` mengonfirmasi ONU **memang benar-benar berjalan PPPoE NAT** (host name `omci_ipv4_pppoe_1`, IP WAN aktif `192.168.29.165`) dan model asli **`F679DV9.2`** — jadi konfigurasi di OLT sudah benar, sepenuhnya murni bug tampilan/parsing.
+  - `show running-config pon-onu-mng {iface}` (command cepat per-ONU) ditolak firmware OLT ini (`%Error 20201`) — sudah diketahui/didokumentasikan di kode, ada fallback ke `show running-config` (dump seluruh config OLT) lalu ekstrak section ONU tersebut.
+  - **Ditemukan bug baru**: fallback itu sendiri gagal diam-diam — OLT ini **memotong sendiri** output `show running-config` di ~120KB/~3900 baris, **berapa pun timeout yang diberikan** (dikonfirmasi: 90 detik pun hasilnya identik, cuma butuh 5.4 detik sebelum device menutup stream) — bukan soal timeout client, tapi batas device itu sendiri. ONU yang section-nya jatuh setelah titik potong itu (seperti `1/1/8:6`) tidak pernah dapat datanya.
+  - Kode lama, saat data tidak ditemukan (bukan karena section itu benar-benar kosong, tapi karena tidak pernah terbaca), **default diam-diam ke `'Bridge / ONU Webpage'`** — persis seolah-olah dikonfirmasi Bridge, padahal cuma "tidak tahu".
+  - Terpisah: `collect_onu_detail()` sebenarnya **sudah** membaca `actual_type` dengan benar dari `Equipment ID` di `show gpon remote-onu equip` — tapi endpoint `/api/onu/<id>/live-detail` cuma menyimpan `onu_type` dari hasil itu ke DB, tidak pernah `actual_type`-nya, jadi tetap kosong sampai full sync berikutnya (bisa berjam-jam) kebetulan menangkapnya.
+
+#### Diperbaiki
+- `telnet_client.py` — `collect_onu_detail()`: tambah flag `ponmng_data_available` yang jujur menandai apakah section `pon-onu-mng` ONU ini benar-benar berhasil dibaca (baik lewat command cepat maupun fallback). Kalau section itu **ditemukan** dan memang kosong → tetap "Bridge / ONU Webpage" (akurat, tidak berubah). Kalau **tidak pernah ditemukan** (dump OLT terpotong) → tampil **"Unknown (OLT config unavailable — try Resync)"**, bukan tebakan yang salah.
+- `routes_onu.py` — `api_onu_live_detail()`: sekarang juga menyimpan `live_detail['actual_type']` ke `onu.actual_type` (mengikuti pola persis yang sudah ada untuk `onu_type` — hanya diisi kalau sebelumnya kosong, tidak menimpa override manual).
+
+#### Diverifikasi
+- 5 test baru: 3 di `tests/test_wan_mode_truncated_config.py` (mode jadi "Unknown" saat section OLT tidak ditemukan sama sekali; tetap "Bridge / ONU Webpage" saat section ditemukan dan memang kosong — regresi guard; tetap "PPPoE NAT" saat section ditemukan dan berisi — sanity check) + 2 di `tests/test_provisioning.py` (`actual_type` tersimpan dari live-detail saat kosong; tidak menimpa nilai yang sudah di-set manual). Dikonfirmasi semua **gagal** terhadap kode sebelum fix dan **lolos** sesudahnya.
+- Full suite: **296 passed, 2 skipped** (baseline 291 + 5 baru, nol regresi)
+- Tidak ada perubahan frontend — string mode baru ("Unknown...") sudah aman ditampilkan oleh `ViewOnu.tsx` tanpa perubahan kode (field ditampilkan apa adanya, tidak ada logic yang bergantung ke nilai string spesifik "Bridge / ONU Webpage" selain untuk toggle tampilan field PPPoE, yang justru tepat tersembunyi saat mode belum diketahui).
+
+#### Batasan yang Disadari
+- Fix ini membuat data yang tidak terbaca jadi **jujur** ("Unknown") alih-alih **salah** ("Bridge") — belum benar-benar menyelesaikan akar masalah (OLT memotong `show running-config` di config besar). Semakin banyak ONU terdaftar di OLT ini, semakin sering ONU yang section-nya jatuh setelah titik potong akan menampilkan "Unknown" alih-alih mode asli. Solusi permanen butuh command per-ONU yang benar-benar didukung firmware ini (sudah dicoba beberapa variasi command read-only, belum ketemu yang berhasil) — dicatat untuk audit lanjutan kalau makin sering terjadi.
+
 ### 2026-09-21 — Fitur baru: Auto Provisioning (ZTP) — registrasi otomatis ONU GPON & EPON
 
 #### Konteks
