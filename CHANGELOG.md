@@ -4,6 +4,23 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-09-21 — Fix: "ONU Running Config" juga diam-diam sembunyikan section pon-onu-mng yang tidak terbaca
+
+#### Ditemukan
+- Lanjutan audit sebelumnya (WAN mode salah tampil "Bridge"): user menunjukkan screenshot modal **"ONU Running Config"** (tombol "Show Config") untuk ONU `1/1/8:6` — hanya menampilkan section `interface` (tcont/gemport/service-port), **section `pon-onu-mng` sama sekali tidak muncul**, padahal di ONU sendiri (OMCI) config PPPoE/WiFi/TR069-nya sudah benar-benar aktif (sudah dikonfirmasi sebelumnya via query langsung ke OLT). Dibandingkan dengan ONU `1/1/3:2` yang menampilkan kedua section lengkap.
+- Root cause **sama persis** dengan bug WAN mode yang sudah diperbaiki (commit `770df7b`) — bukan bug baru, cuma gejala kedua dari akar masalah yang sama: `result['running_config_raw']` (dipakai endpoint `GET /api/onu/<id>/running-config`, sumber modal ini) dibangun dari `full_cfg_parts`, yang cuma menyertakan section `pon-onu-mng` kalau `cfg_ponmng` tidak kosong — dan untuk ONU yang section-nya jatuh setelah titik potong `show running-config` OLT (lihat entri sebelumnya), `cfg_ponmng` memang selalu kosong, section-nya jadi **diam-diam hilang total** dari tampilan tanpa keterangan apapun — persis kesan "config OLT tidak masuk" yang dilaporkan user, padahal config-nya ADA, cuma tidak terbaca ulang untuk ditampilkan.
+
+#### Diperbaiki
+- `telnet_client.py` — `collect_onu_detail()`: saat membangun `running_config_raw`, kalau `cfg_ponmng` kosong KARENA section-nya memang tidak pernah ketemu (`ponmng_section_found` False, flag yang sudah ditambahkan di fix sebelumnya) — bukan karena section itu genuinely kosong — sisipkan catatan eksplisit (`! pon-onu-mng {iface}: NOT SHOWN — the OLT truncated its config output before reaching this ONU's section ...`) alih-alih diam-diam tidak menampilkan apapun. Section `interface` (yang selalu berhasil dibaca lewat command terpisah yang cepat) tetap tampil seperti biasa.
+
+#### Diverifikasi
+- 3 test baru (`tests/test_wan_mode_truncated_config.py::TestRunningConfigViewerHonestAboutMissingSection`) — catatan muncul saat section tidak pernah ketemu (persis mereproduksi screenshot user), tidak muncul saat section ditemukan dan memang kosong (regresi guard, ONU bridge-mode asli), tidak muncul dan konten pon-onu-mng tetap tampil lengkap saat section berhasil ditemukan. Dikonfirmasi test pertama **gagal** terhadap kode sebelum fix (mereproduksi persis screenshot: cuma section interface, tanpa keterangan) dan **lolos** sesudahnya.
+- Full suite: nol regresi (baseline + 3 test baru).
+- Tidak ada perubahan frontend — modal "Show Config" cuma menampilkan teks apa adanya, catatan baru otomatis muncul sebagai bagian dari teks config.
+
+#### Catatan
+- Ini masih perbaikan **kejujuran tampilan**, bukan solusi akar masalah (OLT memotong `show running-config`-nya sendiri) — sudah dijelaskan di entri sebelumnya kenapa register ulang ONU juga tidak membantu (section terurut ketat berdasarkan nomor interface, bukan waktu registrasi).
+
 ### 2026-09-21 — Fix: WAN mode salah tampil "Bridge" + actual_type tidak tersimpan dari live-detail
 
 #### Ditemukan

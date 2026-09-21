@@ -116,3 +116,49 @@ class TestWanModeHonestWhenConfigTruncated:
 
         assert result['ponmng_data_available'] is True
         assert result['wan_services']['service1']['mode'] == 'PPPoE NAT'
+
+
+class TestRunningConfigViewerHonestAboutMissingSection:
+    """The 'Show Config' modal (GET /api/onu/<id>/running-config) reads
+    result['running_config_raw'] — confirmed live: for a truncated ONU it
+    silently showed ONLY the interface (tcont/gemport/service-port) block
+    with no pon-onu-mng section and no indication anything was missing,
+    making a fully-working ONU (real PPPoE/WiFi/TR069 config, confirmed via
+    live OMCI query) look like its OLT-side config was simply never
+    applied — the exact same underlying gap as the WAN mode bug above, just
+    surfacing in a different view."""
+
+    def test_note_shown_when_ponmng_section_never_found(self):
+        global_cfg = "Building configuration...\npon-onu-mng gpon-onu_1/1/3:30\n  service VLAN0030 gemport 1 iphost 1 vlan 30\n!\n"
+        with patch.object(TelnetCollector, '_send_command', _make_dispatcher(global_cfg)):
+            result = _collect()
+
+        cfg = result['running_config_raw']
+        assert f'interface {IFACE}' in cfg, "the interface section (always available) must still show"
+        assert 'NOT SHOWN' in cfg and 'truncated' in cfg.lower(), (
+            f"expected an explicit note that pon-onu-mng data is missing because it was never read, got: {cfg!r}"
+        )
+
+    def test_no_note_when_section_confirmed_empty(self):
+        """A genuinely bridge-mode ONU (section found, just empty) must not
+        get the 'not shown' note — there's nothing missing to explain."""
+        global_cfg = f"Building configuration...\npon-onu-mng {IFACE}\n!\n"
+        with patch.object(TelnetCollector, '_send_command', _make_dispatcher(global_cfg)):
+            result = _collect()
+
+        assert 'NOT SHOWN' not in result['running_config_raw']
+
+    def test_ponmng_content_shown_when_section_is_found(self):
+        global_cfg = (
+            "Building configuration...\n"
+            f"pon-onu-mng {IFACE}\n"
+            "  pppoe 1 nat enable user monicaagustin@malandang password salfanet\n"
+            "!\n"
+        )
+        with patch.object(TelnetCollector, '_send_command', _make_dispatcher(global_cfg)):
+            result = _collect()
+
+        cfg = result['running_config_raw']
+        assert 'NOT SHOWN' not in cfg
+        assert f'pon-onu-mng {IFACE}' in cfg
+        assert 'pppoe 1 nat enable user monicaagustin@malandang' in cfg

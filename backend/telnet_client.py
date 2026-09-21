@@ -5337,6 +5337,19 @@ class TelnetCollector:
                         mng_lines.append('  ' + ls)
                 if mng_lines:
                     full_cfg_parts.append(f'pon-onu-mng {iface}\n' + '\n'.join(mng_lines) + '\n!')
+            elif not ponmng_section_found:
+                # Don't silently omit this section — that reads as "nothing is
+                # configured here" (confirmed live: a customer's real, working
+                # PPPoE/WiFi/TR069 config went missing from this exact view
+                # because of it) when the truth is just "the OLT never sent it
+                # back" (see ponmng_section_found above — 'show running-config'
+                # gets cut off by the OLT itself on OLTs with enough ONUs).
+                full_cfg_parts.append(
+                    f'! pon-onu-mng {iface}: NOT SHOWN — the OLT truncated its '
+                    f'config output before reaching this ONU\'s section (this '
+                    f'ONU\'s WiFi/PPPoE/TR069 config may still be fully applied '
+                    f'on the OLT; it just could not be read back here)'
+                )
 
             result['running_config_raw'] = '\n'.join(full_cfg_parts) if full_cfg_parts else f'(no running config for {iface})'
 
