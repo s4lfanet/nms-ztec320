@@ -1102,3 +1102,48 @@ class TestOnuLiveDetailSyncLock:
         assert data['live_detail']['name'] == 'Customer C'
         mock_tc.collect_onu_detail.assert_called_once()
         mock_release.assert_not_called()
+
+
+# ==================== Factory Reset — Keep OLT Config ====================
+# restore-factory-keep sends only the OMCI 'restore factory' to the ONU —
+# the OLT-side interface config (tcont/gemport/service-port) and the
+# pon-onu-mng section stay intact, so the OLT re-provisions the ONU via
+# OMCI when it re-registers. Only the targeted ONU is affected.
+
+class TestRestoreFactoryKeepConfig:
+    def _make_onu(self, olt_id):
+        with app.app_context():
+            onu = ONU(olt_id=olt_id, frame=1, slot=1, port=1, onu_id=6,
+                      serial_number='ZTEGKCFG01', pppoe='user@test', card='')
+            db.session.add(onu)
+            db.session.commit()
+            return onu.id
+
+    def test_calls_keep_config_method_and_does_not_wipe_db(self, auth_client, test_olt):
+        onu_id = self._make_onu(test_olt)
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.restore_factory_keep_config_onu.return_value = (True, 'OK')
+            mock_cli.return_value = mock_tc
+            resp = auth_client.post(f'/api/onu/{onu_id}/action',
+                                    json={'action': 'restore-factory-keep'},
+                                    headers={'X-Requested-With': 'XMLHttpRequest'})
+        data = resp.get_json()
+        assert data['success'] is True
+        mock_tc.restore_factory_keep_config_onu.assert_called_once_with(1, 1, 1, 6, is_epon=False)
+        # DB service fields must NOT be cleared — OLT still holds the config
+        # and will push it back to the ONU on re-registration.
+        with app.app_context():
+            assert db.session.get(ONU, onu_id).pppoe == 'user@test'
+
+    def test_cli_error_propagates(self, auth_client, test_olt):
+        onu_id = self._make_onu(test_olt)
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.restore_factory_keep_config_onu.return_value = (False, 'CLI error: no such onu')
+            mock_cli.return_value = mock_tc
+            resp = auth_client.post(f'/api/onu/{onu_id}/action',
+                                    json={'action': 'restore-factory-keep'},
+                                    headers={'X-Requested-With': 'XMLHttpRequest'})
+        data = resp.get_json()
+        assert data['success'] is False

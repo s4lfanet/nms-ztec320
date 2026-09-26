@@ -1140,6 +1140,41 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
+    def restore_factory_keep_config_onu(self, frame, slot, port, onu_id, is_epon=False):
+        """Factory reset ONLY the ONU's internal OMCI config — the OLT-side
+        config (interface tcont/gemport/service-port + pon-onu-mng section)
+        is left untouched, so when the ONU comes back online and re-registers,
+        the OLT re-pushes the stored pon-onu-mng config to it via OMCI.
+
+        Use this for OMCI-capable ONUs (ZTE etc.) when the customer wants the
+        modem wiped on its side but the service config must survive on the
+        OLT. Only the targeted ONU is affected — nothing else changes.
+        """
+        prefix = 'epon-onu' if is_epon else 'gpon-onu'
+        iface = f'{prefix}_{frame}/{slot}/{port}:{onu_id}'
+        tn = self._connect()
+        if not tn: return False, 'Telnet connection failed'
+        try:
+            self._send_command(tn, 'configure terminal', timeout=10)
+            self._send_command(tn, f'pon-onu-mng {iface}', timeout=10)
+            output, err = self._send_cmd_check(tn, 'restore factory', timeout=25)
+            # Same firmware that asks "Confirm to reboot? [yes/no]:" may also
+            # confirm factory restore — answer it so the command takes effect.
+            if 'confirm' in output.lower() or '[yes/no]' in output.lower():
+                output, err = self._send_cmd_check(tn, 'yes', timeout=25)
+            self._send_command(tn, 'exit', timeout=5)
+            self._send_command(tn, 'exit', timeout=5)
+            tn.close()
+            if err and 'ambiguous' not in err.lower():
+                return False, f'CLI error: {err.strip()[:100]}'
+            return True, (f'ONU {iface} factory reset — ONU-side config wiped, '
+                          f'OLT config kept. OLT will re-provision via OMCI when the ONU re-registers.')
+        except Exception as e:
+            logger.error(f"restore_factory_keep_config_onu failed: {e}")
+            try: tn.close()
+            except: pass
+            return False, str(e)
+
     def restore_wifi_onu(self, frame, slot, port, onu_id, is_epon=False):
         """Reset WiFi settings on an ONU via OMCI — only WiFi reset, other config stays.
         Supports both GPON and EPON ONUs."""

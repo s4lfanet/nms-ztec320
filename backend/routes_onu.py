@@ -770,6 +770,16 @@ def onu_action(onu_id):
             _auto_sync_olt(onu.olt_id, delay=2)
             # Auto-save config to startup-config
             _auto_write_config(onu.olt_id)
+    elif action == 'restore-factory-keep':
+        if not current_user.has_permission('reset_onu'):
+            return jsonify({'success': False, 'message': 'Permission denied: reset_onu'}), 403
+        success, msg = tc.restore_factory_keep_config_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
+        logger.info(f"[onu-action] restore-factory-keep ONU {onu_id} ({device_type}): success={success} msg={msg}")
+        if success:
+            # Nothing was wiped on the OLT side — the stored pon-onu-mng config
+            # will be re-pushed to this ONU via OMCI when it re-registers.
+            # Delay the sync so the ONU has time to reboot + re-register.
+            _auto_sync_olt(onu.olt_id, delay=10)
     elif action == 'restore-wifi':
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403

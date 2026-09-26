@@ -121,10 +121,11 @@ export function ViewOnu() {
         }
         const labels: Record<string, string> = {
           'reset': 'Reboot', 'clear-config': 'Clear Config', 'disable': 'Disable',
-          'enable': 'Enable', 'restore-factory': 'Factory Reset', 'restore-wifi': 'WiFi Reset',
+          'enable': 'Enable', 'restore-factory': 'Factory Reset', 'restore-factory-keep': 'Factory Reset (Keep Config)',
+          'restore-wifi': 'WiFi Reset',
         };
         const label = labels[action] || 'Action';
-        const autoSync = ['clear-config', 'restore-factory', 'restore-wifi'].includes(action);
+        const autoSync = ['clear-config', 'restore-factory', 'restore-factory-keep', 'restore-wifi'].includes(action);
         toast.success(`${label} completed!${autoSync ? ' Auto-syncing OLT...' : ''}`);
         qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
         qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
@@ -150,8 +151,8 @@ export function ViewOnu() {
             qc.invalidateQueries({ queryKey: ['olts'] });
           }, 12000);
         }
-        // For reboot/reset: ONU takes ~15-30s to come back online, re-fetch after delay
-        if (action === 'reset' || action === 'reboot') {
+        // For reboot/reset/factory-reset-keep: ONU takes ~15-60s to come back online, re-fetch after delay
+        if (action === 'reset' || action === 'reboot' || action === 'restore-factory-keep') {
           setTimeout(() => {
             qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
             qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
@@ -491,6 +492,15 @@ export function ViewOnu() {
         {hasPerm('clear_config_onu') && <ActBtn icon={<Eraser size={14} />} label="Clear Config" onClick={() => doAction('clear-config', 'Clear Config')} variant="danger" loading={pendingAction === 'clear-config'} />}
         {hasPerm('configure_onu') && <ActBtn icon={<WifiOff size={14} />} label="Reset WiFi" onClick={() => doAction('restore-wifi', 'Reset WiFi')} variant="warning" loading={pendingAction === 'restore-wifi'} />}
         {hasPerm('reset_onu') && <ActBtn icon={<Power size={14} />} label="Reset Factory" onClick={() => doAction('restore-factory', 'Factory Reset')} variant="danger" loading={pendingAction === 'restore-factory'} />}
+        {hasPerm('reset_onu') && <ActBtn icon={<RefreshCw size={14} />} label="Reset + Auto-Reconfig" onClick={async () => {
+          const ok = await confirm({
+            title: 'Factory Reset + Auto-Reconfig?',
+            message: `ONU "${onu.name}" akan di-factory-reset (OMCI), tapi config di OLT TETAP tersimpan. Saat ONU online kembali, OLT otomatis mengirim ulang config (WAN, PPPoE, WiFi, TR069) ke ONU ini. Hanya ONU ini yang terpengaruh.\n\nLanjutkan?`,
+            confirmLabel: 'Reset + Reconfig',
+            variant: 'warning',
+          });
+          if (ok) actionMut.mutate('restore-factory-keep');
+        }} variant="warning" loading={pendingAction === 'restore-factory-keep'} />}
         {hasPerm('disable_onu') && (onu.status === 'online' ? (
           <ActBtn icon={<Ban size={14} />} label="Disable ONU" onClick={() => doAction('disable', 'Disable')} variant="danger" loading={pendingAction === 'disable'} />
         ) : (
