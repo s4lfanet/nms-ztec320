@@ -1073,6 +1073,23 @@ class SNMPCollector:
                 try: olt_rx_by_key[(int(parts[0]), int(parts[1]))] = decode_rx_power(int(val))
                 except: pass
 
+        # Detect incomplete oper_state walk — the OLT sometimes returns far
+        # fewer oper_state entries than serial/name entries (e.g. 27 out of
+        # 175), likely due to SNMP walk timeout/throttling on that specific
+        # OID table. Without this guard, every ONU missing from the oper_state
+        # walk gets oper_val=0 → classified as 'offline', even though it's
+        # actually online. When the walk is incomplete, mark missing ONUs as
+        # 'unknown' so save_sync_result can preserve their previous status
+        # instead of silently flipping them to offline.
+        _oper_incomplete = (len(sn_by_key) >= 20 and
+                            len(oper_by_key) < len(sn_by_key) * 0.5)
+        if _oper_incomplete:
+            logger.warning(
+                f"  SNMP light: oper_state walk incomplete — got {len(oper_by_key)} "
+                f"entries for {len(sn_by_key)} serials. ONUs missing oper_state "
+                f"will keep their previous status (marked 'unknown')."
+            )
+
         # Build ONU list — cfgTable and regTable share same (ponIndex, onuSlot) key
         all_keys = set(name_by_key.keys()) | set(sn_by_key.keys()) | set(oper_by_key.keys())
         onus = []
@@ -1084,14 +1101,25 @@ class SNMPCollector:
             sn = sn_by_key.get(key, '')
             if not sn: continue  # skip entries without serial
 
-            oper_val = oper_by_key.get(key, 0)
-            dereg_val = dereg_by_key.get(key, 0)
-
             olt_rx = olt_rx_by_key.get(key)
             onu_rx = rx_by_key.get(key)
             tx = tx_by_key.get(key)
 
-            status = classify_onu_status(oper_val, dereg_val, olt_rx, onu_rx)
+            if key in oper_by_key:
+                oper_val = oper_by_key[key]
+                dereg_val = dereg_by_key.get(key, 0)
+                status = classify_onu_status(oper_val, dereg_val, olt_rx, onu_rx)
+            elif _oper_incomplete:
+                # oper_state walk was incomplete and this ONU was missing from
+                # it — don't guess 'offline', let save_sync_result preserve
+                # the previous status.
+                status = 'unknown'
+                oper_val = 0
+                dereg_val = 0
+            else:
+                oper_val = 0
+                dereg_val = dereg_by_key.get(key, 0)
+                status = classify_onu_status(oper_val, dereg_val, olt_rx, onu_rx)
 
             onu = {
                 'frame': frame,

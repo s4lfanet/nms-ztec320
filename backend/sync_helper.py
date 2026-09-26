@@ -324,7 +324,15 @@ def save_sync_result(olt, result, sync, light=False):
             onu.description = _new_desc
         onu.card = onu_data.get('card_type', '') or onu.card or ''
         _prev_status = onu.status
-        onu.status = onu_data.get('status', 'offline')
+        _new_status = onu_data.get('status', 'offline')
+        # 'unknown' means the SNMP oper_state walk was incomplete and we
+        # don't have reliable status data for this ONU. Preserve the previous
+        # status instead of flipping it to 'offline' — the next complete
+        # sync will correct it.
+        if _new_status == 'unknown':
+            onu.status = _prev_status or 'offline'
+        else:
+            onu.status = _new_status
         onu.oper_state = onu_data.get('oper_state', 0)
         onu.reg_status = onu_data.get('reg_status', 0)
 

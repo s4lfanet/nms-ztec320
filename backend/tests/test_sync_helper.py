@@ -251,3 +251,64 @@ class TestFullSyncPartialWalk:
 
         assert stale_count == 20
         assert remaining == 480
+
+
+class TestUnknownStatusPreservesPrevious:
+    """When the SNMP oper_state walk is incomplete, ONUs missing from the
+    walk get status='unknown' from snmp_core. save_sync_result must preserve
+    their previous status instead of flipping them to 'offline'."""
+
+    def test_unknown_preserves_online(self, db_ctx):
+        """ONU was 'online' in DB; sync reports 'unknown' → stays 'online'."""
+        from sync_helper import save_sync_result
+        with app.app_context():
+            olt = OLT(name='Unknown-OLT', ip_address='10.9.9.11', vendor='ZTE', model='C320')
+            db.session.add(olt)
+            db.session.commit()
+            db.session.add(ONU(olt_id=olt.id, frame=1, slot=1, port=1, onu_id=1,
+                              onu_index=110301, serial_number='ZTEGC001', status='online'))
+            sync = OLTSyncStatus(olt_id=olt.id)
+            db.session.add(sync)
+            db.session.commit()
+            olt_id = olt.id
+            result = {
+                'system': {}, 'snmp_ok': True, 'telnet_ok': False,
+                'onus': [{
+                    'onu_index': 110301, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                    'serial_number': 'ZTEGC001', 'name': 'Cust C', 'status': 'unknown',
+                    'oper_state': 0, 'reg_status': 0,
+                }],
+            }
+            save_sync_result(olt, result, sync, light=True)
+            db.session.commit()
+            onu = ONU.query.filter_by(olt_id=olt_id).first()
+            reloaded = db.session.get(OLT, olt_id)
+        assert onu.status == 'online'  # preserved, not flipped to offline
+        assert reloaded.online_onu == 1  # still counted as online
+
+    def test_known_offline_still_updates(self, db_ctx):
+        """When oper_state IS present and shows offline, status still
+        updates normally — the 'unknown' guard only applies to missing data."""
+        from sync_helper import save_sync_result
+        with app.app_context():
+            olt = OLT(name='Known-Offline-OLT', ip_address='10.9.9.12', vendor='ZTE', model='C320')
+            db.session.add(olt)
+            db.session.commit()
+            db.session.add(ONU(olt_id=olt.id, frame=1, slot=1, port=1, onu_id=1,
+                              onu_index=110401, serial_number='ZTEGD001', status='online'))
+            sync = OLTSyncStatus(olt_id=olt.id)
+            db.session.add(sync)
+            db.session.commit()
+            olt_id = olt.id
+            result = {
+                'system': {}, 'snmp_ok': True, 'telnet_ok': False,
+                'onus': [{
+                    'onu_index': 110401, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                    'serial_number': 'ZTEGD001', 'name': 'Cust D', 'status': 'los',
+                    'oper_state': 2, 'reg_status': 0,
+                }],
+            }
+            save_sync_result(olt, result, sync, light=True)
+            db.session.commit()
+            onu = ONU.query.filter_by(olt_id=olt_id).first()
+        assert onu.status == 'los'  # real status update, not preserved
