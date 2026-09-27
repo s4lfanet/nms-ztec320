@@ -32,6 +32,30 @@ export interface MapMarker {
   rx_power?: number | null;
   tx_power?: number | null;
   onu_rx_power?: number | null;
+  // Infrastructure fields (OTB/ODC/ODP/JC)
+  subtype?: string;
+  model?: string;
+  location?: string;
+  description?: string;
+  splitter_model?: string;
+  total_cores?: number;
+  used_cores?: number;
+  total_ports?: number;
+  used_ports?: number;
+  feed_source?: string;
+  parent_name?: string;
+  odc_core_number?: number | null;
+  splice_count?: number;
+  parent_type?: string;
+  // ONU customer fields
+  distance?: number | null;
+  pppoe?: string;
+  actual_type?: string;
+  technician?: string;
+  odp_name?: string;
+  odp_port?: number;
+  customer_name?: string;
+  customer_phone?: string;
   [key: string]: unknown;
 }
 
@@ -134,10 +158,125 @@ function createDivIcon(color: string, type: string): HTMLElement {
   if (type === 'onu') {
     div.style.width = '10px';
     div.style.height = '10px';
-    div.style.borderRadius = '50%';
+    div.style.borderRadius = '50';
   }
 
   return div;
+}
+
+// ─── Rich popup builder — type-specific sections for each FTTH element ───
+function esc(s: unknown): string {
+  if (s == null || s === '') return '';
+  return String(s).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
+}
+
+function popupRow(label: string, value: unknown, opts?: { color?: string; bold?: boolean }): string {
+  const v = value == null || value === '' ? '' : String(value);
+  if (!v) return '';
+  const color = opts?.color ? `color:${opts.color};` : '';
+  const bold = opts?.bold ? 'font-weight:600;' : '';
+  return `<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0;${color}${bold}"><span style="color:var(--text-3);flex-shrink:0">${label}</span><span style="text-align:right">${esc(v)}</span></div>`;
+}
+
+function popupSection(title: string, rows: string[]): string {
+  const visible = rows.filter(r => r);
+  if (visible.length === 0) return '';
+  return `<div style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(128,128,128,0.2)"><div style="font-size:9px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.5px;margin-bottom:2px">${title}</div>${visible.join('')}</div>`;
+}
+
+function buildPopupHtml(m: MapMarker): string {
+  const typeLabel = MARKER_LABELS[m.type] || m.type;
+  const statusColor = m.status ? (ONU_STATUS_COLORS[m.status.toLowerCase()] || '#64748b') : '';
+  let html = `<div style="font-size:12px;min-width:200px;max-width:280px">`;
+  // Header
+  html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">`;
+  html += `<div style="width:10px;height:10px;border-radius:50%;background:${getMarkerColor(m)};flex-shrink:0"></div>`;
+  html += `<strong style="font-size:13px">${esc(m.name)}</strong>`;
+  html += `</div>`;
+  html += `<div style="font-size:10px;color:var(--text-3);margin-bottom:2px">${typeLabel}`;
+  if (m.subtype) html += ` · ${esc(m.subtype).toUpperCase()}`;
+  if (m.status) html += ` · <span style="color:${statusColor};font-weight:600">● ${esc(m.status)}</span>`;
+  html += `</div>`;
+
+  if (m.type === 'onu') {
+    // ONU / Customer popup
+    const optical: string[] = [
+      popupRow('OLT RX', m.rx_power != null ? `${m.rx_power} dBm` : '', { color: 'var(--text-2)' }),
+      popupRow('ONU RX', m.onu_rx_power != null ? `${m.onu_rx_power} dBm` : '', { color: 'var(--text-2)' }),
+      popupRow('ONU TX', m.tx_power != null ? `${m.tx_power} dBm` : '', { color: 'var(--text-2)' }),
+      popupRow('Distance', m.distance != null ? `${m.distance} m` : '', { color: 'var(--text-2)' }),
+    ];
+    const identity: string[] = [
+      popupRow('Serial', m.serial),
+      popupRow('OLT', m.olt_name),
+      popupRow('Port', m.onu_id_str),
+      popupRow('Model', m.actual_type),
+    ];
+    const customer: string[] = [
+      popupRow('Customer', m.customer_name, { bold: true }),
+      popupRow('Phone', m.customer_phone),
+      popupRow('ODP', m.odp_name),
+      popupRow('ODP Port', m.odp_port ? `Port ${m.odp_port}` : ''),
+      popupRow('PPPoE', m.pppoe),
+      popupRow('Technician', m.technician),
+      popupRow('Description', m.description),
+    ];
+    html += popupSection('Optical', optical);
+    html += popupSection('Identity', identity);
+    html += popupSection('Customer', customer);
+  } else if (m.type === 'otb') {
+    const util = m.total_cores && m.total_cores > 0 ? `${m.used_cores ?? 0}/${m.total_cores} cores` : '';
+    const infra: string[] = [
+      popupRow('OLT', m.olt_name),
+      popupRow('PON Port', m.pon_port),
+      popupRow('Model', m.model),
+      popupRow('Location', m.location),
+      popupRow('Cores', util, { color: 'var(--text-2)', bold: true }),
+    ];
+    html += popupSection('Details', infra);
+    if (m.description) html += popupSection('Notes', [popupRow('', m.description)]);
+  } else if (m.type === 'odc') {
+    const util = m.total_cores && m.total_cores > 0 ? `${m.used_cores ?? 0}/${m.total_cores} cores` : '';
+    const feedLabel = m.feed_source === 'jc' ? 'From JC' : 'From OTB';
+    const coreLabel = m.odc_core_number ? `Core ${m.odc_core_number}` : '';
+    const infra: string[] = [
+      popupRow(feedLabel, m.parent_name),
+      popupRow('Core', coreLabel),
+      popupRow('Splitter', m.splitter_model),
+      popupRow('Model', m.model),
+      popupRow('Location', m.location),
+      popupRow('Cores', util, { color: 'var(--text-2)', bold: true }),
+    ];
+    html += popupSection('Details', infra);
+    if (m.description) html += popupSection('Notes', [popupRow('', m.description)]);
+  } else if (m.type === 'odp') {
+    const util = m.total_ports && m.total_ports > 0 ? `${m.used_ports ?? 0}/${m.total_ports} ports` : '';
+    const feedLabel = m.feed_source === 'jc' ? 'From JC' : m.feed_source === 'odp' ? 'From ODP' : 'From ODC';
+    const infra: string[] = [
+      popupRow(feedLabel, m.parent_name),
+      popupRow('Splitter', m.splitter_model),
+      popupRow('Model', m.model),
+      popupRow('Location', m.location),
+      popupRow('Ports', util, { color: 'var(--text-2)', bold: true }),
+    ];
+    html += popupSection('Details', infra);
+    if (m.description) html += popupSection('Notes', [popupRow('', m.description)]);
+  } else if (m.type === 'jc') {
+    const infra: string[] = [
+      popupRow('Type', m.subtype ? esc(m.subtype).toUpperCase() : ''),
+      popupRow('From', m.parent_name ? `${esc(m.parent_type || '').toUpperCase()}: ${m.parent_name}` : ''),
+      popupRow('Splices', m.splice_count != null ? m.splice_count : ''),
+      popupRow('Cores', m.total_cores),
+      popupRow('Location', m.location),
+    ];
+    html += popupSection('Details', infra);
+    if (m.description) html += popupSection('Notes', [popupRow('', m.description)]);
+  }
+
+  // Coordinates footer
+  html += `<div style="margin-top:4px;padding-top:3px;border-top:1px solid rgba(128,128,128,0.15);font-size:9px;color:var(--text-3)">${m.lat.toFixed(5)}, ${m.lng.toFixed(5)}</div>`;
+  html += `</div>`;
+  return html;
 }
 
 export function LeafletMap({
@@ -303,16 +442,8 @@ export function LeafletMap({
 
       const marker = L.marker([m.lat, m.lng], { icon });
 
-      // Build detailed popup HTML
-      let popupHtml = `<div style="font-size:12px;min-width:140px"><strong>${MARKER_LABELS[m.type] || m.type}</strong><br/>${m.name}`;
-      if (m.status) popupHtml += `<br/><span style="color:${ONU_STATUS_COLORS[m.status.toLowerCase()] || '#64748b'}">● ${m.status}</span>`;
-      if (m.serial) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">SN: ${m.serial}</span>`;
-      if (m.olt_name) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">OLT: ${m.olt_name}</span>`;
-      if (m.onu_id_str) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">Port: ${m.onu_id_str}</span>`;
-      if (m.rx_power != null) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">RX: ${m.rx_power} dBm</span>`;
-      if (m.tx_power != null) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">TX: ${m.tx_power} dBm</span>`;
-      if (m.onu_rx_power != null) popupHtml += `<br/><span style="font-size:10px;color:var(--text-3)">ONU RX: ${m.onu_rx_power} dBm</span>`;
-      popupHtml += '</div>';
+      // Build detailed popup HTML — type-specific sections
+      const popupHtml = buildPopupHtml(m);
       marker.bindPopup(popupHtml);
 
       // Click: highlight path + notify parent
@@ -481,19 +612,43 @@ export function LeafletMap({
 
       {/* Marker list */}
       {markers.length > 0 && (
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-          {markers.map((m, i) => (
-            <div key={i} className="p-2 rounded bg-glass text-xs flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: getMarkerColor(m) }} />
-              <div className="min-w-0">
-                <div className="font-medium truncate">{m.name}</div>
-                <div className="text-tx3">
-                  {MARKER_LABELS[m.type] || m.type}
-                  {m.status ? ` · ${m.status}` : ''}
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+          {markers.map((m, i) => {
+            const sub: string[] = [];
+            if (m.type === 'onu') {
+              if (m.status) sub.push(m.status);
+              if (m.olt_name) sub.push(m.olt_name);
+              if (m.odp_name) sub.push(`ODP: ${m.odp_name}${m.odp_port ? `/${m.odp_port}` : ''}`);
+            } else if (m.type === 'otb') {
+              if (m.olt_name) sub.push(m.olt_name);
+              if (m.pon_port) sub.push(m.pon_port);
+              if (m.total_cores) sub.push(`${m.used_cores ?? 0}/${m.total_cores} cores`);
+            } else if (m.type === 'odc') {
+              if (m.parent_name) sub.push(`← ${m.parent_name}`);
+              if (m.splitter_model) sub.push(m.splitter_model);
+              if (m.total_cores) sub.push(`${m.used_cores ?? 0}/${m.total_cores} cores`);
+            } else if (m.type === 'odp') {
+              if (m.parent_name) sub.push(`← ${m.parent_name}`);
+              if (m.splitter_model) sub.push(m.splitter_model);
+              if (m.total_ports) sub.push(`${m.used_ports ?? 0}/${m.total_ports} ports`);
+            } else if (m.type === 'jc') {
+              if (m.subtype) sub.push(m.subtype);
+              if (m.splice_count != null) sub.push(`${m.splice_count} splices`);
+              if (m.parent_name) sub.push(`← ${m.parent_name}`);
+            }
+            return (
+              <div key={i} className="p-2 rounded bg-glass text-xs flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: getMarkerColor(m) }} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium truncate">{m.name}</div>
+                  <div className="text-tx3 truncate">
+                    {MARKER_LABELS[m.type] || m.type}
+                    {sub.length > 0 && ` · ${sub.join(' · ')}`}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -1283,34 +1283,112 @@ def ftth_map():
     olts = OLT.query.all()
     olt_name_map = {o.id: o.name for o in olts}
 
+    # Pre-compute used-core counts for OTB/ODC and used-port counts for ODP
+    # so each marker can show utilization without an N+1 query per node.
+    odc_used_cores = {}
+    for odc in FTTHODC.query.all():
+        if odc.otb_id:
+            odc_used_cores.setdefault(odc.otb_id, set()).add(odc.otb_core_number)
+    odp_used_ports = {}
+    for odp in FTTHODP.query.all():
+        used = sum(1 for p in odp.ports if p.status == 'used')
+        odp_used_ports[odp.id] = used
+    # ODP port → ONU lookup for ONU markers (so we can show which ODP port a
+    # customer is plugged into without a per-ONU query).
+    onu_odp_info = {}  # onu_id -> (odp_name, port_number, customer_name, customer_phone)
+    for odp in FTTHODP.query.all():
+        for port in odp.ports:
+            if port.onu_id:
+                onu_odp_info[port.onu_id] = (odp.name, port.port_number, port.customer_name, port.customer_phone)
+    # Technician name lookup
+    from models import User
+    tech_map = {u.id: u.full_name for u in User.query.all()}
+
     for o in FTTHOTB.query.all():
         if o.latitude and o.longitude:
-            markers.append({'type': 'otb', 'id': o.id, 'name': o.name, 'lat': o.latitude, 'lng': o.longitude, 'subtype': o.type})
+            used = len(odc_used_cores.get(o.id, set()))
+            markers.append({'type': 'otb', 'id': o.id, 'name': o.name, 'lat': o.latitude, 'lng': o.longitude,
+                             'subtype': o.type, 'model': o.model or '', 'location': o.location or '',
+                             'olt_name': olt_name_map.get(o.olt_id, '') if o.olt_id else '',
+                             'pon_port': o.pon_port or '',
+                             'total_cores': o.total_cores, 'used_cores': used,
+                             'description': o.description or ''})
     odc_list = FTTHODC.query.all()
     odc_ids = [o.id for o in odc_list]
     for o in odc_list:
         if o.latitude and o.longitude:
-            markers.append({'type': 'odc', 'id': o.id, 'name': o.name, 'lat': o.latitude, 'lng': o.longitude})
+            parent_name = ''
+            if o.feed_source == 'jc' and o.jc_id:
+                jc = db.session.get(FTTHJC, o.jc_id)
+                parent_name = f'JC {jc.name}' if jc else ''
+            elif o.otb_id:
+                otb = db.session.get(FTTHOTB, o.otb_id)
+                parent_name = otb.name if otb else ''
+            used = sum(1 for odp in o.odps if odp.latitude)  # rough: count child ODPs
+            markers.append({'type': 'odc', 'id': o.id, 'name': o.name, 'lat': o.latitude, 'lng': o.longitude,
+                            'model': o.model or '', 'location': o.location or '',
+                            'splitter_model': o.splitter_model or '',
+                            'total_cores': o.total_cores, 'used_cores': used,
+                            'feed_source': o.feed_source, 'parent_name': parent_name,
+                            'odc_core_number': o.otb_core_number if o.feed_source == 'otb' else (o.jc_core_number if o.feed_source == 'jc' else None),
+                            'description': o.description or ''})
     odp_list = FTTHODP.query.all()
     odp_ids = [o.id for o in odp_list]
     for o in odp_list:
         if o.latitude and o.longitude:
-            markers.append({'type': 'odp', 'id': o.id, 'name': o.name, 'lat': o.latitude, 'lng': o.longitude})
+            parent_name = ''
+            if o.feed_source == 'odc' and o.odc_id:
+                odc = db.session.get(FTTHODC, o.odc_id)
+                parent_name = odc.name if odc else ''
+            elif o.feed_source == 'jc' and o.jc_id:
+                jc = db.session.get(FTTHJC, o.jc_id)
+                parent_name = f'JC {jc.name}' if jc else ''
+            elif o.feed_source == 'odp' and o.parent_odp_port_id:
+                port = db.session.get(FTTHODPPort, o.parent_odp_port_id)
+                if port:
+                    parent_odp = db.session.get(FTTHODP, port.odp_id)
+                    parent_name = f'{parent_odp.name} (Port {port.port_number})' if parent_odp else ''
+            used = odp_used_ports.get(o.id, 0)
+            markers.append({'type': 'odp', 'id': o.id, 'name': o.name, 'lat': o.latitude, 'lng': o.longitude,
+                            'model': o.model or '', 'location': o.location or '',
+                            'splitter_model': o.splitter_model or '',
+                            'total_ports': o.total_ports, 'used_ports': used,
+                            'feed_source': o.feed_source, 'parent_name': parent_name,
+                            'description': o.description or ''})
     jc_list = FTTHJC.query.all()
     for j in jc_list:
         if j.latitude and j.longitude:
-            markers.append({'type': 'jc', 'id': j.id, 'name': j.name, 'lat': j.latitude, 'lng': j.longitude, 'subtype': j.closure_type})
+            parent_name = ''
+            if j.parent_type and j.parent_id:
+                pmodel = {'otb': FTTHOTB, 'odc': FTTHODC, 'odp': FTTHODP, 'jc': FTTHJC}.get(j.parent_type)
+                if pmodel:
+                    pnode = db.session.get(pmodel, j.parent_id)
+                    parent_name = pnode.name if pnode else ''
+            markers.append({'type': 'jc', 'id': j.id, 'name': j.name, 'lat': j.latitude, 'lng': j.longitude,
+                            'subtype': j.closure_type, 'location': j.location or '',
+                            'total_cores': j.total_cores,
+                            'splice_count': len(j.splices),
+                            'parent_type': j.parent_type or '', 'parent_name': parent_name,
+                            'description': j.description or ''})
     # ONU markers with status and details
     onu_query = ONU.query
     for o in onu_query.all():
         if o.latitude and o.longitude:
+            odp_name, odp_port, cust_name, cust_phone = onu_odp_info.get(o.id, ('', 0, '', ''))
             markers.append({'type': 'onu', 'id': o.id, 'name': o.name or o.serial_number or f'ONU {o.onu_id_str}',
                             'lat': o.latitude, 'lng': o.longitude, 'status': o.status,
                             'serial': o.serial_number, 'olt_id': o.olt_id,
                             'olt_name': olt_name_map.get(o.olt_id, ''),
                             'onu_id_str': o.onu_id_str,
                             'rx_power': o.rx_power, 'tx_power': o.tx_power,
-                            'onu_rx_power': o.onu_rx_power})
+                            'onu_rx_power': o.onu_rx_power,
+                            'description': o.description or '',
+                            'distance': o.distance,
+                            'pppoe': o.pppoe or '',
+                            'actual_type': o.actual_type or '',
+                            'technician': tech_map.get(o.technician_id, '') if o.technician_id else '',
+                            'odp_name': odp_name, 'odp_port': odp_port,
+                            'customer_name': cust_name, 'customer_phone': cust_phone})
     # Build connections (lines) with from_id/to_id for path highlighting
     def _node_latlng(ntype, nid):
         model = {'otb': FTTHOTB, 'odc': FTTHODC, 'odp': FTTHODP, 'jc': FTTHJC}.get(ntype)
