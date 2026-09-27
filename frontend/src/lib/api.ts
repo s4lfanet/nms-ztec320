@@ -218,6 +218,14 @@ export const api = {
     return request<ActionLogsResponse>(`/api/action-logs?${qs}`);
   },
 
+  // Notifications (bell alerts)
+  notifications: (params?: { limit?: number; type?: 'alarm' | 'unregister' | 'general' }) => {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.type) qs.set('type', params.type);
+    return request<NotificationsResponse>(`/api/notifications?${qs}`);
+  },
+
   // Subscription status
   subscriptionStatus: () => request<SubscriptionStatus>('/api/subscription/status'),
 
@@ -343,6 +351,29 @@ export interface ActionLogsResponse {
   logs: ActionLogEntry[];
   total: number; page: number; per_page: number; pages: number;
   categories: string[];
+}
+
+export interface NotificationEntry {
+  id: number;
+  severity: string;
+  category: string;
+  type: 'alarm' | 'unregister' | 'general';
+  title: string;
+  message: string;
+  is_read: boolean;
+  acknowledged: boolean;
+  resolved: boolean;
+  olt_id?: number;
+  onu_id?: number;
+  created_at: string | null;
+}
+
+export interface NotificationsResponse {
+  notifications: NotificationEntry[];
+  unread_count: number;
+  alarm_unread: number;
+  unregister_unread: number;
+  general_unread: number;
 }
 
 // Types

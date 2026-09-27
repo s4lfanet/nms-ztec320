@@ -270,6 +270,37 @@ h1, h2, h3, h4, h5, h6,
   .auth-blob, .auth-blob-slow { animation: none; }
 }
 
+/* ─── Auth page: scrolling marquee of capabilities (bottom of hero panel) ─── */
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.auth-marquee {
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+}
+.auth-marquee-track {
+  display: flex;
+  gap: 2.5rem;
+  width: max-content;
+  animation: marquee 28s linear infinite;
+}
+.auth-marquee:hover .auth-marquee-track { animation-play-state: paused; }
+.auth-marquee-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-marquee-track { animation: none; }
+}
+
 /* ─── Auth page: signal broadcast rings (decorative, echoes network domain) ─── */
 @keyframes signalPing {
   0% { transform: scale(0.6); opacity: 0.55; }

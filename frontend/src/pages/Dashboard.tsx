@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, type DashboardData, type OltInfo } from '../lib/api';
+import { api, type DashboardData, type OltInfo, type NotificationsResponse } from '../lib/api';
 import { formatDate, cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
   Server, Wifi, WifiOff, AlertTriangle, Thermometer,
-  RefreshCw, Radio, Clock, Fan, Zap, Activity, ExternalLink
+  RefreshCw, Radio, Clock, Fan, Zap, Activity, ExternalLink,
+  TrendingUp, TrendingDown, Shield, Bell, ArrowRight,
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useDashboardWs } from '../hooks/useDashboardWs';
@@ -58,6 +59,23 @@ export function Dashboard() {
     queryFn: () => api.dashboard({ nocache: manualRefreshRef.current }),
     refetchInterval: REFRESH_INTERVAL * 1000,
   });
+
+  // Fetch worst-status ONUs for the "Top Problems" section
+  const { data: problemOnus } = useQuery({
+    queryKey: ['dashboard-problem-onus'],
+    queryFn: () => api.allOnus({ status: 'los', page_size: 5, sort_by: 'rx_onu', sort_dir: 'asc' })
+      .then(r => r.onus),
+    refetchInterval: REFRESH_INTERVAL * 1000,
+    enabled: !!data,
+  });
+
+  // Fetch recent alarm notifications
+  const { data: notifData } = useQuery({
+    queryKey: ['dashboard-alerts'],
+    queryFn: () => api.notifications({ limit: 5, type: 'alarm' }),
+    refetchInterval: REFRESH_INTERVAL * 1000,
+  });
+
   const showRefreshSpinner = isFetching || refreshing;
   const olts = (data as DashboardData)?.olts ?? [];
 
@@ -214,6 +232,26 @@ export function Dashboard() {
   const onlineCount = olts.filter(o => o.is_online).length;
   const totalProblem = (stats.offline || 0) + (stats.dyinggasp || 0) + (stats.los || 0);
 
+  // Network Health Score — weighted composite of infrastructure health.
+  // 40% OLT availability + 40% ONU online rate + 20% ONU signal quality
+  // (penalized by LOS/DyingGasp). Capped 0–100.
+  const healthScore = useMemo(() => {
+    if (olts.length === 0) return 0;
+    const oltPct = (onlineCount / olts.length) * 40;
+    const onuPct = stats.total_onu > 0 ? (stats.online / stats.total_onu) * 40 : 0;
+    const problemPenalty = stats.total_onu > 0
+      ? Math.min(20, ((stats.los + stats.dyinggasp) / stats.total_onu) * 40)
+      : 0;
+    return Math.max(0, Math.min(100, Math.round(oltPct + onuPct + (20 - problemPenalty))));
+  }, [olts, stats, onlineCount]);
+
+  const healthColor = healthScore >= 80 ? 'text-success' : healthScore >= 50 ? 'text-warning' : 'text-danger';
+  const healthLabel = healthScore >= 80 ? 'Healthy' : healthScore >= 50 ? 'Warning' : 'Critical';
+  const healthBg = healthScore >= 80 ? 'bg-success/15' : healthScore >= 50 ? 'bg-warning/15' : 'bg-danger/15';
+
+  const recentAlerts = (notifData as NotificationsResponse | undefined)?.notifications || [];
+  const problemList = (problemOnus || []).slice(0, 5);
+
   return (
     <PageContainer>
       <PageHeader
@@ -290,6 +328,116 @@ export function Dashboard() {
           <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-offline" /> Offline ({stats.offline})</span>
         </div>
       </Card>
+
+      {/* ── Network Health + Top Problems + Recent Alerts ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* Network Health Score */}
+        <Card title="Network Health" bodyClassName="p-4">
+          <div className="flex items-center gap-4">
+            <div className="relative flex-shrink-0">
+              <svg width="72" height="72" viewBox="0 0 72 72" className="transform -rotate-90">
+                <circle cx="36" cy="36" r="30" fill="none" stroke="var(--border-color)" strokeWidth="6" />
+                <circle
+                  cx="36" cy="36" r="30" fill="none"
+                  stroke={healthScore >= 80 ? 'var(--color-success)' : healthScore >= 50 ? 'var(--color-warning)' : 'var(--color-danger)'}
+                  strokeWidth="6" strokeDasharray={`${(healthScore / 100) * 188.5} 188.5`}
+                  strokeLinecap="round" className="transition-all duration-700"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className={cn('text-lg font-extrabold font-display', healthColor)}>{healthScore}</span>
+              </div>
+            </div>
+            <div className="min-w-0">
+              <div className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide', healthBg, healthColor)}>
+                <Shield size={10} />
+                {healthLabel}
+              </div>
+              <div className="mt-1.5 space-y-0.5">
+                <div className="text-[10px] text-tx3 flex justify-between gap-3">
+                  <span>OLT Up</span>
+                  <span className="font-medium text-tx2">{onlineCount}/{olts.length}</span>
+                </div>
+                <div className="text-[10px] text-tx3 flex justify-between gap-3">
+                  <span>ONU Online</span>
+                  <span className="font-medium text-tx2">{stats.online_pct}%</span>
+                </div>
+                <div className="text-[10px] text-tx3 flex justify-between gap-3">
+                  <span>Signal OK</span>
+                  <span className="font-medium text-tx2">{stats.total_onu > 0 ? Math.round((stats.online - stats.los - stats.dyinggasp) / stats.total_onu * 100) : 0}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Top Problem ONUs */}
+        <Card title="Problem ONUs" bodyClassName="p-3">
+          {problemList.length === 0 ? (
+            <div className="flex items-center gap-2 py-4 text-tx3 text-xs">
+              <TrendingUp size={14} className="text-success" />
+              <span>All ONUs healthy — no LOS/DyingGasp detected</span>
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {problemList.map(o => (
+                <button key={o.id} onClick={() => navigate(`/dashboard/onus/${o.id}`)}
+                  className="w-full flex items-center gap-2 p-1.5 rounded-lg hover:bg-glass transition-colors text-left group">
+                  <div className={cn('w-2 h-2 rounded-full flex-shrink-0',
+                    o.status === 'los' ? 'bg-danger' : o.status === 'dyinggasp' ? 'bg-warning' : 'bg-offline')} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate group-hover:text-accent transition-colors">{o.name || o.serial_number}</div>
+                    <div className="text-[10px] text-tx3 flex items-center gap-2">
+                      <span>{o.olt_name}</span>
+                      {o.rx_power != null && <span>RX {o.rx_power}dBm</span>}
+                      {o.onu_rx_power != null && <span>ONU {o.onu_rx_power}dBm</span>}
+                    </div>
+                  </div>
+                  <span className={cn('text-[9px] px-1.5 py-0.5 rounded font-bold uppercase',
+                    o.status === 'los' ? 'bg-danger/15 text-danger' : o.status === 'dyinggasp' ? 'bg-warning/15 text-warning' : 'bg-glass text-tx3')}>
+                    {o.status}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {totalProblem > 5 && (
+            <button onClick={() => navigate('/dashboard/onus')} className="mt-2 w-full text-center text-[10px] text-accent hover:underline flex items-center justify-center gap-1">
+              View all {totalProblem} problem ONUs <ArrowRight size={10} />
+            </button>
+          )}
+        </Card>
+
+        {/* Recent Alerts */}
+        <Card title="Recent Alerts" bodyClassName="p-3">
+          {recentAlerts.length === 0 ? (
+            <div className="flex items-center gap-2 py-4 text-tx3 text-xs">
+              <Bell size={14} className="text-tx3" />
+              <span>No active alarms</span>
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {recentAlerts.map(n => (
+                <div key={n.id} className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-glass/50 transition-colors">
+                  <div className={cn('w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0',
+                    n.severity === 'critical' ? 'bg-danger' : n.severity === 'warning' ? 'bg-warning' : 'bg-info')} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate">{n.title}</div>
+                    <div className="text-[10px] text-tx3 truncate">{n.message}</div>
+                    <div className="text-[9px] text-tx3 mt-0.5">{formatDate(n.created_at)}</div>
+                  </div>
+                  {n.is_read && <span className="text-[8px] px-1 py-0.5 rounded bg-glass text-tx3 flex-shrink-0">read</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          {(notifData?.unread_count || 0) > 0 && (
+            <div className="mt-2 text-center">
+              <span className="text-[10px] text-tx3">{notifData?.unread_count} unread alert{notifData!.unread_count !== 1 ? 's' : ''}</span>
+            </div>
+          )}
+        </Card>
+      </div>
 
       {/* Sync Progress Bar */}
       {syncingOlt !== null && (

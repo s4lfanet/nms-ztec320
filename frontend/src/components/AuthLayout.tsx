@@ -3,6 +3,8 @@ import { Wifi } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faBolt, faTowerBroadcast, faServer, faShieldHalved,
+  faChartLine, faMapLocationDot, faWifi, faCircleNodes,
+  faLayerGroup, faBell, faRobot, faRoute,
 } from '@fortawesome/free-solid-svg-icons';
 import { cn } from '../lib/utils';
 
@@ -18,6 +20,21 @@ const features = [
   { icon: faTowerBroadcast, title: 'ZTE OLT Support', desc: 'ZTE C320, C300, C600, C650 — SNMP + SSH/Telnet' },
   { icon: faServer, title: 'OLT Provisioning', desc: 'Register, configure, manage ONUs via CLI/SNMP' },
   { icon: faShieldHalved, title: 'Secure & Isolated', desc: 'Multi-tenant dengan isolasi data per subdomain' },
+];
+
+// Marquee items — repeated twice for a seamless loop. Keep the strings
+// short so the scroll reads as a capabilities ticker, not a paragraph.
+const marqueeItems = [
+  { icon: faWifi, label: 'ONU Monitoring' },
+  { icon: faBolt, label: 'Auto Provisioning' },
+  { icon: faMapLocationDot, label: 'FTTH Map' },
+  { icon: faChartLine, label: 'Traffic Graphs' },
+  { icon: faCircleNodes, label: 'PON Topology' },
+  { icon: faLayerGroup, label: 'ODP / ODC / OTB' },
+  { icon: faBell, label: 'Smart Alerts' },
+  { icon: faRobot, label: 'WhatsApp Bot' },
+  { icon: faRoute, label: 'Fiber Path Trace' },
+  { icon: faShieldHalved, label: 'Role Permissions' },
 ];
 
 function delayStyle(ms: number): CSSProperties {
@@ -88,16 +105,29 @@ export function AuthLayout({ children, brandName, logoUrl }: AuthLayoutProps) {
           </div>
         </div>
 
-        {/* Bottom: Stats badge */}
-        <div className="relative z-10 flex items-center gap-6 stagger-in" style={delayStyle(620)}>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-            <span className="text-xs text-tx3">System Operational</span>
+        {/* Bottom: Capabilities marquee + status badge */}
+        <div className="relative z-10 space-y-4 stagger-in" style={delayStyle(620)}>
+          {/* Scrolling capabilities ticker */}
+          <div className="auth-marquee">
+            <div className="auth-marquee-track">
+              {[...marqueeItems, ...marqueeItems].map((item, i) => (
+                <span key={i} className="auth-marquee-item">
+                  <FontAwesomeIcon icon={item.icon} className="text-accent" style={{ fontSize: 11 }} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="h-4 w-px bg-brd" />
-          <div className="flex items-center gap-2 text-xs text-tx3">
-            <Wifi size={14} className="text-accent" />
-            <span>FTTH Ready</span>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+              <span className="text-xs text-tx3">System Operational</span>
+            </div>
+            <div className="h-4 w-px bg-brd" />
+            <div className="flex items-center gap-2 text-xs text-tx3">
+              <Wifi size={14} className="text-accent" />
+              <span>FTTH Ready</span>
+            </div>
           </div>
         </div>
       </div>
