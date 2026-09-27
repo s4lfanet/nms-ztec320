@@ -226,17 +226,13 @@ export function Dashboard() {
     return a.name.localeCompare(b.name);
   }), [filteredOlts, sortKey]);
 
-  if (isLoading) return <DashboardSkeleton />;
-
-  const { stats } = data as DashboardData;
-  const onlineCount = olts.filter(o => o.is_online).length;
-  const totalProblem = (stats.offline || 0) + (stats.dyinggasp || 0) + (stats.los || 0);
-
   // Network Health Score — weighted composite of infrastructure health.
   // 40% OLT availability + 40% ONU online rate + 20% ONU signal quality
   // (penalized by LOS/DyingGasp). Capped 0–100.
+  const stats = (data as DashboardData | undefined)?.stats;
+  const onlineCount = useMemo(() => olts.filter(o => o.is_online).length, [olts]);
   const healthScore = useMemo(() => {
-    if (olts.length === 0) return 0;
+    if (olts.length === 0 || !stats) return 0;
     const oltPct = (onlineCount / olts.length) * 40;
     const onuPct = stats.total_onu > 0 ? (stats.online / stats.total_onu) * 40 : 0;
     const problemPenalty = stats.total_onu > 0
@@ -249,8 +245,13 @@ export function Dashboard() {
   const healthLabel = healthScore >= 80 ? 'Healthy' : healthScore >= 50 ? 'Warning' : 'Critical';
   const healthBg = healthScore >= 80 ? 'bg-success/15' : healthScore >= 50 ? 'bg-warning/15' : 'bg-danger/15';
 
-  const recentAlerts = (notifData as NotificationsResponse | undefined)?.notifications || [];
-  const problemList = (problemOnus || []).slice(0, 5);
+  const recentAlerts = useMemo(() => (notifData as NotificationsResponse | undefined)?.notifications || [], [notifData]);
+  const problemList = useMemo(() => (problemOnus || []).slice(0, 5), [problemOnus]);
+
+  if (isLoading) return <DashboardSkeleton />;
+  if (!stats) return null;
+
+  const totalProblem = (stats.offline || 0) + (stats.dyinggasp || 0) + (stats.los || 0);
 
   return (
     <PageContainer>
