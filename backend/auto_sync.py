@@ -247,3 +247,15 @@ else:
     print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] No OLTs to sync')
 
 print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Auto-sync complete')
+
+# A native segfault ("Segmentation fault", no Python traceback) has been
+# observed at interpreter shutdown after every cron run — faulthandler
+# catches nothing because it's a C-level crash in a native extension
+# (pysnmp/paramiko) being torn down, not a Python exception. It happens
+# AFTER "Auto-sync complete" is printed, so the sync itself always
+# finishes and the data is committed — but the non-zero exit code is
+# noisy and the crash dump is useless. Skip the normal Python shutdown
+# sequence (which is what triggers the native destructor) by exiting
+# the process directly once all work is done.
+sys.stdout.flush()
+os._exit(0)
