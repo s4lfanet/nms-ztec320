@@ -49,8 +49,12 @@ const routePermissions: Record<string, string> = {
   '/dashboard/templates/tr069-profile': 'manage_tr069',
   '/dashboard/logs': 'manage_users',
   '/dashboard/settings/alerts': 'customization',
-  '/dashboard/settings/cloudflare': 'customization',
-  '/dashboard/settings/update': 'manage_users',
+  // Cloudflare Tunnel and System Update backend routes are gated by
+  // super_admin_required (not a regular permission), so the frontend guard
+  // must match — a non-super-admin with manage_users/customization should
+  // not see these pages even though the sidebar used to allow it.
+  '/dashboard/settings/cloudflare': 'super_admin',
+  '/dashboard/settings/update': 'super_admin',
   '/dashboard/settings/auto-provision': 'settings_ip_olts',
 };
 
@@ -103,9 +107,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     }
   }
   if (requiredPerm) {
-    const userPerms = new Set(user.permissions || []);
-    if (!user.is_super_admin && !userPerms.has('all_olt') && !userPerms.has(requiredPerm)) {
-      return <Navigate to="/dashboard" replace />;
+    // 'super_admin' is a synthetic permission that only the super admin
+    // (or an all_olt role, which the backend treats as equivalent) can
+    // satisfy — matches the backend's super_admin_required decorator.
+    if (requiredPerm === 'super_admin') {
+      if (!user.is_super_admin) {
+        const userPerms = new Set(user.permissions || []);
+        if (!userPerms.has('all_olt')) {
+          return <Navigate to="/dashboard" replace />;
+        }
+      }
+    } else {
+      const userPerms = new Set(user.permissions || []);
+      if (!user.is_super_admin && !userPerms.has('all_olt') && !userPerms.has(requiredPerm)) {
+        return <Navigate to="/dashboard" replace />;
+      }
     }
   }
 

@@ -54,8 +54,8 @@ const navItems: NavItem[] = [
       { label: 'Customization', path: '/dashboard/customization', permission: 'customization' },
       { label: 'User Management', path: '/dashboard/users', permission: 'manage_users' },
       { label: 'Alert Settings', path: '/dashboard/settings/alerts', permission: 'customization' },
-      { label: 'Cloudflare Tunnel', path: '/dashboard/settings/cloudflare', permission: 'customization' },
-      { label: 'System Update', path: '/dashboard/settings/update', permission: 'manage_users' },
+      { label: 'Cloudflare Tunnel', path: '/dashboard/settings/cloudflare', permission: 'super_admin' },
+      { label: 'System Update', path: '/dashboard/settings/update', permission: 'super_admin' },
       { label: 'Alert History', path: '/dashboard/alerts/history', permission: 'view_dashboard' },
     ],
   },
@@ -70,6 +70,10 @@ function buildVisibleItems(user: { is_super_admin?: boolean; permissions?: strin
   const hasPerm = (perm?: string) => {
     if (!perm) return true;
     if (user.is_super_admin) return true;
+    // 'super_admin' is a synthetic permission matching the backend's
+    // super_admin_required decorator — only the super admin (or an
+    // all_olt role) satisfies it. No regular permission string grants it.
+    if (perm === 'super_admin') return userPerms.has('all_olt');
     if (userPerms.has('all_olt')) return true;
     return userPerms.has(perm);
   };
@@ -93,6 +97,7 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
   const hasPerm = (perm?: string) => {
     if (!perm) return true;
     if (user?.is_super_admin) return true;
+    if (perm === 'super_admin') return userPerms.has('all_olt');
     if (userPerms.has('all_olt')) return true;
     return userPerms.has(perm);
   };
