@@ -60,11 +60,17 @@ export function Dashboard() {
     refetchInterval: REFRESH_INTERVAL * 1000,
   });
 
-  // Fetch worst-status ONUs for the "Top Problems" section
+  // Fetch problem ONUs — all non-online statuses (los, dyinggasp, offline)
   const { data: problemOnus } = useQuery({
     queryKey: ['dashboard-problem-onus'],
-    queryFn: () => api.allOnus({ status: 'los', page_size: 5, sort_by: 'rx_onu', sort_dir: 'asc' })
-      .then(r => r.onus),
+    queryFn: async () => {
+      const [los, dg, off] = await Promise.all([
+        api.allOnus({ status: 'los', page_size: 5, sort_by: 'rx_onu', sort_dir: 'asc' }),
+        api.allOnus({ status: 'dyinggasp', page_size: 5, sort_by: 'rx_onu', sort_dir: 'asc' }),
+        api.allOnus({ status: 'offline', page_size: 5, sort_by: 'rx_onu', sort_dir: 'asc' }),
+      ]);
+      return [...los.onus, ...dg.onus, ...off.onus];
+    },
     refetchInterval: REFRESH_INTERVAL * 1000,
     enabled: !!data,
   });
