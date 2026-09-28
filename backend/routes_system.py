@@ -628,7 +628,7 @@ def ws_token():
         logger.warning('INTERNAL_API_KEY not set — using ephemeral key for development')
         import secrets as _secrets
         secret = _secrets.token_hex(32)
-    expiry = int(time.time()) + 60  # 60-second TTL
+    expiry = int(time.time()) + 300  # 5-minute TTL — allows reconnects without re-fetch
     payload = f"{current_user.id}.{expiry}"
     sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
     token = f"{payload}.{sig}"

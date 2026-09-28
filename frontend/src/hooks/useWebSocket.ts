@@ -121,6 +121,15 @@ export function useWebSocket(
   const connect = useCallback(async () => {
     if (!mountedRef.current) return;
 
+    // If a connection attempt is already in-flight, don't kill it —
+    // it will either connect (onopen) or fail (onclose → reconnect).
+    // Closing a CONNECTING socket triggers the browser's
+    // "WebSocket is closed before the connection is established" warning.
+    const existing = wsRef.current;
+    if (existing && existing.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+
     cleanup();
     const myGeneration = ++connectGenerationRef.current;
 
@@ -137,6 +146,17 @@ export function useWebSocket(
     const url = `${baseUrl}${separator}token=${encodeURIComponent(token)}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
+
+    // If the socket stays CONNECTING too long (server hung, network stall),
+    // close it — onclose fires → reconnect timer → fresh attempt.
+    const connectTimeout = setTimeout(() => {
+      if (ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+      }
+    }, 10_000);
+    ws.addEventListener('open', () => clearTimeout(connectTimeout), { once: true });
+    ws.addEventListener('error', () => clearTimeout(connectTimeout), { once: true });
+    ws.addEventListener('close', () => clearTimeout(connectTimeout), { once: true });
 
     ws.onopen = () => {
       if (!mountedRef.current) return;
