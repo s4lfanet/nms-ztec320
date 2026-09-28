@@ -47,6 +47,7 @@ export interface MapMarker {
   odc_core_number?: number | null;
   splice_count?: number;
   parent_type?: string;
+  pon_port?: string;
   // ONU customer fields
   distance?: number | null;
   pppoe?: string;

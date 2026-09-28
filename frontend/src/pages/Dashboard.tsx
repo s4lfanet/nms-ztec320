@@ -8,7 +8,7 @@ import { confirm } from '../components/ConfirmDialog';
 import {
   Server, Wifi, WifiOff, AlertTriangle, Thermometer,
   RefreshCw, Radio, Clock, Fan, Zap, Activity, ExternalLink,
-  TrendingUp, TrendingDown, Shield, Bell, ArrowRight,
+  TrendingUp, Shield, Bell, ArrowRight,
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useDashboardWs } from '../hooks/useDashboardWs';

@@ -7,7 +7,7 @@ import {
   Activity, AlertTriangle, Wifi, WifiOff, Zap, CircleDashed, Gauge, RefreshCw,
   UserX, LayoutGrid, List, GitMerge, Scissors, Users, Cpu, Home
 } from 'lucide-react';
-import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath, type FTTHJc, type FTTHJcSplice, type FTTHOdcTree, type FTTHOdpTree, type FTTHJcTree, type FTTHFiberCore } from '../lib/api';
+import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath, type FTTHJc, type FTTHJcSplice, type FTTHOdcTree, type FTTHOdpTree, type FTTHJcTree } from '../lib/api';
 import { cn } from '../lib/utils';
 import { coreColorInfo } from '../lib/fiberColor';
 import { toast } from '../components/Toast';
@@ -1494,7 +1494,7 @@ function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jc
     feed_source: initialFeedSource,
     jc_id: item?.jc_id || '', jc_core_number: item?.jc_core_number || '',
     cable_length_meters: item?.cable_length_meters ?? '',
-    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? 0.35,
+    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? (0.35 as string | number),
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1605,11 +1605,11 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
     jc_id: item?.jc_id || (parentKind === 'jc' ? parent?.id : '') || '', jc_core_number: item?.jc_core_number || '',
     total_cores: item?.total_cores || 8, fibers_per_tube: item?.fibers_per_tube || 12,
     splitter_model: item?.splitter_model || '',
-    splitter_ratio_type: item?.splitter_ratio_type || 'even',
+    splitter_ratio_type: (item?.splitter_ratio_type || 'even') as 'even' | 'uneven',
     splitter_tap_loss_db: item?.splitter_tap_loss_db ?? '',
     splitter_through_loss_db: item?.splitter_through_loss_db ?? '',
     cable_length_meters: item?.cable_length_meters ?? '',
-    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? 0.35,
+    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? (0.35 as string | number),
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1644,7 +1644,7 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <FormField label="Ratio Splitter">
-          <select className="input-field" value={form.splitter_ratio_type} onChange={e => setForm({ ...form, splitter_ratio_type: e.target.value })}>
+          <select className="input-field" value={form.splitter_ratio_type} onChange={e => setForm({ ...form, splitter_ratio_type: e.target.value as 'even' | 'uneven' })}>
             <option value="even">Even (rata)</option>
             <option value="uneven">Uneven (tidak rata)</option>
           </select>
@@ -1716,11 +1716,11 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, odpList, onClose,
     jc_id: item?.jc_id || (parentKind === 'jc' ? parent?.id : '') || '', jc_core_number: item?.jc_core_number || '',
     parent_odp_port_id: item?.parent_odp_port_id || '',
     total_ports: item?.total_ports || 8, splitter_model: item?.splitter_model || '',
-    splitter_ratio_type: item?.splitter_ratio_type || 'even',
+    splitter_ratio_type: (item?.splitter_ratio_type || 'even') as 'even' | 'uneven',
     splitter_tap_loss_db: item?.splitter_tap_loss_db ?? '',
     splitter_through_loss_db: item?.splitter_through_loss_db ?? '',
     cable_length_meters: item?.cable_length_meters ?? '',
-    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? 0.35,
+    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? (0.35 as string | number),
     description: item?.description || '',
   });
   const mut = useMutation({
@@ -1760,7 +1760,7 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, odpList, onClose,
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <FormField label="Ratio Splitter">
-          <select className="input-field" value={form.splitter_ratio_type} onChange={e => setForm({ ...form, splitter_ratio_type: e.target.value })}>
+          <select className="input-field" value={form.splitter_ratio_type} onChange={e => setForm({ ...form, splitter_ratio_type: e.target.value as 'even' | 'uneven' })}>
             <option value="even">Even (rata)</option>
             <option value="uneven">Uneven (tidak rata)</option>
           </select>
@@ -1845,7 +1845,7 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
     parent_type: item?.parent_type || parentKind || '',
     parent_id: item?.parent_id || parent?.id || '',
     cable_length_meters: item?.cable_length_meters ?? '',
-    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? 0.35,
+    cable_attenuation_per_km: item?.cable_attenuation_per_km ?? (0.35 as string | number),
     description: item?.description || '',
   });
   const mut = useMutation({
