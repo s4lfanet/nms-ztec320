@@ -130,8 +130,16 @@ def upload_logo():
     logo_dir = _logo_dir()
     _clear_logo_files(logo_dir)
     filename = f'company-logo.{ext}'
-    with open(os.path.join(logo_dir, filename), 'wb') as f:
+    path = os.path.join(logo_dir, filename)
+    with open(path, 'wb') as f:
         f.write(data)
+
+    # Generate derived PWA/favicon icons — non-fatal if it fails
+    try:
+        from branding_icons import generate_branding_icons
+        generate_branding_icons(path)
+    except Exception as e:
+        logger.warning(f"PWA icon generation failed (logo still saved): {e}")
 
     logo_url = f'/static/uploads/{filename}?v={int(time.time())}'
     cfg = SystemConfig.query.filter_by(key='nms_logo_url').first()
@@ -148,6 +156,11 @@ def upload_logo():
 @super_admin_required
 def reset_logo():
     _clear_logo_files(_logo_dir())
+    try:
+        from branding_icons import clear_branding_icons
+        clear_branding_icons()
+    except Exception as e:
+        logger.warning(f"Failed to clear branding icons: {e}")
     cfg = SystemConfig.query.filter_by(key='nms_logo_url').first()
     if cfg:
         db.session.delete(cfg)

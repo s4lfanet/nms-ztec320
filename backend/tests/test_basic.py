@@ -504,13 +504,28 @@ class TestCompanyLogoUpload:
             content_type='application/json')
 
     def teardown_method(self):
-        """Remove any logo file written to disk by a test, so runs stay isolated."""
-        import glob
-        for f in glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'static', 'uploads', 'company-logo.*')):
+        """Remove any logo/icon files written to disk by a test, so runs stay isolated."""
+        import glob, shutil
+        uploads = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'static', 'uploads')
+        for f in glob.glob(os.path.join(uploads, 'company-logo.*')):
             try:
                 os.remove(f)
             except OSError:
                 pass
+        shutil.rmtree(os.path.join(uploads, 'pwa'), ignore_errors=True)
+
+    @staticmethod
+    def _real_png_bytes():
+        """A real 64x64 RGBA PNG: transparent bg + black rectangle (like the
+        production logo — dark art on transparency)."""
+        from PIL import Image
+        img = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
+        for x in range(16, 48):
+            for y in range(16, 48):
+                img.putpixel((x, y), (0, 0, 0, 255))
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        return buf.getvalue()
 
     def test_non_super_admin_cannot_upload_logo(self, client):
         """Only a super admin may change the company logo."""
@@ -572,6 +587,61 @@ class TestCompanyLogoUpload:
 
         branding = client.get('/api/public/branding').get_json()
         assert branding['logo_url'] is None
+
+    def _upload_real_logo(self, client):
+        self._login_admin(client)
+        resp = client.post('/api/profile/logo',
+            data={'logo': (io.BytesIO(self._real_png_bytes()), 'logo.png')},
+            content_type='multipart/form-data',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        return resp.get_json()['logo_url']
+
+    def test_upload_generates_pwa_icons(self, client):
+        """Uploading a logo renders all derived icons on a white background."""
+        from PIL import Image
+        from branding_icons import ICON_DIR
+        self._upload_real_logo(client)
+        for name in ('icon-192.png', 'maskable-512.png', 'apple-touch-icon.png', 'favicon.ico'):
+            assert os.path.exists(os.path.join(ICON_DIR, name)), name
+        icon = Image.open(os.path.join(ICON_DIR, 'icon-192.png'))
+        assert icon.size == (192, 192)
+        assert icon.convert('RGB').getpixel((0, 0)) == (255, 255, 255)
+
+    def test_manifest_uses_uploaded_logo(self, client):
+        """With a logo uploaded, /manifest.webmanifest points at
+        /static/uploads/pwa/ icons and uses the configured nms_name."""
+        with app.app_context():
+            from models import SystemConfig
+            cfg = SystemConfig.query.filter_by(key='nms_name').first()
+            if cfg:
+                cfg.value = 'Salfanet Test'
+            else:
+                db.session.add(SystemConfig(key='nms_name', value='Salfanet Test'))
+            db.session.commit()
+        self._upload_real_logo(client)
+        resp = client.get('/manifest.webmanifest')
+        assert resp.status_code == 200
+        assert resp.mimetype == 'application/manifest+json'
+        m = resp.get_json()
+        assert m['short_name'] == 'Salfanet Test'
+        assert m['icons'][0]['src'].startswith('/static/uploads/pwa/')
+
+    def test_manifest_default_icons_after_reset(self, client):
+        """After logo reset, manifest icons fall back to the static /pwa/ set."""
+        self._upload_real_logo(client)
+        client.delete('/api/profile/logo', headers={'X-Requested-With': 'XMLHttpRequest'})
+        m = client.get('/manifest.webmanifest').get_json()
+        assert m['icons'][0]['src'].startswith('/pwa/')
+
+    def test_branding_favicon_fallback(self, client):
+        """With no logo, branding favicon routes serve the static defaults."""
+        resp = client.get('/branding/favicon.png')
+        assert resp.status_code == 200
+        assert resp.mimetype == 'image/png'
+        resp = client.get('/favicon.ico')
+        assert resp.status_code == 200
+        assert resp.mimetype == 'image/png'
 
 
 class TestWebSocketTokenSecurity:

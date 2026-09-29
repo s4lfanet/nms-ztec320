@@ -37,3 +37,6 @@ prometheus-client>=0.20.0
 
 # === Testing ===
 pytest>=8.0
+
+# === Image processing (PWA/favicon generation from uploaded logo) ===
+Pillow>=10,<12
