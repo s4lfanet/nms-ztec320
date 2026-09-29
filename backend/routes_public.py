@@ -112,14 +112,13 @@ def pwa_manifest():
 def _branding_icon(filename, fallback_rel):
     """Serve a branding icon generated from the uploaded logo, else the
     static PWA default from frontend/dist."""
-    from flask import send_from_directory, make_response
+    from flask import send_from_directory
     from branding_icons import ensure_branding_icons, ICON_DIR
+    # max_age=0 → Cache-Control: no-cache (revalidate each load so a new
+    # logo upload shows up on the next refresh).
     if ensure_branding_icons():
-        resp = make_response(send_from_directory(ICON_DIR, filename))
-    else:
-        resp = make_response(send_from_directory(_dist_dir(), fallback_rel))
-    resp.headers['Cache-Control'] = 'no-cache'
-    return resp
+        return send_from_directory(ICON_DIR, filename, max_age=0)
+    return send_from_directory(_dist_dir(), fallback_rel, max_age=0)
 
 
 @bp.route('/branding/favicon.png', methods=['GET'])
