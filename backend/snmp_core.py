@@ -1096,20 +1096,29 @@ class SNMPCollector:
                 f"Missing ONUs keep previous status (marked 'unknown')."
             )
 
-        # Detect incomplete signal walks — if BOTH OLT-RX and ONU-RX tables
-        # returned significantly fewer entries than serials, we can't
-        # distinguish oper_state=5 (online) from dyinggasp by signal presence.
-        # An ONU missing from both signal walks would be wrongly classified as
-        # offline/los. Guard: skip the signal-based downgrade when both walks
-        # are incomplete.
-        _rx_incomplete = (len(sn_by_key) >= 20 and
-                          len(olt_rx_by_key) < len(sn_by_key) * 0.5 and
-                          len(rx_by_key) < len(sn_by_key) * 0.5)
+        # Detect incomplete signal walks. oper_state=5 is shared by online and
+        # dyinggasp ONUs — the only discriminator is signal presence. When a
+        # signal walk is truncated, "no signal" no longer means "no light":
+        # an online ONU missing from a partial walk looks exactly like a real
+        # dyinggasp ONU (oper=5, no olt_rx, no onu_rx). Neither 'online' nor
+        # 'dyinggasp' can be trusted for such keys, so they get 'unknown' and
+        # save_sync_result keeps the previous status + signal values.
+        #
+        # Measured against ONUs the OLT itself reports as active (oper 4/5) —
+        # every one of those should appear in both signal tables on a complete
+        # walk, while offline/dyinggasp ONUs are legitimately absent.
+        _active_keys = [k for k, v in oper_by_key.items() if v in (4, 5)]
+        _missing_olt_rx = sum(1 for k in _active_keys if k not in olt_rx_by_key)
+        _missing_onu_rx = sum(1 for k in _active_keys if k not in rx_by_key)
+        _rx_incomplete = (len(_active_keys) >= 20 and
+                          (_missing_olt_rx > len(_active_keys) * 0.5 or
+                           _missing_onu_rx > len(_active_keys) * 0.5))
         if _rx_incomplete:
             logger.warning(
                 f"  SNMP light: signal walks incomplete — olt_rx={len(olt_rx_by_key)} "
-                f"onu_rx={len(rx_by_key)} for {len(sn_by_key)} serials. "
-                f"oper_state=4/5 ONUs will not be downgraded to offline."
+                f"onu_rx={len(rx_by_key)}; active ONUs missing olt_rx={_missing_olt_rx} "
+                f"onu_rx={_missing_onu_rx} of {len(_active_keys)}. "
+                f"Active ONUs with no signal keep previous status (marked 'unknown')."
             )
 
         # Build ONU list — cfgTable and regTable share same (ponIndex, onuSlot) key
@@ -1132,11 +1141,11 @@ class SNMPCollector:
                 dereg_val = dereg_by_key.get(key, 0)
                 if (_rx_incomplete and oper_val in (4, 5)
                         and olt_rx is None and onu_rx is None):
-                    # Signal walks incomplete — can't distinguish online from
-                    # dyinggasp by signal absence. oper_state=4/5 means
-                    # registered/active; keep it 'online' rather than guessing
-                    # offline. The next complete walk will correct if needed.
-                    status = 'online'
+                    # Signal walks incomplete — can't tell a truly powered-off
+                    # (dyinggasp) ONU from an online ONU that simply fell out
+                    # of the truncated walk. Don't guess either way; preserve
+                    # the previous status/signal until a complete walk.
+                    status = 'unknown'
                 else:
                     status = classify_onu_status(oper_val, dereg_val, olt_rx, onu_rx)
             elif _oper_incomplete:

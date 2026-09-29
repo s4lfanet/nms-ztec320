@@ -367,7 +367,12 @@ def save_sync_result(olt, result, sync, light=False):
 
         # For non-online ONUs (dyinggasp, offline, los), clear optical values
         # SNMP returns cached/last-known values for offline ONUs which is misleading
-        if onu.status != 'online':
+        if _new_status == 'unknown':
+            # Status was preserved because the SNMP walk was incomplete —
+            # the signal values from this pass are equally unreliable, so
+            # keep the previous rx/tx too instead of wiping them.
+            pass
+        elif onu.status != 'online':
             onu.rx_power = None
             onu.tx_power = None
             onu.onu_rx_power = None
