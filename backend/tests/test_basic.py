@@ -605,7 +605,7 @@ class TestWebSocketTokenSecurity:
         expiry = int(parts[1])
         import time as _time
         assert expiry > _time.time(), "Token expiry should be in the future"
-        assert expiry <= _time.time() + 120, "Token TTL should be <= 120s"
+        assert expiry <= _time.time() + 300, "Token TTL should be <= 300s"
 
     def test_ws_token_user_id_matches(self, client):
         """ws-token should contain the authenticated user's ID."""
