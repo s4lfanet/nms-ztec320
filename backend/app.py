@@ -535,10 +535,14 @@ def serve_spa(path=''):
         if safe_path and os.path.exists(safe_path):
             from flask import send_from_directory, make_response
             resp = make_response(send_from_directory(dist, path))
-            if path == 'index.html' or path.endswith('.html'):
+            if (path == 'index.html' or path.endswith('.html')
+                    or path in ('sw.js', 'registerSW.js', 'manifest.webmanifest')
+                    or path.startswith('workbox-')):
                 resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
                 resp.headers['Pragma'] = 'no-cache'
                 resp.headers['Expires'] = '0'
+            if path == 'manifest.webmanifest':
+                resp.mimetype = 'application/manifest+json'
             return resp
     from flask import send_from_directory, make_response
     resp = make_response(send_from_directory(dist, 'index.html'))

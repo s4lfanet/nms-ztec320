@@ -8,8 +8,7 @@ import './index.css'
 import './lib/api'  // Global fetch interceptor for CSRF protection
 import App from './App'
 
-// Service Worker: handled by vite-plugin-pwa (autoUpdate + skipWaiting + clientsClaim)
-// No manual registration needed — plugin injects registerSW.js automatically
+// Service Worker registered by vite-plugin-pwa (injectRegister: 'auto', autoUpdate)
 
 // Init theme
 const theme = localStorage.getItem('theme') || 'dark';

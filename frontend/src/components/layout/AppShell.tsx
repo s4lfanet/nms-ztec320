@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils';
 import { LayoutDashboard, Radio, Server, Sliders } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { DashboardWsProvider } from '../../hooks/useDashboardWs';
+import { OfflineBanner } from '../OfflineBanner';
 
 const bottomNavItems = [
   { label: 'Home', icon: LayoutDashboard, path: '/dashboard' },
@@ -48,6 +49,7 @@ export function AppShell() {
   return (
     <DashboardWsProvider>
       <div className="min-h-screen bg-[var(--bg-primary)] transition-colors duration-300">
+        <OfflineBanner />
         <div className="app-mesh-bg" aria-hidden="true" />
 
         <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onToggle={() => setCollapsed(!collapsed)} onMobileClose={() => setMobileOpen(false)} />

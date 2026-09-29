@@ -6,7 +6,7 @@ const svg = readFileSync(join('public', 'favicon.svg'));
 const out = 'public/pwa';
 
 const sizes = [192, 512];
-const bg = '#0f0a1e'; // dark bg matching app theme
+const bg = '#0A0C14'; // dark bg matching app theme
 
 for (const size of sizes) {
   // Regular icon

@@ -7,6 +7,7 @@ frontend-err.log
 
 # Debug screenshots
 *.png
+!frontend/public/pwa/*.png
 
 # Python cache
 __pycache__/
