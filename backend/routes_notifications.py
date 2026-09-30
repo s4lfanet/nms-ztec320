@@ -394,12 +394,28 @@ def unregistered_count():
     total_unreg = 0
     breakdown = []
     from snmp_collector import TelnetCollector, create_cli_collector
+    from cache import cache_get, cache_set
+    from sync_lock import is_sync_locked
     for olt in olts:
         if not olt.cli_enabled:
             continue
         try:
-            tc = create_cli_collector(olt)
-            unregistered = tc.collect_unregistered_onus()
+            # Frontend polls this endpoint every 60s per open tab — without
+            # caching that's N telnet sessions/min per OLT. Cache the scan per
+            # OLT (120s); sync's cache_clear('olt:{id}:*') already wipes this
+            # key so a fresh registration shows up right after the next sync.
+            _key = f'olt:{olt.id}:unregistered'
+            cached = cache_get(_key)
+            if cached is not None:
+                unregistered = cached
+            elif is_sync_locked(olt.id):
+                # Sync in progress — don't compete for the OLT's CLI. No data
+                # this round, so don't create/resolve notifications either.
+                continue
+            else:
+                tc = create_cli_collector(olt)
+                unregistered = tc.collect_unregistered_onus()
+                cache_set(_key, unregistered, ttl=120)
             count = len(unregistered)
             if count > 0:
                 total_unreg += count
@@ -431,8 +447,8 @@ def unregistered_count():
                     n.resolved = True
                     n.resolved_at = datetime.now(timezone.utc)
                     n.is_read = True
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"unregistered-count: OLT {olt.id} scan failed: {e}")
     db.session.commit()
     # Also count offline/dyinggasp/los ONUs from DB
     base_q = ONU.query.filter(ONU.status.in_(['offline', 'dyinggasp', 'los']))
