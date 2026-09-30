@@ -87,6 +87,26 @@ def _collect(walks):
     return asyncio.run(collector._collect_onus_light_async())
 
 
+def _collect_with(walk_fn, monkeypatch):
+    """Run the light collection with a custom _bulk_walk implementation.
+    Returns (onus, call_counts dict keyed by OID)."""
+    collector = SNMPCollector('10.255.255.1')
+    counts = {}
+    sleep_calls = []
+
+    async def fake_walk(oid):
+        counts[oid] = counts.get(oid, 0) + 1
+        return walk_fn(oid, counts[oid], collector)
+
+    async def fake_sleep(_s):
+        sleep_calls.append(_s)
+
+    monkeypatch.setattr(asyncio, 'sleep', fake_sleep)
+    collector._bulk_walk = fake_walk
+    onus = asyncio.run(collector._collect_onus_light_async())
+    return onus, counts
+
+
 def _by_onu_id(onus):
     return {o['onu_id']: o for o in onus}
 
@@ -144,6 +164,71 @@ class TestLightCollectSignalWalks:
             assert onus[i]['status'] == 'online', i
         for i in range(11, NUM_ONUS + 1):
             assert onus[i]['status'] == 'unknown', i
+
+
+class TestTruncatedWalkRetry:
+    """A truncated walk is retried once, sequentially."""
+
+    def test_retry_recovers_truncated_oper_walk(self, monkeypatch):
+        """First oper walk returns 10/25, retry returns all 25 — result is
+        fully classified, no 'unknown' statuses."""
+        walks = _build_walks(olt_rx_ids=ONLINE_IDS, onu_rx_ids=ONLINE_IDS)
+
+        def walk_fn(oid, call_no, collector):
+            if oid == OID_OPER_STATE and call_no == 1:
+                collector._truncated_walks.add(oid)
+                # Truncated: only the first 10 entries
+                return walks[oid][:10]
+            return walks.get(oid, [])
+
+        onus, counts = _collect_with(walk_fn, monkeypatch)
+        by_id = _by_onu_id(onus)
+        assert len(onus) == NUM_ONUS
+        assert not any(o['status'] == 'unknown' for o in onus)
+        for i in ONLINE_IDS:
+            assert by_id[i]['status'] == 'online', i
+        for i in DYING_IDS:
+            assert by_id[i]['status'] == 'dyinggasp', i
+        assert counts[OID_OPER_STATE] == 2
+        assert counts[OID_ONU_SERIAL] == 1
+
+    def test_retry_still_partial_keeps_unknown(self, monkeypatch):
+        """If the retry is also truncated, the incomplete guard still marks
+        missing ONUs 'unknown' — same behavior as before the retry existed."""
+        walks = _build_walks(olt_rx_ids=ONLINE_IDS, onu_rx_ids=ONLINE_IDS)
+
+        def walk_fn(oid, call_no, collector):
+            if oid == OID_OPER_STATE:
+                if call_no == 1:
+                    collector._truncated_walks.add(oid)
+                return walks[oid][:10]
+            return walks.get(oid, [])
+
+        onus, counts = _collect_with(walk_fn, monkeypatch)
+        by_id = _by_onu_id(onus)
+        assert counts[OID_OPER_STATE] == 2
+        for i in range(1, 11):
+            assert by_id[i]['status'] == 'online', i
+        for i in range(11, NUM_ONUS + 1):
+            assert by_id[i]['status'] == 'unknown', i
+
+    def test_truncated_flag_triggers_retry_even_when_counts_look_ok(self, monkeypatch):
+        """The explicit _truncated_walks flag alone triggers a retry even
+        when no incomplete-walk heuristic fires."""
+        walks = _build_walks(olt_rx_ids=ONLINE_IDS, onu_rx_ids=ONLINE_IDS)
+
+        def walk_fn(oid, call_no, collector):
+            if oid == OID_RX_POWER and call_no == 1:
+                collector._truncated_walks.add(oid)
+            return walks.get(oid, [])
+
+        onus, counts = _collect_with(walk_fn, monkeypatch)
+        assert counts[OID_RX_POWER] == 2
+        for oid, n in counts.items():
+            if oid != OID_RX_POWER:
+                assert n == 1, oid
+        # Data was complete, so classification is unaffected
+        assert not any(o['status'] == 'unknown' for o in onus)
 
 
 class TestSyncHelperUnknownPreservesSignal:

@@ -11,6 +11,7 @@ Cron: every 1 hour — checks if enough time has passed since last backup.
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+os.environ.setdefault('SALFANET_CRON', '1')
 
 import fcntl
 from datetime import datetime, timezone, timedelta

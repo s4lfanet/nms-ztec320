@@ -365,6 +365,7 @@ class SNMPCollector:
         self.port = int(port)
         self.use_walk = use_walk  # Force GetNext for lossy/high-latency links
         self.max_repetitions = max_repetitions
+        self._truncated_walks: set = set()
 
     def close(self):
         pass
@@ -859,13 +860,19 @@ class SNMPCollector:
                     if use_bulk:
                         use_bulk = False
                         continue
+                    self._truncated_walks.add(oid)
+                    logger.warning(f"SNMP walk truncated for {oid} after {len(results)} entries (exception)")
                     break
                 if ei:
                     errors += 1
                     if errors > 10:
+                        self._truncated_walks.add(oid)
+                        logger.warning(f"SNMP walk truncated for {oid} after {len(results)} entries (too many errors)")
                         break
                     continue
                 if es:
+                    self._truncated_walks.add(oid)
+                    logger.warning(f"SNMP walk truncated for {oid} after {len(results)} entries (errorStatus={es})")
                     break
                 if not vb:
                     break
@@ -990,136 +997,171 @@ class SNMPCollector:
 
         OPTIMIZED: Uses GETBULK (50 OIDs/packet) + asyncio.gather for concurrent walks.
         """
-        # Walk all 8 tables concurrently with GETBULK
-        name_raw, serial_raw, oper_raw, dereg_raw, rx_raw, tx_raw, olt_rx_raw, desc_raw = \
-            await asyncio.gather(
-                self._bulk_walk(OID_ONU_NAME),
-                self._bulk_walk(OID_ONU_SERIAL),
-                self._bulk_walk(OID_OPER_STATE),
-                self._bulk_walk(OID_DEREG_REASON),
-                self._bulk_walk(OID_RX_POWER),
-                self._bulk_walk(OID_TX_POWER),
-                self._bulk_walk(OID_OLT_RX),
-                self._bulk_walk(OID_ONU_DESCRIPTION),
-            )
-        logger.info(f"  SNMP light: name={len(name_raw)} serial={len(serial_raw)} oper={len(oper_raw)} dereg={len(dereg_raw)} rx={len(rx_raw)} tx={len(tx_raw)} olt_rx={len(olt_rx_raw)} desc={len(desc_raw)}")
+        # Walk all 8 tables concurrently with GETBULK, capped at 4 in flight —
+        # firing all 8 at once has been observed to make the OLT truncate walks.
+        self._truncated_walks.clear()
+        _light_oids = (OID_ONU_NAME, OID_ONU_SERIAL, OID_OPER_STATE, OID_DEREG_REASON,
+                       OID_RX_POWER, OID_TX_POWER, OID_OLT_RX, OID_ONU_DESCRIPTION)
+        sem = asyncio.Semaphore(4)
 
-        # Parse cfgTable (name, description, serial): suffix .ponIndex.cfgId
-        # cfgId == onuSlot (sequential ONU ID on that PON port)
-        name_by_key = {}    # (ponIndex, cfgId) -> name
-        desc_by_key = {}    # (ponIndex, cfgId) -> description
-        sn_by_key = {}      # (ponIndex, cfgId) -> serial
+        async def _walk(oid):
+            async with sem:
+                return await self._bulk_walk(oid)
 
-        for oid_str, val, val_str in name_raw:
-            suffix = oid_str[len(OID_ONU_NAME):]
-            parts = suffix.lstrip('.').split('.')
-            if len(parts) >= 2:
-                try: name_by_key[(int(parts[0]), int(parts[1]))] = val_str
-                except: pass
+        _walk_raw = {}
+        _oper_incomplete = False
+        _rx_incomplete = False
+        _retry_oids = set()
+        for _attempt in range(2):
+            if _attempt == 0:
+                _results = await asyncio.gather(*(_walk(o) for o in _light_oids))
+                for _o, _r in zip(_light_oids, _results):
+                    _walk_raw[_o] = _r
+            else:
+                # Sequential re-walk of just the incomplete tables — gentler
+                # on the OLT than another concurrent blast. Keep whichever
+                # result has more entries.
+                for _o in _retry_oids:
+                    _r = await self._bulk_walk(_o)
+                    if len(_r) > len(_walk_raw.get(_o, [])):
+                        _walk_raw[_o] = _r
 
-        for oid_str, val, val_str in desc_raw:
-            suffix = oid_str[len(OID_ONU_DESCRIPTION):]
-            parts = suffix.lstrip('.').split('.')
-            if len(parts) >= 2:
-                try: desc_by_key[(int(parts[0]), int(parts[1]))] = val_str
-                except: pass
+            name_raw, serial_raw, oper_raw, dereg_raw, rx_raw, tx_raw, olt_rx_raw, desc_raw = \
+                (_walk_raw[o] for o in _light_oids)
+            logger.info(f"  SNMP light: name={len(name_raw)} serial={len(serial_raw)} oper={len(oper_raw)} dereg={len(dereg_raw)} rx={len(rx_raw)} tx={len(tx_raw)} olt_rx={len(olt_rx_raw)} desc={len(desc_raw)}")
 
-        for oid_str, val, val_str in serial_raw:
-            suffix = oid_str[len(OID_ONU_SERIAL):]
-            parts = suffix.lstrip('.').split('.')
-            if len(parts) >= 2:
-                try: sn_by_key[(int(parts[0]), int(parts[1]))] = parse_serial(val)
-                except: pass
+            # Parse cfgTable (name, description, serial): suffix .ponIndex.cfgId
+            # cfgId == onuSlot (sequential ONU ID on that PON port)
+            name_by_key = {}    # (ponIndex, cfgId) -> name
+            desc_by_key = {}    # (ponIndex, cfgId) -> description
+            sn_by_key = {}      # (ponIndex, cfgId) -> serial
 
-        # Parse regTable (oper_state, dereg_reason, rx, tx, olt_rx): suffix .ponIndex.onuSlot.onuId
-        oper_by_key = {}
-        dereg_by_key = {}
-        rx_by_key = {}
-        tx_by_key = {}
-        olt_rx_by_key = {}
+            for oid_str, val, val_str in name_raw:
+                suffix = oid_str[len(OID_ONU_NAME):]
+                parts = suffix.lstrip('.').split('.')
+                if len(parts) >= 2:
+                    try: name_by_key[(int(parts[0]), int(parts[1]))] = val_str
+                    except: pass
 
-        for oid_str, val, val_str in oper_raw:
-            suffix = oid_str[len(OID_OPER_STATE):]
-            parts = suffix.lstrip('.').split('.')
-            if len(parts) >= 3:
-                try: oper_by_key[(int(parts[0]), int(parts[1]))] = int(val)
-                except: pass
+            for oid_str, val, val_str in desc_raw:
+                suffix = oid_str[len(OID_ONU_DESCRIPTION):]
+                parts = suffix.lstrip('.').split('.')
+                if len(parts) >= 2:
+                    try: desc_by_key[(int(parts[0]), int(parts[1]))] = val_str
+                    except: pass
 
-        for oid_str, val, val_str in dereg_raw:
-            suffix = oid_str[len(OID_DEREG_REASON):]
-            parts = suffix.lstrip('.').split('.')
-            if len(parts) >= 3:
-                try: dereg_by_key[(int(parts[0]), int(parts[1]))] = int(val)
-                except: pass
+            for oid_str, val, val_str in serial_raw:
+                suffix = oid_str[len(OID_ONU_SERIAL):]
+                parts = suffix.lstrip('.').split('.')
+                if len(parts) >= 2:
+                    try: sn_by_key[(int(parts[0]), int(parts[1]))] = parse_serial(val)
+                    except: pass
 
-        for oid_str, val, val_str in rx_raw:
-            suffix = oid_str[len(OID_RX_POWER):]
-            parts = suffix.lstrip('.').split('.')
-            if len(parts) >= 3:
-                try: rx_by_key[(int(parts[0]), int(parts[1]))] = decode_rx_power(int(val))
-                except: pass
+            # Parse regTable (oper_state, dereg_reason, rx, tx, olt_rx): suffix .ponIndex.onuSlot.onuId
+            oper_by_key = {}
+            dereg_by_key = {}
+            rx_by_key = {}
+            tx_by_key = {}
+            olt_rx_by_key = {}
 
-        for oid_str, val, val_str in tx_raw:
-            suffix = oid_str[len(OID_TX_POWER):]
-            parts = suffix.lstrip('.').split('.')
-            if len(parts) >= 3:
-                try: tx_by_key[(int(parts[0]), int(parts[1]))] = decode_rx_power(int(val))
-                except: pass
+            for oid_str, val, val_str in oper_raw:
+                suffix = oid_str[len(OID_OPER_STATE):]
+                parts = suffix.lstrip('.').split('.')
+                if len(parts) >= 3:
+                    try: oper_by_key[(int(parts[0]), int(parts[1]))] = int(val)
+                    except: pass
 
-        for oid_str, val, val_str in olt_rx_raw:
-            suffix = oid_str[len(OID_OLT_RX):]
-            parts = suffix.lstrip('.').split('.')
-            if len(parts) >= 3:
-                try: olt_rx_by_key[(int(parts[0]), int(parts[1]))] = decode_rx_power(int(val))
-                except: pass
+            for oid_str, val, val_str in dereg_raw:
+                suffix = oid_str[len(OID_DEREG_REASON):]
+                parts = suffix.lstrip('.').split('.')
+                if len(parts) >= 3:
+                    try: dereg_by_key[(int(parts[0]), int(parts[1]))] = int(val)
+                    except: pass
 
-        # Detect incomplete oper_state walk — the OLT sometimes returns far
-        # fewer oper_state entries than serial/name entries (e.g. 27 out of
-        # 175), likely due to SNMP walk timeout/throttling on that specific
-        # OID table. Without this guard, every ONU missing from the oper_state
-        # walk gets oper_val=0 → classified as 'offline', even though it's
-        # actually online. When the walk is incomplete, mark missing ONUs as
-        # 'unknown' so save_sync_result can preserve their previous status
-        # instead of silently flipping them to offline.
-        #
-        # Count per-key missing (not just total count) — a walk returning 89/175
-        # entries (51%) passes the old 0.5 threshold but leaves 86 ONUs marked
-        # offline. With per-key counting at 10% sensitivity, the same walk is
-        # detected: missing = 175-89 = 86 > 17.5.
-        _missing_from_oper = sum(1 for k in sn_by_key if k not in oper_by_key)
-        _oper_incomplete = (len(sn_by_key) >= 20 and
-                            _missing_from_oper > max(len(sn_by_key) * 0.1, 3))
-        if _oper_incomplete:
-            logger.warning(
-                f"  SNMP light: oper_state walk incomplete — {len(oper_by_key)} entries, "
-                f"{_missing_from_oper}/{len(sn_by_key)} known ONUs missing. "
-                f"Missing ONUs keep previous status (marked 'unknown')."
-            )
+            for oid_str, val, val_str in rx_raw:
+                suffix = oid_str[len(OID_RX_POWER):]
+                parts = suffix.lstrip('.').split('.')
+                if len(parts) >= 3:
+                    try: rx_by_key[(int(parts[0]), int(parts[1]))] = decode_rx_power(int(val))
+                    except: pass
 
-        # Detect incomplete signal walks. oper_state=5 is shared by online and
-        # dyinggasp ONUs — the only discriminator is signal presence. When a
-        # signal walk is truncated, "no signal" no longer means "no light":
-        # an online ONU missing from a partial walk looks exactly like a real
-        # dyinggasp ONU (oper=5, no olt_rx, no onu_rx). Neither 'online' nor
-        # 'dyinggasp' can be trusted for such keys, so they get 'unknown' and
-        # save_sync_result keeps the previous status + signal values.
-        #
-        # Measured against ONUs the OLT itself reports as active (oper 4/5) —
-        # every one of those should appear in both signal tables on a complete
-        # walk, while offline/dyinggasp ONUs are legitimately absent.
-        _active_keys = [k for k, v in oper_by_key.items() if v in (4, 5)]
-        _missing_olt_rx = sum(1 for k in _active_keys if k not in olt_rx_by_key)
-        _missing_onu_rx = sum(1 for k in _active_keys if k not in rx_by_key)
-        _rx_incomplete = (len(_active_keys) >= 20 and
-                          (_missing_olt_rx > len(_active_keys) * 0.5 or
-                           _missing_onu_rx > len(_active_keys) * 0.5))
-        if _rx_incomplete:
-            logger.warning(
-                f"  SNMP light: signal walks incomplete — olt_rx={len(olt_rx_by_key)} "
-                f"onu_rx={len(rx_by_key)}; active ONUs missing olt_rx={_missing_olt_rx} "
-                f"onu_rx={_missing_onu_rx} of {len(_active_keys)}. "
-                f"Active ONUs with no signal keep previous status (marked 'unknown')."
-            )
+            for oid_str, val, val_str in tx_raw:
+                suffix = oid_str[len(OID_TX_POWER):]
+                parts = suffix.lstrip('.').split('.')
+                if len(parts) >= 3:
+                    try: tx_by_key[(int(parts[0]), int(parts[1]))] = decode_rx_power(int(val))
+                    except: pass
+
+            for oid_str, val, val_str in olt_rx_raw:
+                suffix = oid_str[len(OID_OLT_RX):]
+                parts = suffix.lstrip('.').split('.')
+                if len(parts) >= 3:
+                    try: olt_rx_by_key[(int(parts[0]), int(parts[1]))] = decode_rx_power(int(val))
+                    except: pass
+
+            # Detect incomplete oper_state walk — the OLT sometimes returns far
+            # fewer oper_state entries than serial/name entries (e.g. 27 out of
+            # 175), likely due to SNMP walk timeout/throttling on that specific
+            # OID table. Without this guard, every ONU missing from the oper_state
+            # walk gets oper_val=0 → classified as 'offline', even though it's
+            # actually online. When the walk is incomplete, mark missing ONUs as
+            # 'unknown' so save_sync_result can preserve their previous status
+            # instead of silently flipping them to offline.
+            #
+            # Count per-key missing (not just total count) — a walk returning 89/175
+            # entries (51%) passes the old 0.5 threshold but leaves 86 ONUs marked
+            # offline. With per-key counting at 10% sensitivity, the same walk is
+            # detected: missing = 175-89 = 86 > 17.5.
+            _missing_from_oper = sum(1 for k in sn_by_key if k not in oper_by_key)
+            _oper_incomplete = (len(sn_by_key) >= 20 and
+                                _missing_from_oper > max(len(sn_by_key) * 0.1, 3))
+            if _oper_incomplete:
+                logger.warning(
+                    f"  SNMP light: oper_state walk incomplete — {len(oper_by_key)} entries, "
+                    f"{_missing_from_oper}/{len(sn_by_key)} known ONUs missing. "
+                    f"Missing ONUs keep previous status (marked 'unknown')."
+                )
+
+            # Detect incomplete signal walks. oper_state=5 is shared by online and
+            # dyinggasp ONUs — the only discriminator is signal presence. When a
+            # signal walk is truncated, "no signal" no longer means "no light":
+            # an online ONU missing from a partial walk looks exactly like a real
+            # dyinggasp ONU (oper=5, no olt_rx, no onu_rx). Neither 'online' nor
+            # 'dyinggasp' can be trusted for such keys, so they get 'unknown' and
+            # save_sync_result keeps the previous status + signal values.
+            #
+            # Measured against ONUs the OLT itself reports as active (oper 4/5) —
+            # every one of those should appear in both signal tables on a complete
+            # walk, while offline/dyinggasp ONUs are legitimately absent.
+            _active_keys = [k for k, v in oper_by_key.items() if v in (4, 5)]
+            _missing_olt_rx = sum(1 for k in _active_keys if k not in olt_rx_by_key)
+            _missing_onu_rx = sum(1 for k in _active_keys if k not in rx_by_key)
+            _rx_incomplete = (len(_active_keys) >= 20 and
+                              (_missing_olt_rx > len(_active_keys) * 0.5 or
+                               _missing_onu_rx > len(_active_keys) * 0.5))
+            if _rx_incomplete:
+                logger.warning(
+                    f"  SNMP light: signal walks incomplete — olt_rx={len(olt_rx_by_key)} "
+                    f"onu_rx={len(rx_by_key)}; active ONUs missing olt_rx={_missing_olt_rx} "
+                    f"onu_rx={_missing_onu_rx} of {len(_active_keys)}. "
+                    f"Active ONUs with no signal keep previous status (marked 'unknown')."
+                )
+
+            if _attempt == 0:
+                # Retry any table that truncated (or looks incomplete) once,
+                # sequentially — a second pass usually recovers the missing tail.
+                _retry_oids = set(self._truncated_walks & set(_light_oids))
+                if _oper_incomplete:
+                    _retry_oids.add(OID_OPER_STATE)
+                if _rx_incomplete:
+                    _retry_oids.update({OID_OLT_RX, OID_RX_POWER})
+                if _retry_oids:
+                    logger.warning(
+                        f"  SNMP light: re-walking {len(_retry_oids)} incomplete table(s) sequentially")
+                    await asyncio.sleep(2)
+                    self._truncated_walks.clear()
+                    continue
+            break
 
         # Build ONU list — cfgTable and regTable share same (ponIndex, onuSlot) key
         all_keys = set(name_by_key.keys()) | set(sn_by_key.keys()) | set(oper_by_key.keys())
@@ -1187,14 +1229,23 @@ class SNMPCollector:
 
     async def _collect_onus_async(self):
         """Walk signal tables only — uses GETBULK + asyncio.gather for concurrent walks."""
-        # Walk all 5 signal tables concurrently with GETBULK
+        # Walk all 5 signal tables concurrently with GETBULK, capped at 4 in
+        # flight — firing all walks at once has been observed to make the OLT
+        # truncate responses.
+        self._truncated_walks.clear()
+        sem = asyncio.Semaphore(4)
+
+        async def _walk(oid):
+            async with sem:
+                return await self._bulk_walk(oid)
+
         oper_raw, rx_raw, tx_raw, olt_rx_raw, serial_raw = \
             await asyncio.gather(
-                self._bulk_walk(OID_OPER_STATE),
-                self._bulk_walk(OID_RX_POWER),
-                self._bulk_walk(OID_TX_POWER),
-                self._bulk_walk(OID_OLT_RX),
-                self._bulk_walk(OID_ONU_SERIAL),
+                _walk(OID_OPER_STATE),
+                _walk(OID_RX_POWER),
+                _walk(OID_TX_POWER),
+                _walk(OID_OLT_RX),
+                _walk(OID_ONU_SERIAL),
             )
         logger.info(f"  SNMP signal: oper={len(oper_raw)} rx={len(rx_raw)} tx={len(tx_raw)} olt_rx={len(olt_rx_raw)} serial={len(serial_raw)}")
 

@@ -128,6 +128,7 @@ def prune_old_db_backups(dest_dir=DEFAULT_BACKUP_DIR, max_hourly=MAX_HOURLY, max
 if __name__ == '__main__':
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    os.environ.setdefault('SALFANET_CRON', '1')
 
     import fcntl
     _lock_fp = open('/tmp/db_backup.lock', 'w')

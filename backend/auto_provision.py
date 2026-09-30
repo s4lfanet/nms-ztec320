@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 
 from extensions import logger
 
-_CHECK_INTERVAL_SECONDS = 60
+_CHECK_INTERVAL_SECONDS = 180
 
 
 def _cfg(key, default=''):
@@ -99,6 +99,12 @@ def _run_ztp_pass(app):
     olts = OLT.query.filter(OLT.id.in_(allowed_ids), OLT.monitoring_enabled == True).all()  # noqa: E712
     for olt in olts:
         if not olt.cli_enabled or not olt.cli_username:
+            continue
+        # Don't telnet the OLT while a sync is holding its lock — the extra
+        # CLI session competes with the sync's SNMP walks on OLT CPU.
+        from sync_lock import is_sync_locked
+        if is_sync_locked(olt.id):
+            logger.debug(f"[ZTP] OLT {olt.id} sync-locked — skipping this pass")
             continue
         try:
             tc = create_cli_collector(olt)

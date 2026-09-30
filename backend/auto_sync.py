@@ -22,6 +22,7 @@ import faulthandler
 # redirect) instead of a bare "Segmentation fault" line, so the next
 # occurrence is actually diagnosable.
 faulthandler.enable()
+os.environ.setdefault('SALFANET_CRON', '1')
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import (ThreadPoolExecutor, as_completed,
                                 TimeoutError as FuturesTimeoutError)

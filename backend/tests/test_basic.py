@@ -1416,7 +1416,7 @@ class TestRedisRateLimitWarning:
         os.environ['FLASK_ENV'] = 'production'
         os.environ.pop('REDIS_URL', None)
         try:
-            with caplog.at_level('ERROR'):
+            with caplog.at_level('WARNING'):
                 self._reload_config()
             assert any('REDIS_URL' in r.message and 'rate limiter' in r.message for r in caplog.records)
         finally:
@@ -1436,7 +1436,7 @@ class TestRedisRateLimitWarning:
         os.environ['FLASK_ENV'] = 'production'
         os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
         try:
-            with caplog.at_level('ERROR'):
+            with caplog.at_level('WARNING'):
                 self._reload_config()
             assert not any('rate limiter' in r.message for r in caplog.records)
         finally:
@@ -1458,7 +1458,7 @@ class TestRedisRateLimitWarning:
         os.environ['FLASK_ENV'] = 'development'
         os.environ.pop('REDIS_URL', None)
         try:
-            with caplog.at_level('ERROR'):
+            with caplog.at_level('WARNING'):
                 self._reload_config()
             assert not any('rate limiter' in r.message for r in caplog.records)
         finally:

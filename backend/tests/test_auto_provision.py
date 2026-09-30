@@ -27,6 +27,16 @@ app.config['SESSION_COOKIE_DOMAIN'] = None
 
 
 @pytest.fixture(autouse=True)
+def no_sync_lock(monkeypatch):
+    """ZTP skips sync-locked OLTs — in tests nothing holds a lock (and on
+    Windows is_sync_locked falls back to in-process state other tests may
+    have left behind)."""
+    import sync_lock
+    monkeypatch.setattr(sync_lock, 'is_sync_locked', lambda olt_id: False)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def clear_rate_limits():
     from helpers import _login_attempts
     _login_attempts.clear()

@@ -167,8 +167,8 @@ if ActiveConfig is DevelopmentConfig and _env_name != "testing":
 # implies — not a crash, so this doesn't raise, but it's easy to miss
 # silently, so it's logged loudly (ERROR, not debug) at every production
 # startup until REDIS_URL is set.
-if _is_production and not Config.REDIS_URL:
-    _logger.error(
+if _is_production and not Config.REDIS_URL and os.environ.get('SALFANET_CRON') != '1':
+    _logger.warning(
         "REDIS_URL is not set in production (FLASK_ENV=production). The login "
         "rate limiter falls back to an in-memory counter that is NOT shared "
         "across worker processes — with N gunicorn/uvicorn workers, the "

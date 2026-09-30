@@ -9,6 +9,7 @@ Uses file lock to prevent overlapping cron runs."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+os.environ.setdefault('SALFANET_CRON', '1')
 
 import fcntl
 from datetime import datetime, timezone, timedelta
