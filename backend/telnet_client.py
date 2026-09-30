@@ -2036,7 +2036,7 @@ class TelnetCollector:
         # Safe-replace: delete old service entries to prevent error 63869.
         # Delete BOTH the legacy 'serviceN' names and the bare-index names so
         # ONUs provisioned either way are cleaned.
-        for i in range(1, n + 1):
+        for i in range(1, max(3, n) + 1):
             self._send_command(tn, f'no service service{i}', timeout=10)
             if i >= 2:
                 self._send_command(tn, f'no service {i}', timeout=10)
