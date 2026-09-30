@@ -203,9 +203,13 @@ function UplinksTab({ oltId, canManage }: { oltId: number; canManage: boolean })
   const vlanMut = useMutation({
     mutationFn: async ({ uplinkId, vlans, mode }: { uplinkId: number; vlans: string; mode: string }) => {
       const vlanList = vlans.split(',').map(v => v.trim()).filter(Boolean);
-      await fetch(`/api/olt/${oltId}/uplink/${uplinkId}/vlan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ vlan_ids: vlanList, mode: mode || 'trunk' }) });
+      const r = await fetch(`/api/olt/${oltId}/uplink/${uplinkId}/vlan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ vlan_ids: vlanList, mode: mode || 'trunk' }) });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.message || 'Failed');
+      return d.message as string;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success('VLANs updated'); },
+    onSuccess: (msg) => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success(msg || 'VLANs updated'); },
+    onError: (e: Error) => toast.error(e.message || 'Failed to update VLANs'),
   });
   const configMut = useMutation({
     mutationFn: async ({ uplinkId, ...data }: { uplinkId: number; speed?: string; duplex?: string; negotiation?: string; flowcontrol?: string; description?: string; admin?: string }) => {

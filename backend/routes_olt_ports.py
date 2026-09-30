@@ -1134,9 +1134,16 @@ def set_uplink_vlan(olt_id, uplink_id):
     tc = create_cli_collector(olt)
     success, msg = tc.set_vlan_trunk(uplink.port_name, vlan_ids, mode)
     if success:
-        uplink.switchport_mode = mode
-        uplink.vlans_tagged = ','.join(vlan_ids)
+        # Persist the verified set read back from the OLT (falls back to the
+        # requested list if the attribute isn't populated)
+        uplink.vlans_tagged = ','.join(getattr(tc, 'last_port_vlans', None) or vlan_ids)
+        uplink.switchport_mode = getattr(tc, 'last_port_mode', None) or mode
         db.session.commit()
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:*")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 
@@ -1156,11 +1163,20 @@ def remove_uplink_vlan(olt_id, uplink_id):
     tc = create_cli_collector(olt)
     success, msg = tc.remove_vlan_from_port(uplink.port_name, vlan_ids)
     if success:
-        # Update local DB: remove those VLANs from vlans_tagged
-        current = uplink.vlans_tagged.split(',') if uplink.vlans_tagged else []
-        remaining = [v.strip() for v in current if v.strip() and v.strip() not in vlan_ids]
-        uplink.vlans_tagged = ','.join(remaining)
+        # Persist the verified set when available; else remove locally
+        verified = getattr(tc, 'last_port_vlans', None)
+        if verified is not None:
+            uplink.vlans_tagged = ','.join(verified)
+        else:
+            current = uplink.vlans_tagged.split(',') if uplink.vlans_tagged else []
+            remaining = [v.strip() for v in current if v.strip() and v.strip() not in vlan_ids]
+            uplink.vlans_tagged = ','.join(remaining)
         db.session.commit()
+        try:
+            from cache import cache_clear
+            cache_clear(f"olt:{olt_id}:*")
+        except Exception:
+            pass
     return jsonify({'success': success, 'message': msg})
 
 

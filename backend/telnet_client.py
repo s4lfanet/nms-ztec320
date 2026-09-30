@@ -3826,57 +3826,107 @@ class TelnetCollector:
             except: pass
             return False, str(e)
 
+    def _is_cli_error(self, out):
+        """True when the CLI output carries a real error.
+        %Code 60550 ('Port already in the vlan') is benign — the desired state
+        is already present. %Info (e.g. 20272 after 'configure terminal') is
+        informational, not an error."""
+        if not out:
+            return False
+        if '%Error' in out:
+            return True
+        if '%Code' in out and '60550' not in out:
+            return True
+        return False
+
+    def _cli_cmd(self, tn, cmd, timeout=10):
+        """Send one CLI command via _send_command; raise RuntimeError carrying
+        the OLT's error line when the output contains %Error/%Code."""
+        out = self._send_command(tn, cmd, timeout=timeout)
+        logger.debug(f"[cli] {cmd} -> {out.strip()[:300]}")
+        if self._is_cli_error(out):
+            err_line = next(
+                (l.strip() for l in out.split('\n') if '%Error' in l or '%Code' in l),
+                out.strip() or cmd)
+            raise RuntimeError(err_line)
+        return out
+
+    def _read_port_vlans(self, tn, port_name):
+        """Read a port's tagged VLAN set + switchport mode via
+        `show running-config interface <port>` — works from enable mode and is
+        small/fast, unlike bare `show running-config` (120 KB, desyncs the
+        prompt read). Returns (mode_str_or_'', set_of_vlan_strs); ('', set())
+        when the command is rejected."""
+        out = self._send_command(tn, f'show running-config interface {port_name}', timeout=10)
+        logger.debug(f"[cli] show running-config interface {port_name} -> {out.strip()[:500]}")
+        if '%Error' in out:
+            return '', set()
+        mode = ''
+        vlans = set()
+        for line in out.split('\n'):
+            line = line.strip()
+            if line.startswith('switchport mode '):
+                mode = line.split()[-1].strip()
+            elif line.startswith('switchport vlan ') and line.endswith('tag'):
+                v_part = line[len('switchport vlan '):-len(' tag')]
+                for v in v_part.split(','):
+                    v = v.strip()
+                    if v.isdigit():
+                        vlans.add(v)
+        return mode, vlans
+
     def set_vlan_trunk(self, port_name, vlan_ids, mode='trunk'):
-        """Set VLAN trunk configuration on a port.
-        CLI syntax (ZTE C320):
-          switchport mode trunk|access|hybrid
-          switchport vlan <IDs> tag    — add VLANs (comma-separated)
-          no switchport vlan <IDs>     — remove VLANs
-        This method removes all current VLANs then adds the specified ones.
-        """
+        """Set the port's tagged VLAN set to exactly `vlan_ids` using a diff —
+        only adds/removes what changed (never remove-all-then-add), checks
+        every command for OLT errors, and verifies by re-reading the port
+        config afterwards. Stashes the verified result on
+        self.last_port_vlans / self.last_port_mode for the caller to persist."""
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
-            tn.write('configure terminal\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write(f'interface {port_name}\n')
-            tn.read_until(b'#', timeout=5)
+            # Read current state BEFORE entering config mode
+            current_mode, current = self._read_port_vlans(tn, port_name)
+            try:
+                desired = {str(int(v)) for v in vlan_ids}
+            except ValueError:
+                tn.close()
+                return False, f'VLAN ID tidak valid: {vlan_ids}'
 
-            # Set mode
-            tn.write(f'switchport mode {mode}\n')
-            tn.read_until(b'#', timeout=5)
+            self._cli_cmd(tn, 'configure terminal', timeout=5)
+            self._cli_cmd(tn, f'interface {port_name}', timeout=5)
+            if mode and mode != current_mode:
+                self._cli_cmd(tn, f'switchport mode {mode}', timeout=5)
+            to_remove = current - desired
+            to_add = desired - current
+            if to_remove:
+                self._cli_cmd(tn, f'no switchport vlan {",".join(sorted(to_remove, key=int))}', timeout=10)
+            if to_add:
+                self._cli_cmd(tn, f'switchport vlan {",".join(sorted(to_add, key=int))} tag', timeout=10)
+            self._send_command(tn, 'exit', timeout=5)
+            self._send_command(tn, 'exit', timeout=5)
 
-            # Get current VLANs to remove them
-            tn.write('show running-config\n')
-            cfg = tn.read_until(b'#', timeout=10).decode('utf-8', errors='replace')
-            current_vlans = []
-            for line in cfg.split('\n'):
-                line = line.strip()
-                if line.startswith('switchport vlan ') and 'tag' in line:
-                    v_part = line.replace('switchport vlan ', '').replace(' tag', '').strip()
-                    for v in v_part.split(','):
-                        v = v.strip()
-                        if v.isdigit():
-                            current_vlans.append(v)
-
-            # Remove current VLANs
-            if current_vlans:
-                tn.write(f'no switchport vlan {",".join(current_vlans)}\n')
-                tn.read_until(b'#', timeout=5)
-
-            # Add new VLANs
-            if vlan_ids:
-                vlans_str = ','.join(vlan_ids)
-                tn.write(f'switchport vlan {vlans_str} tag\n')
-                tn.read_until(b'#', timeout=5)
-
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('exit\n')
+            # Verify against what the OLT actually has now
+            actual_mode, actual = self._read_port_vlans(tn, port_name)
             tn.close()
-            return True, f'Port {port_name} VLAN trunk updated: {",".join(vlan_ids) if vlan_ids else "none"}'
+            self.last_port_vlans = sorted(actual, key=int)
+            self.last_port_mode = actual_mode
+            ok = (desired <= actual) if desired else (not actual)
+            if ok:
+                return True, f'Port {port_name}: VLAN tag = {",".join(sorted(actual, key=int)) or "none"}'
+            logger.warning(f"set_vlan_trunk {port_name} verify failed: wanted {sorted(desired, key=int)}, got {sorted(actual, key=int)}")
+            return False, (f'Verifikasi gagal — VLAN di OLT sekarang: '
+                           f'{",".join(sorted(actual, key=int)) or "none"}, '
+                           f'diminta: {",".join(sorted(desired, key=int)) or "none"}')
+        except RuntimeError as e:
+            logger.warning(f"set_vlan_trunk {port_name} rejected by OLT: {e}")
+            try:
+                self._send_command(tn, 'exit', timeout=5)
+                self._send_command(tn, 'exit', timeout=5)
+            except Exception:
+                pass
+            try: tn.close()
+            except: pass
+            return False, f'OLT menolak perintah: {e}'
         except Exception as e:
             logger.error(f"set_vlan_trunk {port_name} failed: {e}")
             try: tn.close()
@@ -3884,26 +3934,47 @@ class TelnetCollector:
             return False, str(e)
 
     def remove_vlan_from_port(self, port_name, vlan_ids):
-        """Remove specific VLAN IDs from a port.
-        CLI syntax: no switchport vlan <IDs>
-        """
+        """Remove specific VLAN IDs from a port — only issues `no switchport
+        vlan` for VLANs actually present, checks for errors, verifies by
+        re-reading. Stashes the result on self.last_port_vlans."""
         tn = self._connect()
         if not tn: return False, 'Telnet connection failed'
         try:
-            tn.write('configure terminal\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write(f'interface {port_name}\n')
-            tn.read_until(b'#', timeout=5)
-            vlans_str = ','.join(vlan_ids)
-            tn.write(f'no switchport vlan {vlans_str}\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
-            tn.write('exit\n')
+            _, current = self._read_port_vlans(tn, port_name)
+            try:
+                remove = {str(int(v)) for v in vlan_ids}
+            except ValueError:
+                tn.close()
+                return False, f'VLAN ID tidak valid: {vlan_ids}'
+
+            self._cli_cmd(tn, 'configure terminal', timeout=5)
+            self._cli_cmd(tn, f'interface {port_name}', timeout=5)
+            to_remove = remove & current
+            if to_remove:
+                self._cli_cmd(tn, f'no switchport vlan {",".join(sorted(to_remove, key=int))}', timeout=10)
+            self._send_command(tn, 'exit', timeout=5)
+            self._send_command(tn, 'exit', timeout=5)
+
+            actual_mode, actual = self._read_port_vlans(tn, port_name)
             tn.close()
-            return True, f'Removed VLANs {vlans_str} from {port_name}'
+            self.last_port_vlans = sorted(actual, key=int)
+            self.last_port_mode = actual_mode
+            still = remove & actual
+            if still:
+                logger.warning(f"remove_vlan_from_port {port_name} verify failed: {sorted(still, key=int)} still tagged")
+                return False, (f'Verifikasi gagal — VLAN masih ter-tag di {port_name}: '
+                               f'{",".join(sorted(still, key=int))}')
+            return True, f'Port {port_name}: VLAN tag = {",".join(sorted(actual, key=int)) or "none"}'
+        except RuntimeError as e:
+            logger.warning(f"remove_vlan_from_port {port_name} rejected by OLT: {e}")
+            try:
+                self._send_command(tn, 'exit', timeout=5)
+                self._send_command(tn, 'exit', timeout=5)
+            except Exception:
+                pass
+            try: tn.close()
+            except: pass
+            return False, f'OLT menolak perintah: {e}'
         except Exception as e:
             logger.error(f"remove_vlan_from_port {port_name} failed: {e}")
             try: tn.close()
