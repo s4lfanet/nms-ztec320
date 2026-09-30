@@ -1977,20 +1977,39 @@ class TelnetCollector:
 
     def _provision_fiberhome_veip(self, tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list):
         """Extracted verbatim from register_vendor_template's 'fiberhome_veip' branch (Finding 5 refactor — behavior-preserving)."""
-        # Read from vlans array if present, fall back to individual fields
+        # Read from vlans array if present (N-VLAN dynamic), fall back to the
+        # 3 legacy individual fields. Blank/non-numeric rows are skipped.
         vlans_arr = extra.get('vlans', [])
         if isinstance(vlans_arr, str):
             import json as _j
             try: vlans_arr = _j.loads(vlans_arr)
             except: vlans_arr = []
-        if vlans_arr and len(vlans_arr) >= 3:
-            tr069_vlan = str(vlans_arr[0].get('vlan', '') or 1010)
-            internet_vlan = str(vlans_arr[1].get('vlan', '') or 30)
-            voip_vlan = str(vlans_arr[2].get('vlan', '') or 151)
-        else:
-            tr069_vlan = str(extra.get('tr069_vlan') or 1010)
-            internet_vlan = str(extra.get('internet_vlan') or 30)
-            voip_vlan = str(extra.get('voip_vlan') or 151)
+        vlans = []
+        for v in (vlans_arr if isinstance(vlans_arr, list) else []):
+            if not isinstance(v, dict):
+                continue
+            vid = str(v.get('vlan', '') or '').strip()
+            try:
+                vid = str(int(vid))
+            except (ValueError, TypeError):
+                continue
+            vlans.append({'vlan': vid, 'label': str(v.get('label', '') or '')})
+        if not vlans:
+            vlans = [
+                {'vlan': str(extra.get('tr069_vlan') or 1010), 'label': 'TR069'},
+                {'vlan': str(extra.get('internet_vlan') or 30), 'label': 'Internet'},
+                {'vlan': str(extra.get('voip_vlan') or 151), 'label': 'VoIP'},
+            ]
+        n = len(vlans)
+        # Internet = first entry labelled 'internet' (else #2, else #1);
+        # TR069 = first labelled 'tr069' (else #1).
+        def _find_vlan(keyword, fallback_idx):
+            for v in vlans:
+                if keyword in v['label'].lower():
+                    return v['vlan']
+            return vlans[min(fallback_idx, n - 1)]['vlan']
+        internet_vlan = _find_vlan('internet', 1)
+        tr069_vlan = _find_vlan('tr069', 0)
         acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
         acs_user = extra.get('acs_user', '') or 'acs'
         acs_pass = extra.get('acs_pass', '') or 'acs'
@@ -2003,32 +2022,33 @@ class TelnetCollector:
         wan_ip_mode = extra.get('wan_ip_mode', '')  # PPPoE|DHCP|STATIC
         # sn-bind enable sn
         sc('sn-bind enable sn')
-        # TCONTs (no name — matching running-config)
-        sc_tcont(1, '', tcont_profile)
-        sc('gemport 1 tcont 1')
-        if traffic_profile:
-            sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
-        sc_tcont(2, '', tcont_profile)
-        sc('gemport 2 tcont 2')
-        sc_tcont(3, '', tcont_profile)
-        sc('gemport 3 tcont 3')
-        sc(f'service-port 1 vport 1 user-vlan {tr069_vlan} vlan {tr069_vlan}')
-        sc(f'service-port 2 vport 2 user-vlan {internet_vlan} vlan {internet_vlan}')
-        sc(f'service-port 3 vport 3 user-vlan {voip_vlan} vlan {voip_vlan}')
+        # TCONTs + gemports + service-ports — one set per VLAN (no name —
+        # matching running-config)
+        for i in range(1, n + 1):
+            sc_tcont(i, '', tcont_profile)
+            sc(f'gemport {i} tcont {i}')
+            if i == 1 and traffic_profile:
+                sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
+        for i, v in enumerate(vlans, 1):
+            sc(f'service-port {i} vport {i} user-vlan {v["vlan"]} vlan {v["vlan"]}')
         self._send_command(tn, 'exit')
         self._send_command(tn, f'pon-onu-mng {onu_if}')
-        # Safe-replace: delete old service entries to prevent error 63869
-        for sn in ['service1', 'service2', 'service3']:
-            self._send_command(tn, f'no service {sn}', timeout=10)
-        for n in [1, 2, 3]:
-            self._send_command(tn, f'no wan {n} service', timeout=10)
-            self._send_command(tn, f'no wan-ip {n}', timeout=10)
-            self._send_command(tn, f'no pppoe {n}', timeout=10)
+        # Safe-replace: delete old service entries to prevent error 63869.
+        # Delete BOTH the legacy 'serviceN' names and the bare-index names so
+        # ONUs provisioned either way are cleaned.
+        for i in range(1, n + 1):
+            self._send_command(tn, f'no service service{i}', timeout=10)
+            if i >= 2:
+                self._send_command(tn, f'no service {i}', timeout=10)
+        for nw in range(1, max(3, n) + 1):
+            self._send_command(tn, f'no wan {nw} service', timeout=10)
+            self._send_command(tn, f'no wan-ip {nw}', timeout=10)
+            self._send_command(tn, f'no pppoe {nw}', timeout=10)
         import time as _t; _t.sleep(1)
-        # Service names matching running-config: service1, 2, 3
-        sc(f'service service1 gemport 1 vlan {tr069_vlan}')
-        sc(f'service 2 gemport 2 vlan {internet_vlan}')
-        sc(f'service 3 gemport 3 vlan {voip_vlan}')
+        # Service names matching running-config: service1, 2, 3, ...
+        for i, v in enumerate(vlans, 1):
+            name = 'service1' if i == 1 else str(i)
+            sc(f'service {name} gemport {i} vlan {v["vlan"]}')
         sc('vlan port veip_1 mode hybrid')
         sc_warn(f'vlan port eth_0/1 mode tag vlan {internet_vlan}')
         sc_warn(f'vlan port eth_0/2 mode tag vlan {internet_vlan}')

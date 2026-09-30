@@ -328,7 +328,8 @@ function generateRegisterScript(d: WizardData): string {
     lines.push(`pon-onu-mng ${onuIf}`);
     vlans.forEach((v, i) => {
       const vid = String(v.vlan || '');
-      lines.push(`  service ${i + 1} gemport ${i + 1} vlan ${vid}`);
+      const svcName = i === 0 ? 'service1' : `${i + 1}`;
+      lines.push(`  service ${svcName} gemport ${i + 1} vlan ${vid}`);
     });
     lines.push('  vlan port veip_1 mode hybrid');
     const internetVlan = String(vlans.find(v => (v.label || '').toLowerCase().includes('internet'))?.vlan || vlans[1]?.vlan || '30');
@@ -1723,31 +1724,32 @@ export function RegisterWizard() {
               )}
 
               {/* Dynamic VLAN list */}
+              {(() => {
+                const fhDefaultVlans = (e: Record<string, unknown>) => [
+                  { vlan: String(e.tr069_vlan || '1010'), label: 'TR069' },
+                  { vlan: String(e.internet_vlan || '30'), label: 'Internet' },
+                  { vlan: String(e.voip_vlan || '151'), label: 'VoIP' },
+                ];
+                const fhVlans = Array.isArray(data.extra.vlans) && data.extra.vlans.length > 0
+                  ? data.extra.vlans as { vlan: string; label: string }[]
+                  : fhDefaultVlans(data.extra);
+                return (
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="label-sm">VLAN List (Service Ports)</label>
                   <button type="button" onClick={() => {
-                    const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans : [];
-                    update('extra', { ...data.extra, vlans: [...cur, { vlan: '', label: '' }] });
+                    update('extra', { ...data.extra, vlans: [...fhVlans, { vlan: '', label: '' }] });
                   }} className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-1">
                     <Plus size={12} /> Add VLAN
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {(Array.isArray(data.extra.vlans) && data.extra.vlans.length > 0 ? data.extra.vlans : [
-                    { vlan: data.extra.tr069_vlan || '1010', label: 'TR069' },
-                    { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
-                    { vlan: data.extra.voip_vlan || '151', label: 'VoIP' },
-                  ]).map((v, i) => (
+                  {fhVlans.map((v, i) => (
                     <div key={i} className="flex gap-2 items-center">
                       <span className="text-[10px] text-tx3 w-6 flex-shrink-0">#{i + 1}</span>
                       {vlanList.length > 0 ? (
                         <select value={v.vlan || ''} onChange={e => {
-                          const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
-                            { vlan: data.extra.tr069_vlan || '1010', label: 'TR069' },
-                            { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
-                            { vlan: data.extra.voip_vlan || '151', label: 'VoIP' },
-                          ];
+                          const cur = [...fhVlans];
                           cur[i] = { ...cur[i], vlan: e.target.value };
                           update('extra', { ...data.extra, vlans: cur });
                         }} className="input-field flex-1">
@@ -1757,11 +1759,7 @@ export function RegisterWizard() {
                       ) : (
                         <input type="number" value={v.vlan || ''} placeholder="VLAN ID"
                           onChange={e => {
-                            const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
-                              { vlan: data.extra.tr069_vlan || '1010', label: 'TR069' },
-                              { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
-                              { vlan: data.extra.voip_vlan || '151', label: 'VoIP' },
-                            ];
+                            const cur = [...fhVlans];
                             cur[i] = { ...cur[i], vlan: e.target.value };
                             update('extra', { ...data.extra, vlans: cur });
                           }}
@@ -1769,18 +1767,13 @@ export function RegisterWizard() {
                       )}
                       <input type="text" value={v.label || ''} placeholder="Label (opt)"
                         onChange={e => {
-                          const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
-                            { vlan: data.extra.tr069_vlan || '1010', label: 'TR069' },
-                            { vlan: data.extra.internet_vlan || '30', label: 'Internet' },
-                            { vlan: data.extra.voip_vlan || '151', label: 'VoIP' },
-                          ];
+                          const cur = [...fhVlans];
                           cur[i] = { ...cur[i], label: e.target.value };
                           update('extra', { ...data.extra, vlans: cur });
                         }}
                         className="input-field flex-1" />
                       <button type="button" onClick={() => {
-                        const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans.filter((_, idx) => idx !== i) : [];
-                        update('extra', { ...data.extra, vlans: cur });
+                        update('extra', { ...data.extra, vlans: fhVlans.filter((_, idx) => idx !== i) });
                       }} className="p-1.5 rounded text-danger hover:bg-danger/10 flex-shrink-0">
                         <Trash2 size={14} />
                       </button>
@@ -1789,6 +1782,8 @@ export function RegisterWizard() {
                 </div>
                 <p className="text-[10px] text-tx3 mt-1">Default: #1=TR069, #2=Internet, #3=VoIP. Bisa tambah/hapus sesuai kebutuhan.</p>
               </div>
+                );
+              })()}
 
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">

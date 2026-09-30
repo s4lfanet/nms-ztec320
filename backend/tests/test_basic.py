@@ -1665,7 +1665,8 @@ class TestVendorTemplateCommandSequences:
             'service-port 2 vport 2 user-vlan 100 vlan 100',
             'service-port 3 vport 3 user-vlan 300 vlan 300',
             'exit', 'pon-onu-mng gpon-onu_1/1/1:1',
-            'no service service1', 'no service service2', 'no service service3',
+            'no service service1', 'no service service2', 'no service 2',
+            'no service service3', 'no service 3',
             'no wan 1 service', 'no wan-ip 1', 'no pppoe 1',
             'no wan 2 service', 'no wan-ip 2', 'no pppoe 2',
             'no wan 3 service', 'no wan-ip 3', 'no pppoe 3',
@@ -1683,6 +1684,64 @@ class TestVendorTemplateCommandSequences:
             'tr069-mgmt 1 tag pri 0 vlan 200',
             'end', 'enable', 'show gpon onu state gpon-olt_1/1/1',
         ]
+
+    def test_fiberhome_veip_single_manual_vlan(self):
+        """A manually-entered VLAN list of 1 must not silently fall back to
+        the 3 defaults — exactly one service-port/service is emitted."""
+        extra = self._default_extra()
+        extra['vlans'] = [{'vlan': '100', 'label': 'Internet'}]
+        ok, msg, commands = self._capture('fiberhome_veip', extra=extra)
+        assert ok is True
+        assert 'service-port 1 vport 1 user-vlan 100 vlan 100' in commands
+        assert not any(c.startswith('service-port 2 ') for c in commands)
+        assert 'vlan port eth_0/1 mode tag vlan 100' in commands
+        # Internet-labelled entry is the only VLAN, so it doubles as TR069
+        assert 'tr069-mgmt 1 tag pri 0 vlan 100' in commands
+        joined = ' '.join(commands)
+        for bad in ('1010', '151', 'vlan 200', 'vlan 300'):
+            assert bad not in joined
+
+    def test_fiberhome_veip_four_vlans(self):
+        """4-row VLAN list → 4 tconts/gemports/service-ports/services."""
+        extra = self._default_extra()
+        extra['vlans'] = [
+            {'vlan': '1010', 'label': 'TR069'},
+            {'vlan': '30', 'label': 'Internet'},
+            {'vlan': '151', 'label': 'VoIP'},
+            {'vlan': '500', 'label': 'IPTV'},
+        ]
+        ok, msg, commands = self._capture('fiberhome_veip', extra=extra)
+        assert ok is True
+        for i in range(1, 5):
+            assert f'gemport {i} tcont {i}' in commands
+        assert 'service-port 4 vport 4 user-vlan 500 vlan 500' in commands
+        assert 'service 4 gemport 4 vlan 500' in commands
+        assert 'service service1 gemport 1 vlan 1010' in commands
+        assert 'vlan port eth_0/1 mode tag vlan 30' in commands
+        assert 'tr069-mgmt 1 tag pri 0 vlan 1010' in commands
+        # Safe-replace cleans all 4 service slots, both naming styles
+        for i in range(1, 5):
+            assert f'no service service{i}' in commands
+            if i >= 2:
+                assert f'no service {i}' in commands
+
+    def test_fiberhome_veip_blank_rows_ignored(self):
+        """Blank VLAN rows in the list are skipped — only real VLANs emit."""
+        extra = self._default_extra()
+        extra['vlans'] = [{'vlan': '', 'label': ''}, {'vlan': '30', 'label': 'Internet'}]
+        ok, msg, commands = self._capture('fiberhome_veip', extra=extra)
+        assert ok is True
+        assert 'service-port 1 vport 1 user-vlan 30 vlan 30' in commands
+        assert not any(c.startswith('service-port 2 ') for c in commands)
+
+    def test_fiberhome_veip_sanitizes_vlan_list(self):
+        """_sanitize_provisioning_input validates extra.vlans[i].vlan as an int."""
+        from routes_onu import _sanitize_provisioning_input
+        from cli_sanitize import CliValidationError
+        with pytest.raises(CliValidationError):
+            _sanitize_provisioning_input(extra={'vlans': [{'vlan': 'abc'}]})
+        out = _sanitize_provisioning_input(extra={'vlans': [{'vlan': '30'}]})
+        assert out['extra']['vlans'][0]['vlan'] == 30
 
     def test_zte_full_template(self):
         ok, msg, commands = self._capture('zte_full')

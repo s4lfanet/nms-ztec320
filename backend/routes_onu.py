@@ -2312,6 +2312,13 @@ def _sanitize_provisioning_input(name='', description='', tcont_profile='', traf
     extra_cfg = out.get('extra')
     if isinstance(extra_cfg, dict) and extra_cfg.get('tr069_vlan') not in (None, ''):
         extra_cfg['tr069_vlan'] = sanitize_cli_int(extra_cfg['tr069_vlan'], 'extra.tr069_vlan', min_val=1, max_val=4094)
+    # extra.vlans (Fiberhome VEIP dynamic VLAN list) — 'vlans' is a
+    # JSON_CONTAINER_FIELDS key so a JSON-string form is already parsed by
+    # sanitize_cli_dict. Blank vlan fields are left as-is (backend skips them).
+    if isinstance(extra_cfg, dict) and isinstance(extra_cfg.get('vlans'), list):
+        for i, v in enumerate(extra_cfg['vlans']):
+            if isinstance(v, dict) and v.get('vlan') not in (None, ''):
+                v['vlan'] = sanitize_cli_int(v['vlan'], f'extra.vlans[{i}].vlan', min_val=1, max_val=4094)
     for i, s in enumerate(out.get('services') or []):
         if not isinstance(s, dict):
             continue
