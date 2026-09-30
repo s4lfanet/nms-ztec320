@@ -508,3 +508,14 @@ ViewOnu, UserManagement, Tr069Profile, RegisterWizard, OltSettings, OltConfigura
 - [x] Alert notifications: WhatsApp gateway + in-app bell notifications for ONU/OLT alerts
 - [x] Alert notifications: Subscription expiry notifications to super admin (in-app bell)
 - [x] RX power signal stats: Dynamic color ranges from customization (not hardcoded thresholds)
+
+## Production VPS (Salfanet NMS) — DO NOT CONFUSE WITH 192.168.54.129
+
+- **IP: 192.168.54.131** (user root). 192.168.54.129 is a DIFFERENT project (Salfanet Radius) — never deploy NMS there.
+- Domain: https://zte.salfa.my.id (Cloudflare → Nginx → Flask :5000 / WebSocket :8765)
+- Repo path: `/opt/salfanet-nms`, venv `/opt/salfanet-nms/.venv`, DB `backend/instance/nms.db`
+- Service: `systemctl restart salfanet-nms` (runs as user `salfanet`, EnvironmentFile `backend/.env`)
+- Redis: local `redis-server` on 127.0.0.1:6379 (`REDIS_URL` set in `backend/.env`)
+- Cron (root): `auto_sync.py` */5, `traffic_poller.py` 2-59/5, `auto_backup.py` :00, `db_backup.py` :15 → logs in `/var/log/salfanet-*.log`
+- Deploy: `cd /opt/salfanet-nms && git pull && (cd frontend && pnpm build) && systemctl restart salfanet-nms`
+  - `frontend/dist` is committed; on the VPS run `git checkout -- frontend/dist && git clean -fd frontend/dist` before `git pull` if the pull conflicts.
