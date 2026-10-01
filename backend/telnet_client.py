@@ -2129,7 +2129,7 @@ class TelnetCollector:
             })
         if not vlans:
             vlans = [
-                {'vlan': str(extra.get('tr069_vlan') or 1010), 'label': 'TR069', 'cos': '0', 'gemport': '1'},
+                {'vlan': str(extra.get('tr069_vlan') or 1010), 'label': 'ACS', 'cos': '0', 'gemport': '1'},
                 {'vlan': str(extra.get('internet_vlan') or 30), 'label': 'Internet', 'cos': '0', 'gemport': '1'},
                 {'vlan': str(extra.get('voip_vlan') or 151), 'label': 'VoIP', 'cos': '0', 'gemport': '1'},
             ]

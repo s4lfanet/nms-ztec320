@@ -363,7 +363,7 @@ function generateRegisterScript(d: WizardData): string {
     // Nokia ONT — named services all on gemport 1 with cos, VEIP hybrid,
     // per-port VLAN map (skip-by-default), tr069-mgmt, security-mgmt web.
     const vlans = (Array.isArray(e.vlans) && e.vlans.length > 0 ? e.vlans : [
-      { vlan: e.tr069_vlan || '100', label: 'ACS', cos: '0' },
+      { vlan: e.tr069_vlan || '1010', label: 'ACS', cos: '0' },
       { vlan: e.internet_vlan || '30', label: 'Internet', cos: '0' },
       { vlan: e.voip_vlan || '151', label: 'VoIP', cos: '0' },
     ]).filter((v: { vlan?: string }) => String(v.vlan || '').trim() !== '');
@@ -587,6 +587,25 @@ export function RegisterWizard() {
         if (d.success && d.wan_ip_profiles) setWanIpProfiles(d.wan_ip_profiles);
       }).catch(() => {});
   }, [data.oltId, olts]);
+
+  // Seed extra.vlans when the Nokia template is selected so the row editor,
+  // script preview, and backend all consume the SAME list (backend falls back
+  // to ACS/Internet/VoIP defaults when vlans is absent — identical rows below).
+  useEffect(() => {
+    if (data.template !== 'nokia') return;
+    if (Array.isArray(data.extra.vlans)) return;
+    setData(prev => ({
+      ...prev,
+      extra: {
+        ...prev.extra,
+        vlans: [
+          { vlan: String(prev.extra.tr069_vlan || '1010'), label: 'ACS', cos: '0' },
+          { vlan: String(prev.extra.internet_vlan || '30'), label: 'Internet', cos: '0' },
+          { vlan: String(prev.extra.voip_vlan || '151'), label: 'VoIP', cos: '0' },
+        ] as unknown as string,
+      },
+    }));
+  }, [data.template, data.extra.vlans]);
 
   const update = (k: keyof WizardData, v: unknown) => setData(prev => ({ ...prev, [k]: v }));
 
@@ -1915,7 +1934,7 @@ export function RegisterWizard() {
               {/* Dynamic VLAN list (vlan + label = service name + cos) */}
               {(() => {
                 const nokiaDefaultVlans = (e: Record<string, unknown>) => [
-                  { vlan: String(e.tr069_vlan || '100'), label: 'ACS', cos: '0' },
+                  { vlan: String(e.tr069_vlan || '1010'), label: 'ACS', cos: '0' },
                   { vlan: String(e.internet_vlan || '30'), label: 'Internet', cos: '0' },
                   { vlan: String(e.voip_vlan || '151'), label: 'VoIP', cos: '0' },
                 ];
@@ -2070,7 +2089,7 @@ export function RegisterWizard() {
               <InfoBox label="OLT" value={olts.find(o => o.id === data.oltId)?.name || '-'} />
               <InfoBox label="ONUs to Register" value={String(data.selectedOnus.length)} />
               <InfoBox label="ONU Type" value={data.onuType} />
-              <InfoBox label="Template" value={data.template === 'zte_full' ? 'ZTE Dual Band' : data.template === 'zte_multi' ? 'ZTE Multi-Service' : data.template.replace('_', ' ')} />
+              <InfoBox label="Template" value={data.template === 'zte_full' ? 'ZTE Dual Band' : data.template === 'zte_multi' ? 'ZTE Multi-Service' : data.template === 'nokia' ? 'Nokia VEIP' : data.template === 'fiberhome_veip' ? 'Fiberhome VEIP' : data.template === 'huawei_full' ? 'Huawei Full' : data.template.replace('_', ' ')} />
               <InfoBox label="VLAN ID" value={String(data.vlan)} />
               <InfoBox label="TCONT Profile" value={data.tcontProfile || '-'} />
               <InfoBox label="Traffic Profile" value={data.trafficProfile || 'None'} />

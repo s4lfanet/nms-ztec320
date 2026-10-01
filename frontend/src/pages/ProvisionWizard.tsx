@@ -903,14 +903,14 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               <option value="default">Default</option>
               <option value="nokia">Nokia</option>
             </select>
+            {data.ontStyle === 'nokia' && (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="text-[10px] text-tx3 whitespace-nowrap">security-mgmt port:</span>
+                <input type="text" value={data.securityWebPort} onChange={e => update('securityWebPort', e.target.value)}
+                  className="h-7 w-16 px-2 rounded-lg bg-glass border border-brd text-xs font-mono" placeholder="212" />
+              </div>
+            )}
           </div>
-          {data.ontStyle === 'nokia' && (
-            <div className="flex items-center gap-2 -mt-2 mb-4">
-              <span className="text-[10px] text-tx3">security-mgmt web port:</span>
-              <input type="text" value={data.securityWebPort} onChange={e => update('securityWebPort', e.target.value)}
-                className="h-7 w-20 px-2 rounded-lg bg-glass border border-brd text-xs font-mono" placeholder="212" />
-            </div>
-          )}
 
           {/* VLAN cards */}
           <div className="space-y-2">
