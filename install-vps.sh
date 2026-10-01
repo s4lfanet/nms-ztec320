@@ -7,7 +7,7 @@
 # mirror: PNPM_REGISTRY=https://registry.npmmirror.com bash install-vps.sh
 #
 # What this does:
-#   1. Install system packages (Python, Node.js 22, nginx)
+#   1. Install system packages (Python, Node.js 22, nginx, Redis)
 #   2. Clone repo to /opt/salfanet-nms
 #   3. Setup Python venv + install deps
 #   4. Build frontend
@@ -52,8 +52,29 @@ echo "[1/9] Installing system packages..."
 apt_get update -qq
 DEBIAN_FRONTEND=noninteractive apt_get install -y -qq \
     software-properties-common \
-    nginx curl git rsync \
+    nginx curl git rsync redis-server \
     > /dev/null 2>&1
+
+# Redis — used for the shared cache, sync locking and the login rate
+# limiter across processes (server + cron jobs). Loopback-only, bounded
+# memory with LRU eviction so a small VPS never OOMs on it.
+if command -v redis-server >/dev/null 2>&1; then
+    sed -i -e 's/^bind .*/bind 127.0.0.1 ::1/' \
+           -e 's/^#\? *maxmemory .*/maxmemory 256mb/' \
+           -e 's/^#\? *maxmemory-policy .*/maxmemory-policy allkeys-lru/' \
+           /etc/redis/redis.conf 2>/dev/null || true
+    grep -q '^maxmemory ' /etc/redis/redis.conf 2>/dev/null || echo 'maxmemory 256mb' >> /etc/redis/redis.conf
+    grep -q '^maxmemory-policy ' /etc/redis/redis.conf 2>/dev/null || echo 'maxmemory-policy allkeys-lru' >> /etc/redis/redis.conf
+    systemctl enable redis-server >/dev/null 2>&1 || true
+    systemctl restart redis-server >/dev/null 2>&1 || true
+    if redis-cli ping 2>/dev/null | grep -q PONG; then
+        echo "  Redis: OK (127.0.0.1:6379, maxmemory 256mb allkeys-lru)"
+    else
+        echo "  [WARNING] redis-server installed but not responding — continuing without it (app falls back to in-memory cache/locks)."
+    fi
+else
+    echo "  [WARNING] redis-server package failed to install — continuing without it (app falls back to in-memory cache/locks)."
+fi
 
 # Ensure a Python 3.10+ interpreter is available. Ubuntu's default `python3`
 # varies a lot by release (3.8 on 20.04, 3.10 on 22.04, 3.12 on 24.04) — this
@@ -201,12 +222,23 @@ if [ ! -f "backend/.env" ]; then
         -e "s/^CREDENTIAL_ENCRYPTION_KEY=.*/CREDENTIAL_ENCRYPTION_KEY=${CREDENTIAL_ENCRYPTION_KEY}/" \
         -e "s/^FLASK_ENV=.*/FLASK_ENV=production/" \
         -e "s/^SESSION_COOKIE_SECURE=.*/SESSION_COOKIE_SECURE=0/" \
+        -e "s|^# *REDIS_URL=.*|REDIS_URL=redis://127.0.0.1:6379/0|" \
+        -e "s|^REDIS_URL=.*|REDIS_URL=redis://127.0.0.1:6379/0|" \
         backend/.env
     echo "  Created backend/.env (FLASK_ENV=production) with generated SECRET_KEY, INTERNAL_API_KEY, CREDENTIAL_ENCRYPTION_KEY"
     echo "  Note: SESSION_COOKIE_SECURE=0 (HTTP-only by default) — after enabling HTTPS"
     echo "        (see 'Enable HTTPS' below), set it to 1 in backend/.env and restart the service."
 else
     echo "  backend/.env already exists, skipping."
+    # Upgrades of older installs may predate Redis — wire it up if absent.
+    if command -v redis-server >/dev/null 2>&1 && ! grep -q "^REDIS_URL=" backend/.env; then
+        if grep -q "^# *REDIS_URL=" backend/.env; then
+            sed -i "s|^# *REDIS_URL=.*|REDIS_URL=redis://127.0.0.1:6379/0|" backend/.env
+        else
+            echo "REDIS_URL=redis://127.0.0.1:6379/0" >> backend/.env
+        fi
+        echo "  Added REDIS_URL=redis://127.0.0.1:6379/0 to existing backend/.env"
+    fi
     if grep -q "^FLASK_ENV=development" backend/.env; then
         echo "  [WARNING] Existing backend/.env has FLASK_ENV=development — the debugger and insecure"
         echo "            cookies are enabled. Set FLASK_ENV=production in ${APP_DIR}/backend/.env"
@@ -398,6 +430,14 @@ if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:80/ 2>/dev/null | gre
 else
     echo "  ❌ Nginx (port 80): FAILED"
     FAIL=1
+fi
+
+# Redis is optional (app falls back to in-memory cache/locks) — warn, don't fail.
+if redis-cli ping 2>/dev/null | grep -q PONG; then
+    echo "  ✅ Redis (port 6379): OK"
+else
+    echo "  ⚠️  Redis: not running — app works but cache/locks are per-process."
+    echo "     Fix: apt-get install -y redis-server && systemctl enable --now redis-server"
 fi
 
 if [ "$CRON_COUNT" -lt 4 ]; then

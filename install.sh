@@ -125,6 +125,8 @@ if [ ! -f "backend/.env" ]; then
     cp backend/.env.example backend/.env
     echo "  Created backend/.env from backend/.env.example"
     echo "  Please edit backend/.env with your settings before running."
+    echo "  Tip: set REDIS_URL=redis://127.0.0.1:6379/0 if you have redis-server"
+    echo "       installed (optional — the app falls back to in-memory cache)."
 else
     echo "  backend/.env already exists, skipping."
 fi
