@@ -368,14 +368,19 @@ function generateRegisterScript(d: WizardData): string {
       { vlan: e.voip_vlan || '151', label: 'VoIP', cos: '0' },
     ]).filter((v: { vlan?: string }) => String(v.vlan || '').trim() !== '');
     lines.push('  sn-bind enable sn');
-    vlans.forEach((_: unknown, i: number) => {
-      lines.push(`  tcont ${i + 1} name  profile ${d.tcontProfile}`);
-      lines.push(`  gemport ${i + 1} tcont ${i + 1}`);
-      if (i === 0 && d.trafficProfile) lines.push(`  gemport 1 traffic-limit downstream ${d.trafficProfile}`);
+    // Nokia binds each VLAN to the gemport named in its OMCI service line —
+    // create only the referenced gemports and map each service-port's vport
+    // to its row's gemport (shared gemport 1 by default).
+    const gemIds = [...new Set(vlans.map((v: { gemport?: string }) => parseInt(String(v.gemport || '1'), 10) || 1))];
+    gemIds.forEach((g: number) => {
+      lines.push(`  tcont ${g} name  profile ${d.tcontProfile}`);
+      lines.push(`  gemport ${g} tcont ${g}`);
+      if (d.trafficProfile) lines.push(`  gemport ${g} traffic-limit downstream ${d.trafficProfile}`);
     });
-    vlans.forEach((v: { vlan?: string }, i: number) => {
+    vlans.forEach((v: { vlan?: string; gemport?: string }, i: number) => {
       const vid = String(v.vlan || '');
-      lines.push(`  service-port ${i + 1} vport ${i + 1} user-vlan ${vid} vlan ${vid}`);
+      const g = parseInt(String(v.gemport || '1'), 10) || 1;
+      lines.push(`  service-port ${i + 1} vport ${g} user-vlan ${vid} vlan ${vid}`);
     });
     lines.push('!');
     lines.push(`pon-onu-mng ${onuIf}`);
@@ -395,20 +400,23 @@ function generateRegisterScript(d: WizardData): string {
       else if (r.mode === 'trunk') lines.push(`  vlan port ${r.port} mode trunk`);
       else if (r.mode === 'hybrid' && r.vlan) lines.push(`  vlan port ${r.port} mode hybrid def-vlan ${r.vlan}`);
     });
-    // WAN config for the internet service (VEIP — always host 1)
+    // WAN config for the internet service (VEIP — always host 1); index =
+    // position of the row whose VLAN matches the internet-VLAN pick.
+    const inetVlan = String(vlans.find((v: { label?: string }) => (v.label || '').toLowerCase().includes('internet'))?.vlan || vlans[1]?.vlan || vlans[0]?.vlan || '');
+    const inetIdx = Math.max(1, vlans.findIndex((v: { vlan?: string }) => String(v.vlan || '') === inetVlan) + 1);
     const wanMode = e.wan_mode || 'bridge';
     const vlanProfile = e.vlan_profile || '';
     if (wanMode === 'pppoe' && e.pppoe_user) {
       if (vlanProfile) {
-        lines.push(`  wan-ip 2 mode pppoe username ${e.pppoe_user} password ${e.pppoe_pass || ''} vlan-profile ${vlanProfile} host 1`);
-        lines.push('  wan-ip 2 ping-response enable traceroute-response enable');
+        lines.push(`  wan-ip ${inetIdx} mode pppoe username ${e.pppoe_user} password ${e.pppoe_pass || ''} vlan-profile ${vlanProfile} host 1`);
+        lines.push(`  wan-ip ${inetIdx} ping-response enable traceroute-response enable`);
       } else {
-        lines.push(`  pppoe 2 nat enable user ${e.pppoe_user} password ${e.pppoe_pass || ''}`);
-        lines.push('  wan 2 service internet host 1');
+        lines.push(`  pppoe ${inetIdx} nat enable user ${e.pppoe_user} password ${e.pppoe_pass || ''}`);
+        lines.push(`  wan ${inetIdx} service internet host 1`);
       }
     } else if (wanMode === 'dhcp' && vlanProfile) {
-      lines.push(`  wan-ip 2 mode dhcp vlan-profile ${vlanProfile} host 1`);
-      lines.push('  wan-ip 2 ping-response enable traceroute-response enable');
+      lines.push(`  wan-ip ${inetIdx} mode dhcp vlan-profile ${vlanProfile} host 1`);
+      lines.push(`  wan-ip ${inetIdx} ping-response enable traceroute-response enable`);
     }
     // TR069 — VLAN from the row labelled 'acs'/'tr069' (else first row)
     lines.push('  tr069-mgmt 1 state unlock');

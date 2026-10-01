@@ -232,6 +232,7 @@ function generateScript(state: WizardState, resolvedAutoId: number | null): stri
   if (state.description) lines.push(`  description ${state.description}`);
 
   // Interface config
+  const isNokia = state.ontStyle === 'nokia';
   lines.push('!');
   lines.push(`interface ${onuIf}`);
   const enabledSvcs = state.services.filter(s => s.enabled);
@@ -239,16 +240,21 @@ function generateScript(state: WizardState, resolvedAutoId: number | null): stri
     const n = idx + 1;
     const vlan = svc.vlans[0] || '100';
     const svcName = `service${n}`;
-    lines.push(`  tcont ${n} name ${svcName} profile ${state.tcontProfile}`);
-    lines.push(`  gemport ${n} tcont ${n}`);
-    if (state.trafficProfile) lines.push(`  gemport ${n} traffic-limit downstream ${state.trafficProfile}`);
+    // Nokia: all OMCI services share gemport 1 → single tcont/gemport and
+    // every service-port uses vport 1.
+    if (!isNokia || n === 1) {
+      lines.push(`  tcont ${n} name ${svcName} profile ${state.tcontProfile}`);
+      lines.push(`  gemport ${n} tcont ${n}`);
+      if (state.trafficProfile) lines.push(`  gemport ${n} traffic-limit downstream ${state.trafficProfile}`);
+    }
+    const vport = isNokia ? 1 : n;
     const cvlan = svc.vlans[1] || '';
     if (svc.vlan_mode === 'qinq' && cvlan) {
-      lines.push(`  service-port ${n} vport ${n} user-vlan ${cvlan} vlan ${vlan} QinQ`);
+      lines.push(`  service-port ${n} vport ${vport} user-vlan ${cvlan} vlan ${vlan} QinQ`);
     } else if (svc.vlan_mode === 'untag') {
-      lines.push(`  service-port ${n} vport ${n} untag`);
+      lines.push(`  service-port ${n} vport ${vport} untag`);
     } else {
-      lines.push(`  service-port ${n} vport ${n} user-vlan ${vlan} vlan ${vlan}`);
+      lines.push(`  service-port ${n} vport ${vport} user-vlan ${vlan} vlan ${vlan}`);
     }
   });
 
@@ -262,7 +268,10 @@ function generateScript(state: WizardState, resolvedAutoId: number | null): stri
     const cvlan = svc.vlans[1] || '';
     const svcName = `service${n}`;
     const vlanSuffix = svc.vlan_mode === 'untag' ? '' : svc.vlan_mode === 'qinq' && cvlan ? ` vlan ${vlan} cvlan ${cvlan}` : ` vlan ${vlan}`;
-    if (svc.service_type === 'bridge') {
+    if (isNokia) {
+      const nokiaLabel = ({ tr069: 'TR069', internet: 'Internet', iptv: 'IPTV', bridge: 'Bridge' } as Record<string, string>)[svc.service_type] || '';
+      lines.push(`  service ${nokiaLabel || vlan} gemport 1 cos 0${vlanSuffix}`);
+    } else if (svc.service_type === 'bridge') {
       lines.push(`  service ${svcName} gemport ${n}${vlanSuffix}`);
     } else if (state.useVeip) {
       lines.push(`  service ${svcName} gemport ${n}${vlanSuffix}`);
@@ -272,22 +281,33 @@ function generateScript(state: WizardState, resolvedAutoId: number | null): stri
       lines.push(`  service ${svcName} gemport ${n}${vlanSuffix}`);
     }
 
-    // WAN config per service
+    // WAN config per service — VEIP (incl. Nokia) always uses host 1
+    const wanHost = state.useVeip || isNokia ? 1 : n;
     if (svc.service_type === 'tr069' && svc.vlan_profile) {
-      lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile} host ${n}`);
+      lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile} host ${wanHost}`);
     } else if (svc.service_type === 'internet' && svc.wan_mode === 'nat' && svc.username) {
       lines.push(`  pppoe ${n} nat enable user ${svc.username} password ${svc.password}`);
-      lines.push(`  wan ${n} service internet host ${n}`);
+      lines.push(`  wan ${n} service internet host ${wanHost}`);
     } else if (svc.service_type === 'internet' && svc.wan_mode === 'wan') {
       if (svc.wan_ip_mode === 'PPPoE' && svc.username) {
-        lines.push(`  wan-ip ${n} mode pppoe username ${svc.username} password ${svc.password} vlan-profile ${svc.vlan_profile} host ${n}`);
+        lines.push(`  wan-ip ${n} mode pppoe username ${svc.username} password ${svc.password} vlan-profile ${svc.vlan_profile} host ${wanHost}`);
       } else if (svc.wan_ip_mode === 'DHCP') {
-        lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile} host ${n}`);
+        lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile} host ${wanHost}`);
       }
     }
   });
 
-  if (state.useVeip) {
+  if (isNokia) {
+    // Nokia VEIP: hybrid port only (no untagged VLAN line) + port_map
+    lines.push('  vlan port veip_1 mode hybrid');
+    (Array.isArray(state.portMap) ? state.portMap : []).forEach((r: { port?: string; mode?: string; vlan?: string }) => {
+      if (!r || !r.port || !r.mode || r.mode === 'skip') return;
+      if (r.mode === 'tag' && r.vlan) lines.push(`  vlan port ${r.port} mode tag vlan ${r.vlan}`);
+      else if (r.mode === 'untag') lines.push(`  vlan port ${r.port} mode untag`);
+      else if (r.mode === 'trunk') lines.push(`  vlan port ${r.port} mode trunk`);
+      else if (r.mode === 'hybrid' && r.vlan) lines.push(`  vlan port ${r.port} mode hybrid def-vlan ${r.vlan}`);
+    });
+  } else if (state.useVeip) {
     lines.push('  vlan port veip_1 mode hybrid');
     lines.push('  vlan port veip_1 vlan 1');
   }
@@ -320,8 +340,8 @@ function generateScript(state: WizardState, resolvedAutoId: number | null): stri
     lines.push(`  firewall enable level ${state.firewallLevel} anti-hack disable`);
   }
 
-  // TR069
-  if (state.enableTr069) {
+  // TR069 — Nokia always emits it (ACS-managed ONTs)
+  if (state.enableTr069 || isNokia) {
     lines.push('  tr069-mgmt 1 state unlock');
     lines.push(`  tr069-mgmt 1 acs ${state.acsUrl || 'http://192.168.54.254:7547'} validate basic username ${state.acsUser || 'acs'} password ${state.acsPass || 'acs'}`);
     if (state.tr069VlanMode === 'tag' && state.tr069Vlan) {
@@ -331,7 +351,11 @@ function generateScript(state: WizardState, resolvedAutoId: number | null): stri
     }
   }
 
-  lines.push('  security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069');
+  if (isNokia) {
+    lines.push(`  security-mgmt ${state.securityWebPort || '212'} state enable mode forward protocol web`);
+  } else {
+    lines.push('  security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069');
+  }
   lines.push('!');
   return lines.join('\n');
 }

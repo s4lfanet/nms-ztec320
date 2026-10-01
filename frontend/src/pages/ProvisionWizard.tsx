@@ -167,12 +167,14 @@ function generateScript(d: WizardState): string {
         lines.push(`  gemport ${n} traffic-limit downstream ${svc.traffic_profile || d.trafficProfile}`);
       }
     }
+    // Nokia: all services share gemport 1 → every service-port uses vport 1
+    const vport = isNokia ? 1 : n;
     if (svc.vlan_mode === 'qinq' && cv) {
-      lines.push(`  service-port ${n} vport ${n} user-vlan ${cv} vlan ${v} QinQ`);
+      lines.push(`  service-port ${n} vport ${vport} user-vlan ${cv} vlan ${v} QinQ`);
     } else if (svc.vlan_mode === 'untag') {
-      lines.push(`  service-port ${n} vport ${n} untag`);
+      lines.push(`  service-port ${n} vport ${vport} untag`);
     } else {
-      lines.push(`  service-port ${n} vport ${n} user-vlan ${v} vlan ${v}`);
+      lines.push(`  service-port ${n} vport ${vport} user-vlan ${v} vlan ${v}`);
     }
   });
 
@@ -198,15 +200,16 @@ function generateScript(d: WizardState): string {
       lines.push(`  service ${svcName} gemport ${n}${vlanSuffix}`);
     }
 
-    // WAN config
+    // WAN config — VEIP (incl. Nokia) always uses host 1
+    const wanHost = useVeip ? 1 : n;
     if (svc.wan_mode === 'pppoe-nat' && svc.pppoe_user) {
       lines.push(`  pppoe ${n} nat enable user ${svc.pppoe_user} password ${svc.pppoe_pass}`);
-      lines.push(`  wan ${n} service internet host ${n}`);
+      lines.push(`  wan ${n} service internet host ${wanHost}`);
     } else if (svc.wan_mode === 'pppoe' && svc.pppoe_user) {
-      lines.push(`  wan-ip ${n} mode pppoe username ${svc.pppoe_user} password ${svc.pppoe_pass} vlan-profile ${svc.vlan_profile || 'pppoe'} host ${n}`);
+      lines.push(`  wan-ip ${n} mode pppoe username ${svc.pppoe_user} password ${svc.pppoe_pass} vlan-profile ${svc.vlan_profile || 'pppoe'} host ${wanHost}`);
       lines.push(`  wan-ip ${n} ping-response enable traceroute-response enable`);
     } else if (svc.wan_mode === 'dhcp') {
-      lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile || 'default'} host ${n}`);
+      lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile || 'default'} host ${wanHost}`);
       lines.push(`  wan-ip ${n} ping-response enable traceroute-response enable`);
     }
     // bridge = no wan config

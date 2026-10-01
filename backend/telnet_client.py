@@ -2156,18 +2156,33 @@ class TelnetCollector:
         vlan_profile = extra.get('vlan_profile', '')
         wan_ip_mode = extra.get('wan_ip_mode', '')  # PPPoE|DHCP|STATIC
 
-        # --- Interface section: tcont/gemport + one service-port per VLAN ---
+        # --- Interface section: Nokia ONTs bind every service VLAN to the
+        # gemport index named in the OMCI 'service' line below (shared
+        # gemport 1 by default). Create exactly the gemports referenced by
+        # the rows and point each service-port's vport at its row's gemport —
+        # if the OMCI service says 'gemport 1' but the service-port sits on
+        # vport 2, the ONT sends that VLAN upstream on gemport 1 where no
+        # service-port accepts it, and the VLAN is silently dropped.
+        def _gem_idx(v):
+            try:
+                return int(v['gemport'])
+            except (ValueError, TypeError):
+                return 1
         sc('sn-bind enable sn')
-        for i in range(1, n + 1):
-            sc_tcont(i, '', tcont_profile)
-            sc(f'gemport {i} tcont {i}')
-            if i == 1 and traffic_profile:
-                sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
-        # Multiple rows may share gemport 1 in the service lines below, but
-        # each VLAN still gets its own service-port — ZTE requires one
-        # service-port (vport) per VLAN.
+        gem_ids = []
+        for v in vlans:
+            g = _gem_idx(v)
+            if g not in gem_ids:
+                gem_ids.append(g)
+        for g in gem_ids:
+            sc_tcont(g, '', tcont_profile)
+            sc(f'gemport {g} tcont {g}')
+            if traffic_profile:
+                sc(f'gemport {g} traffic-limit downstream {traffic_profile}')
+        # Each VLAN still gets its own service-port — ZTE requires one
+        # service-port per VLAN — but the vport must match the OMCI gemport.
         for i, v in enumerate(vlans, 1):
-            sc(f'service-port {i} vport {i} user-vlan {v["vlan"]} vlan {v["vlan"]}')
+            sc(f'service-port {i} vport {_gem_idx(v)} user-vlan {v["vlan"]} vlan {v["vlan"]}')
         self._send_command(tn, 'exit')
         self._send_command(tn, f'pon-onu-mng {onu_if}')
 
@@ -2198,28 +2213,29 @@ class TelnetCollector:
         self._emit_port_map(sc_warn, extra)
 
         # WAN config for the internet service (VEIP — always host 1).
-        # Same pppoe/dhcp/static block as _provision_fiberhome_veip.
+        # Index follows the position of the internet-VLAN row, not a fixed 2.
+        internet_idx = next((i for i, v in enumerate(vlans, 1) if v['vlan'] == internet_vlan), 1)
         if wan_mode == 'pppoe' and pppoe_user:
             if vlan_profile:
-                sc(f'wan-ip 2 mode pppoe username {pppoe_user} password {pppoe_pass} vlan-profile {vlan_profile} host 1')
-                sc('wan-ip 2 ping-response enable traceroute-response enable')
+                sc(f'wan-ip {internet_idx} mode pppoe username {pppoe_user} password {pppoe_pass} vlan-profile {vlan_profile} host 1')
+                sc(f'wan-ip {internet_idx} ping-response enable traceroute-response enable')
             else:
                 # No vlan-profile — use pppoe nat mode instead
-                sc(f'pppoe 2 nat enable user {pppoe_user} password {pppoe_pass}')
-                sc('wan 2 service internet host 1')
+                sc(f'pppoe {internet_idx} nat enable user {pppoe_user} password {pppoe_pass}')
+                sc(f'wan {internet_idx} service internet host 1')
         elif wan_mode == 'dhcp' or wan_ip_mode == 'DHCP':
             if vlan_profile:
-                sc(f'wan-ip 2 mode dhcp vlan-profile {vlan_profile} host 1')
-                sc('wan-ip 2 ping-response enable traceroute-response enable')
+                sc(f'wan-ip {internet_idx} mode dhcp vlan-profile {vlan_profile} host 1')
+                sc(f'wan-ip {internet_idx} ping-response enable traceroute-response enable')
         elif wan_ip_mode == 'STATIC':
             ip_addr = extra.get('ip_address', '')
             subnet = extra.get('subnet_mask', '')
             ip_prof = extra.get('ip_profile', '')
             if ip_prof and vlan_profile:
-                sc(f'wan-ip 2 mode static ip-profile {ip_prof} vlan-profile {vlan_profile} host 1')
+                sc(f'wan-ip {internet_idx} mode static ip-profile {ip_prof} vlan-profile {vlan_profile} host 1')
             elif ip_addr and vlan_profile:
-                sc(f'wan-ip 2 mode static ip-address {ip_addr} mask {subnet} vlan-profile {vlan_profile} host 1')
-            sc('wan-ip 2 ping-response enable traceroute-response enable')
+                sc(f'wan-ip {internet_idx} mode static ip-address {ip_addr} mask {subnet} vlan-profile {vlan_profile} host 1')
+            sc(f'wan-ip {internet_idx} ping-response enable traceroute-response enable')
 
         # TR069 management — Nokia ONTs are ACS-managed; VLAN comes from the
         # row labelled 'acs'/'tr069' (else the first row). 'untag' mode emits
@@ -2915,15 +2931,18 @@ class TelnetCollector:
                 svc_type = svc.get('service_type', 'internet')
                 vlan_mode = svc.get('vlan_mode', 'tag')
                 cvlan = int(svc.get('cvlan', 0))
+                # Nokia OMCI binds every service to gemport 1 — the vport must
+                # match or the VLAN is dropped upstream.
+                vport = 1 if is_nokia else n
                 if svc_type == 'iptv':
                     mvlan = int(svc.get('mvlan', 0))
-                    sc(f'service-port {n} vport {n} user-vlan {mvlan or svc_vlan} vlan {mvlan or svc_vlan}')
+                    sc(f'service-port {n} vport {vport} user-vlan {mvlan or svc_vlan} vlan {mvlan or svc_vlan}')
                 elif vlan_mode == 'qinq' and cvlan:
-                    sc(f'service-port {n} vport {n} user-vlan {cvlan} vlan {svc_vlan} QinQ')
+                    sc(f'service-port {n} vport {vport} user-vlan {cvlan} vlan {svc_vlan} QinQ')
                 elif vlan_mode == 'untag':
-                    sc(f'service-port {n} vport {n} untag')
+                    sc(f'service-port {n} vport {vport} untag')
                 else:
-                    sc(f'service-port {n} vport {n} user-vlan {svc_vlan} vlan {svc_vlan}')
+                    sc(f'service-port {n} vport {vport} user-vlan {svc_vlan} vlan {svc_vlan}')
 
             self._send_command(tn, 'exit')
 

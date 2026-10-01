@@ -61,9 +61,10 @@ class TestNokiaUnified:
         assert commands.count('gemport 1 tcont 1') == 1
         assert not any(c.startswith('gemport 2') for c in commands)
         assert not any(c.startswith('tcont 2') for c in commands)
-        # But each service still gets its own service-port
+        # But each service still gets its own service-port — every vport
+        # must point at shared gemport 1 so the OMCI binding matches.
         assert 'service-port 1 vport 1 user-vlan 300 vlan 300' in commands
-        assert 'service-port 2 vport 2 user-vlan 100 vlan 100' in commands
+        assert 'service-port 2 vport 1 user-vlan 100 vlan 100' in commands
         # Nokia ONTs are VEIP-based
         assert 'vlan port veip_1 mode hybrid' in commands
         # No iphost service lines

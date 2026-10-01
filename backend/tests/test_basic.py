@@ -1758,6 +1758,13 @@ class TestVendorTemplateCommandSequences:
         assert 'service ACS gemport 1 cos 0 vlan 100' in commands
         assert 'service 300 gemport 1 cos 0 vlan 300' in commands
         assert 'service 200 gemport 1 cos 0 vlan 200' in commands
+        # Shared gemport 1 → only one tcont/gemport, and every service-port
+        # must use vport 1 or the VLAN is dropped upstream (PPPoE regression).
+        assert commands.count('gemport 1 tcont 1') == 1
+        assert not any(c.startswith('gemport 2') or c.startswith('tcont 2') for c in commands)
+        assert 'service-port 1 vport 1 user-vlan 100 vlan 100' in commands
+        assert 'service-port 2 vport 1 user-vlan 300 vlan 300' in commands
+        assert 'service-port 3 vport 1 user-vlan 200 vlan 200' in commands
         assert 'vlan port veip_1 mode hybrid' in commands
         assert 'tr069-mgmt 1 state unlock' in commands
         # ACS-labelled row wins for the tr069 tag VLAN
@@ -1785,6 +1792,73 @@ class TestVendorTemplateCommandSequences:
         assert 'vlan port eth_0/2 mode untag' in commands
         assert 'vlan port wifi_0/1 mode hybrid def-vlan 30' in commands
         assert not any('vlan port eth_0/3' in c for c in commands)
+
+    def test_nokia_pppoe_vlan_profile(self):
+        """Nokia PPPoE with vlan-profile → 'wan-ip <idx> mode pppoe ... host 1'
+        where <idx> is the position of the internet-labelled row."""
+        extra = self._default_extra()
+        extra['wan_mode'] = 'pppoe'
+        extra['pppoe_user'] = 'cust@isp'
+        extra['pppoe_pass'] = 'secret'
+        extra['vlan_profile'] = 'genieacs'
+        extra['vlans'] = [
+            {'vlan': '100', 'label': 'ACS'},
+            {'vlan': '30', 'label': 'Internet'},
+        ]
+        ok, msg, commands = self._capture('nokia', extra=extra)
+        assert ok is True, f'expected success, got: {msg}'
+        assert 'wan-ip 2 mode pppoe username cust@isp password secret vlan-profile genieacs host 1' in commands
+        assert 'wan-ip 2 ping-response enable traceroute-response enable' in commands
+
+    def test_nokia_pppoe_nat_fallback(self):
+        """Nokia PPPoE without vlan-profile → 'pppoe <idx> nat enable' +
+        'wan <idx> service internet host 1'."""
+        extra = self._default_extra()
+        extra['wan_mode'] = 'pppoe'
+        extra['pppoe_user'] = 'cust@isp'
+        extra['pppoe_pass'] = 'secret'
+        extra['vlan_profile'] = ''
+        extra['vlans'] = [
+            {'vlan': '100', 'label': 'ACS'},
+            {'vlan': '30', 'label': 'Internet'},
+        ]
+        ok, msg, commands = self._capture('nokia', extra=extra)
+        assert ok is True, f'expected success, got: {msg}'
+        assert 'pppoe 2 nat enable user cust@isp password secret' in commands
+        assert 'wan 2 service internet host 1' in commands
+
+    def test_nokia_internet_row_index(self):
+        """When the internet VLAN isn't on row 2, the WAN commands follow the
+        internet row's actual index (here row 3)."""
+        extra = self._default_extra()
+        extra['wan_mode'] = 'pppoe'
+        extra['pppoe_user'] = 'cust@isp'
+        extra['pppoe_pass'] = 'secret'
+        extra['vlan_profile'] = 'genieacs'
+        extra['vlans'] = [
+            {'vlan': '100', 'label': 'ACS'},
+            {'vlan': '151', 'label': 'VoIP'},
+            {'vlan': '30', 'label': 'Internet'},
+        ]
+        ok, msg, commands = self._capture('nokia', extra=extra)
+        assert ok is True, f'expected success, got: {msg}'
+        assert 'wan-ip 3 mode pppoe username cust@isp password secret vlan-profile genieacs host 1' in commands
+        assert not any(c.startswith('wan-ip 2 ') for c in commands)
+
+    def test_nokia_per_row_gemport_override(self):
+        """A row with gemport 2 gets its own tcont/gemport and its
+        service-port uses vport 2 — OMCI gemport and vport stay matched."""
+        extra = self._default_extra()
+        extra['vlans'] = [
+            {'vlan': '100', 'label': 'ACS'},
+            {'vlan': '30', 'label': 'Internet', 'gemport': '2'},
+        ]
+        ok, msg, commands = self._capture('nokia', extra=extra)
+        assert ok is True, f'expected success, got: {msg}'
+        assert 'gemport 2 tcont 2' in commands
+        assert 'service-port 1 vport 1 user-vlan 100 vlan 100' in commands
+        assert 'service-port 2 vport 2 user-vlan 30 vlan 30' in commands
+        assert 'service Internet gemport 2 cos 0 vlan 30' in commands
 
     def test_zte_full_template(self):
         ok, msg, commands = self._capture('zte_full')
