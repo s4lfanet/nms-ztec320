@@ -8,7 +8,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# dist is INTENTIONALLY committed (installers use it directly) — see root
+# .gitignore. Keep it un-ignored here so new hashed assets are tracked.
+!dist
 dist-ssr
 *.local
 
