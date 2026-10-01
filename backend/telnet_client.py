@@ -1845,6 +1845,7 @@ class TelnetCollector:
                 'zte_single': self._provision_zte_single,
                 'huawei_full': self._provision_huawei_full,
                 'zte_multi': self._provision_zte_multi,
+                'nokia': self._provision_nokia,
             }.get(template)
             if provision_fn:
                 provision_fn(tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list)
@@ -2082,6 +2083,158 @@ class TelnetCollector:
         sc('tr069-mgmt 1 state unlock')
         sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
         sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+
+    def _provision_nokia(self, tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list):
+        """Nokia ONT (e.g. G-010/G-240 series) provisioning on ZTE C320.
+
+        Differences vs fiberhome_veip:
+          - services have arbitrary names (row label, else the VLAN id) and all
+            normally share 'gemport 1' with 'cos 0' — per-row gemport/cos
+            fields can override
+          - 'security-mgmt <port> ... protocol web' (Nokia web port is 212)
+          - no implicit 'vlan port eth_*' lines — per-port LAN/WiFi mapping
+            comes from extra.port_map (empty = skip entirely)
+
+        Reference running-config (pon-onu-mng section):
+            service ACS gemport 1 cos 0 vlan 100
+            service 300 gemport 1 cos 0 vlan 300
+            vlan port veip_1 mode hybrid
+            tr069-mgmt 1 state unlock
+            tr069-mgmt 1 acs http://...:7547 validate basic username X password Y
+            tr069-mgmt 1 tag pri 0 vlan 100
+            security-mgmt 212 state enable mode forward protocol web
+        """
+        # Dynamic VLAN list — same normalization as _provision_fiberhome_veip:
+        # rows {vlan, label, cos?, gemport?}, blank/non-numeric vlan skipped,
+        # empty list falls back to the 3 legacy individual fields.
+        vlans_arr = extra.get('vlans', [])
+        if isinstance(vlans_arr, str):
+            import json as _j
+            try: vlans_arr = _j.loads(vlans_arr)
+            except Exception: vlans_arr = []
+        vlans = []
+        for v in (vlans_arr if isinstance(vlans_arr, list) else []):
+            if not isinstance(v, dict):
+                continue
+            vid = str(v.get('vlan', '') or '').strip()
+            try:
+                vid = str(int(vid))
+            except (ValueError, TypeError):
+                continue
+            vlans.append({
+                'vlan': vid,
+                'label': str(v.get('label', '') or '').strip().replace(' ', '_'),
+                'cos': str(v.get('cos', '') or '0'),
+                'gemport': str(v.get('gemport', '') or '1'),
+            })
+        if not vlans:
+            vlans = [
+                {'vlan': str(extra.get('tr069_vlan') or 1010), 'label': 'TR069', 'cos': '0', 'gemport': '1'},
+                {'vlan': str(extra.get('internet_vlan') or 30), 'label': 'Internet', 'cos': '0', 'gemport': '1'},
+                {'vlan': str(extra.get('voip_vlan') or 151), 'label': 'VoIP', 'cos': '0', 'gemport': '1'},
+            ]
+        n = len(vlans)
+
+        # Internet = first row labelled 'internet' (else #2, else #1);
+        # TR069 = first labelled 'acs'/'tr069' (else #1).
+        def _find_vlan(keywords, fallback_idx):
+            for v in vlans:
+                lbl = v['label'].lower()
+                if any(k in lbl for k in keywords):
+                    return v['vlan']
+            return vlans[min(fallback_idx, n - 1)]['vlan']
+        internet_vlan = _find_vlan(('internet',), 1)
+        tr069_vlan = _find_vlan(('acs', 'tr069'), 0)
+        acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
+        acs_user = extra.get('acs_user', '') or 'acs'
+        acs_pass = extra.get('acs_pass', '') or 'acs'
+        traffic_profile = extra.get('traffic_profile', '')
+        # WAN config for the internet service
+        wan_mode = extra.get('wan_mode', 'bridge')  # bridge|pppoe|dhcp|static
+        pppoe_user = extra.get('pppoe_user', '')
+        pppoe_pass = extra.get('pppoe_pass', '')
+        vlan_profile = extra.get('vlan_profile', '')
+        wan_ip_mode = extra.get('wan_ip_mode', '')  # PPPoE|DHCP|STATIC
+
+        # --- Interface section: tcont/gemport + one service-port per VLAN ---
+        sc('sn-bind enable sn')
+        for i in range(1, n + 1):
+            sc_tcont(i, '', tcont_profile)
+            sc(f'gemport {i} tcont {i}')
+            if i == 1 and traffic_profile:
+                sc(f'gemport 1 traffic-limit downstream {traffic_profile}')
+        # Multiple rows may share gemport 1 in the service lines below, but
+        # each VLAN still gets its own service-port — ZTE requires one
+        # service-port (vport) per VLAN.
+        for i, v in enumerate(vlans, 1):
+            sc(f'service-port {i} vport {i} user-vlan {v["vlan"]} vlan {v["vlan"]}')
+        self._send_command(tn, 'exit')
+        self._send_command(tn, f'pon-onu-mng {onu_if}')
+
+        # Safe-replace: delete the service names we're about to create plus the
+        # legacy 'serviceN'/bare-index names so re-provisioning can't hit
+        # error 63869 "Record already exists".
+        for v in vlans:
+            svc_name = v['label'] or v['vlan']
+            self._send_command(tn, f'no service {svc_name}', timeout=10)
+        for i in range(1, max(3, n) + 1):
+            self._send_command(tn, f'no service service{i}', timeout=10)
+            self._send_command(tn, f'no service {i}', timeout=10)
+        for nw in range(1, max(3, n) + 1):
+            self._send_command(tn, f'no wan {nw} service', timeout=10)
+            self._send_command(tn, f'no wan-ip {nw}', timeout=10)
+            self._send_command(tn, f'no pppoe {nw}', timeout=10)
+        import time as _t; _t.sleep(1)
+
+        # Named services — Nokia ONTs bind all services to gemport 1, cos 0
+        for v in vlans:
+            svc_name = v['label'] or v['vlan']
+            sc(f'service {svc_name} gemport {v["gemport"]} cos {v["cos"]} vlan {v["vlan"]}')
+
+        # VEIP is the Nokia ONT's only managed port
+        sc('vlan port veip_1 mode hybrid')
+        # Explicit per-port VLAN map (eth_0/N, wifi_0/N) — nothing emitted
+        # when the map is empty (skip-by-default for Nokia).
+        self._emit_port_map(sc_warn, extra)
+
+        # WAN config for the internet service (VEIP — always host 1).
+        # Same pppoe/dhcp/static block as _provision_fiberhome_veip.
+        if wan_mode == 'pppoe' and pppoe_user:
+            if vlan_profile:
+                sc(f'wan-ip 2 mode pppoe username {pppoe_user} password {pppoe_pass} vlan-profile {vlan_profile} host 1')
+                sc('wan-ip 2 ping-response enable traceroute-response enable')
+            else:
+                # No vlan-profile — use pppoe nat mode instead
+                sc(f'pppoe 2 nat enable user {pppoe_user} password {pppoe_pass}')
+                sc('wan 2 service internet host 1')
+        elif wan_mode == 'dhcp' or wan_ip_mode == 'DHCP':
+            if vlan_profile:
+                sc(f'wan-ip 2 mode dhcp vlan-profile {vlan_profile} host 1')
+                sc('wan-ip 2 ping-response enable traceroute-response enable')
+        elif wan_ip_mode == 'STATIC':
+            ip_addr = extra.get('ip_address', '')
+            subnet = extra.get('subnet_mask', '')
+            ip_prof = extra.get('ip_profile', '')
+            if ip_prof and vlan_profile:
+                sc(f'wan-ip 2 mode static ip-profile {ip_prof} vlan-profile {vlan_profile} host 1')
+            elif ip_addr and vlan_profile:
+                sc(f'wan-ip 2 mode static ip-address {ip_addr} mask {subnet} vlan-profile {vlan_profile} host 1')
+            sc('wan-ip 2 ping-response enable traceroute-response enable')
+
+        # TR069 management — Nokia ONTs are ACS-managed; VLAN comes from the
+        # row labelled 'acs'/'tr069' (else the first row). 'untag' mode emits
+        # 'tr069-mgmt 1 untag' instead of the tag line.
+        sc('tr069-mgmt 1 state unlock')
+        sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
+        if extra.get('tr069_vlan_mode', 'tag') == 'untag':
+            sc('tr069-mgmt 1 untag')
+        else:
+            sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+
+        # Web management — Nokia uses security-mgmt port 212, 'web' protocol only
+        if extra.get('enable_web', 'true') != '':
+            web_port = extra.get('security_web_port', '') or '212'
+            sc(f'security-mgmt {web_port} state enable mode forward protocol web')
 
     def _provision_zte_full(self, tn, sc, sc_warn, sc_tcont, onu_if, pon_if, vlan, tcont_profile, service_name, extra, ssids_list):
         """Extracted verbatim from register_vendor_template's 'zte_full' branch (Finding 5 refactor — behavior-preserving)."""
@@ -2488,6 +2641,56 @@ class TelnetCollector:
                 sc('tr069-mgmt 1 untag')
 
 
+    def _emit_port_map(self, sc_warn, extra):
+        """Emit per-port 'vlan port' commands from extra.port_map.
+
+        Entries: [{port, mode, vlan?}] — port ∈ eth_0/N | wifi_0/N | veip_1,
+        mode ∈ skip|tag|untag|trunk|hybrid (vlan required for tag/hybrid).
+        'skip' and invalid entries emit nothing. Returns the set of ports
+        covered by the map (so callers can skip auto-tagging them).
+
+        port_map may arrive as a list or a JSON-encoded string (same
+        dual-format as lan_vlans/services)."""
+        import json as _j
+        import re as _re
+        pm = extra.get('port_map', [])
+        if isinstance(pm, str):
+            try:
+                pm = _j.loads(pm) if pm else []
+            except Exception:
+                pm = []
+        if not isinstance(pm, list):
+            return set()
+        port_re = _re.compile(r'^(eth|wifi)_0/\d+$|^veip_1$')
+        modes = {'skip', 'tag', 'untag', 'trunk', 'hybrid'}
+        covered = set()
+        for entry in pm:
+            if not isinstance(entry, dict):
+                continue
+            p = str(entry.get('port', '') or '')
+            m = str(entry.get('mode', '') or '').lower()
+            if not port_re.match(p) or m not in modes:
+                logger.warning(f"[_emit_port_map] skipping invalid port_map entry: {entry!r}")
+                continue
+            covered.add(p)
+            if m == 'skip':
+                continue
+            if m == 'tag' or m == 'hybrid':
+                v = str(entry.get('vlan', '') or '').strip()
+                try:
+                    v = str(int(v))
+                except (ValueError, TypeError):
+                    continue
+                if m == 'tag':
+                    sc_warn(f'vlan port {p} mode tag vlan {v}')
+                else:
+                    sc_warn(f'vlan port {p} mode hybrid def-vlan {v}')
+            elif m == 'untag':
+                sc_warn(f'vlan port {p} mode untag')
+            elif m == 'trunk':
+                sc_warn(f'vlan port {p} mode trunk')
+        return covered
+
     def register_unified(self, frame, slot, port, onu_id, serial, onu_type,
                          tcont_profile, services, use_veip=None,
                          traffic_profile='', sla_profile='', wifi_config=None,
@@ -2532,9 +2735,15 @@ class TelnetCollector:
         except CliValidationError as e:
             return False, f'Invalid input: {e}'
         extra = extra or {}
+        # Nokia ONT style — named services sharing gemport 1, security-mgmt
+        # web-port variant. Nokia ONTs are VEIP-based, so force VEIP on.
+        ont_style = str(extra.get('ont_style') or '').lower()
+        is_nokia = ont_style == 'nokia'
         # Auto-detect VEIP
         if use_veip is None:
             use_veip = not (serial or '').upper().startswith('ZTEG')
+        if is_nokia:
+            use_veip = True
 
         tn = self._connect()
         if not tn:
@@ -2694,10 +2903,14 @@ class TelnetCollector:
                 self._send_command(tn, f'no gemport {n}', timeout=5)
                 self._send_command(tn, f'no tcont {n}', timeout=5)
 
-                sc_tcont(n, svc_name, tcont)
-                sc(f'gemport {n} tcont {n}')
-                if down_profile:
-                    sc(f'gemport {n} traffic-limit downstream {down_profile}')
+                # Nokia ONTs share gemport 1/tcont 1 across all services —
+                # only the first iteration creates them; later services still
+                # get their own service-port (one per VLAN, per ZTE).
+                if not (is_nokia and n > 1):
+                    sc_tcont(n, svc_name, tcont)
+                    sc(f'gemport {n} tcont {n}')
+                    if down_profile:
+                        sc(f'gemport {n} traffic-limit downstream {down_profile}')
 
                 svc_type = svc.get('service_type', 'internet')
                 vlan_mode = svc.get('vlan_mode', 'tag')
@@ -2723,6 +2936,10 @@ class TelnetCollector:
                 n = idx + 1
                 svc_name = f'service{n}'
                 self._send_command(tn, f'no service {svc_name}', timeout=10)
+                # Nokia style uses custom service names — delete the name we're
+                # about to create too, so re-provisioning can't hit "already exists".
+                if is_nokia and svc.get('name'):
+                    self._send_command(tn, f'no service {svc["name"]}', timeout=10)
                 self._send_command(tn, f'no wan {n} service', timeout=10)
                 self._send_command(tn, f'no wan-ip {n}', timeout=10)
                 self._send_command(tn, f'no pppoe {n}', timeout=10)
@@ -2751,13 +2968,19 @@ class TelnetCollector:
                     vlan_suffix = f' vlan {svc_vlan}'
 
                 # Service definition
-                needs_iphost = (not use_veip) and svc_type in ('internet', 'tr069') and wan_mode in ('nat', 'wan')
-                if needs_iphost:
-                    sc(f'service {svc_name} gemport {n} iphost {n}{vlan_suffix}')
-                elif not use_veip and n == 1:
-                    sc(f'service {svc_name} gemport {n} iphost 1{vlan_suffix}')
+                # Nokia style: named services, all on shared gemport 1 + cos.
+                if is_nokia:
+                    nokia_name = svc.get('name') or f'service{n}'
+                    nokia_cos = svc.get('cos', '0') or '0'
+                    sc(f'service {nokia_name} gemport 1 cos {nokia_cos}{vlan_suffix}')
                 else:
-                    sc(f'service {svc_name} gemport {n}{vlan_suffix}')
+                    needs_iphost = (not use_veip) and svc_type in ('internet', 'tr069') and wan_mode in ('nat', 'wan')
+                    if needs_iphost:
+                        sc(f'service {svc_name} gemport {n} iphost {n}{vlan_suffix}')
+                    elif not use_veip and n == 1:
+                        sc(f'service {svc_name} gemport {n} iphost 1{vlan_suffix}')
+                    else:
+                        sc(f'service {svc_name} gemport {n}{vlan_suffix}')
 
                 # WAN config
                 # For VEIP mode, always use host 1 (VEIP is a single port)
@@ -2811,20 +3034,27 @@ class TelnetCollector:
                 sc('vlan port veip_1 mode hybrid')
                 sc('vlan port veip_1 vlan 1')
 
-            # Auto-tag LAN ports to matching service VLAN
-            # eth_0/1 → service 1 VLAN, eth_0/2 → service 2 VLAN, etc.
-            # Remaining ports → primary (first) service VLAN
-            if services:
-                primary_vlan = int(services[0].get('vlan', 100))
-                for lp in range(1, 5):  # eth_0/1 through eth_0/4
-                    svc_idx = lp - 1
-                    if svc_idx < len(services):
-                        port_vlan = int(services[svc_idx].get('vlan', primary_vlan))
-                    else:
-                        port_vlan = primary_vlan
-                    sc_warn(f'vlan port eth_0/{lp} mode tag vlan {port_vlan}')
+            # Per-port VLAN map: when extra.port_map is non-empty it REPLACES
+            # the auto-tag eth block entirely (the map may also cover wifi_0/N
+            # and veip_1). Returns the set of ports the map covers so per-SSID
+            # wifi tagging below can skip them.
+            port_map_ports = self._emit_port_map(sc_warn, extra)
+            if not port_map_ports:
+                # Auto-tag LAN ports to matching service VLAN
+                # eth_0/1 → service 1 VLAN, eth_0/2 → service 2 VLAN, etc.
+                # Remaining ports → primary (first) service VLAN
+                if services:
+                    primary_vlan = int(services[0].get('vlan', 100))
+                    for lp in range(1, 5):  # eth_0/1 through eth_0/4
+                        svc_idx = lp - 1
+                        if svc_idx < len(services):
+                            port_vlan = int(services[svc_idx].get('vlan', primary_vlan))
+                        else:
+                            port_vlan = primary_vlan
+                        sc_warn(f'vlan port eth_0/{lp} mode tag vlan {port_vlan}')
 
-            # WiFi VLAN tagging — per-SSID VLAN if provided, else use first service VLAN
+            # WiFi VLAN tagging — per-SSID VLAN if provided, else use first service VLAN.
+            # Ports already covered by an explicit port_map entry are left alone.
             if pw_ssids:
                 wifi_vlan = int(services[0].get('vlan', 100)) if services else 100
                 has_per_ssid_vlan = any(s.get('vlan') for s in pw_ssids if s.get('name'))
@@ -2832,15 +3062,24 @@ class TelnetCollector:
                     for s in pw_ssids:
                         if s.get('name') and s.get('vlan'):
                             wp = s.get('port', 'wifi_0/1')
-                            sc_warn(f'vlan port {wp} mode tag vlan {s["vlan"]}')
+                            if wp not in port_map_ports:
+                                sc_warn(f'vlan port {wp} mode tag vlan {s["vlan"]}')
                 else:
                     for s in pw_ssids:
                         if s.get('name'):
                             wp = s.get('port', 'wifi_0/1')
-                            sc_warn(f'vlan port {wp} mode tag vlan {wifi_vlan}')
+                            if wp not in port_map_ports:
+                                sc_warn(f'vlan port {wp} mode tag vlan {wifi_vlan}')
 
-            # Firewall + security (if any non-bridge service)
-            if has_non_bridge:
+            # Firewall + security. Nokia ONTs use 'security-mgmt <web-port>'
+            # with protocol 'web' only (default port 212); other ONTs get the
+            # generic all-protocols line on port 1 when a non-bridge service exists.
+            if is_nokia:
+                if has_non_bridge:
+                    sc('firewall enable level low')
+                web_port = extra.get('security_web_port', '') or '212'
+                sc(f'security-mgmt {web_port} state enable mode forward protocol web')
+            elif has_non_bridge:
                 sc('firewall enable level low')
                 sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
 

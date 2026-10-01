@@ -5,6 +5,7 @@ import { api, type TechnicianData } from '../lib/api';
 import { collectOdpPortOptions } from '../lib/ftthTree';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
+import { PortMapEditor, type PortMapRow } from '../components/PortMapEditor';
 import { Button, Input, Select } from '../components/ui';
 import {
   ArrowLeft, ArrowRight, Server, Radio, Search, Check, Loader2,
@@ -358,6 +359,70 @@ function generateRegisterScript(d: WizardData): string {
     lines.push(`  tr069-mgmt 1 acs ${e.acs_url || 'http://192.168.54.254:7547'} validate basic username ${e.acs_user || 'acs'} password ${e.acs_pass || 'acs'}`);
     const tr069Vlan = String(vlans.find(v => (v.label || '').toLowerCase().includes('tr069'))?.vlan || vlans[0]?.vlan || '1010');
     lines.push(`  tr069-mgmt 1 tag pri 0 vlan ${tr069Vlan}`);
+  } else if (d.template === 'nokia') {
+    // Nokia ONT — named services all on gemport 1 with cos, VEIP hybrid,
+    // per-port VLAN map (skip-by-default), tr069-mgmt, security-mgmt web.
+    const vlans = (Array.isArray(e.vlans) && e.vlans.length > 0 ? e.vlans : [
+      { vlan: e.tr069_vlan || '100', label: 'ACS', cos: '0' },
+      { vlan: e.internet_vlan || '30', label: 'Internet', cos: '0' },
+      { vlan: e.voip_vlan || '151', label: 'VoIP', cos: '0' },
+    ]).filter((v: { vlan?: string }) => String(v.vlan || '').trim() !== '');
+    lines.push('  sn-bind enable sn');
+    vlans.forEach((_: unknown, i: number) => {
+      lines.push(`  tcont ${i + 1} name  profile ${d.tcontProfile}`);
+      lines.push(`  gemport ${i + 1} tcont ${i + 1}`);
+      if (i === 0 && d.trafficProfile) lines.push(`  gemport 1 traffic-limit downstream ${d.trafficProfile}`);
+    });
+    vlans.forEach((v: { vlan?: string }, i: number) => {
+      const vid = String(v.vlan || '');
+      lines.push(`  service-port ${i + 1} vport ${i + 1} user-vlan ${vid} vlan ${vid}`);
+    });
+    lines.push('!');
+    lines.push(`pon-onu-mng ${onuIf}`);
+    vlans.forEach((v: { vlan?: string; label?: string; cos?: string; gemport?: string }) => {
+      const name = String(v.label || '').trim() || String(v.vlan || '');
+      lines.push(`  service ${name} gemport ${v.gemport || '1'} cos ${v.cos || '0'} vlan ${v.vlan}`);
+    });
+    lines.push('  vlan port veip_1 mode hybrid');
+    // Per-port VLAN map (empty = nothing emitted)
+    let pmRows: PortMapRow[] = [];
+    if (Array.isArray(e.port_map)) pmRows = e.port_map as unknown as PortMapRow[];
+    else if (typeof e.port_map === 'string' && e.port_map) { try { pmRows = JSON.parse(e.port_map); } catch { pmRows = []; } }
+    pmRows.forEach(r => {
+      if (!r || !r.port) return;
+      if (r.mode === 'tag' && r.vlan) lines.push(`  vlan port ${r.port} mode tag vlan ${r.vlan}`);
+      else if (r.mode === 'untag') lines.push(`  vlan port ${r.port} mode untag`);
+      else if (r.mode === 'trunk') lines.push(`  vlan port ${r.port} mode trunk`);
+      else if (r.mode === 'hybrid' && r.vlan) lines.push(`  vlan port ${r.port} mode hybrid def-vlan ${r.vlan}`);
+    });
+    // WAN config for the internet service (VEIP — always host 1)
+    const wanMode = e.wan_mode || 'bridge';
+    const vlanProfile = e.vlan_profile || '';
+    if (wanMode === 'pppoe' && e.pppoe_user) {
+      if (vlanProfile) {
+        lines.push(`  wan-ip 2 mode pppoe username ${e.pppoe_user} password ${e.pppoe_pass || ''} vlan-profile ${vlanProfile} host 1`);
+        lines.push('  wan-ip 2 ping-response enable traceroute-response enable');
+      } else {
+        lines.push(`  pppoe 2 nat enable user ${e.pppoe_user} password ${e.pppoe_pass || ''}`);
+        lines.push('  wan 2 service internet host 1');
+      }
+    } else if (wanMode === 'dhcp' && vlanProfile) {
+      lines.push(`  wan-ip 2 mode dhcp vlan-profile ${vlanProfile} host 1`);
+      lines.push('  wan-ip 2 ping-response enable traceroute-response enable');
+    }
+    // TR069 — VLAN from the row labelled 'acs'/'tr069' (else first row)
+    lines.push('  tr069-mgmt 1 state unlock');
+    lines.push(`  tr069-mgmt 1 acs ${e.acs_url || 'http://192.168.54.254:7547'} validate basic username ${e.acs_user || 'acs'} password ${e.acs_pass || 'acs'}`);
+    const tr069VlanN = String(vlans.find((v: { label?: string }) => {
+      const l = (v.label || '').toLowerCase();
+      return l.includes('acs') || l.includes('tr069');
+    })?.vlan || vlans[0]?.vlan || '');
+    if (e.tr069_vlan_mode === 'untag') lines.push('  tr069-mgmt 1 untag');
+    else lines.push(`  tr069-mgmt 1 tag pri 0 vlan ${tr069VlanN}`);
+    // Web management — Nokia uses security-mgmt port 212, 'web' only
+    if (e.enable_web !== '') {
+      lines.push(`  security-mgmt ${e.security_web_port || '212'} state enable mode forward protocol web`);
+    }
   }
 
   // SSID config (dynamic from ssids array, all templates)
@@ -834,6 +899,7 @@ export function RegisterWizard() {
                 { v: 'zte_multi', l: 'ZTE Multi-Service', desc: '1-4 services, IPTV, TR069' },
                 { v: 'huawei_full', l: 'Huawei Full', desc: 'Multi VLAN, WAN DHCP' },
                 { v: 'fiberhome_veip', l: 'Fiberhome VEIP', desc: 'TR069+Internet+VoIP' },
+                { v: 'nokia', l: 'Nokia VEIP', desc: 'Named services, shared gemport, TR069' },
               ].map(t => (
                 <button key={t.v} onClick={() => update('template', t.v)}
                   className={cn(
@@ -1810,6 +1876,158 @@ export function RegisterWizard() {
             </div>
           )}
 
+          {data.template === 'nokia' && (
+            <div className="p-3 md:p-4 rounded-lg bg-glass border border-accent/20 space-y-3">
+              <h4 className="text-sm font-semibold text-accent">Nokia VEIP (G-010/G-240)</h4>
+              <p className="text-xs text-tx3">Named services on shared gemport 1 (cos 0), VEIP hybrid port, TR069 ACS, web on security-mgmt 212.</p>
+
+              {/* WAN Mode */}
+              <Select label="WAN Mode (Internet Service)" value={data.extra.wan_mode || 'bridge'} onChange={e => update('extra', { ...data.extra, wan_mode: e.target.value })}>
+                <option value="bridge">Bridge (transparent — ONT manages WAN)</option>
+                <option value="pppoe">PPPoE (OLT dials PPPoE via VEIP)</option>
+                <option value="dhcp">DHCP (ONT gets IP via DHCP)</option>
+              </Select>
+
+              {/* PPPoE fields */}
+              {data.extra.wan_mode === 'pppoe' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4 border-l-2 border-accent/20">
+                  <Input label="PPPoE Username" type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} placeholder="PPPoE Username" />
+                  <Input label="PPPoE Password"
+                    type={data.extra._show_pppoe_pass === 'true' ? 'text' : 'password'} value={String(data.extra.pppoe_pass || '')} onChange={e => update('extra', { ...data.extra, pppoe_pass: e.target.value })} placeholder="PPPoE Password"
+                    suffix={<button type="button" onClick={() => update('extra', { ...data.extra, _show_pppoe_pass: data.extra._show_pppoe_pass === 'true' ? '' : 'true' })} className="hover:text-tx1">{data.extra._show_pppoe_pass === 'true' ? '🙈' : '👁'}</button>} />
+                </div>
+              )}
+
+              {/* VLAN Profile (required for PPPoE/DHCP wan-ip) */}
+              {(data.extra.wan_mode === 'pppoe' || data.extra.wan_mode === 'dhcp') && (
+                <div className="pl-4 border-l-2 border-accent/20">
+                  <Select
+                    label={<>WAN-IP VLAN Profile <span className="text-tx3">(from OLT config)</span></>}
+                    value={data.extra.vlan_profile || ''} onChange={e => update('extra', { ...data.extra, vlan_profile: e.target.value })}
+                    helperText={wanIpProfiles.length === 0 ? 'No WAN-IP profiles found. Create one in OLT Config → WAN-IP tab.' : undefined}
+                  >
+                    <option value="">— Select Profile —</option>
+                    {wanIpProfiles.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                  </Select>
+                </div>
+              )}
+
+              {/* Dynamic VLAN list (vlan + label = service name + cos) */}
+              {(() => {
+                const nokiaDefaultVlans = (e: Record<string, unknown>) => [
+                  { vlan: String(e.tr069_vlan || '100'), label: 'ACS', cos: '0' },
+                  { vlan: String(e.internet_vlan || '30'), label: 'Internet', cos: '0' },
+                  { vlan: String(e.voip_vlan || '151'), label: 'VoIP', cos: '0' },
+                ];
+                const nkVlans: Array<{ vlan: string; label: string; cos?: string; gemport?: string }> =
+                  Array.isArray(data.extra.vlans) && data.extra.vlans.length > 0
+                    ? data.extra.vlans as unknown as Array<{ vlan: string; label: string; cos?: string; gemport?: string }>
+                    : nokiaDefaultVlans(data.extra);
+                return (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label-sm">Service VLANs (label = service name)</label>
+                  <button type="button" onClick={() => {
+                    update('extra', { ...data.extra, vlans: [...nkVlans, { vlan: '', label: '', cos: '0' }] });
+                  }} className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-1">
+                    <Plus size={12} /> Add VLAN
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {nkVlans.map((v, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <span className="text-[10px] text-tx3 w-6 flex-shrink-0">#{i + 1}</span>
+                      {vlanList.length > 0 ? (
+                        <select value={v.vlan || ''} onChange={e => {
+                          const cur = [...nkVlans];
+                          cur[i] = { ...cur[i], vlan: e.target.value };
+                          update('extra', { ...data.extra, vlans: cur });
+                        }} className="input-field flex-1">
+                          <option value="">Select VLAN...</option>
+                          {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
+                        </select>
+                      ) : (
+                        <input type="number" value={v.vlan || ''} placeholder="VLAN ID"
+                          onChange={e => {
+                            const cur = [...nkVlans];
+                            cur[i] = { ...cur[i], vlan: e.target.value };
+                            update('extra', { ...data.extra, vlans: cur });
+                          }}
+                          className="input-field flex-1" min={1} max={4094} />
+                      )}
+                      <input type="text" value={v.label || ''} placeholder="Name (opt)"
+                        onChange={e => {
+                          const cur = [...nkVlans];
+                          cur[i] = { ...cur[i], label: e.target.value };
+                          update('extra', { ...data.extra, vlans: cur });
+                        }}
+                        className="input-field flex-1" />
+                      <input type="number" value={v.cos ?? '0'} placeholder="cos"
+                        title="CoS priority"
+                        onChange={e => {
+                          const cur = [...nkVlans];
+                          cur[i] = { ...cur[i], cos: e.target.value };
+                          update('extra', { ...data.extra, vlans: cur });
+                        }}
+                        className="input-field w-14 flex-shrink-0" min={0} max={7} />
+                      <button type="button" onClick={() => {
+                        update('extra', { ...data.extra, vlans: nkVlans.filter((_, idx) => idx !== i) });
+                      }} className="p-1.5 rounded text-danger hover:bg-danger/10 flex-shrink-0">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-tx3 mt-1">Label 'ACS'/'TR069' menentukan VLAN untuk tr069-mgmt tag. Default: #1=ACS, #2=Internet, #3=VoIP.</p>
+              </div>
+                );
+              })()}
+
+              {/* TR069/ACS — Nokia ONTs are ACS-managed */}
+              <div className="space-y-2">
+                <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
+                  <option value="">Manual / default</option>
+                  {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
+                </Select>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <Input label="ACS URL" type="text" value={String(data.extra.acs_url || '')} onChange={e => update('extra', { ...data.extra, acs_url: e.target.value })} placeholder="http://192.168.54.254:7547" />
+                  <Input label="ACS Username" type="text" value={String(data.extra.acs_user || '')} onChange={e => update('extra', { ...data.extra, acs_user: e.target.value })} placeholder="acs" />
+                  <Input label="ACS Password"
+                    type={data.extra._show_acs_pass === 'true' ? 'text' : 'password'} value={String(data.extra.acs_pass || '')} onChange={e => update('extra', { ...data.extra, acs_pass: e.target.value })} placeholder="acs"
+                    suffix={<button type="button" onClick={() => update('extra', { ...data.extra, _show_acs_pass: data.extra._show_acs_pass === 'true' ? '' : 'true' })} className="hover:text-tx1">{data.extra._show_acs_pass === 'true' ? '🙈' : '👁'}</button>} />
+                </div>
+                <Select label="TR069 VLAN Mode" value={data.extra.tr069_vlan_mode || 'tag'} onChange={e => update('extra', { ...data.extra, tr069_vlan_mode: e.target.value })}>
+                  <option value="tag">Tag (tr069-mgmt tag pri 0 vlan)</option>
+                  <option value="untag">Untag (tr069-mgmt untag)</option>
+                </Select>
+              </div>
+
+              {/* Web management — Nokia security-mgmt <port> protocol web */}
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={data.extra.enable_web !== ''} onChange={e => update('extra', { ...data.extra, enable_web: e.target.checked ? 'true' : '' })} />
+                  <span className="text-sm font-medium">Enable Web GUI</span>
+                </label>
+                {data.extra.enable_web !== '' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-tx3">security-mgmt port:</span>
+                    <input type="text" value={String(data.extra.security_web_port || '212')}
+                      onChange={e => update('extra', { ...data.extra, security_web_port: e.target.value })}
+                      className="input-field !h-8 !text-xs w-20" placeholder="212" />
+                  </div>
+                )}
+              </div>
+
+              {/* Per-port VLAN map (skip-by-default for Nokia) */}
+              <PortMapEditor
+                value={(data.extra.port_map as unknown as PortMapRow[]) || []}
+                onChange={rows => update('extra', { ...data.extra, port_map: rows as unknown as string })}
+                includeWifi={true}
+                vlanList={vlanList}
+              />
+            </div>
+          )}
+
           <hr className="border-brd" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
@@ -2042,6 +2260,31 @@ export function RegisterWizard() {
                       {data.extra.tr069_vlan_mode === 'tag' && <ConfigRow label="TR069 VLAN" value={String(data.extra.tr069_vlan || '-')} />}
                     </>
                   )}
+                </div>
+              )}
+
+              {data.template === 'nokia' && (
+                <div className="space-y-1">
+                  {(() => {
+                    const vlans = Array.isArray(data.extra.vlans) && data.extra.vlans.length > 0 ? data.extra.vlans : [
+                      { vlan: data.extra.tr069_vlan || '100', label: 'ACS', cos: '0' },
+                      { vlan: data.extra.internet_vlan || '30', label: 'Internet', cos: '0' },
+                      { vlan: data.extra.voip_vlan || '151', label: 'VoIP', cos: '0' },
+                    ];
+                    return vlans.map((v, i) => (
+                      <ConfigRow key={i} label={`Service #${i + 1}${v.label ? ` (${v.label})` : ''}`} value={`VLAN ${String(v.vlan || '-')} · gemport ${v.gemport || '1'} · cos ${v.cos || '0'}`} />
+                    ));
+                  })()}
+                  <ConfigRow label="WAN Mode" value={String(data.extra.wan_mode || 'bridge')} />
+                  <ConfigRow label="ACS URL" value={String(data.extra.acs_url || 'http://192.168.54.254:7547')} />
+                  <ConfigRow label="ACS User" value={String(data.extra.acs_user || 'acs')} />
+                  <ConfigRow label="Web GUI" value={data.extra.enable_web !== '' ? `Enabled (security-mgmt ${data.extra.security_web_port || '212'})` : 'Disabled'} />
+                  {(() => {
+                    const pm = Array.isArray(data.extra.port_map) ? data.extra.port_map as unknown as PortMapRow[] : [];
+                    return pm.map((p, i) => (
+                      <ConfigRow key={`pm${i}`} label={`Port ${p.port}`} value={`${p.mode}${(p.mode === 'tag' || p.mode === 'hybrid') && p.vlan ? ` vlan ${p.vlan}` : ''}`} />
+                    ));
+                  })()}
                 </div>
               )}
             </div>

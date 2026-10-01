@@ -1743,6 +1743,49 @@ class TestVendorTemplateCommandSequences:
         out = _sanitize_provisioning_input(extra={'vlans': [{'vlan': '30'}]})
         assert out['extra']['vlans'][0]['vlan'] == 30
 
+    def test_nokia_template(self):
+        """Nokia ONT: named services all on gemport 1 with cos 0, VEIP hybrid,
+        tr069-mgmt tag VLAN from the 'ACS'-labelled row, security-mgmt 212 web,
+        and NO implicit vlan port eth_* lines (skip-by-default port map)."""
+        extra = self._default_extra()
+        extra['vlans'] = [
+            {'vlan': '100', 'label': 'ACS'},
+            {'vlan': '300', 'label': '300'},
+            {'vlan': '200', 'label': '200'},
+        ]
+        ok, msg, commands = self._capture('nokia', extra=extra)
+        assert ok is True, f'expected success, got: {msg}'
+        assert 'service ACS gemport 1 cos 0 vlan 100' in commands
+        assert 'service 300 gemport 1 cos 0 vlan 300' in commands
+        assert 'service 200 gemport 1 cos 0 vlan 200' in commands
+        assert 'vlan port veip_1 mode hybrid' in commands
+        assert 'tr069-mgmt 1 state unlock' in commands
+        # ACS-labelled row wins for the tr069 tag VLAN
+        assert 'tr069-mgmt 1 tag pri 0 vlan 100' in commands
+        assert 'security-mgmt 212 state enable mode forward protocol web' in commands
+        # No implicit eth port tagging for Nokia (per-port map is opt-in)
+        assert not any(c.startswith('vlan port eth_') for c in commands)
+        # No iphost service lines — Nokia is pure VEIP
+        assert not any('iphost' in c for c in commands)
+
+    def test_nokia_port_map(self):
+        """extra.port_map emits per-port vlan port commands; 'skip' entries
+        emit nothing at all."""
+        extra = self._default_extra()
+        extra['vlans'] = [{'vlan': '30', 'label': 'Internet'}]
+        extra['port_map'] = [
+            {'port': 'eth_0/1', 'mode': 'tag', 'vlan': '30'},
+            {'port': 'eth_0/2', 'mode': 'untag'},
+            {'port': 'wifi_0/1', 'mode': 'hybrid', 'vlan': '30'},
+            {'port': 'eth_0/3', 'mode': 'skip'},
+        ]
+        ok, msg, commands = self._capture('nokia', extra=extra)
+        assert ok is True, f'expected success, got: {msg}'
+        assert 'vlan port eth_0/1 mode tag vlan 30' in commands
+        assert 'vlan port eth_0/2 mode untag' in commands
+        assert 'vlan port wifi_0/1 mode hybrid def-vlan 30' in commands
+        assert not any('vlan port eth_0/3' in c for c in commands)
+
     def test_zte_full_template(self):
         ok, msg, commands = self._capture('zte_full')
         assert ok is True

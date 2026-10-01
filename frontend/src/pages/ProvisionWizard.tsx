@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
+import { PortMapEditor, type PortMapRow } from '../components/PortMapEditor';
 import { Button, Card, EmptyState, Select, Input } from '../components/ui';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -32,6 +33,8 @@ interface ServiceEntry {
   cvlan: number;           // C-VLAN (inner) for Q-in-Q mode
   vlan_mode: 'tag' | 'untag' | 'qinq';
   label: string;           // e.g. "Internet", "VoIP", "TR069", "IPTV"
+  name: string;            // Nokia ONT: service name (defaults to service{n})
+  cos: string;             // Nokia ONT: cos priority (default '0')
   wan_mode: 'bridge' | 'dhcp' | 'pppoe' | 'pppoe-nat';
   pppoe_user: string;
   pppoe_pass: string;
@@ -80,6 +83,9 @@ interface WizardState {
   trafficProfile: string;
   slaProfile: string;
   useVeip: boolean | null; // null = auto-detect
+  ontStyle: 'default' | 'nokia'; // Nokia: named services sharing gemport 1
+  securityWebPort: string;       // Nokia: security-mgmt web port (default 212)
+  portMap: PortMapRow[];         // per-port VLAN map (empty = auto-tag eth)
   services: ServiceEntry[];
   wifi: WifiConfig;
   tr069: Tr069Config;
@@ -96,6 +102,8 @@ const newService = (overrides?: Partial<ServiceEntry>): ServiceEntry => ({
   cvlan: 0,
   vlan_mode: 'tag',
   label: '',
+  name: '',
+  cos: '0',
   wan_mode: 'bridge',
   pppoe_user: '',
   pppoe_pass: '',
@@ -130,9 +138,10 @@ function generateScript(d: WizardState): string {
   const onuIf = `${onuPfx}_${f}/${s}/${p}:${oid}`;
   const ponIf = `${oltPfx}_${f}/${s}/${p}`;
 
-  // Auto-detect VEIP
+  // Auto-detect VEIP — Nokia ONTs are always VEIP
+  const isNokia = d.ontStyle === 'nokia';
   const isZte = (onu.sn || '').toUpperCase().startsWith('ZTEG');
-  const useVeip = d.useVeip === null ? !isZte : d.useVeip;
+  const useVeip = isNokia ? true : (d.useVeip === null ? !isZte : d.useVeip);
 
   lines.push('! --- Register ONU ---');
   lines.push(`interface ${ponIf}`);
@@ -145,15 +154,18 @@ function generateScript(d: WizardState): string {
   if (d.description) lines.push(`  description ${d.description}`);
 
   // TCONT + GEM + service-port per VLAN
+  // Nokia: all services share gemport 1/tcont 1 — only n=1 creates them.
   d.services.forEach((svc, i) => {
     const n = i + 1;
     const v = svc.vlan || 100;
     const cv = svc.cvlan || 0;
-    const svcName = svc.label ? svc.label.replace(/[^a-zA-Z0-9]/g, '') : `service${n}`;
-    lines.push(`  tcont ${n} name ${svcName} profile ${d.tcontProfile}`);
-    lines.push(`  gemport ${n} tcont ${n}`);
-    if (svc.traffic_profile || d.trafficProfile) {
-      lines.push(`  gemport ${n} traffic-limit downstream ${svc.traffic_profile || d.trafficProfile}`);
+    const svcName = isNokia ? `service${n}` : (svc.label ? svc.label.replace(/[^a-zA-Z0-9]/g, '') : `service${n}`);
+    if (!isNokia || n === 1) {
+      lines.push(`  tcont ${n} name ${svcName} profile ${d.tcontProfile}`);
+      lines.push(`  gemport ${n} tcont ${n}`);
+      if (svc.traffic_profile || d.trafficProfile) {
+        lines.push(`  gemport ${n} traffic-limit downstream ${svc.traffic_profile || d.trafficProfile}`);
+      }
     }
     if (svc.vlan_mode === 'qinq' && cv) {
       lines.push(`  service-port ${n} vport ${n} user-vlan ${cv} vlan ${v} QinQ`);
@@ -176,7 +188,9 @@ function generateScript(d: WizardState): string {
     const needsIphost = !useVeip && svc.wan_mode !== 'bridge';
     const vlanSuffix = svc.vlan_mode === 'untag' ? '' : svc.vlan_mode === 'qinq' && cv ? ` vlan ${v} cvlan ${cv}` : ` vlan ${v}`;
 
-    if (needsIphost) {
+    if (isNokia) {
+      lines.push(`  service ${svc.name || `service${n}`} gemport 1 cos ${svc.cos || '0'}${vlanSuffix}`);
+    } else if (needsIphost) {
       lines.push(`  service ${svcName} gemport ${n} iphost ${n}${vlanSuffix}`);
     } else if (!useVeip && n === 1) {
       lines.push(`  service ${svcName} gemport ${n} iphost 1${vlanSuffix}`);
@@ -204,32 +218,49 @@ function generateScript(d: WizardState): string {
     lines.push('  vlan port veip_1 vlan 1');
   }
 
-  // Auto-tag LAN ports: eth_0/N → service N VLAN, extras → primary VLAN
-  const primaryVlan = d.services[0]?.vlan || 100;
-  for (let lp = 1; lp <= 4; lp++) {
-    const portVlan = d.services[lp - 1]?.vlan || primaryVlan;
-    lines.push(`  vlan port eth_0/${lp} mode tag vlan ${portVlan}`);
+  // Per-port VLAN map — non-empty replaces the auto-tag eth block entirely
+  const pmRows = d.portMap || [];
+  const pmPorts = new Set(pmRows.map(r => r.port));
+  if (pmRows.length > 0) {
+    pmRows.forEach(r => {
+      if (!r || !r.port) return;
+      if (r.mode === 'tag' && r.vlan) lines.push(`  vlan port ${r.port} mode tag vlan ${r.vlan}`);
+      else if (r.mode === 'untag') lines.push(`  vlan port ${r.port} mode untag`);
+      else if (r.mode === 'trunk') lines.push(`  vlan port ${r.port} mode trunk`);
+      else if (r.mode === 'hybrid' && r.vlan) lines.push(`  vlan port ${r.port} mode hybrid def-vlan ${r.vlan}`);
+    });
+  } else {
+    // Auto-tag LAN ports: eth_0/N → service N VLAN, extras → primary VLAN
+    const primaryVlan = d.services[0]?.vlan || 100;
+    for (let lp = 1; lp <= 4; lp++) {
+      const portVlan = d.services[lp - 1]?.vlan || primaryVlan;
+      lines.push(`  vlan port eth_0/${lp} mode tag vlan ${portVlan}`);
+    }
   }
 
-  // WiFi VLAN tagging — per-SSID VLAN from ssids array
+  // WiFi VLAN tagging — per-SSID VLAN from ssids array (skip ports in port_map)
+  const primaryVlan = d.services[0]?.vlan || 100;
   const pwSsids = d.wifi.ssids || [];
   const hasNamedSsid = pwSsids.some(s => s.name);
   if (hasNamedSsid) {
     const hasPerSsidVlan = pwSsids.some(s => s.name && s.vlan);
     if (hasPerSsidVlan) {
       pwSsids.forEach(s => {
-        if (s.name && s.vlan) lines.push(`  vlan port ${s.port || 'wifi_0/1'} mode tag vlan ${s.vlan}`);
+        if (s.name && s.vlan && !pmPorts.has(s.port || 'wifi_0/1')) lines.push(`  vlan port ${s.port || 'wifi_0/1'} mode tag vlan ${s.vlan}`);
       });
     } else {
       pwSsids.forEach(s => {
-        if (s.name) lines.push(`  vlan port ${s.port || 'wifi_0/1'} mode tag vlan ${primaryVlan}`);
+        if (s.name && !pmPorts.has(s.port || 'wifi_0/1')) lines.push(`  vlan port ${s.port || 'wifi_0/1'} mode tag vlan ${primaryVlan}`);
       });
     }
   }
 
-  // Firewall + security
+  // Firewall + security — Nokia uses 'security-mgmt <port> ... protocol web'
   const hasWan = d.services.some(s => s.wan_mode !== 'bridge');
-  if (hasWan) {
+  if (isNokia) {
+    if (hasWan) lines.push('  firewall enable level low');
+    lines.push(`  security-mgmt ${d.securityWebPort || '212'} state enable mode forward protocol web`);
+  } else if (hasWan) {
     lines.push('  firewall enable level low');
     lines.push('  security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069');
   }
@@ -304,6 +335,9 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
     trafficProfile: '',
     slaProfile: '',
     useVeip: null,
+    ontStyle: 'default',
+    securityWebPort: '212',
+    portMap: [],
     services: [newService({ vlan: 100 })],
     wifi: { ssids: [], ssid1_name: '', ssid1_pass: '', ssid1_auth: 'wpa2', ssid2_name: '', ssid2_pass: '', ssid2_auth: 'wpa2' },
     tr069: { enabled: false, acs_url: '', acs_user: '', acs_pass: '', tr069_vlan: 0, tr069_vlan_mode: 'tag', profile_id: '' },
@@ -489,6 +523,8 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               vlan: s.vlan,
               cvlan: s.cvlan,
               vlan_mode: s.vlan_mode,
+              name: s.name,
+              cos: s.cos,
               wan_mode: s.wan_mode === 'pppoe-nat' ? 'nat' : s.wan_mode === 'pppoe' ? 'wan' : s.wan_mode,
               wan_ip_mode: s.wan_mode === 'pppoe' ? 'PPPoE' : s.wan_mode === 'dhcp' ? 'DHCP' : '',
               pppoe_user: s.pppoe_user,
@@ -498,6 +534,11 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               traffic_profile: s.traffic_profile,
             })),
             use_veip: data.useVeip,
+            extra: {
+              ont_style: data.ontStyle,
+              security_web_port: data.securityWebPort,
+              port_map: data.portMap,
+            },
             wifi_config: isZte && (data.wifi.ssids || []).some(s => s.name) ? { ssids: data.wifi.ssids } : null,
             tr069_config: data.tr069.enabled ? data.tr069 : null,
             technician_id: data.technicianId,
@@ -845,6 +886,32 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             </select>
           </div>
 
+          {/* ONT Style (Nokia: named services, shared gemport 1) */}
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-glass border border-brd my-4">
+            <Cpu size={16} className={data.ontStyle === 'nokia' ? 'text-accent' : 'text-tx3'} />
+            <div className="flex-1">
+              <div className="text-sm font-medium">ONT Style</div>
+              <div className="text-[11px] text-tx3">
+                {data.ontStyle === 'nokia'
+                  ? 'Nokia: named services share gemport 1 (cos), VEIP forced, web on security-mgmt'
+                  : 'Default: per-service tcont/gemport, iphost/VEIP auto-detect'}
+              </div>
+            </div>
+            <select value={data.ontStyle}
+              onChange={e => update('ontStyle', e.target.value as WizardState['ontStyle'])}
+              className="h-8 px-2 rounded-lg bg-glass border border-brd text-xs">
+              <option value="default">Default</option>
+              <option value="nokia">Nokia</option>
+            </select>
+          </div>
+          {data.ontStyle === 'nokia' && (
+            <div className="flex items-center gap-2 -mt-2 mb-4">
+              <span className="text-[10px] text-tx3">security-mgmt web port:</span>
+              <input type="text" value={data.securityWebPort} onChange={e => update('securityWebPort', e.target.value)}
+                className="h-7 w-20 px-2 rounded-lg bg-glass border border-brd text-xs font-mono" placeholder="212" />
+            </div>
+          )}
+
           {/* VLAN cards */}
           <div className="space-y-2">
             {data.services.map((svc, idx) => (
@@ -920,6 +987,19 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                   )}
                 </div>
 
+                {/* Nokia: service name + cos */}
+                {data.ontStyle === 'nokia' && (
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <input value={svc.name} onChange={e => updateService(svc.id, 'name', e.target.value)}
+                      className="h-8 px-2 rounded-lg bg-glass border border-brd text-xs" placeholder={`Service name (default: service${idx + 1})`} />
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-tx3">CoS</span>
+                      <input type="number" value={svc.cos} onChange={e => updateService(svc.id, 'cos', e.target.value)}
+                        min={0} max={7} className="h-8 w-20 px-2 rounded-lg bg-glass border border-brd text-xs font-mono" placeholder="0" />
+                    </div>
+                  </div>
+                )}
+
                 {/* Row 2: PPPoE creds (conditional) */}
                 {(svc.wan_mode === 'pppoe' || svc.wan_mode === 'pppoe-nat') && (
                   <div className="grid grid-cols-2 gap-2 mt-2">
@@ -942,6 +1022,12 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                 )}
               </div>
             ))}
+          </div>
+
+          {/* Per-port VLAN map — empty keeps the default auto-tag behaviour */}
+          <div className="mt-4 p-3 rounded-xl border border-brd bg-glass">
+            <PortMapEditor value={data.portMap} onChange={rows => update('portMap', rows)} includeWifi={true} vlanList={vlanList} />
+            <p className="text-[10px] text-tx3 mt-1">Kosong = auto-tag eth_0/1..4 dari service VLAN. Terisi = hanya port di map yang dikonfigurasi.</p>
           </div>
 
           {/* Quick add from OLT VLAN list */}

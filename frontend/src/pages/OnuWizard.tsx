@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
+import { PortMapEditor, type PortMapRow } from '../components/PortMapEditor';
 import { Button, Card, EmptyState, Select, Input } from '../components/ui';
 
 // ==================== Types ====================
@@ -62,6 +63,10 @@ interface WizardState {
   customOnuId: string;
   isEpon: boolean;
   useVeip: boolean;
+  // ONT style: 'default' (zte_multi template) or 'nokia' (named services, shared gemport)
+  ontStyle: 'default' | 'nokia';
+  securityWebPort: string;
+  portMap: PortMapRow[];
   // Naming
   name: string;
   description: string;
@@ -157,6 +162,9 @@ const INITIAL_STATE: WizardState = {
   customOnuId: '',
   isEpon: false,
   useVeip: false,
+  ontStyle: 'default',
+  securityWebPort: '212',
+  portMap: [],
   name: '',
   description: '',
   tcontProfile: '',
@@ -543,6 +551,26 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
     }
     setSubmitting(true);
     try {
+      const isNokia = state.ontStyle === 'nokia';
+      // Nokia template consumes extra.vlans (+ wan_* fields) rather than the
+      // zte_multi 'services' list — derive it from the enabled services.
+      const nokiaInet = state.services.find(s => s.enabled && s.service_type === 'internet');
+      const nokiaExtras = isNokia ? {
+        vlans: state.services.filter(s => s.enabled).map(s => ({
+          vlan: s.vlans[0] || '',
+          label: ({ tr069: 'TR069', internet: 'Internet', iptv: 'IPTV', bridge: 'Bridge' } as Record<string, string>)[s.service_type] || '',
+          cos: '0',
+        })),
+        wan_mode: !nokiaInet ? 'bridge'
+          : nokiaInet.wan_mode === 'nat' ? 'pppoe'
+          : nokiaInet.wan_mode === 'wan' ? (nokiaInet.wan_ip_mode === 'DHCP' ? 'dhcp' : 'pppoe')
+          : 'bridge',
+        wan_ip_mode: nokiaInet?.wan_ip_mode || '',
+        pppoe_user: nokiaInet?.username || '',
+        pppoe_pass: nokiaInet?.password || '',
+        vlan_profile: nokiaInet?.vlan_profile || '',
+        use_veip: 'true',
+      } : {};
       const payload = {
         olt_id: state.oltId,
         frame: state.frame, slot: state.slot, port: state.port,
@@ -554,7 +582,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
         traffic_profile: state.trafficProfile,
         name: state.name, description: state.description,
         configure: true,
-        template: 'zte_multi',
+        template: isNokia ? 'nokia' : 'zte_multi',
         extra: {
           services: JSON.stringify(state.services),
           ssids: state.ssids,
@@ -565,6 +593,10 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
           tr069_vlan: state.tr069Vlan, tr069_vlan_mode: state.tr069VlanMode,
           enable_firewall: state.enableFirewall ? 'true' : '',
           firewall_level: state.firewallLevel,
+          ont_style: state.ontStyle,
+          port_map: state.portMap,
+          security_web_port: state.securityWebPort,
+          ...nokiaExtras,
         },
         technician_id: state.technicianId,
         pon_port: `${state.frame}/${state.slot}/${state.port}`,
@@ -816,6 +848,23 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                 </label>
               </div>
             </div>
+            <div>
+              <label className="label-sm mb-1.5">ONT Style</label>
+              <div className="flex items-center gap-3 h-9">
+                <select value={state.ontStyle} onChange={e => update('ontStyle', e.target.value as WizardState['ontStyle'])}
+                  className="input-field !h-9">
+                  <option value="default">Default (ZTE multi-service)</option>
+                  <option value="nokia">Nokia (named services, shared gemport)</option>
+                </select>
+                {state.ontStyle === 'nokia' && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-tx3 whitespace-nowrap">web port:</span>
+                    <input type="text" value={state.securityWebPort} onChange={e => update('securityWebPort', e.target.value)}
+                      className="input-field !h-8 !text-xs w-20" placeholder="212" />
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <hr className="border-brd" />
@@ -1017,6 +1066,21 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                 )}
               </div>
             ))}
+          </div>
+
+          <hr className="border-brd" />
+
+          {/* Per-port VLAN map */}
+          <div className="space-y-2 p-3 rounded-lg border border-brd bg-glass">
+            <PortMapEditor
+              value={state.portMap}
+              onChange={rows => update('portMap', rows)}
+              includeWifi={true}
+              vlanList={vlanList}
+            />
+            {state.ontStyle === 'nokia' && (
+              <p className="text-[10px] text-tx3">Nokia: kosong = tidak ada 'vlan port eth_*' sama sekali (skip-by-default). veip_1 selalu 'mode hybrid'.</p>
+            )}
           </div>
 
           <hr className="border-brd" />

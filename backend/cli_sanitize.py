@@ -60,7 +60,7 @@ FIELD_MAX_LEN = {
 # multi-service payload easily blows past the generic length cap. For these
 # specific field names, parse the JSON first and sanitize the resulting
 # structure's actual string leaves instead of the raw encoded text.
-JSON_CONTAINER_FIELDS = frozenset({'services', 'vlans', 'ssids', 'lan_vlans'})
+JSON_CONTAINER_FIELDS = frozenset({'services', 'vlans', 'ssids', 'lan_vlans', 'port_map'})
 
 
 class CliValidationError(ValueError):

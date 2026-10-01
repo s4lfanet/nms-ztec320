@@ -2319,6 +2319,26 @@ def _sanitize_provisioning_input(name='', description='', tcont_profile='', traf
         for i, v in enumerate(extra_cfg['vlans']):
             if isinstance(v, dict) and v.get('vlan') not in (None, ''):
                 v['vlan'] = sanitize_cli_int(v['vlan'], f'extra.vlans[{i}].vlan', min_val=1, max_val=4094)
+    # extra.port_map (per-port LAN/WiFi VLAN map) — 'port_map' is a
+    # JSON_CONTAINER_FIELDS key so a JSON-string form is already parsed by
+    # sanitize_cli_dict. Port names are whitelisted to real ONT UNI names so
+    # nothing else can be interpolated into 'vlan port ...' commands.
+    if isinstance(extra_cfg, dict) and isinstance(extra_cfg.get('port_map'), list):
+        _PORT_MAP_RE = re.compile(r'^(eth|wifi)_0/\d+$|^veip_1$')
+        _PORT_MAP_MODES = {'skip', 'tag', 'untag', 'trunk', 'hybrid'}
+        for i, e in enumerate(extra_cfg['port_map']):
+            if not isinstance(e, dict):
+                continue
+            port_name = sanitize_cli_text(e.get('port', ''), f'extra.port_map[{i}].port')
+            if not port_name or not _PORT_MAP_RE.match(port_name):
+                raise CliValidationError(f'extra.port_map[{i}].port', f"port tidak dikenal: {port_name!r}")
+            e['port'] = port_name
+            mode = str(e.get('mode', '') or '').lower()
+            if mode not in _PORT_MAP_MODES:
+                raise CliValidationError(f'extra.port_map[{i}].mode', f"mode tidak valid: {mode!r} (skip/tag/untag/trunk/hybrid)")
+            e['mode'] = mode
+            if mode in ('tag', 'hybrid'):
+                e['vlan'] = sanitize_cli_int(e.get('vlan'), f'extra.port_map[{i}].vlan', min_val=1, max_val=4094)
     for i, s in enumerate(out.get('services') or []):
         if not isinstance(s, dict):
             continue
@@ -2400,21 +2420,22 @@ def provision_unified():
     wifi_config = data.get('wifi_config')  # None = no wifi
     tr069_config = data.get('tr069_config')  # None = no tr069
     sla_profile = data.get('sla_profile', '')  # EPON SLA profile for speed limiting
+    extra = data.get('extra') or {}  # ONT-style extras (ont_style, port_map, ...)
 
     try:
         clean = _sanitize_provisioning_input(
             name=name, description=description, tcont_profile=tcont_profile,
             traffic_profile=traffic_profile, sla_profile=sla_profile,
             wifi_config=wifi_config, tr069_config=tr069_config, services=services,
-            serial=serial, onu_type=onu_type,
+            serial=serial, onu_type=onu_type, extra=extra,
         )
     except CliValidationError as e:
         return jsonify({'success': False, 'message': f'Input tidak valid: {e}'}), 400
     (name, description, serial, onu_type, tcont_profile, traffic_profile, sla_profile,
-     wifi_config, tr069_config, services) = (
+     wifi_config, tr069_config, services, extra) = (
         clean['name'], clean['description'], clean['serial'], clean['onu_type'],
         clean['tcont_profile'], clean['traffic_profile'], clean['sla_profile'],
-        clean['wifi_config'], clean['tr069_config'], clean['services'],
+        clean['wifi_config'], clean['tr069_config'], clean['services'], clean['extra'],
     )
 
     if wifi_config and isinstance(wifi_config, dict):
@@ -2471,7 +2492,7 @@ def provision_unified():
                     sla_profile=sla_profile,
                     wifi_config=wifi_config, tr069_config=tr069_config,
                     name=name, description=description, is_epon=is_epon,
-                    skip_registration=True,
+                    extra=extra, skip_registration=True,
                 )
                 if svc_success:
                     msg = f'ONU registered via SNMP + services configured via Telnet'
@@ -2538,6 +2559,7 @@ def provision_unified():
         sla_profile=sla_profile,
         wifi_config=wifi_config, tr069_config=tr069_config,
         name=name, description=description, is_epon=is_epon,
+        extra=extra,
     )
 
     # Save to DB on success
