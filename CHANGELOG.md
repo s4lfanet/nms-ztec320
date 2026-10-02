@@ -4,6 +4,119 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-10-02 — Installer VPS kini memasang & mengonfigurasi Redis
+
+#### Ditemukan
+- Audit menunjukkan Redis di VPS produksi (192.168.54.131) dipasang manual — `install-vps.sh` tidak pernah menginstal `redis-server` dan tidak meng-set `REDIS_URL` di `backend/.env`. Install fresh di VPS baru berjalan tanpa Redis: cache lintas proses tidak aktif (`cache_clear` dari cron tidak menjangkau proses server), sync lock fallback ke `flock`, rate limiter login per-proses.
+
+#### Diperbaiki
+- `install-vps.sh`: `redis-server` masuk daftar apt; dikonfigurasi `bind 127.0.0.1 ::1`, `maxmemory 256mb`, `maxmemory-policy allkeys-lru`, enable+start; `REDIS_URL=redis://127.0.0.1:6379/0` ditulis ke `backend/.env` (baru maupun `.env` lama saat upgrade); `redis-cli ping` masuk verifikasi akhir (warn-only, aplikasi tetap jalan tanpa Redis).
+- `uninstall-vps.sh`: mendokumentasikan `redis-server` dipertahankan sebagai paket sistem + cara menghapusnya.
+- `install.sh` (dev) & `backend/.env.example`: dokumentasi `REDIS_URL` opsional diperjelas.
+
+### 2026-10-02 — Fix: frontend blank di produksi (asset JS baru tidak ikut ter-commit)
+
+#### Ditemukan
+- Browser menolak `index-D47Z4PZg.js` dengan `Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "text/html"` — file JS baru tidak ada di VPS, index.html (baru) menunjuk hash yang belum ter-commit.
+- Root cause: `.gitignore` punya `dist/` (root) dan `dist` (`frontend/.gitignore`) → `git add -A` men-skip asset hash baru; hanya file lama yang sudah ter-track (hash tak berubah) ikut commit. Commit `cb87f0c` menghapus asset lama tapi asset baru tidak ikut → dist di repo tidak lengkap.
+
+#### Diperbaiki
+- `git add -f frontend/dist` (commit `aabe33d`) — seluruh asset baru masuk repo dan ter-deploy.
+- `.gitignore` diperbaiki permanen: `!frontend/dist/` + `!frontend/dist/**` di root dan `!dist` di `frontend/.gitignore` (commit `e6a0c7a`) — build berikutnya asset baru otomatis ter-track.
+
+### 2026-10-01 — Fix: PPPoE ONT Nokia tidak terhubung (mismatch gemport OMCI vs vport)
+
+#### Ditemukan
+- ONT Nokia `1/1/2:30` (G-1425G-H, ALCL...) ter-register dan reachable ke ACS, tapi PPPoE tidak pernah connect. Running-config menunjukkan ketiga `service` OMCI di-bind ke `gemport 1`, sementara interface OLT membuat `service-port N vport N` — VLAN 30 (Internet) hanya diterima di `vport 2`/gemport 2, padahal ONT mengirimnya di gemport 1 → frame PPPoE di-drop OLT. VLAN 1010 (ACS) kebetulan memang di gemport 1 → TR-069 jalan, PPPoE mati.
+- Di path `register_unified` (Provision Wizard/pre-config) lebih parah: `gemport 2/3` tidak pernah dibuat tapi `service-port 2 vport 2` tetap dikirim — vport menggantung.
+
+#### Diperbaiki
+- `_provision_nokia` (`backend/telnet_client.py`): interface hanya membuat tcont/gemport yang benar-benar dirujuk baris `service` (default: gemport 1 shared); tiap `service-port` memakai `vport <gemport baris>` sehingga binding OMCI ↔ service-port selalu konsisten.
+- `register_unified`: untuk `ont_style='nokia'`, semua `service-port` memakai `vport 1`.
+- `wan-ip`/`pppoe`/`wan` tidak lagi hardcode index `2` — mengikuti posisi baris berlabel "Internet" (relevan jika urutan VLAN diubah user).
+- Preview script di `RegisterWizard`, `ProvisionWizard`, `OnuWizard` disamakan dengan output backend (vport, host 1 untuk VEIP, security-mgmt Nokia).
+- Config ONU test `1/1/2:30` di OLT produksi dikoreksi langsung (service-port 2/3 dipindah ke vport 1, gemport/tcont 2/3 dibersihkan) dan `write` ke flash — **PPPoE dikonfirmasi terkoneksi oleh user**.
+
+#### Diverifikasi
+- 4 test regresi baru: shared-vport semua service-port, PPPoE dengan `vlan-profile` (`wan-ip <idx> mode pppoe ... host 1`), fallback `pppoe <idx> nat enable` tanpa profile, index WAN mengikuti posisi baris Internet, dan override `gemport` per-baris tetap konsisten (gemport 2 → vport 2). Full suite **345 passed**.
+
+### 2026-10-01 — Template registrasi ONT Nokia + fix layout wizard
+
+#### Ditambahkan
+- Template **Nokia VEIP** di Register Wizard (`_provision_nokia`): named services (`service ACS gemport 1 cos 0 vlan 100` dst.), `vlan port veip_1 mode hybrid`, `tr069-mgmt` + tag VLAN dari baris berlabel ACS, dan `security-mgmt 212 state enable mode forward protocol web` (web ONT Nokia).
+- `PortMapEditor`: per-port `eth_0/N`, `wifi_0/N` — mode Skip/Tag/Untag/Trunk/Hybrid (default Skip = tidak ada `vlan port eth_*`), tervalidasi di `_sanitize_provisioning_input` (port whitelist, mode enum, VLAN 1–4094).
+- Support Nokia juga di Provision Wizard (ONT Style select), OnuWizard (register/provision/pre-config), dan path unconfigured ONU.
+
+#### Diperbaiki (commit `539b1a6`)
+- Layout form Nokia rusak: `.input-field` (CSS un-layered, `width:100%`) mengalahkan utility `w-14`/`w-20`/`w-24`/`w-28` Tailwind v4 → input CoS/VLAN/Label menciut 26px atau melebar penuh. Fix: `.input-field` dipindah ke `@layer components` — satu perubahan memperbaiki semua halaman yang terdampak.
+- `extra.vlans` Nokia di-seed saat template dipilih agar preview = output backend (default `ACS 1010 / Internet 30 / VoIP 151`).
+
+### 2026-10-01 — Fix: tag VLAN uplink "sukses" palsu di OLT Configuration
+
+#### Ditemukan
+- Menambah tag VLAN pada uplink port dilaporkan sukses di UI tapi tidak masuk ke OLT; setelah sync nilai kembali. Root cause: `set_vlan_trunk` menjalankan `show running-config` (full dump ~120KB) di dalam context interface → buffer Telnet desinkronisasi, perintah mutasi tertelan output yang masih mengalir, `%Error` tidak pernah dicek → fungsi selalu return True, DB diupdate, frontend selalu toast sukses. Pola lama juga remove-all-then-add (berisiko kehilangan VLAN jika re-add gagal).
+
+#### Diperbaiki (commit `0b1369d`)
+- `set_vlan_trunk`/`remove_vlan_from_port`: baca kondisi port via `show running-config interface <port>`; perubahan **diff-based** (hanya tambah/hapus selisih, tidak pernah hapus-semua); tiap perintah dicek `%Error`/`%Code`; verifikasi read-back — sukses hanya jika VLAN benar-benar ada di OLT; DB diisi dari hasil verifikasi. Frontend menampilkan pesan penolakan OLT (bukan toast sukses palsu).
+- 8 test baru (`tests/test_uplink_vlan.py`). Smoke test live `gei_1/3/3` → no-op benar.
+
+### 2026-10-01 — Fix: Register Wizard Fiberhome VEIP mengabaikan VLAN manual
+
+#### Ditemukan
+- Tombol **Add VLAN** membuang 3 baris default (default hanya ditampilkan, belum di `extra.vlans`) → backend menerima 1 baris → guard `len(vlans) >= 3` di `_provision_fiberhome_veip` mengganti semua input dengan default 1010/30/151.
+
+#### Diperbaiki (commit `85a2e0f`, `510e552`)
+- Frontend: Add/Delete/edit VLAN berbasis daftar aktual (default ter-seed); preview konsisten dengan backend.
+- Backend: jumlah VLAN fleksibel (N-VLAN dinamis); VLAN Internet/TR069 dipilih dari label; safe-replace saat re-register membersihkan sampai 3 service lama; validasi VLAN 1–4094. 4 test baru.
+
+### 2026-10-01 — Auto sync: retry SNMP walk terpotong + throttle telnet ZTP
+
+#### Ditemukan
+- Walk SNMP `oper_state`/`olt_rx`/`onu_rx` terpotong **±90 kali/48 jam**, pola tiap jam di :40–:47 — `_bulk_walk` `break` diam-diam saat timeout dan mengembalikan hasil parsial seolah lengkap; 8 tabel di-walk serentak. Redaman tidak ter-update 5–10 menit tiap jam.
+- ZTP monitor + `/api/unregistered-count` telnet ke OLT ~15×/6 menit (polling 60 detik per tab browser), tanpa cek sync lock.
+
+#### Diperbaiki (commit `38653f9`, `cbfcb9e`)
+- `_bulk_walk` menandai walk terpotong → light sync me-retry tabel terpotong sekali secara berurutan; paralel walk dibatasi 4 (Semaphore).
+- Hasil scan unconfigured di-cache per OLT (`olt:{id}:unregistered`, TTL 120s, dibersihkan setelah sync); ZTP interval 60→180s + skip saat sync-locked. Telnet scan: 15 → ~6 per 6 menit.
+- Log `ERROR REDIS_URL is not set` dari proses cron disenyapkan (`SALFANET_CRON=1`).
+
+### 2026-09-29 — Aktivasi Redis di produksi (lintas proses)
+
+- `redis-server` diinstal di VPS 192.168.54.131 (`bind 127.0.0.1`, `maxmemory 256mb`, `allkeys-lru`), `REDIS_URL` di-set di `backend/.env`. Efek: `cache_clear` dari cron kini benar-benar membersihkan cache proses server; sync lock & rate limiter lintas proses via Redis.
+
+### 2026-09-29 — PWA diaktifkan + ikon/favicon dari logo perusahaan
+
+#### Ditemukan (audit)
+- `VitePWA` di `vite.config.ts` `disable: true` (sisa commit Juli) — manifest/sw.js tidak pernah di-generate; `sw-cleanup.js` meng-unregister SW tiap load; ikon `pwa/*.png` terblokir `*.png` di `.gitignore` (tidak ter-commit → hilang di VPS); `apple-touch-icon` menunjuk path `/spa/` yang sudah mati; manifest masih branding lama "FiberNMS".
+
+#### Diperbaiki (commit `861f506`, `91e041d`, `23b5de7`)
+- PWA aktif: `autoUpdate`, manifest `Salfanet NMS` tema `#0A0C14`, `OfflineBanner`, `/api` + `/ws` tetap `NetworkOnly`, `sw-cleanup.js` dihapus, exception `.gitignore` untuk `frontend/public/pwa/*.png`.
+- Ikon PWA (192/512/maskable), `apple-touch-icon` 180px, favicon ICO/PNG di-generate otomatis dari logo perusahaan yang di-upload (`backend/branding_icons.py`, Pillow); manifest dinamis via `/manifest.webmanifest` mengikuti nama NMS di Settings; route `/branding/*` dengan fallback default + `no-store`.
+
+### 2026-09-29 — Fix: ONU DyingGasp dilaporkan online (regresi guard walk)
+
+#### Ditemukan
+- 4 ONU `dyinggasp` (PowerOff) berulang kali dipaksa `online` dengan redaman kosong. Guard `_rx_incomplete` memaksa `oper_state` 4/5 tanpa sinyal → `online` — padahal DyingGasp juga `oper_state=5` tanpa sinyal, tidak bisa dibedakan dari ONU online yang hilang dari walk terpotong.
+
+#### Diperbaiki (commit `525deb6`, `b2e5d82`)
+- Walk terpotong → status `unknown` (status & redaman sebelumnya dipertahankan di `sync_helper`, tidak lagi ditimpa `None`). Deteksi "incomplete" diukur terhadap ONU oper 4/5, OR antar tabel. 6 test baru (`tests/test_snmp_light_incomplete.py`).
+
+### 2026-09-28 — Fix WebSocket double-connect + TTL token
+
+- `connect()` di `useWebSocket.ts` menutup socket yang masih CONNECTING (warning "closed before established"); fix skip cleanup saat CONNECTING + timeout handshake 10s. TTL token WS 60s → 300s (`routes_system.py`).
+
+### 2026-09-27 — Cron overlap, RBAC, FTTH map, dashboard
+
+- `fix(cron)`: `traffic_poller`/`auto_sync` tidak lagi overlap via CLI lock; segfault `auto_sync` dihentikan.
+- `fix(permissions)`: guard System Update & Cloudflare diselaraskan frontend↔backend.
+- `feat(ftth-map)`: marker map memuat detail lengkap per tipe infra.
+- `feat(ui)`: marquee login + health score & alerts di dashboard; `useMemo` dipindah di atas early return (React hooks order); Problem ONUs mengambil semua status non-online (LOS, DyingGasp, Offline).
+
+### 2026-09-26 — ONU Reset + Auto-Reconfig; preservasi status saat walk SNMP parsial
+
+- `feat(onu)`: "Reset + Auto-Reconfig" — factory reset ONU tanpa kehilangan konfigurasi di sisi OLT (service-port/tcont/gemport/pon-onu-mng di-backup & dipasang ulang).
+- `fix(sync)`: status ONU dipertahankan saat walk `oper_state` SNMP tidak lengkap (dasar dari fix DyingGasp 29 Sep).
+
 ### 2026-09-21 — Rollback: Auto Provisioning (ZTP) + 2 fix WAN mode/Show Config terkait
 
 Atas permintaan user, di-rollback ke commit sebelum fitur Auto Provisioning (ZTP) ditambahkan — mengembalikan 3 commit sekaligus lewat `git revert` (bukan `reset --hard`, riwayat git tetap utuh):
