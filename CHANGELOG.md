@@ -1362,6 +1362,29 @@ Hasil audit menyeluruh (security, backend, database/dependencies, frontend) — 
 
 ---
 
+### 2026-08-23 — Mode SNMP-Only, Audit Provisioning & System Update via Web UI
+
+#### Ditambahkan / Diubah
+- **Mode SNMP-only**: username Telnet kosong di OLT Settings menonaktifkan Telnet sepenuhnya — koleksi profil/VLAN/ONU via SNMP (`collect_onus_light`), seed tipe ONU ZTE default saat tanpa Telnet.
+- **System Update dari web UI**: cek & apply update GitHub langsung dari halaman System (fix PATH systemd, header `X-Requested-With`, laporkan kegagalan fetch).
+- **Registrasi ONU via SNMP** untuk ZTE C320; `register_mode` dipindah dari OLT Settings ke wizard.
+- **Audit provisioning**: endpoint `ont_provisioner` mati dihapus, fallback SNMP+Telnet, verifikasi read-back setelah provision, 26 test otomatis baru.
+- Fix: OID SNMP unconfigured-ONU yang benar (`.3.13.3.1.x`), deregister GPON pakai `delete gpon onu` (bukan `no onu N`) dengan fallback, import `OID_UNCFG_VENDOR` stale yang menyebabkan 500.
+
+### 2026-08-22 — Dukungan WAN Lengkap untuk FiberHome VEIP
+
+#### Diperbaiki / Ditambahkan
+- `wan-ip`/`pppoe`/`dhcp` untuk ONU non-ZTE (FiberHome VEIP); PPPoE NAT mode via `wan-ip pppoe`; VEIP dan iphost dibuat mutually-exclusive (hapus VEIP untuk mode PPPoE/WAN-IP); fix konflik `wan-ip host` dan VLAN string kosong.
+- View ONU: add/edit/delete WAN service untuk FiberHome VEIP.
+- Fix penolakan PPPoE + reliabilitas deregister/clear-config via telnet.
+- Sync setelah ONU delete/clear-config: full sync + delay untuk mencegah ONU "hantu"; notifikasi bell auto-resolve saat kondisi pulih.
+
+### 2026-08-21 — CRUD SNMP Community & User CLI di OLT
+
+- Manajemen SNMP community & admin user langsung di perangkat OLT; fix parsing community/CLI user untuk ZTE C320; form SNMP responsif + modal template jadi bottom-sheet di mobile.
+
+---
+
 ### 2026-08-20 — Security Hardening, Sync Concurrency & Template Editor
 
 #### Ditambahkan — Security Hardening (Phase 1-11)
@@ -1433,6 +1456,32 @@ Hasil audit menyeluruh (security, backend, database/dependencies, frontend) — 
 - `test_ssh_conn.py` dan test scripts lainnya (dev artifacts)
 - `ont_provisioner` dead endpoints
 - Duitku payment integration remnants
+
+---
+
+### 2026-08-19 — Hardening Keamanan Fase P0–P10, Backup/Restore Offsite & CI
+
+#### Security (fase bertahap)
+- P0: auth WebSocket, proteksi `/broadcast`, penutupan exposure credential + test regresi; SECRET_KEY dipisah dari INTERNAL_API_KEY.
+- Fase 4–10: access control per-OLT, verifikasi heartbeat, hardening CORS, audit auth internal API + otorisasi WebSocket, port security, masking key sensitif `SystemConfig` untuk non-admin, docs.
+- CSP ketat: script inline dipindah ke file eksternal (`sw-cleanup.js` ke `public/`).
+
+#### Backup/Restore & CI
+- Backup DB dengan upload remote via SCP (verifikasi host key), endpoint restore dengan auto-rollback, test ekuivalensi data, workflow CI dengan artifact debug.
+- Safeguard kehilangan data: schema init hanya di proses server + script backup DB; isolasi engine di test (`db.engines`, app context) memperbaiki kebocoran DB produksi ke test.
+
+#### Lainnya
+- Fix `telnet_status` selalu "disconnected" setelah sync (2 commit).
+
+### 2026-08-18 — Fix Lintas-DB, Index, WAL & Performa
+
+- D3/D4 `date_trunc` lintas database, S9 proteksi CSRF, S13 Docker non-root, S14 pengetatan CSP; fix event listener SQLite WAL tanpa app context.
+- P1 query N+1, P3 evictions LRU cache, P4 Redis SCAN, S6 enkripsi SNMP credential, F5 ErrorBoundary, E3 graceful shutdown, C5 SQLite WAL.
+- Index DB yang hilang (`olt_sync_status`, `sync_jobs`) + `ensure_index()` di `migrate_schema()`.
+
+### 2026-08-17 — Security Hardening, Sync Concurrency Lock & Job Lifecycle
+
+- Hardening keamanan, lock konkurensi sync, dan arsitektur lifecycle job (commit `a0c7785` — dasar dari sistem lock sync yang dipakai sampai sekarang).
 
 ---
 
@@ -1645,6 +1694,21 @@ Hasil audit menyeluruh (security, backend, database/dependencies, frontend) — 
 
 ---
 
+### 2026-08-02 — Cloudflare Tunnel, Perbaikan Cron & WebSocket Produksi
+
+#### Ditambahkan
+- **Cloudflare Tunnel management**: hubungkan VPS ke domain tanpa membuka port (install/konfigurasi cloudflared via UI, `cf_install`/`cf_configure`).
+
+#### Diperbaiki (bug produksi penting)
+- **Cron terhapus diam-diam**: `grep -v` exit 1 saat tidak ada match + `set -e` mengosongkan crontab setiap re-deploy; cron auto-sync tidak ter-register + path `/opt/fibernms` hardcoded.
+- **Alert monitor crash berulang**: bug perbandingan naive/aware datetime di `alerts.py` & maintenance window API — memutus SEMUA pengiriman alert (in-app, WA, Telegram) tiap siklus setelah ONU punya riwayat alert.
+- **WebSocket via nginx `/ws/`** (tanpa port eksplisit) — port 8765 tidak bisa dijangkau lewat Cloudflare Tunnel; update status ONU real-time.
+- `sudo`/`systemctl`/`journalctl` via absolute path untuk user `salfanet` non-root; `SystemConfig.value` String(256) → Text (token CF tunnel 400+ karakter); `subprocess which` → `shutil.which`.
+- RBAC: fix permission check user management, atribut permission item sidebar, route `/dashboard/onus`.
+- Auto-backup: `write memory`, fix path, setup cron.
+
+---
+
 ### 2026-08-01 — Audit & Perbaikan Sistem Notifikasi
 
 #### Ditambahkan
@@ -1732,3 +1796,26 @@ Hasil audit menyeluruh (security, backend, database/dependencies, frontend) — 
 - UI manajemen subscription SaaS
 - Alur registrasi dan pembayaran tenant SaaS
 
+
+---
+
+### 2026-07-10 — PWA Dinonaktifkan Sementara
+
+- Commit `459cda9` ("pelajari MD"): `VitePWA` di `vite.config.ts` diset `disable: true` dan `sw-cleanup.js` ditambahkan untuk membersihkan service worker lama di browser user. PWA diaktifkan kembali 2026-09-29.
+
+---
+
+### 2026-07-09 — Modernisasi Arsitektur (Baseline + Fase 1–4)
+
+#### Snapshot
+- `17b0357` baseline: snapshot pre-upgrade Salfanet NMS.
+
+#### Fase Upgrade
+- **Fase 2.1**: layer async FastAPI + endpoint WebSocket (`9dc2b49`).
+- **Fase 2.2**: dukungan migrasi PostgreSQL + config berbasis env (`f12d5b7`).
+- **Fase 2.3**: Docker + docker-compose untuk deployment produksi (`a70d8b3`).
+- **Fase 3**: Vitest untuk testing + PWA diaktifkan (`61a57ca`); fix pemisahan config vitest dari `vite.config.ts` untuk kompatibilitas Vite 8.
+- **Fase 4**: Redis caching + WebSocket bridge + push sync real-time (`298e8cb`).
+
+#### Lainnya
+- Dokumentasi API lengkap di Swagger (101 endpoint, 23 tag) + akses docs via subdomain `nms.salfa.my.id`; landing page dihapus (login langsung); durasi trial mengikuti paket; script benchmark performa (HTTP + WebSocket); aplikasi Android native (Flutter) untuk admin/tenant.
