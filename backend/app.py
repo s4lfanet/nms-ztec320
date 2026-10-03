@@ -536,7 +536,7 @@ def serve_spa(path=''):
             from flask import send_from_directory, make_response
             resp = make_response(send_from_directory(dist, path))
             if (path == 'index.html' or path.endswith('.html')
-                    or path in ('sw.js', 'registerSW.js', 'manifest.webmanifest')
+                    or path in ('sw.js', 'registerSW.js', 'sw-reload.js', 'manifest.webmanifest')
                     or path.startswith('workbox-')):
                 resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
                 resp.headers['Pragma'] = 'no-cache'
