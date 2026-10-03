@@ -17,6 +17,21 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
     <title>Salfanet NMS</title>
+    <script>
+      // Reload once when a NEW service worker takes control. Without this,
+      // the old SW's precached index.html can reference hashed assets that
+      // were deleted on deploy, leaving a broken page until manual refresh.
+      (function () {
+        if (!('serviceWorker' in navigator)) return;
+        var hadController = !!navigator.serviceWorker.controller;
+        var reloaded = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (!hadController || reloaded) return;
+          reloaded = true;
+          window.location.reload();
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -544,6 +544,12 @@ def serve_spa(path=''):
             if path == 'manifest.webmanifest':
                 resp.mimetype = 'application/manifest+json'
             return resp
+        # Real files (with extension) that don't exist → 404, not the SPA
+        # fallback. Otherwise stale hashed assets (/assets/index-OLD.js)
+        # would get index.html back and break module loading. Return the
+        # status directly — the 404 errorhandler redirects to '/'.
+        if safe_path is None or '.' in os.path.basename(path):
+            return 'Not found', 404
     from flask import send_from_directory, make_response
     resp = make_response(send_from_directory(dist, 'index.html'))
     resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
