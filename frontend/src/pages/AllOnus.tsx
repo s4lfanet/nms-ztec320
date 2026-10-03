@@ -26,6 +26,7 @@ export function AllOnus() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [oltFilter, setOltFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState(() => searchParams.get('filter') || 'all');
+  const [signalFilter, setSignalFilter] = useState(() => searchParams.get('signal') || 'all');
   const [ponFilter, setPonFilter] = useState('all');
   const [slotFilter, setSlotFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -54,8 +55,8 @@ export function AllOnus() {
   }, [search]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['all-onus', oltFilter, statusFilter, ponFilter, slotFilter, debouncedSearch, page, pageSize, sortBy, sortDir],
-    queryFn: () => api.allOnus({ olt: oltFilter, status: statusFilter, pon: ponFilter !== 'all' ? ponFilter : (slotFilter !== 'all' ? `slot/${slotFilter}` : 'all'), search: debouncedSearch, page, page_size: pageSize, sort_by: sortBy || undefined, sort_dir: sortDir }),
+    queryKey: ['all-onus', oltFilter, statusFilter, signalFilter, ponFilter, slotFilter, debouncedSearch, page, pageSize, sortBy, sortDir],
+    queryFn: () => api.allOnus({ olt: oltFilter, status: statusFilter, signal: signalFilter, pon: ponFilter !== 'all' ? ponFilter : (slotFilter !== 'all' ? `slot/${slotFilter}` : 'all'), search: debouncedSearch, page, page_size: pageSize, sort_by: sortBy || undefined, sort_dir: sortDir }),
     refetchInterval: 30000,
     placeholderData: keepPreviousData,
   });
@@ -133,7 +134,27 @@ export function AllOnus() {
   });
 
   // Reset page when filters change
-  useEffect(() => { setPage(1); }, [oltFilter, statusFilter, slotFilter, ponFilter, debouncedSearch, pageSize]);
+  useEffect(() => { setPage(1); }, [oltFilter, statusFilter, signalFilter, slotFilter, ponFilter, debouncedSearch, pageSize]);
+
+  // Shared filter handlers — used by both the Select dropdowns and the stat cards
+  const applyStatusFilter = (value: string) => {
+    setStatusFilter(value);
+    setPage(1);
+    const p = new URLSearchParams(searchParams);
+    if (value === 'all') p.delete('filter');
+    else p.set('filter', value);
+    setSearchParams(p, { replace: true });
+  };
+
+  const applySignalFilter = (value: string) => {
+    const next = signalFilter === value ? 'all' : value; // click again to clear
+    setSignalFilter(next);
+    setPage(1);
+    const p = new URLSearchParams(searchParams);
+    if (next === 'all') p.delete('signal');
+    else p.set('signal', next);
+    setSearchParams(p, { replace: true });
+  };
 
   if (isLoading) return <TableSkeleton />;
 
@@ -204,6 +225,7 @@ export function AllOnus() {
                 const params = new URLSearchParams();
                 if (oltFilter !== 'all') params.set('olt', oltFilter);
                 if (statusFilter !== 'all') params.set('status', statusFilter);
+                if (signalFilter !== 'all') params.set('signal', signalFilter);
                 if (ponFilter !== 'all') params.set('pon', ponFilter);
                 else if (slotFilter !== 'all') params.set('pon', `slot/${slotFilter}`);
                 if (debouncedSearch) params.set('search', debouncedSearch);
@@ -243,19 +265,27 @@ export function AllOnus() {
               count={stats?.count ?? 0}
               pct={stats?.pct ?? 0}
               color={cardColor}
+              active={signalFilter === colorKey}
+              onClick={() => applySignalFilter(colorKey)}
             />
           );
         })}
         <SignalCard icon={<HelpCircle size={18} />} label="LOS / N/A"
-          count={signal_stats.los + signal_stats.na} pct={signal_stats.na_pct} color="muted" />
+          count={signal_stats.los + signal_stats.na} pct={signal_stats.na_pct} color="muted"
+          active={signalFilter === 'los_na'}
+          onClick={() => applySignalFilter('los_na')} />
       </div>
 
       {/* Status Summary Cards */}
       <div className={`grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 transition-opacity ${isFilterFetching ? 'opacity-40' : ''}`}>
-        <StatusCard icon={<Wifi size={16} />} label="Total ONU" count={signal_stats.total} color="accent" />
-        <StatusCard icon={<Wifi size={16} />} label="Online" count={signal_stats.online} color="success" />
-        <StatusCard icon={<XCircle size={16} />} label="LOS" count={signal_stats.los} color="danger" />
-        <StatusCard icon={<AlertTriangle size={16} />} label="DyingGasp" count={signal_stats.dyinggasp} color="warning" />
+        <StatusCard icon={<Wifi size={16} />} label="Total ONU" count={signal_stats.total} color="accent"
+          active={statusFilter === 'all'} onClick={() => applyStatusFilter('all')} />
+        <StatusCard icon={<Wifi size={16} />} label="Online" count={signal_stats.online} color="success"
+          active={statusFilter === 'online'} onClick={() => applyStatusFilter(statusFilter === 'online' ? 'all' : 'online')} />
+        <StatusCard icon={<XCircle size={16} />} label="LOS" count={signal_stats.los} color="danger"
+          active={statusFilter === 'los'} onClick={() => applyStatusFilter(statusFilter === 'los' ? 'all' : 'los')} />
+        <StatusCard icon={<AlertTriangle size={16} />} label="DyingGasp" count={signal_stats.dyinggasp} color="warning"
+          active={statusFilter === 'dyinggasp'} onClick={() => applyStatusFilter(statusFilter === 'dyinggasp' ? 'all' : 'dyinggasp')} />
       </div>
 
       {/* Filters */}
@@ -310,7 +340,7 @@ export function AllOnus() {
 
           <Select
             value={statusFilter}
-            onChange={e => { setStatusFilter(e.target.value); setPage(1); const p = new URLSearchParams(searchParams); if (e.target.value === 'all') p.delete('filter'); else p.set('filter', e.target.value); setSearchParams(p, { replace: true }); }}
+            onChange={e => applyStatusFilter(e.target.value)}
             aria-label="Filter status"
             className="w-auto flex-shrink-0"
             options={[
@@ -672,8 +702,9 @@ export function AllOnus() {
 
 /* ─── Sub-components ─── */
 
-function SignalCard({ icon, label, count, pct, color }: {
+function SignalCard({ icon, label, count, pct, color, active, onClick }: {
   icon: React.ReactNode; label: string; count: number; pct: number; color: string;
+  active?: boolean; onClick?: () => void;
 }) {
   const colors: Record<string, string> = {
     success: 'border-success/20 bg-success/5',
@@ -686,7 +717,17 @@ function SignalCard({ icon, label, count, pct, color }: {
   };
 
   return (
-    <div className={cn('glass-card p-4 border', colors[color])}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'glass-card p-4 border text-left transition-all',
+        colors[color],
+        onClick && 'cursor-pointer hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
+        active && 'ring-2 ring-accent/70 border-accent/50',
+      )}
+    >
       <div className="flex items-center gap-2 mb-2">
         <span className={textColors[color]}>{icon}</span>
         <span className="text-xs text-tx3">{label}</span>
@@ -695,12 +736,13 @@ function SignalCard({ icon, label, count, pct, color }: {
         <span className={cn('text-2xl font-bold', textColors[color])}>{pct}%</span>
         <span className="text-sm text-tx3">{count} ONU{count !== 1 ? 's' : ''}</span>
       </div>
-    </div>
+    </button>
   );
 }
 
-function StatusCard({ icon, label, count, color }: {
+function StatusCard({ icon, label, count, color, active, onClick }: {
   icon: React.ReactNode; label: string; count: number; color: string;
+  active?: boolean; onClick?: () => void;
 }) {
   const colors: Record<string, string> = {
     success: 'border-success/20 bg-success/5',
@@ -713,13 +755,23 @@ function StatusCard({ icon, label, count, color }: {
   };
 
   return (
-    <div className={cn('glass-card p-3 border flex items-center gap-3', colors[color])}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'glass-card p-3 border flex items-center gap-3 text-left transition-all',
+        colors[color],
+        onClick && 'cursor-pointer hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
+        active && 'ring-2 ring-accent/70 border-accent/50',
+      )}
+    >
       <span className={textColors[color]}>{icon}</span>
       <div className="flex flex-col">
         <span className={cn('text-lg font-bold', textColors[color])}>{count}</span>
         <span className="text-xs text-tx3">{label}</span>
       </div>
-    </div>
+    </button>
   );
 }
 

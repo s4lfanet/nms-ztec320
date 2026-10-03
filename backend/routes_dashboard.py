@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from functools import wraps
 import logging, re, threading, os, json, time, hashlib, shutil, hmac
 
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from sqlalchemy.orm import joinedload
 
 from models import (
@@ -101,12 +101,51 @@ def api_dashboard():
     return jsonify(result)
 
 
+def _get_rx_ranges():
+    """RX color ranges from SystemConfig (same defaults as classify)."""
+    import json as _json
+    rx_ranges = [
+        {'min': -25, 'max': 0, 'color': 'green', 'label': 'Good'},
+        {'min': -28, 'max': -25, 'color': 'yellow', 'label': 'Warning'},
+        {'min': -99, 'max': -28, 'color': 'red', 'label': 'Critical'},
+    ]
+    cfg = SystemConfig.query.filter_by(key='rx_color_ranges').first()
+    if cfg and cfg.value:
+        try:
+            rx_ranges = _json.loads(cfg.value)
+        except Exception:
+            pass
+    return rx_ranges
+
+
+def _apply_signal_filter(query, signal):
+    """signal = RX range color key | 'na' (no rx) | 'los_na' (LOS card)."""
+    if not signal or signal == 'all':
+        return query
+    if signal == 'na':
+        return query.filter(ONU.onu_rx_power.is_(None))
+    if signal == 'los_na':
+        return query.filter(or_(ONU.status == 'los', ONU.onu_rx_power.is_(None)))
+    rx_ranges = _get_rx_ranges()
+    sorted_r = sorted(rx_ranges, key=lambda r: r['min'], reverse=True)
+    conds = [and_(ONU.onu_rx_power >= r['min'], ONU.onu_rx_power < r['max'])
+             for r in rx_ranges if r.get('color', 'gray') == signal]
+    # classify_rx() assigns values below every range to the lowest range's
+    # color — mirror that so the card count matches the filter result.
+    if sorted_r and sorted_r[-1].get('color', 'gray') == signal:
+        conds.append(ONU.onu_rx_power < sorted_r[-1]['min'])
+    if conds:
+        query = query.filter(or_(*conds))
+    return query
+
+
 @bp.route('/api/all-onus')
 @login_required
 def api_all_onus():
     olt_filter = request.args.get('olt', 'all')
     status_filter = request.args.get('status', 'all')
     pon_filter = request.args.get('pon', 'all')
+    signal_filter = request.args.get('signal', 'all')
     search = request.args.get('search', '').strip()
     page = max(int(request.args.get('page', 1)), 1)
     page_size = min(max(int(request.args.get('page_size', 20)), 1), 200)
@@ -128,6 +167,7 @@ def api_all_onus():
                 query = query.filter_by(slot=int(parts[1]))
         except (ValueError, IndexError):
             pass
+    query = _apply_signal_filter(query, signal_filter)
 
     # SQL-side search (replaces Python filtering)
     if search:
@@ -169,18 +209,7 @@ def api_all_onus():
     stats_rows = query.with_entities(ONU.rx_power, ONU.onu_rx_power, ONU.status).all()
 
     # Read RX color ranges from SystemConfig (customization)
-    import json as _json_stats
-    rx_ranges = [
-        {'min': -25, 'max': 0, 'color': 'green', 'label': 'Good'},
-        {'min': -28, 'max': -25, 'color': 'yellow', 'label': 'Warning'},
-        {'min': -99, 'max': -28, 'color': 'red', 'label': 'Critical'},
-    ]
-    rx_cfg = SystemConfig.query.filter_by(key='rx_color_ranges').first()
-    if rx_cfg and rx_cfg.value:
-        try:
-            rx_ranges = _json_stats.loads(rx_cfg.value)
-        except Exception:
-            pass
+    rx_ranges = _get_rx_ranges()
 
     # Sort ranges by min descending so we match the highest (best) range first
     sorted_ranges = sorted(rx_ranges, key=lambda r: r['min'], reverse=True)
@@ -405,6 +434,7 @@ def all_onus_export():
     olt_filter = request.args.get('olt', 'all')
     status_filter = request.args.get('status', 'all')
     pon_filter = request.args.get('pon', 'all')
+    signal_filter = request.args.get('signal', 'all')
     search = request.args.get('search', '').strip()
     sort_by = request.args.get('sort_by', '')
     sort_dir = 'desc' if request.args.get('sort_dir', 'asc') == 'desc' else 'asc'
@@ -424,6 +454,7 @@ def all_onus_export():
                 query = query.filter_by(slot=int(parts[1]))
         except (ValueError, IndexError):
             pass
+    query = _apply_signal_filter(query, signal_filter)
     if search:
         q = f'%{search}%'
         olt_ids = [o.id for o in OLT.query.filter(OLT.name.ilike(q)).all()]

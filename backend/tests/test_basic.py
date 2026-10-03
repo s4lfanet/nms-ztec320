@@ -2262,5 +2262,80 @@ class TestProvisioningInputSanitization:
         assert resp.get_json()['success'] is False
 
 
+class TestAllOnusSignalFilter:
+    """All ONUs stat cards are clickable filters — /api/all-onus must accept
+    a `signal` param matching the RX color range keys shown on the cards."""
+
+    def _setup(self, client):
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        with app.app_context():
+            from models import ONU
+            olt = OLT(name='T1', ip_address='10.0.0.1')
+            db.session.add(olt)
+            db.session.flush()
+            specs = [
+                ('onu-green',  'online', -20.0),   # good range
+                ('onu-yellow', 'online', -26.5),   # warning range
+                ('onu-red',    'online', -30.0),   # critical range
+                ('onu-deep',   'online', -99.5),   # below all ranges → lowest color
+                ('onu-los',    'los',    None),
+                ('onu-na',     'offline', None),
+            ]
+            for name, status, rx in specs:
+                db.session.add(ONU(olt_id=olt.id, onu_id=1, name=name,
+                                   status=status, onu_rx_power=rx))
+            db.session.commit()
+        return client
+
+    def _ids(self, resp):
+        assert resp.status_code == 200
+        return {o['name'] for o in resp.get_json()['onus']}
+
+    def test_signal_color_range(self, client):
+        client = self._setup(client)
+        assert self._ids(client.get('/api/all-onus?signal=green')) == {'onu-green'}
+        assert self._ids(client.get('/api/all-onus?signal=yellow')) == {'onu-yellow'}
+        # red = lowest range → also catches values below its min
+        assert self._ids(client.get('/api/all-onus?signal=red')) == {'onu-red', 'onu-deep'}
+
+    def test_signal_na(self, client):
+        client = self._setup(client)
+        assert self._ids(client.get('/api/all-onus?signal=na')) == {'onu-los', 'onu-na'}
+
+    def test_signal_los_na_card(self, client):
+        client = self._setup(client)
+        # LOS/N/A card = los status OR no rx — matches card count los + na
+        assert self._ids(client.get('/api/all-onus?signal=los_na')) == {'onu-los', 'onu-na'}
+
+    def test_signal_combined_with_status(self, client):
+        client = self._setup(client)
+        # status + signal AND together
+        r = client.get('/api/all-onus?status=online&signal=green')
+        assert self._ids(r) == {'onu-green'}
+
+    def test_signal_all_is_noop(self, client):
+        client = self._setup(client)
+        r = client.get('/api/all-onus')
+        assert len(self._ids(r)) == 6
+        r2 = client.get('/api/all-onus?signal=all')
+        assert len(self._ids(r2)) == 6
+
+    def test_signal_custom_ranges(self, client):
+        client = self._setup(client)
+        with app.app_context():
+            from models import SystemConfig
+            db.session.add(SystemConfig(key='rx_color_ranges', value=json.dumps([
+                {'min': -21, 'max': 0, 'color': 'green', 'label': 'Good'},
+                {'min': -99, 'max': -21, 'color': 'red', 'label': 'Bad'},
+            ])))
+            db.session.commit()
+        # -20.0 still inside green [-21,0); the rest land in red (below-min too)
+        assert self._ids(client.get('/api/all-onus?signal=green')) == {'onu-green'}
+        assert self._ids(client.get('/api/all-onus?signal=red')) == {
+            'onu-yellow', 'onu-red', 'onu-deep'}
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

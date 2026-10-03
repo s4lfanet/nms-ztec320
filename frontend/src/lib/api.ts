@@ -51,10 +51,11 @@ export const api = {
   dashboard: (opts?: { nocache?: boolean } | unknown) => request<DashboardData>(`/api/dashboard${opts && typeof opts === 'object' && 'nocache' in opts && opts.nocache ? '?nocache=1' : ''}`),
 
   // All ONUs
-  allOnus: (params?: { olt?: string; status?: string; pon?: string; search?: string; page?: number; page_size?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }) => {
+  allOnus: (params?: { olt?: string; status?: string; signal?: string; pon?: string; search?: string; page?: number; page_size?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }) => {
     const q = new URLSearchParams();
     if (params?.olt && params.olt !== 'all') q.set('olt', params.olt);
     if (params?.status && params.status !== 'all') q.set('status', params.status);
+    if (params?.signal && params.signal !== 'all') q.set('signal', params.signal);
     if (params?.pon && params.pon !== 'all') q.set('pon', params.pon);
     if (params?.search) q.set('search', params.search);
     if (params?.page) q.set('page', String(params.page));
