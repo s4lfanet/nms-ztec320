@@ -1,4 +1,4 @@
-# AGENTS.md — AI Agent Handoff Guide
+# AGENTS.md — Project Handoff Guide
 
 ## Project Context
 

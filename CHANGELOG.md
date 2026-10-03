@@ -888,7 +888,7 @@ Catatan: kedua fix WAN mode/Show Config **tidak berkaitan** dengan bug Auto Prov
 ### 2026-09-03 — Redesign Warna: Indigo Slate (dari Teal/Navy)
 
 #### Proses
-- Diminta redesign tampilan UI/UX dan komposisi warna. Sebelum menyentuh kode, dibuatkan dulu mockup preview (Claude Design canvas, terpisah dari aplikasi) untuk 3 halaman kunci (Dashboard, All ONUs, OLT Settings), lalu 3 arah warna berbeda untuk dipilih: **A — Fiber Signal** (teal/navy + glass-blur, identitas lama), **B — Amber Ops** (charcoal + amber, kartu flat industrial), **C — Indigo Slate** (slate gelap + indigo, kartu flat + shadow, kesan SaaS modern). User pilih **C**
+- Diminta redesign tampilan UI/UX dan komposisi warna. Sebelum menyentuh kode, dibuatkan dulu mockup preview (mockup preview terpisah dari aplikasi) untuk 3 halaman kunci (Dashboard, All ONUs, OLT Settings), lalu 3 arah warna berbeda untuk dipilih: **A — Fiber Signal** (teal/navy + glass-blur, identitas lama), **B — Amber Ops** (charcoal + amber, kartu flat industrial), **C — Indigo Slate** (slate gelap + indigo, kartu flat + shadow, kesan SaaS modern). User pilih **C**
 - Setelah dipilih, diterapkan ke kode sungguhan (bukan cuma mockup) lewat token warna terpusat di `frontend/src/index.css` — karena hampir semua halaman memakai class bersama (`.glass-card`, `.btn-primary`, `.badge-*`, dst.) yang diturunkan dari CSS custom properties, satu perubahan token merambat konsisten ke seluruh aplikasi tanpa perlu edit tiap halaman satu-satu
 
 #### Diubah
