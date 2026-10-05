@@ -34,16 +34,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/, /^\/auth/, /^\/static/, /^\/ws/, /^\/health/, /^\/docs/, /^\/openapi/, /^\/spa/, /^\/metrics/],
-        runtimeCaching: [
-          {
-            urlPattern: /^https?:\/\/.*\/api\/.*/i,
-            handler: 'NetworkOnly',
-          },
-          {
-            urlPattern: /^https?:\/\/.*\/ws\/.*/i,
-            handler: 'NetworkOnly',
-          },
-        ],
+        // No runtimeCaching for /api/ and /ws/ — let the browser handle
+        // them natively. A NetworkOnly SW route on a downed origin throws
+        // noisy "no-response" errors; bypassing the SW avoids that.
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
