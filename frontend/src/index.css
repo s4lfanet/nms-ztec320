@@ -1,46 +1,47 @@
 @import "tailwindcss";
 
-/* ─── Salfanet NMS Theme — Indigo Slate ─── */
-/* Color rationale:
-   #0A0C14 near-black slate — crisp NOC dashboard base, less blue cast than the old navy
-   #818CF8 indigo signal — primary accent, distinct from status colors so it never competes with them
-   #34D399 link green — active equipment LED indicators
-   #FBBF24 signal amber — caution indicators on network gear
-   #F87171 alert coral — critical alerts, less aggressive than pure red
-   #9298B0 steel gray — cable sheathing tone for secondary text
+/* ─── Salfanet NMS Theme — Optical Carbon & Carrier Cyan ─── */
+/* Grounded in telecom hardware & optical test instrumentation (OTDR / NOC):
+   #090B0E carbon chassis — neutral dark base without purple/navy cast
+   #11151C instrument panel — solid, low-glare card surface
+   #212834 structural hairline — crisp 1px panel dividers
+   #0EA5E9 optical cyan — primary laser/carrier accent, distinct from LEDs
+   #10B981 link emerald — optical link up indicator
+   #F59E0B attenuation amber — DyingGasp / threshold warning
+   #EF4444 alarm red — LOS / critical fault
 */
 :root {
-  --bg-primary: #0A0C14;
-  --bg-surface: #0F1119;
-  --bg-glass: #151827;
-  --bg-glass-hover: #1B1F30;
-  --bg-card: #12141F;
-  --bg-card-hover: #161927;
-  --border-color: rgba(129, 140, 248, 0.10);
-  --border-hover: rgba(129, 140, 248, 0.24);
-  --text-1: #EEF0F7;
-  --text-2: #9298B0;
-  --text-3: #5C6178;
-  --scrollbar-thumb: rgba(129, 140, 248, 0.14);
-  --scrollbar-hover: rgba(129, 140, 248, 0.28);
-  --focus-ring: 0 0 0 2px #0A0C14, 0 0 0 4px #818CF8;
+  --bg-primary: #090B0E;
+  --bg-surface: #0E1116;
+  --bg-glass: #161B24;
+  --bg-glass-hover: #1C222D;
+  --bg-card: #11151C;
+  --bg-card-hover: #151A23;
+  --border-color: #212834;
+  --border-hover: #333E4F;
+  --text-1: #F1F5F9;
+  --text-2: #94A3B8;
+  --text-3: #64748B;
+  --scrollbar-thumb: rgba(148, 163, 184, 0.18);
+  --scrollbar-hover: rgba(148, 163, 184, 0.32);
+  --focus-ring: 0 0 0 2px #090B0E, 0 0 0 3.5px #0EA5E9;
 }
 
 /* Tailwind v4 theme directive */
 @theme extend {
-  --color-accent: #818CF8;
-  --color-accent-hover: #6366F1;
-  --color-success: #34D399;
-  --color-warning: #FBBF24;
-  --color-danger: #F87171;
+  --color-accent: #0EA5E9;
+  --color-accent-hover: #0284C7;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
   --color-info: #38BDF8;
-  --color-online: #34D399;
+  --color-online: #10B981;
   --color-offline: #64748B;
-  --color-los: #F87171;
-  --color-dyinggasp: #FBBF24;
+  --color-los: #EF4444;
+  --color-dyinggasp: #F59E0B;
   --color-rx-blue: #38BDF8;
-  --color-rx-purple: #C084FC;
-  --color-rx-orange: #FB923C;
+  --color-rx-purple: #A855F7;
+  --color-rx-orange: #F97316;
   --color-rx-gray: #94A3B8;
   --color-tx1: var(--text-1);
   --color-tx2: var(--text-2);
@@ -79,50 +80,32 @@ h1, h2, h3, h4, h5, h6,
   position: relative;
 }
 
-/* ─── Card (Indigo Slate — layered, not flat) ─── */
-/* A faint top-to-bottom sheen plus a color-tinted shadow instead of a plain
-   dark rectangle — the tint comes from --card-tint (defaults to accent) so
-   individual cards can lean into their own status color (see .stat-tile). */
+/* ─── Card (Instrument Panel Surface) ─── */
 .glass-card {
-  --card-tint: 129, 140, 248;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0) 40%),
-    var(--bg-card);
+  --card-tint: 14, 165, 233;
+  background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.03) inset,
-    0 10px 28px -8px rgba(0, 0, 0, 0.45),
-    0 1px 3px rgba(0, 0, 0, 0.3);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   position: relative;
-  transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
-.glass-card:hover {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 40%),
-    var(--bg-card-hover);
+button.glass-card:hover,
+a.glass-card:hover,
+[role="button"].glass-card:hover {
+  background: var(--bg-card-hover);
   border-color: var(--border-hover);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 16px 36px -10px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(var(--card-tint), 0.06),
-    0 4px 20px -4px rgba(var(--card-tint), 0.12);
 }
 @media (prefers-reduced-motion: reduce) {
   .glass-card { transition: none; }
 }
 
-/* Glow effect for accent elements */
+/* Subtle accent highlight */
 .glow-accent {
-  box-shadow: 0 0 16px rgba(129, 140, 248, 0.25), 0 0 48px rgba(129, 140, 248, 0.08);
-  transition: box-shadow 0.3s ease;
+  box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.28);
 }
 
-/* ─── App background — layered mesh + dot grid ───
-   Sits fixed behind the sidebar/topbar/content (AppShell mounts this once).
-   Three soft, low-opacity radial blobs in the app's own accent/status colors
-   plus a faint dot grid give the dashboard real depth instead of one flat
-   fill, without ever competing with foreground content or dense tables. */
+/* ─── App background — clean carbon chassis with subtle top ambient light ─── */
 .app-mesh-bg {
   position: fixed;
   inset: 0;
@@ -134,62 +117,34 @@ h1, h2, h3, h4, h5, h6,
 .app-mesh-bg::before {
   content: '';
   position: absolute;
-  inset: -10%;
-  background-image:
-    radial-gradient(600px circle at 8% 0%, rgba(129, 140, 248, 0.10), transparent 55%),
-    radial-gradient(500px circle at 92% 18%, rgba(52, 211, 153, 0.06), transparent 55%),
-    radial-gradient(700px circle at 50% 100%, rgba(56, 189, 248, 0.05), transparent 60%);
-}
-.app-mesh-bg::after {
-  content: '';
-  position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 90%);
-  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 90%);
+  background-image:
+    radial-gradient(960px 340px at 50% -6%, rgba(14, 165, 233, 0.045), transparent 70%);
 }
 
-/* ─── Icon badge — gradient-tinted square used for stat cards, page headers,
-   empty states. Color comes from a small set of data-color values so every
-   usage stays consistent instead of one-off inline gradients per page. ─── */
+/* ─── Icon badge — restrained structural container for icons ─── */
 .icon-badge {
-  --ib-rgb: 129, 140, 248;
+  --ib-rgb: 14, 165, 233;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background:
-    linear-gradient(135deg, rgba(var(--ib-rgb), 0.22), rgba(var(--ib-rgb), 0.06));
-  border: 1px solid rgba(var(--ib-rgb), 0.22);
+  border-radius: 8px;
+  background: rgba(var(--ib-rgb), 0.10);
+  border: 1px solid rgba(var(--ib-rgb), 0.20);
   color: rgb(var(--ib-rgb));
-  box-shadow: 0 4px 14px -4px rgba(var(--ib-rgb), 0.35);
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
   flex-shrink: 0;
 }
-.icon-badge[data-color='success'] { --ib-rgb: 52, 211, 153; }
-.icon-badge[data-color='warning'] { --ib-rgb: 251, 191, 36; }
-.icon-badge[data-color='danger']  { --ib-rgb: 248, 113, 113; }
+.icon-badge[data-color='success'] { --ib-rgb: 16, 185, 129; }
+.icon-badge[data-color='warning'] { --ib-rgb: 245, 158, 11; }
+.icon-badge[data-color='danger']  { --ib-rgb: 239, 68, 68; }
 .icon-badge[data-color='info']    { --ib-rgb: 56, 189, 248; }
-.icon-badge[data-color='muted']   { --ib-rgb: 146, 152, 176; }
+.icon-badge[data-color='muted']   { --ib-rgb: 148, 163, 184; }
 
-/* ─── Stat tile — StatCard's own surface: a top accent hairline + the same
-   layered card body, so the dashboard's headline numbers read as elevated
-   tiles rather than plain boxes with a colored border. ─── */
+/* ─── Stat tile — clean left status bar instead of centered gradient glow ─── */
 .stat-tile {
   position: relative;
   overflow: hidden;
-}
-.stat-tile::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(var(--card-tint), 0.7), transparent);
-  opacity: 0.8;
-}
-.stat-tile:hover .icon-badge {
-  transform: scale(1.08) rotate(-4deg);
+  border-left: 2px solid rgba(var(--card-tint), 0.65);
 }
 
 /* Dark-mode Leaflet basemap: standard OpenStreetMap tiles (no API key) inverted
@@ -387,8 +342,8 @@ h1, h2, h3, h4, h5, h6,
     padding: 12px 14px;
   }
   .label-sm {
-    font-size: 11px;
-    margin-bottom: 4px;
+    font-size: 12.5px;
+    margin-bottom: 5px;
   }
 
   /* Buttons */
@@ -506,13 +461,12 @@ h1, h2, h3, h4, h5, h6,
 * { -webkit-overflow-scrolling: touch; }
 
 .label-sm {
-  font-size: 11px;
-  color: var(--text-3);
-  margin-bottom: 3px;
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.4px;
-  transition: color 0.3s ease;
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: color 0.2s ease;
 }
 
 /* ─── Modal ─── */
@@ -584,17 +538,18 @@ select {
 /* ─── Buttons ─── */
 .btn-primary {
   padding: 8px 16px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--color-accent);
-  color: #0A0C14;
+  color: #061018;
   font-size: 13px;
   font-weight: 600;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .btn-primary:hover {
   background: var(--color-accent-hover);
+  color: #FFFFFF;
 }
 .btn-primary:disabled {
   opacity: 0.4;
@@ -603,48 +558,51 @@ select {
 
 .btn-cancel {
   padding: 8px 16px;
-  border-radius: 10px;
-  background: transparent;
+  border-radius: 8px;
+  background: var(--bg-glass);
   color: var(--text-2);
   font-size: 13px;
-  border: none;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .btn-cancel:hover {
-  background: var(--bg-glass);
+  background: var(--bg-glass-hover);
+  border-color: var(--border-hover);
   color: var(--text-1);
 }
 
 .btn-danger {
   padding: 8px 16px;
-  border-radius: 10px;
-  background: transparent;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.08);
   color: var(--color-danger);
   font-size: 13px;
-  border: 1px solid rgba(248, 113, 113, 0.25);
+  font-weight: 500;
+  border: 1px solid rgba(239, 68, 68, 0.28);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .btn-danger:hover {
-  background: rgba(248, 113, 113, 0.1);
-  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.45);
 }
 
 .btn-warning {
   padding: 8px 16px;
-  border-radius: 10px;
-  background: transparent;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.08);
   color: var(--color-warning);
   font-size: 13px;
   font-weight: 500;
-  border: 1px solid rgba(251, 191, 36, 0.25);
+  border: 1px solid rgba(245, 158, 11, 0.28);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .btn-warning:hover {
-  background: rgba(251, 191, 36, 0.1);
-  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.45);
 }
 .btn-warning:disabled {
   opacity: 0.4;
@@ -829,11 +787,13 @@ html.light .glow-accent {
 /* ─── Card section header ─── */
 .section-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 10px 14px;
+  padding: 13px 16px;
   border-bottom: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.01);
 }
 .section-title {
   font-size: 14px;
@@ -844,41 +804,48 @@ html.light .glow-accent {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 /* ─── Tab button ─── */
 .tab-btn {
-  padding: 8px 16px;
-  border-radius: 10px;
+  padding: 7px 14px;
+  border-radius: 7px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-2);
-  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
 }
 .tab-btn:hover {
-  background: var(--bg-glass);
+  background: var(--bg-glass-hover);
   color: var(--text-1);
 }
 .tab-btn-active {
-  background: var(--color-accent);
-  color: #0A0C14;
+  background: var(--bg-card);
+  color: var(--text-1);
+  border-color: var(--border-hover);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.tab-btn-active svg {
+  color: var(--color-accent);
 }
 html.light .tab-btn-active {
-  color: #FFFFFF;
+  color: #0F172A;
 }
 
 /* ─── Button: ghost (subtle inline action) ─── */
 .btn-ghost {
   padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: var(--text-2);
   font-size: 12px;
   font-weight: 500;
   border: none;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 .btn-ghost:hover {
   background: var(--bg-glass);
@@ -890,18 +857,19 @@ html.light .tab-btn-active {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
-  border-radius: 10px;
+  padding: 7px 14px;
+  border-radius: 8px;
   background: var(--color-accent);
-  color: #0A0C14;
-  font-size: 12px;
+  color: #061018;
+  font-size: 12.5px;
   font-weight: 600;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s ease;
 }
 .btn-accent:hover {
   background: var(--color-accent-hover);
+  color: #FFFFFF;
 }
 .btn-accent:disabled {
   opacity: 0.4;

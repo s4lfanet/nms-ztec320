@@ -528,8 +528,8 @@ function StatCard({ icon, label, value, sub, color, progress, delay = 0 }: {
   color: string; progress?: number; delay?: number;
 }) {
   const tint: Record<string, string> = {
-    accent: '129, 140, 248', success: '52, 211, 153', danger: '248, 113, 113',
-    warning: '251, 191, 36', info: '56, 189, 248', muted: '146, 152, 176',
+    accent: '14, 165, 233', success: '16, 185, 129', danger: '239, 68, 68',
+    warning: '245, 158, 11', info: '56, 189, 248', muted: '148, 163, 184',
   };
   const tc: Record<string, string> = {
     accent: 'text-accent', success: 'text-success', danger: 'text-danger',
@@ -601,8 +601,8 @@ function OltCard({ olt, onSync, syncing, syncProgress, onConfig }: {
         </div>
         <div className="flex items-center gap-1 ml-2 flex-shrink-0">
           {problemCount > 0 && (
-            <span className="px-1.5 py-0.5 text-[9px] bg-warning/15 text-warning rounded font-bold">
-              {problemCount}⚠
+            <span className="px-1.5 py-0.5 text-[10px] bg-warning/15 text-warning rounded font-mono font-semibold tabular-nums">
+              {problemCount} issue
             </span>
           )}
           <span className={cn('px-1.5 py-0.5 rounded text-[9px] font-medium',
