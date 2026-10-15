@@ -15,13 +15,13 @@ import { Button, Card, Input, Select, Tabs, EmptyState } from '../components/ui'
 export function AlertSettings() {
   const { user } = useAuth();
   const isSuperAdmin = !!user?.is_super_admin;
-  const [activeSection, setActiveSection] = useState<'rules' | 'telegram' | 'whatsapp' | 'whatsapp_native' | 'cronjob'>(isSuperAdmin ? 'whatsapp_native' : 'rules');
+  const [activeSection, setActiveSection] = useState<'rules' | 'telegram' | 'whatsapp' | 'whatsapp_native' | 'cronjob'>('whatsapp');
 
   const allTabs = [
     { key: 'rules' as const, label: 'Alert Rules', icon: <Shield size={15} />, superAdmin: false },
     { key: 'telegram' as const, label: 'Telegram Bot', icon: <Send size={15} />, superAdmin: false },
-    { key: 'whatsapp' as const, label: 'WhatsApp', icon: <MessageCircle size={15} />, superAdmin: false },
-    { key: 'whatsapp_native' as const, label: 'WA Native', icon: <Smartphone size={15} />, superAdmin: true },
+    { key: 'whatsapp' as const, label: 'WA Gateway', icon: <MessageCircle size={15} />, superAdmin: false },
+    { key: 'whatsapp_native' as const, label: 'WA Native (QR)', icon: <Smartphone size={15} />, superAdmin: true },
     { key: 'cronjob' as const, label: 'Cron Job', icon: <Clock size={15} />, superAdmin: true },
   ];
   const visibleTabs = allTabs.filter(tab => !tab.superAdmin || isSuperAdmin);
@@ -30,15 +30,22 @@ export function AlertSettings() {
     <div className="space-y-6 animate-fade-in">
       <PageHeader
         title="Alert Settings"
-        description={isSuperAdmin ? 'Configure WA Native notifications for tenants & cron job monitoring' : 'Configure monitoring rules and notification channels'}
+        description="Configure monitoring rules, WhatsApp Gateways (Fonnte, Wablas, MPWA, WA Native, etc.), Telegram & cron job"
       />
 
       <Tabs tabs={visibleTabs} active={activeSection} onChange={(key) => setActiveSection(key as typeof activeSection)} />
 
       {activeSection === 'rules' && <AlertRulesSection />}
       {activeSection === 'telegram' && <TelegramSection />}
-      {activeSection === 'whatsapp' && <WhatsAppSection />}
-      {activeSection === 'whatsapp_native' && isSuperAdmin && <WhatsAppNativeSection />}
+      {activeSection === 'whatsapp' && (
+        <WhatsAppSection
+          isSuperAdmin={isSuperAdmin}
+          onSwitchToNative={() => setActiveSection('whatsapp_native')}
+        />
+      )}
+      {activeSection === 'whatsapp_native' && isSuperAdmin && (
+        <WhatsAppNativeSection onSwitchToGateway={() => setActiveSection('whatsapp')} />
+      )}
       {activeSection === 'cronjob' && isSuperAdmin && <CronjobSection />}
     </div>
   );
@@ -218,17 +225,35 @@ function TelegramSection() {
   const [editing, setEditing] = useState(false);
   const [testing, setTesting] = useState(false);
 
+  useEffect(() => {
+    if (data?.configs) {
+      const cfg = data.configs.find((c: Record<string, unknown>) => c.bot_type === 'telegram');
+      if (cfg) {
+        setForm({
+          enabled: !!cfg.enabled,
+          bot_token: String(cfg.bot_token || ''),
+          chat_id: String(cfg.chat_id || ''),
+        });
+      }
+    }
+  }, [data]);
+
   const saveMut = useMutation({
     mutationFn: async () => {
       const payload: Record<string, unknown> = { enabled: form.enabled, chat_id: form.chat_id };
-      if (form.bot_token && !form.bot_token.includes('...')) payload.bot_token = form.bot_token;
+      if (form.bot_token && !form.bot_token.includes('...') && form.bot_token !== '***') payload.bot_token = form.bot_token;
       const r = await fetch('/api/bot-config/telegram', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         credentials: 'include', body: JSON.stringify(payload),
       });
       return r.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bot-config'] }); toast.success('Telegram config saved'); setEditing(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bot-config'] });
+      qc.invalidateQueries({ queryKey: ['alert-rules'] });
+      toast.success('Telegram config saved');
+      setEditing(false);
+    },
   });
 
   if (isLoading) return <TabSkeleton />;
@@ -304,7 +329,384 @@ function TelegramSection() {
   );
 }
 
-function WhatsAppSection() {
+interface WaGatewayDef {
+  id: string;
+  name: string;
+  group: 'id' | 'self' | 'intl';
+  badge?: string;
+  url: string;
+  tokenLabel: string;
+  tokenPlaceholder: string;
+  tokenRequired?: boolean;
+  senderLabel?: string;
+  senderPlaceholder?: string;
+  senderHelper?: string;
+  phonePlaceholder: string;
+  steps: string[];
+}
+
+const WA_GATEWAYS: WaGatewayDef[] = [
+  {
+    id: 'fonnte',
+    name: 'Fonnte',
+    group: 'id',
+    badge: 'Populer',
+    url: 'https://api.fonnte.com/send',
+    tokenLabel: 'Device Token Fonnte',
+    tokenPlaceholder: 'Paste Token Device dari dashboard md.fonnte.com',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890 atau 62811xxx,62812xxx (multi nomor / group ID)',
+    steps: [
+      'Login ke md.fonnte.com → menu Devices → Add Device dan scan QR WhatsApp',
+      'Klik tombol Token pada device yang sudah Connect, lalu paste ke kolom Device Token di atas',
+      'Masukkan nomor WA tujuan (format 628xxx, bisa beberapa nomor dipisahkan koma atau Group ID)',
+      'Klik Test Message untuk menguji, lalu klik Save Configuration',
+    ],
+  },
+  {
+    id: 'wablas',
+    name: 'Wablas',
+    group: 'id',
+    badge: 'Populer',
+    url: 'https://bdg.wablas.com/api/send-message',
+    tokenLabel: 'API Token Wablas',
+    tokenPlaceholder: 'Token dari menu Device → Settings di wablas.com',
+    tokenRequired: true,
+    senderLabel: 'Secret Key Wablas (Opsional — untuk Wablas v2)',
+    senderPlaceholder: 'Kosongkan jika sudah digabung token.secret_key',
+    senderHelper: 'Sesuaikan subdomain API URL dengan server Wablas Anda (bdg / pati / solo / jogja / kudus / sg)',
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Login ke dashboard Wablas → Device → pastikan status Connected',
+      'Sesuaikan subdomain pada API URL dengan server Wablas Anda (mis. https://pati.wablas.com/api/send-message)',
+      'Salin Token (dan Secret Key bila menggunakan Wablas v2)',
+      'Masukkan nomor tujuan (628xxx), klik Test Message lalu Save',
+    ],
+  },
+  {
+    id: 'mpwa',
+    name: 'MPWA (M-Pedia WA Gateway)',
+    group: 'id',
+    badge: 'ISP Favorit',
+    url: 'https://wa.domain-anda.com/send-message',
+    tokenLabel: 'API Key MPWA',
+    tokenPlaceholder: 'API Key dari menu Rest API / Pengaturan MPWA',
+    tokenRequired: true,
+    senderLabel: 'Nomor Pengirim / Sender Device',
+    senderPlaceholder: '6281234567890 (nomor WA yang ter-scan di MPWA)',
+    senderHelper: 'Wajib diisi sesuai nomor device pengirim yang terdaftar di MPWA',
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Buka panel MPWA Anda → scan QR pada nomor pengirim',
+      'Ganti API URL di atas dengan domain MPWA Anda + /send-message',
+      'Salin API Key dari menu Rest API dan isi Nomor Pengirim (Sender) dengan nomor device Anda',
+      'Masukkan nomor tujuan (628xxx), klik Test Message lalu Save',
+    ],
+  },
+  {
+    id: 'starsender',
+    name: 'Starsender',
+    group: 'id',
+    url: 'https://api.starsender.online/api/send',
+    tokenLabel: 'Device API Key Starsender',
+    tokenPlaceholder: 'API Key dari menu Device Starsender',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Login ke Starsender → pilih Device yang sudah terhubung',
+      'Salin Device API Key lalu tempelkan pada kolom di atas',
+      'Masukkan nomor WA tujuan (628xxx), klik Test Message lalu Save',
+    ],
+  },
+  {
+    id: 'onesender',
+    name: 'OneSender',
+    group: 'id',
+    url: 'https://onesender.domain-anda.com/api/v1/messages',
+    tokenLabel: 'API Key OneSender',
+    tokenPlaceholder: 'API Key dari dashboard OneSender',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Salin URL Endpoint & API Key dari menu Pengaturan instance OneSender Anda',
+      'Pastikan akhiran URL adalah /api/v1/messages',
+      'Masukkan nomor WA tujuan (628xxx), klik Test Message lalu Save',
+    ],
+  },
+  {
+    id: 'ruangwa',
+    name: 'RuangWA',
+    group: 'id',
+    url: 'https://app.ruangwa.id/api/send_message',
+    tokenLabel: 'Token Device RuangWA',
+    tokenPlaceholder: 'Token dari dashboard app.ruangwa.id',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Login ke app.ruangwa.id → hubungkan perangkat WhatsApp Anda',
+      'Salin Token perangkat dan masukkan ke kolom Token di atas',
+      'Masukkan nomor tujuan (628xxx), klik Test Message lalu Save',
+    ],
+  },
+  {
+    id: 'whacenter',
+    name: 'Whacenter',
+    group: 'id',
+    url: 'https://app.whacenter.com/api/send',
+    tokenLabel: 'Device ID Whacenter',
+    tokenPlaceholder: 'Device ID dari dashboard Whacenter',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Login ke app.whacenter.com → salin Device ID dari device yang aktif',
+      'Tempelkan Device ID ke kolom Token di atas',
+      'Masukkan nomor tujuan (628xxx), klik Test Message lalu Save',
+    ],
+  },
+  {
+    id: 'dripsender',
+    name: 'Dripsender',
+    group: 'id',
+    url: 'https://api.dripsender.id/send',
+    tokenLabel: 'API Key Dripsender',
+    tokenPlaceholder: 'API Key dari dashboard Dripsender',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Login ke Dripsender → salin API Key device yang aktif',
+      'Masukkan nomor tujuan (628xxx), klik Test Message lalu Save',
+    ],
+  },
+  {
+    id: 'woowa',
+    name: 'Woowa (Woo-WA / NotifAPI)',
+    group: 'id',
+    url: 'https://notifapi.com/send_message',
+    tokenLabel: 'License Key Woowa',
+    tokenPlaceholder: 'Key dari dashboard Woo-WA',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Login ke dashboard Woo-WA → salin License Key device',
+      'Masukkan nomor tujuan (628xxx), klik Test Message lalu Save',
+    ],
+  },
+  {
+    id: 'kirimi',
+    name: 'Kirimi.id',
+    group: 'id',
+    url: 'https://api.kirimi.id/v1/send-message',
+    tokenLabel: 'Secret Key Kirimi.id',
+    tokenPlaceholder: 'Secret Key dari dashboard Kirimi.id',
+    tokenRequired: true,
+    senderLabel: 'User Code : Device ID',
+    senderPlaceholder: 'USERCODE:DEVICE_ID (pisahkan dengan titik dua)',
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Login ke Kirimi.id → ambil User Code, Device ID, dan Secret Key',
+      'Isi kolom User Code : Device ID dengan format USERCODE:DEVICE_ID',
+      'Masukkan Secret Key dan nomor tujuan, lalu Test Message',
+    ],
+  },
+  {
+    id: 'zenziva',
+    name: 'Zenziva',
+    group: 'id',
+    url: 'https://console.zenziva.net/wareguler/api/sendWA/',
+    tokenLabel: 'Passkey Zenziva',
+    tokenPlaceholder: 'Passkey API dari console.zenziva.net',
+    tokenRequired: true,
+    senderLabel: 'Userkey Zenziva',
+    senderPlaceholder: 'Userkey dari console.zenziva.net',
+    phonePlaceholder: '081234567890 atau 6281234567890',
+    steps: [
+      'Login ke console.zenziva.net → menu Pengaturan API',
+      'Isi Userkey dan Passkey sesuai akun Zenziva Anda',
+      'Masukkan nomor tujuan, klik Test Message lalu Save',
+    ],
+  },
+  {
+    id: 'waha',
+    name: 'WAHA (WhatsApp HTTP API)',
+    group: 'self',
+    badge: 'Self-Hosted',
+    url: 'http://localhost:3000/api/sendText',
+    tokenLabel: 'X-Api-Key (Opsional)',
+    tokenPlaceholder: 'API Key WAHA (kosongkan jika tanpa auth)',
+    senderLabel: 'Session Name',
+    senderPlaceholder: 'default',
+    senderHelper: 'Nama session WAHA (default: "default")',
+    phonePlaceholder: '6281234567890 atau 120363xxx@g.us',
+    steps: [
+      'Pastikan container/service WAHA berjalan dan session sudah berstatus WORKING',
+      'Isi API URL dengan http://IP-SERVER:PORT/api/sendText',
+      'Isi Session Name (biasanya "default") dan X-Api-Key bila diaktifkan',
+    ],
+  },
+  {
+    id: 'gowa',
+    name: 'GOWA (go-whatsapp-web-multidevice)',
+    group: 'self',
+    badge: 'Self-Hosted',
+    url: 'http://localhost:3000/send/message',
+    tokenLabel: 'Basic Auth / Token (Opsional)',
+    tokenPlaceholder: 'username:password (jika Basic Auth aktif)',
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Jalankan GOWA (aldinokemal/go-whatsapp-web-multidevice) dan scan QR',
+      'Isi API URL dengan http://IP-SERVER:PORT/send/message',
+      'Jika menggunakan Basic Auth, isi kolom token dengan format user:password',
+    ],
+  },
+  {
+    id: 'custom',
+    name: 'Custom Webhook / WA Gateway Lainnya',
+    group: 'self',
+    url: 'http://your-server:port/send-message',
+    tokenLabel: 'API Key / Bearer Token (Opsional)',
+    tokenPlaceholder: 'Token (dikirim sebagai Bearer header & body api_key/token)',
+    senderLabel: 'Sender / Device ID (Opsional)',
+    senderPlaceholder: 'Nomor pengirim atau device ID',
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Masukkan URL endpoint HTTP POST dari WA Gateway Anda',
+      'Sistem mengirim JSON berisi field phone, number, target, to, message, text, api_key, sender + header Authorization Bearer',
+      'Klik Test Message untuk memverifikasi koneksi',
+    ],
+  },
+  {
+    id: 'callmebot',
+    name: 'CallMeBot',
+    group: 'intl',
+    url: 'https://api.callmebot.com/whatsapp.php',
+    tokenLabel: 'CallMeBot API Key',
+    tokenPlaceholder: 'API Key yang didapat dari chat bot CallMeBot',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Kirim pesan "I allow callmebot to send me messages" ke nomor CallMeBot di WhatsApp',
+      'Salin APIKey yang dibalas oleh bot ke kolom di atas',
+    ],
+  },
+  {
+    id: 'greenapi',
+    name: 'Green API',
+    group: 'intl',
+    url: 'https://api.green-api.com/waInstanceXXXX/sendMessage/YOUR_TOKEN',
+    tokenLabel: 'Green API Token (Opsional bila sudah di URL)',
+    tokenPlaceholder: 'ApiTokenInstance',
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Salin URL sendMessage lengkap beserta idInstance dan ApiTokenInstance dari console Green API',
+      'Masukkan nomor tujuan (otomatis ditambahkan @c.us bila belum ada)',
+    ],
+  },
+  {
+    id: 'ultramsg',
+    name: 'Ultramsg',
+    group: 'intl',
+    url: 'https://api.ultramsg.com/INSTANCE_ID/messages/chat',
+    tokenLabel: 'Token Ultramsg',
+    tokenPlaceholder: 'Token instance dari ultramsg.com',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Ganti INSTANCE_ID pada API URL sesuai instance Ultramsg Anda',
+      'Masukkan Token instance dan nomor tujuan',
+    ],
+  },
+  {
+    id: 'meta',
+    name: 'Meta Cloud API (Official)',
+    group: 'intl',
+    url: 'https://graph.facebook.com/v18.0/YOUR_PHONE_ID/messages',
+    tokenLabel: 'Permanent Access Token',
+    tokenPlaceholder: 'EAAGm0PX4ZCpsBA...',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Ganti YOUR_PHONE_ID pada API URL dengan Phone Number ID dari Meta Developer Console',
+      'Tempelkan Permanent Access Token pada kolom di atas',
+    ],
+  },
+  {
+    id: '360dialog',
+    name: '360Dialog',
+    group: 'intl',
+    url: 'https://waba.360dialog.io/v1/messages',
+    tokenLabel: 'D360-API-KEY',
+    tokenPlaceholder: 'API Key dari 360Dialog Hub',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Masukkan D360-API-KEY dari 360Dialog Client Hub dan nomor WA tujuan',
+    ],
+  },
+  {
+    id: 'wati',
+    name: 'WATI',
+    group: 'intl',
+    url: 'https://live-mt-server.wati.io/api/v1/sendSessionMessage',
+    tokenLabel: 'WATI Bearer Token',
+    tokenPlaceholder: 'Access Token dari WATI API Docs',
+    tokenRequired: true,
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Sesuaikan URL endpoint WATI Anda dan masukkan Bearer Access Token',
+    ],
+  },
+  {
+    id: 'twilio',
+    name: 'Twilio WhatsApp',
+    group: 'intl',
+    url: 'https://api.twilio.com/2010-04-01/Accounts/YOUR_SID/Messages.json',
+    tokenLabel: 'AccountSID:AuthToken',
+    tokenPlaceholder: 'ACxxxx:your_auth_token',
+    tokenRequired: true,
+    senderLabel: 'Twilio WhatsApp From Number',
+    senderPlaceholder: '+14155238886',
+    phonePlaceholder: '6281234567890',
+    steps: [
+      'Ganti YOUR_SID di API URL dengan Account SID Twilio Anda',
+      'Isi kolom token dengan format AccountSID:AuthToken dan nomor pengirim Twilio',
+    ],
+  },
+];
+
+function detectGatewayIdFromUrl(url: string, hint?: string): string {
+  if (hint && WA_GATEWAYS.some(g => g.id === hint)) return hint;
+  const u = (url || '').toLowerCase();
+  if (!u) return 'fonnte';
+  if (u.includes('fonnte.com')) return 'fonnte';
+  if (u.includes('wablas.com')) return 'wablas';
+  if (u.includes('starsender')) return 'starsender';
+  if (u.includes('onesender') || u.includes('/api/v1/messages')) return 'onesender';
+  if (u.includes('ruangwa')) return 'ruangwa';
+  if (u.includes('whacenter')) return 'whacenter';
+  if (u.includes('dripsender')) return 'dripsender';
+  if (u.includes('notifapi.com') || u.includes('woowa')) return 'woowa';
+  if (u.includes('kirimi.id')) return 'kirimi';
+  if (u.includes('zenziva')) return 'zenziva';
+  if (u.includes('callmebot.com')) return 'callmebot';
+  if (u.includes('green-api.com')) return 'greenapi';
+  if (u.includes('ultramsg.com')) return 'ultramsg';
+  if (u.includes('graph.facebook.com')) return 'meta';
+  if (u.includes('360dialog.io')) return '360dialog';
+  if (u.includes('wati.io')) return 'wati';
+  if (u.includes('twilio.com')) return 'twilio';
+  if (u.includes('/api/sendtext')) return 'waha';
+  if (u.includes('/send/message')) return 'gowa';
+  if (u.includes('/send-message')) return 'mpwa';
+  return 'custom';
+}
+
+function WhatsAppSection({
+  isSuperAdmin,
+  onSwitchToNative,
+}: {
+  isSuperAdmin?: boolean;
+  onSwitchToNative?: () => void;
+}) {
   const { data, isLoading } = useQuery({
     queryKey: ['bot-config'],
     queryFn: async () => { const r = await fetch('/api/bot-config', { credentials: 'include' }); return r.json(); },
@@ -312,56 +714,109 @@ function WhatsAppSection() {
   const qc = useQueryClient();
   const waConfig = data?.configs?.find((c: Record<string, unknown>) => c.bot_type === 'whatsapp') || {};
   const [form, setForm] = useState({
-    enabled: waConfig.enabled || false,
-    api_url: waConfig.api_url || '',
+    enabled: false,
+    provider: 'fonnte',
+    api_url: 'https://api.fonnte.com/send',
     api_key: '',
-    phone_number: waConfig.phone_number || '',
+    sender: '',
+    phone_number: '',
   });
   const [editing, setEditing] = useState(false);
   const [testing, setTesting] = useState(false);
 
-  const waGateways = [
-    { name: '🇮🇩 Fonnte', url: 'https://api.fonnte.com/send', tokenLabel: 'Token dari fonnte.com', phonePlaceholder: '6281234567890 (tanpa +)' },
-    { name: '🇮🇩 Wablas', url: 'https://wablas.com/api/send-message', tokenLabel: 'Token dari wablas.com', phonePlaceholder: '6281234567890' },
-    { name: '🇮🇩 Zenziva', url: 'https://whatsapp.zenziva.net/api/send', tokenLabel: 'API Key dari zenziva.id', phonePlaceholder: '6281234567890' },
-    { name: '🇮🇩 Damcorp', url: 'https://damcorp.id/api/whatsapp/send', tokenLabel: 'Token dari damcorp.id', phonePlaceholder: '6281234567890' },
-    { name: '🇮🇩 WA Gateway (Self-hosted)', url: 'http://your-server:port/send-message', tokenLabel: 'Token dari config.yml', phonePlaceholder: '6281234567890' },
-    { name: '🌍 CallMeBot', url: 'https://api.callmebot.com/whatsapp.php', tokenLabel: 'API Key (dari @callmebot)', phonePlaceholder: '6281234567890' },
-    { name: '🌍 Meta Cloud API', url: 'https://graph.facebook.com/v18.0/YOUR_PHONE_ID/messages', tokenLabel: 'Bearer EAAxxxxx', phonePlaceholder: '6281234567890' },
-    { name: '🌍 Twilio', url: 'https://api.twilio.com/2010-04-01/Accounts/YOUR_SID/Messages.json', tokenLabel: 'Account SID:Auth Token', phonePlaceholder: 'whatsapp:+6281234567890' },
-    { name: '🌍 Green API', url: 'https://api.green-api.com/waINSTANCE/sendMessage', tokenLabel: 'Green API Token', phonePlaceholder: '6281234567890@c.us' },
-    { name: '🌍 WATI', url: 'https://wati.io/api/v1/sendSessionMessage', tokenLabel: 'WATI API Key', phonePlaceholder: '6281234567890' },
-    { name: '🌍 360Dialog', url: 'https://waba.360dialog.io/v1/messages', tokenLabel: '360Dialog API Key', phonePlaceholder: '6281234567890' },
-  ];
+  // Sync form state when bot-config loads from backend
+  useEffect(() => {
+    if (data?.configs) {
+      const cfg = data.configs.find((c: Record<string, unknown>) => c.bot_type === 'whatsapp');
+      if (cfg) {
+        const url = String(cfg.api_url || '');
+        const prov = detectGatewayIdFromUrl(url, String(cfg.provider || cfg.bot_token || ''));
+        const gwDef = WA_GATEWAYS.find(g => g.id === prov) || WA_GATEWAYS[0];
+        setForm({
+          enabled: !!cfg.enabled,
+          provider: prov,
+          api_url: url || gwDef.url,
+          api_key: String(cfg.api_key || ''),
+          sender: String(cfg.sender || cfg.chat_id || ''),
+          phone_number: String(cfg.phone_number || ''),
+        });
+      }
+    }
+  }, [data]);
 
-  const selectedGateway = waGateways.find(g => form.api_url === g.url);
+  const selectedGateway = WA_GATEWAYS.find(g => g.id === form.provider) || WA_GATEWAYS[0];
+
+  const handleSelectProvider = (provId: string) => {
+    const gw = WA_GATEWAYS.find(g => g.id === provId);
+    if (!gw) return;
+    setForm(prev => ({
+      ...prev,
+      provider: gw.id,
+      api_url: gw.url,
+    }));
+    setEditing(true);
+  };
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, unknown> = { enabled: form.enabled, phone_number: form.phone_number, api_url: form.api_url };
-      if (form.api_key && !form.api_key.includes('...')) payload.api_key = form.api_key;
+      const payload: Record<string, unknown> = {
+        enabled: form.enabled,
+        provider: form.provider,
+        api_url: form.api_url.trim(),
+        sender: form.sender.trim(),
+        phone_number: form.phone_number.trim(),
+      };
+      if (form.api_key && !form.api_key.includes('...') && form.api_key !== '***') {
+        payload.api_key = form.api_key.trim();
+      }
       const r = await fetch('/api/bot-config/whatsapp', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         credentials: 'include', body: JSON.stringify(payload),
       });
-      return r.json();
+      const d = await r.json();
+      if (!d.success) throw new Error(d.message || 'Gagal menyimpan konfigurasi');
+      return d;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bot-config'] }); toast.success('WhatsApp config saved'); setEditing(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bot-config'] });
+      qc.invalidateQueries({ queryKey: ['alert-rules'] });
+      toast.success(`Konfigurasi WA Gateway (${selectedGateway.name}) berhasil disimpan!`);
+      setEditing(false);
+    },
+    onError: (e: Error) => toast.error(e.message || 'Gagal menyimpan konfigurasi'),
   });
 
   const testMut = useMutation({
     mutationFn: async () => {
       setTesting(true);
-      const r = await fetch('/api/bot-config/whatsapp/test', { method: 'POST', credentials: 'include' });
+      const payload: Record<string, unknown> = {
+        provider: form.provider,
+        api_url: form.api_url.trim(),
+        sender: form.sender.trim(),
+        phone_number: form.phone_number.trim(),
+      };
+      if (form.api_key && !form.api_key.includes('...') && form.api_key !== '***') {
+        payload.api_key = form.api_key.trim();
+      }
+      const r = await fetch('/api/bot-config/whatsapp/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
       const d = await r.json();
-      if (d.success) toast.success('Test message sent! Check your WhatsApp.');
-      else toast.error(d.message || 'Failed to send test message');
+      if (d.success) toast.success(d.message || 'Pesan test terkirim! Cek WhatsApp Anda.');
+      else toast.error(d.message || 'Gagal mengirim pesan test');
       setTesting(false);
     },
-    onError: () => { toast.error('Failed to send test'); setTesting(false); },
+    onError: () => { toast.error('Gagal mengirim pesan test'); setTesting(false); },
   });
 
   if (isLoading) return <TabSkeleton />;
+
+  const quickProviders = WA_GATEWAYS.filter(g =>
+    ['fonnte', 'wablas', 'mpwa', 'starsender', 'onesender', 'ruangwa', 'waha', 'custom'].includes(g.id)
+  );
 
   return (
     <Card
@@ -370,61 +825,167 @@ function WhatsAppSection() {
           <MessageCircle size={18} className="text-success" />
         </div>
       }
-      title="WhatsApp Notifications"
+      title="WhatsApp Gateway (Fonnte, Wablas, MPWA, dll.)"
       action={
-        <span className={cn('px-3 py-1 rounded-full text-xs font-medium', waConfig.enabled ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>
-          {waConfig.enabled ? 'Connected' : 'Not Configured'}
-        </span>
+        <div className="flex items-center gap-2">
+          {isSuperAdmin && onSwitchToNative && (
+            <button
+              type="button"
+              onClick={onSwitchToNative}
+              className="px-3 py-1 rounded-lg text-xs font-medium border border-brd bg-glass hover:border-accent/40 text-tx2 transition-all"
+            >
+              Pakai WA Native (QR) →
+            </button>
+          )}
+          <span className={cn('px-3 py-1 rounded-full text-xs font-medium', waConfig.enabled ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>
+            {waConfig.enabled ? `Aktif (${selectedGateway.name})` : 'Belum Aktif'}
+          </span>
+        </div>
       }
     >
       <div className="space-y-4">
-        <p className="text-xs text-tx3 -mt-1">Receive alert notifications via WhatsApp gateway</p>
+        <p className="text-xs text-tx3 -mt-1">
+          Kirim notifikasi alert ONU/OLT melalui penyedia layanan WhatsApp Gateway eksternal (Fonnte, Wablas, MPWA, Starsender, OneSender, WAHA, dll.)
+        </p>
 
         <div className="flex items-center justify-between p-3 rounded-lg bg-glass border border-brd">
           <div>
-            <div className="text-sm font-medium">Enable WhatsApp Notifications</div>
-            <div className="text-xs text-tx3">Send alert messages via WhatsApp gateway</div>
+            <div className="text-sm font-medium">Aktifkan Notifikasi WA Gateway</div>
+            <div className="text-xs text-tx3">Otomatis mengaktifkan channel WhatsApp pada Alert Rules saat disimpan</div>
           </div>
-          <button onClick={() => { setForm({ ...form, enabled: !form.enabled }); setEditing(true); }}
-            className={cn('px-3 py-1.5 rounded-lg text-xs font-medium', form.enabled ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>
+          <button
+            type="button"
+            onClick={() => { setForm({ ...form, enabled: !form.enabled }); setEditing(true); }}
+            className={cn('px-3 py-1.5 rounded-lg text-xs font-medium transition-all', form.enabled ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}
+          >
             {form.enabled ? 'ON' : 'OFF'}
           </button>
         </div>
 
-        <Select label="Select Gateway Provider" value={form.api_url}
-          onChange={e => { setForm({ ...form, api_url: e.target.value }); setEditing(true); }}>
-          <option value="">— Select WhatsApp Gateway —</option>
-          <optgroup label="🇮🇩 Indonesia Local">
-            {waGateways.filter(g => g.name.includes('🇮🇩')).map(g => (
-              <option key={g.url} value={g.url}>{g.name.replace('🇮🇩 ', '')}</option>
+        {/* Quick Provider Pills */}
+        <div>
+          <label className="text-xs text-tx3 block mb-2">Pilih Cepat Gateway Populer</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {quickProviders.map(gw => {
+              const active = form.provider === gw.id;
+              return (
+                <button
+                  key={gw.id}
+                  type="button"
+                  onClick={() => handleSelectProvider(gw.id)}
+                  className={cn(
+                    'flex items-center justify-between px-3 py-2 rounded-lg border text-xs font-medium text-left transition-all',
+                    active
+                      ? 'border-accent bg-accent/15 text-accent ring-1 ring-accent/40'
+                      : 'border-brd bg-glass text-tx2 hover:border-accent/30 hover:text-tx1'
+                  )}
+                >
+                  <span className="truncate">{gw.name.split(' (')[0]}</span>
+                  {gw.badge && (
+                    <span className={cn(
+                      'ml-1.5 px-1.5 py-0.5 rounded text-[10px] flex-shrink-0',
+                      active ? 'bg-accent/25 text-accent' : 'bg-glass text-tx3'
+                    )}>
+                      {gw.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Full Provider Dropdown */}
+        <Select
+          label="Provider WhatsApp Gateway"
+          value={form.provider}
+          onChange={e => handleSelectProvider(e.target.value)}
+        >
+          <optgroup label="🇮🇩 Gateway Indonesia">
+            {WA_GATEWAYS.filter(g => g.group === 'id').map(g => (
+              <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </optgroup>
-          <optgroup label="🌍 International">
-            {waGateways.filter(g => g.name.includes('🌍')).map(g => (
-              <option key={g.url} value={g.url}>{g.name.replace('🌍 ', '')}</option>
+          <optgroup label="🖥️ Self-Hosted / Custom Webhook">
+            {WA_GATEWAYS.filter(g => g.group === 'self').map(g => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </optgroup>
+          <optgroup label="🌍 Internasional / Cloud API">
+            {WA_GATEWAYS.filter(g => g.group === 'intl').map(g => (
+              <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </optgroup>
         </Select>
 
-        <Input label="API URL" value={form.api_url}
+        <Input
+          label="API URL Endpoint"
+          value={form.api_url}
           onChange={e => { setForm({ ...form, api_url: e.target.value }); setEditing(true); }}
-          placeholder="https://api.fonnte.com/send"
-          helperText={selectedGateway ? `Endpoint: ${selectedGateway.url}` : 'Gateway endpoint (auto-filled from dropdown or enter custom)'} />
+          placeholder={selectedGateway.url}
+          helperText={`Default ${selectedGateway.name}: ${selectedGateway.url}`}
+        />
 
-        <Input label="API Key / Token" type="password" value={form.api_key}
+        <Input
+          label={
+            <>
+              {selectedGateway.tokenLabel}{' '}
+              {Boolean(waConfig.has_api_key) && (
+                <span className="text-success font-normal text-xs">(Sudah tersimpan — isi baru jika ingin mengganti)</span>
+              )}
+            </>
+          }
+          type="password"
+          value={form.api_key}
           onChange={e => { setForm({ ...form, api_key: e.target.value }); setEditing(true); }}
-          placeholder={selectedGateway?.tokenLabel || 'API key or token'} />
+          placeholder={selectedGateway.tokenPlaceholder}
+        />
 
-        <Input label="Target Phone Number" value={form.phone_number}
+        {selectedGateway.senderLabel && (
+          <Input
+            label={selectedGateway.senderLabel}
+            value={form.sender}
+            onChange={e => { setForm({ ...form, sender: e.target.value }); setEditing(true); }}
+            placeholder={selectedGateway.senderPlaceholder || ''}
+            helperText={selectedGateway.senderHelper}
+          />
+        )}
+
+        <Input
+          label="Nomor WA Tujuan / Group ID"
+          value={form.phone_number}
           onChange={e => { setForm({ ...form, phone_number: e.target.value }); setEditing(true); }}
-          placeholder={selectedGateway?.phonePlaceholder || '+6281234567890'}
-          helperText="With country code, no spaces or dashes" />
+          placeholder={selectedGateway.phonePlaceholder}
+          helperText="Gunakan kode negara (mis. 6281234567890). Bisa lebih dari satu nomor dipisahkan koma (62811xxx,62812xxx)"
+        />
 
-        <div className="flex gap-2">
-          <Button variant="primary" icon={<Save size={16} />} loading={saveMut.isPending} disabled={!editing} onClick={() => saveMut.mutate()}>
-            Save
+        {/* Dynamic Setup Steps */}
+        <div className="p-3 rounded-lg bg-glass border border-brd text-xs text-tx3">
+          <p className="font-medium text-tx2 mb-1">Panduan Setup {selectedGateway.name}:</p>
+          <ol className="list-decimal ml-4 space-y-1">
+            {selectedGateway.steps.map((step, idx) => (
+              <li key={idx}>{step}</li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="primary"
+            icon={<Save size={16} />}
+            loading={saveMut.isPending}
+            disabled={!editing && Boolean(waConfig.id)}
+            onClick={() => saveMut.mutate()}
+          >
+            Save Configuration
           </Button>
-          <Button variant="secondary" icon={<Send size={16} />} loading={testing} disabled={!form.api_url} onClick={() => testMut.mutate()}>
+          <Button
+            variant="secondary"
+            icon={<Send size={16} />}
+            loading={testing}
+            disabled={!form.api_url || !form.phone_number}
+            onClick={() => testMut.mutate()}
+          >
             Test Message
           </Button>
         </div>
@@ -433,7 +994,7 @@ function WhatsAppSection() {
   );
 }
 
-function WhatsAppNativeSection() {
+function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () => void }) {
   const qc = useQueryClient();
   const { data: botData } = useQuery({
     queryKey: ['bot-config'],
@@ -590,9 +1151,18 @@ function WhatsAppNativeSection() {
           <Smartphone size={18} className="text-success" />
         </div>
       }
-      title="WhatsApp Native Gateway"
+      title="WhatsApp Native Gateway (Scan QR)"
       action={
         <div className="flex items-center gap-2">
+          {onSwitchToGateway && (
+            <button
+              type="button"
+              onClick={onSwitchToGateway}
+              className="px-3 py-1 rounded-lg text-xs font-medium border border-brd bg-glass hover:border-accent/40 text-tx2 transition-all"
+            >
+              ← Pakai Fonnte / WA Gateway Lain
+            </button>
+          )}
           <span className={cn('px-3 py-1 rounded-full text-xs font-medium',
             gwData?.pm2_status === 'online' ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>
             Gateway: {gwData?.pm2_status || '...'}

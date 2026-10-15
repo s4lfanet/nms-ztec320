@@ -511,13 +511,31 @@ def update_alert_rule(rule_id):
 @login_required
 def get_bot_config():
     """Get bot configurations."""
+    from services_wa import detect_wa_provider
     configs = BotConfig.query.all()
-    return jsonify({'configs': [{
-        'id': c.id, 'bot_type': c.bot_type, 'enabled': c.enabled,
-        'bot_token': c.bot_token[:10] + '...' if c.bot_token and len(c.bot_token) > 10 else c.bot_token,
-        'chat_id': c.chat_id, 'api_url': c.api_url,
-        'phone_number': c.phone_number,
-    } for c in configs]})
+    out = []
+    for c in configs:
+        raw_token = c.bot_token or ''
+        raw_key = c.api_key or ''
+        masked_token = (raw_token[:6] + '...' if len(raw_token) > 6 else '***') if raw_token else ''
+        masked_key = (raw_key[:6] + '...' if len(raw_key) > 6 else '***') if raw_key else ''
+        item = {
+            'id': c.id,
+            'bot_type': c.bot_type,
+            'enabled': c.enabled,
+            'bot_token': masked_token if c.bot_type == 'telegram' else raw_token,
+            'has_bot_token': bool(raw_token),
+            'chat_id': c.chat_id or '',
+            'api_url': c.api_url or '',
+            'api_key': masked_key,
+            'has_api_key': bool(raw_key),
+            'phone_number': c.phone_number or '',
+        }
+        if c.bot_type == 'whatsapp':
+            item['provider'] = detect_wa_provider(c.api_url or '', raw_token)
+            item['sender'] = c.chat_id or ''
+        out.append(item)
+    return jsonify({'configs': out})
 
 
 @bp.route('/api/bot-config/<string:bot_type>', methods=['PUT'])
@@ -530,13 +548,34 @@ def update_bot_config(bot_type):
         db.session.add(config)
 
     data = request.get_json() or {}
+    # For whatsapp gateway: allow 'provider' (stored in bot_token) and 'sender' (stored in chat_id)
+    if bot_type == 'whatsapp':
+        if 'provider' in data:
+            config.bot_token = str(data['provider'] or '').strip()
+        if 'sender' in data and 'chat_id' not in data:
+            config.chat_id = str(data['sender'] or '').strip()
+
     for field in ['enabled', 'bot_token', 'chat_id', 'api_url', 'api_key', 'phone_number']:
         if field in data:
+            if bot_type == 'whatsapp' and field == 'bot_token' and 'provider' in data:
+                continue
             val = data[field]
-            # Don't overwrite with placeholder
-            if field in ('bot_token', 'api_key') and val and '...' in str(val):
+            # Don't overwrite secrets with masked placeholder ('...' or '***')
+            if field in ('bot_token', 'api_key') and val and ('...' in str(val) or str(val) == '***'):
                 continue
             setattr(config, field, val)
+
+    # When enabling a notification channel, automatically enable its flag on active AlertRules
+    # so users don't miss alerts because notify_whatsapp was still False by default.
+    if data.get('enabled') is True:
+        rule_flag = {
+            'telegram': 'notify_telegram',
+            'whatsapp': 'notify_whatsapp',
+            'whatsapp_native': 'notify_whatsapp_native',
+        }.get(bot_type)
+        if rule_flag:
+            for rule in AlertRule.query.all():
+                setattr(rule, rule_flag, True)
 
     db.session.commit()
     return jsonify({'success': True})
@@ -584,55 +623,37 @@ def test_telegram():
 @bp.route('/api/bot-config/whatsapp/test', methods=['POST'])
 @permission_required('customization')
 def test_whatsapp():
-    """Send test message via WhatsApp gateway."""
+    """Send test message via WhatsApp gateway (supports DB config + optional unsaved form overrides)."""
+    from services_wa import send_whatsapp_gateway
     config = BotConfig.query.filter_by(bot_type='whatsapp').first()
-    if not config or not config.enabled:
-        return jsonify({'success': False, 'message': 'WhatsApp not configured or disabled'})
-    if not config.api_url or not config.phone_number:
-        return jsonify({'success': False, 'message': 'API URL and phone number are required'})
-    try:
-        import urllib.request as _urllib
-        import urllib.parse as _parse
+    body = request.get_json(silent=True) or {}
 
-        test_msg = '🔔 FiberNMS Test\n\nThis is a test notification from FiberNMS.\nIf you see this, WhatsApp gateway is configured correctly!'
-        headers = {'Content-Type': 'application/json'}
-        if config.api_key:
-            headers['Authorization'] = f'Bearer {config.api_key}'
+    api_url = (body.get('api_url') if 'api_url' in body else (config.api_url if config else '')) or ''
+    phone = (body.get('phone_number') if 'phone_number' in body else (config.phone_number if config else '')) or ''
+    sender = (body.get('sender') if 'sender' in body else (body.get('chat_id') if 'chat_id' in body else (config.chat_id if config else ''))) or ''
+    provider = (body.get('provider') if 'provider' in body else (config.bot_token if config else '')) or ''
 
-        url = config.api_url
-        phone = config.phone_number
+    raw_key_in = body.get('api_key', '')
+    if raw_key_in and '...' not in str(raw_key_in) and str(raw_key_in) != '***':
+        api_key = str(raw_key_in)
+    else:
+        api_key = (config.api_key if config else '') or ''
 
-        # Adapt payload format based on gateway URL
-        if 'fonnte.com' in url:
-            # Fonnte uses form-encoded, NOT JSON. Token in Authorization header directly (no Bearer)
-            payload = _parse.urlencode({'target': phone, 'message': test_msg, 'countryCode': '62'}).encode('utf-8')
-            headers = {'Authorization': config.api_key or ''}
-        elif 'wablas.com' in url:
-            payload = json.dumps({'phone': phone, 'message': test_msg}).encode('utf-8')
-            if config.api_key:
-                headers['Authorization'] = config.api_key
-        elif 'callmebot.com' in url:
-            url = f'{url}?phone={phone}&text={_parse.quote(test_msg)}&apikey={config.api_key}'
-            payload = None
-            headers = {}
-        elif 'green-api.com' in url:
-            payload = json.dumps({'message': test_msg, 'chatId': phone}).encode('utf-8')
-        elif 'graph.facebook.com' in url or 'meta' in url.lower():
-            payload = json.dumps({'messaging_product': 'whatsapp', 'to': phone, 'type': 'text', 'text': {'body': test_msg}}).encode('utf-8')
-        elif 'twilio.com' in url:
-            payload = _parse.urlencode({'To': f'whatsapp:{phone}', 'From': 'whatsapp:+14155238886', 'Body': test_msg}).encode('utf-8')
-            headers['Content-Type'] = 'application/x-www-form-urlencoded'
-        else:
-            # Generic: try phone + message
-            payload = json.dumps({'phone': phone, 'message': test_msg, 'target': phone, 'text': test_msg}).encode('utf-8')
+    if not api_url or not phone:
+        return jsonify({'success': False, 'message': 'API URL dan nomor telepon tujuan wajib diisi'})
 
-        if payload:
-            req = _urllib.Request(url, data=payload, headers=headers)
-        else:
-            req = _urllib.Request(url, headers=headers)
-        resp = _urllib.urlopen(req, timeout=15)
-        if resp.status in (200, 201):
-            return jsonify({'success': True, 'message': 'Test message sent! Check your WhatsApp.'})
-        return jsonify({'success': False, 'message': f'HTTP {resp.status}'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
+    test_msg = (
+        '🔔 *Salfanet NMS — Test Notifikasi*\n\n'
+        'Pesan ini dikirim untuk menguji koneksi WhatsApp Gateway pada Salfanet NMS.\n'
+        'Jika pesan ini diterima, konfigurasi WhatsApp Gateway sudah berfungsi dengan baik!'
+    )
+    ok, detail = send_whatsapp_gateway({
+        'api_url': api_url,
+        'api_key': api_key,
+        'phone_number': phone,
+        'sender': sender,
+        'provider': provider,
+    }, test_msg)
+    if ok:
+        return jsonify({'success': True, 'message': f'Pesan test berhasil dikirim! ({detail})'})
+    return jsonify({'success': False, 'message': f'Gagal mengirim pesan test: {detail}'})

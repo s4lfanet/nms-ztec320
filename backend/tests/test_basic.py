@@ -2361,5 +2361,132 @@ class TestAllOnusSignalFilter:
             'onu-yellow', 'onu-red', 'onu-deep'}
 
 
+class TestWhatsAppGateways:
+    """Multi-provider WhatsApp Gateway support (Fonnte, Wablas, MPWA, Starsender, WAHA, etc.)."""
+
+    def _login(self, client):
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+
+    def test_save_and_load_wa_gateway_config(self, client):
+        self._login(client)
+        with app.app_context():
+            from models import AlertRule
+            db.session.add(AlertRule(name='Default Rule', enabled=True, notify_whatsapp=False))
+            db.session.commit()
+
+        resp = client.put('/api/bot-config/whatsapp',
+            data=json.dumps({
+                'enabled': True,
+                'provider': 'mpwa',
+                'api_url': 'https://wa.salfa.my.id/send-message',
+                'api_key': 'secret-mpwa-key-123',
+                'sender': '628111222333',
+                'phone_number': '081234567890',
+            }),
+            content_type='application/json',
+            headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200
+        assert resp.get_json()['success'] is True
+
+        # Saving enabled=True auto-enables notify_whatsapp on existing AlertRule
+        with app.app_context():
+            from models import AlertRule
+            rule = AlertRule.query.first()
+            assert rule.notify_whatsapp is True
+
+        get_resp = client.get('/api/bot-config')
+        assert get_resp.status_code == 200
+        cfgs = get_resp.get_json()['configs']
+        wa = next(c for c in cfgs if c['bot_type'] == 'whatsapp')
+        assert wa['enabled'] is True
+        assert wa['provider'] == 'mpwa'
+        assert wa['sender'] == '628111222333'
+        assert wa['has_api_key'] is True
+        assert wa['api_key'].startswith('secret') and '...' in wa['api_key']
+
+    def test_fonnte_gateway_payload_and_false_status_detection(self):
+        from services_wa import send_whatsapp_gateway
+        captured = {}
+
+        class _FakeResp:
+            def __init__(self, status, body):
+                self.status = status
+                self._body = body.encode('utf-8')
+            def read(self):
+                return self._body
+
+        def fake_urlopen(req, timeout=15):
+            captured['url'] = req.full_url
+            captured['headers'] = dict(req.header_items())
+            captured['body'] = req.data.decode('utf-8') if req.data else ''
+            return _FakeResp(200, json.dumps({'status': True, 'detail': 'success!'}))
+
+        with patch('urllib.request.urlopen', side_effect=fake_urlopen):
+            ok, detail = send_whatsapp_gateway({
+                'provider': 'fonnte',
+                'api_url': 'https://api.fonnte.com/send',
+                'api_key': 'fonnte-token-xyz',
+                'phone_number': '08123456789',
+            }, 'Halo test')
+        assert ok is True
+        assert 'target=628123456789' in captured['body']
+        assert captured['headers'].get('Authorization') == 'fonnte-token-xyz'
+        assert 'Mozilla/5.0' in captured['headers'].get('User-agent', '')
+
+        # Fonnte returns HTTP 200 with {"status": false, "reason": "invalid token"}
+        with patch('urllib.request.urlopen', return_value=_FakeResp(200, json.dumps({'status': False, 'reason': 'invalid token'}))):
+            ok2, detail2 = send_whatsapp_gateway({
+                'provider': 'fonnte',
+                'api_url': 'https://api.fonnte.com/send',
+                'api_key': 'bad-token',
+                'phone_number': '628123456789',
+            }, 'Halo test')
+        assert ok2 is False
+        assert 'invalid token' in detail2
+
+    def test_mpwa_and_waha_payloads(self):
+        from services_wa import send_whatsapp_gateway
+        captured = []
+
+        class _FakeResp:
+            status = 200
+            def read(self):
+                return b'{"status": true}'
+
+        def fake_urlopen(req, timeout=15):
+            captured.append({
+                'url': req.full_url,
+                'headers': dict(req.header_items()),
+                'json': json.loads(req.data.decode('utf-8')),
+            })
+            return _FakeResp()
+
+        with patch('urllib.request.urlopen', side_effect=fake_urlopen):
+            ok1, _ = send_whatsapp_gateway({
+                'provider': 'mpwa',
+                'api_url': 'https://wa.isp.id/send-message',
+                'api_key': 'mpwa-key',
+                'sender': '628111',
+                'phone_number': '08222333444',
+            }, 'Test MPWA')
+            ok2, _ = send_whatsapp_gateway({
+                'provider': 'waha',
+                'api_url': 'http://10.0.0.5:3000/api/sendText',
+                'api_key': 'waha-secret',
+                'sender': 'isp-session',
+                'phone_number': '08222333444',
+            }, 'Test WAHA')
+
+        assert ok1 is True and ok2 is True
+        assert captured[0]['json']['api_key'] == 'mpwa-key'
+        assert captured[0]['json']['sender'] == '628111'
+        assert captured[0]['json']['number'] == '628222333444'
+        assert captured[1]['json']['chatId'] == '628222333444@c.us'
+        assert captured[1]['json']['session'] == 'isp-session'
+        assert captured[1]['headers'].get('X-api-key') == 'waha-secret'
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

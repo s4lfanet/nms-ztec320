@@ -1340,8 +1340,11 @@ def _send_technician_alerts(alerts):
 
         logger.info(f"[ALERT] Sending to {len(technicians)} technician(s)")
 
-        # Use WA native gateway
-        gateway_url = 'http://localhost:3000'
+        from models import BotConfig
+        from services_wa import send_whatsapp_gateway
+        wa_gw = BotConfig.query.filter_by(bot_type='whatsapp', enabled=True).first()
+        wa_native = BotConfig.query.filter_by(bot_type='whatsapp_native', enabled=True).first()
+        gateway_url = (wa_native.api_url if wa_native and wa_native.api_url else 'http://localhost:3000').rstrip('/')
         text = "\n\n━━━━━━━━━━━\n\n".join(a['message'] for a in alerts)
 
         for tech in technicians:
@@ -1349,6 +1352,12 @@ def _send_technician_alerts(alerts):
             if not phone:
                 continue
             try:
+                if wa_gw and wa_gw.api_url:
+                    ok, detail = send_whatsapp_gateway(wa_gw, text, phone_override=phone)
+                    if ok:
+                        logger.info(f"[ALERT] Technician WA (gateway) sent: {tech.username} -> {phone} ({detail})")
+                        continue
+                    logger.warning(f"[ALERT] Technician WA (gateway) failed: {tech.username} -> {phone}: {detail}")
                 payload = json.dumps({'phone': phone, 'message': text}).encode('utf-8')
                 headers = {'Content-Type': 'application/json'}
                 req = urllib.request.Request(
@@ -1396,50 +1405,18 @@ def _send_telegram_single(config, text):
 
 
 def _send_whatsapp(config, alerts):
-    """Send alerts to WhatsApp third-party API."""
+    """Send alerts to WhatsApp third-party gateway API (Fonnte, Wablas, MPWA, Starsender, etc.)."""
     try:
-        import urllib.parse as _parse
+        from services_wa import send_whatsapp_gateway
         text = "\n\n━━━━━━━━━━━\n\n".join(a['message'] for a in alerts)
-        url = config.api_url
-        phone = config.phone_number
-
-        logger.info(f"[ALERT] WA send: target={phone}, url={url}, msg_len={len(text)}")
-
-        if 'fonnte.com' in url:
-            payload = _parse.urlencode({'target': phone, 'message': text, 'countryCode': '62'}).encode('utf-8')
-            headers = {'Authorization': config.api_key or ''}
-        elif 'wablas.com' in url:
-            payload = json.dumps({'phone': phone, 'message': text}).encode('utf-8')
-            headers = {'Content-Type': 'application/json'}
-            if config.api_key:
-                headers['Authorization'] = config.api_key
-        elif 'callmebot.com' in url:
-            url = f'{url}?phone={phone}&text={_parse.quote(text)}&apikey={config.api_key}'
-            payload = None
-            headers = {}
-        elif 'green-api.com' in url:
-            payload = json.dumps({'message': text, 'chatId': phone}).encode('utf-8')
-            headers = {'Content-Type': 'application/json'}
-        elif 'graph.facebook.com' in url:
-            payload = json.dumps({'messaging_product': 'whatsapp', 'to': phone, 'type': 'text', 'text': {'body': text}}).encode('utf-8')
-            headers = {'Content-Type': 'application/json'}
+        logger.info(f"[ALERT] WA send: target={config.phone_number}, url={config.api_url}, msg_len={len(text)}")
+        ok, detail = send_whatsapp_gateway(config, text)
+        if ok:
+            logger.info(f"[ALERT] WhatsApp: sent {len(alerts)} alerts, target={config.phone_number} ({detail})")
         else:
-            payload = json.dumps({'phone': phone, 'message': text, 'target': phone, 'text': text}).encode('utf-8')
-            headers = {'Content-Type': 'application/json'}
-            if config.api_key:
-                headers['Authorization'] = f'Bearer {config.api_key}'
-
-        if payload:
-            req = urllib.request.Request(url, data=payload, headers=headers)
-        else:
-            req = urllib.request.Request(url, headers=headers)
-        resp = urllib.request.urlopen(req, timeout=15)
-        if resp.status in (200, 201):
-            logger.info(f"[ALERT] WhatsApp: sent {len(alerts)} alerts, target={phone}, status={resp.status}")
-        else:
-            logger.error(f"[ALERT] WhatsApp error: status={resp.status}, target={phone}")
+            logger.error(f"[ALERT] WhatsApp error: target={config.phone_number} — {detail}")
     except Exception as e:
-        logger.error(f"[ALERT] WhatsApp send failed: {e}, target={phone}")
+        logger.error(f"[ALERT] WhatsApp send failed: {e}, target={getattr(config, 'phone_number', '')}")
 
 
 def _send_whatsapp_native(config, alerts):
