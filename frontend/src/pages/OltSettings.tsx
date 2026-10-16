@@ -307,8 +307,13 @@ export function OltSettings() {
                         <Server size={20} className={olt.is_online ? 'text-success' : 'text-danger'} />
                       </div>
                       <div>
-                        <div className="font-semibold text-sm">{olt.name}</div>
-                        <div className="text-xs text-tx3">{olt.ip_address}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-sm">{olt.name}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-glass border border-brd text-[10px] font-mono uppercase text-tx2">
+                            {(olt.vendor || 'zte').toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="text-xs text-tx3 font-mono">{olt.ip_address}</div>
                         <div className="text-xs text-tx3">{olt.model}{olt.firmware_version ? ` | ${olt.firmware_version}` : ''}</div>
                       </div>
                     </div>
@@ -1043,7 +1048,9 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
       setLoadingOlt(true);
       api.getOlt(olt.id).then(d => {
         if (d.success) {
-          const vendorModel = `ZTE-${d.model || 'C320'}`;
+          const vUp = String(d.vendor || 'zte').toUpperCase();
+          const mRaw = String(d.model || 'C320');
+          const vendorModel = mRaw.toUpperCase().startsWith(vUp + '-') ? mRaw : `${vUp}-${mRaw}`;
           setForm({
             name: d.name || '',
             ip_address: d.ip_address || '',
@@ -1100,8 +1107,20 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
     if (!form.ip_address.trim()) { toast.error('Please enter IP Address'); return; }
     setSaving(true);
     try {
-      const model = form.type.replace(/^ZTE-/, '') || 'C320';
-      const vendor = 'zte';
+      const knownPrefixes = [
+        'ZTE', 'HIOSO', 'HSGQ', 'VSOL', 'CDATA', 'C-DATA',
+        'BDCOM', 'HUAWEI', 'FIBERHOME', 'RAISECOM', 'DASAN',
+      ];
+      let vendor = 'zte';
+      let model = form.type || 'C320';
+      const upperType = (form.type || '').toUpperCase();
+      for (const pfx of knownPrefixes) {
+        if (upperType.startsWith(pfx + '-')) {
+          vendor = pfx === 'C-DATA' ? 'cdata' : pfx.toLowerCase();
+          model = form.type.slice(pfx.length + 1);
+          break;
+        }
+      }
       const url = olt ? `/api/olt/${olt.id}` : '/api/olt';
       const method = olt ? 'PUT' : 'POST';
       // If no CLI username provided, disable CLI (SNMP-only mode)
@@ -1149,8 +1168,64 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
     setSaving(false);
   };
 
-  const OLT_TYPES = [
-    'ZTE-C320', 'ZTE-C300', 'ZTE-C300-M', 'ZTE-C600', 'ZTE-C650',
+  const OLT_TYPE_GROUPS: { group: string; items: { value: string; label: string }[] }[] = [
+    {
+      group: 'ZTE (Full Provisioning + Monitoring)',
+      items: [
+        { value: 'ZTE-C320', label: 'ZTE C320 (GPON/EPON)' },
+        { value: 'ZTE-C300', label: 'ZTE C300' },
+        { value: 'ZTE-C300-M', label: 'ZTE C300 Mini' },
+        { value: 'ZTE-C600', label: 'ZTE C600' },
+        { value: 'ZTE-C650', label: 'ZTE C650' },
+      ],
+    },
+    {
+      group: 'HiOSO (Monitoring & Alert via SNMP)',
+      items: [
+        { value: 'HIOSO-HA7302CS', label: 'HiOSO HA7302CS (2-Port EPON)' },
+        { value: 'HIOSO-HA7304', label: 'HiOSO HA7304 (4-Port EPON)' },
+        { value: 'HIOSO-HA7304V', label: 'HiOSO HA7304V (4-Port EPON)' },
+        { value: 'HIOSO-HA7304C', label: 'HiOSO HA7304C (4-Port EPON)' },
+        { value: 'HIOSO-HA7308', label: 'HiOSO HA7308 (8-Port EPON)' },
+        { value: 'HIOSO-HA7404', label: 'HiOSO HA7404 (4-Port GPON)' },
+        { value: 'HIOSO-HA7408', label: 'HiOSO HA7408 (8-Port GPON)' },
+      ],
+    },
+    {
+      group: 'HSGQ (Monitoring & Alert via SNMP)',
+      items: [
+        { value: 'HSGQ-E04', label: 'HSGQ E04 (4-Port EPON)' },
+        { value: 'HSGQ-E08', label: 'HSGQ E08 (8-Port EPON)' },
+        { value: 'HSGQ-E16', label: 'HSGQ E16 (16-Port EPON)' },
+        { value: 'HSGQ-G04', label: 'HSGQ G04 (4-Port GPON)' },
+        { value: 'HSGQ-G08', label: 'HSGQ G08 (8-Port GPON)' },
+      ],
+    },
+    {
+      group: 'VSOL / C-Data / BDCOM (Monitoring & Alert via SNMP)',
+      items: [
+        { value: 'VSOL-V1600D4', label: 'VSOL V1600D4 (4-Port EPON)' },
+        { value: 'VSOL-V1600D8', label: 'VSOL V1600D8 (8-Port EPON)' },
+        { value: 'VSOL-V1600G1', label: 'VSOL V1600G1 (8-Port GPON)' },
+        { value: 'CDATA-FD1104', label: 'C-Data FD1104 (4-Port EPON)' },
+        { value: 'CDATA-FD1108', label: 'C-Data FD1108 (8-Port EPON)' },
+        { value: 'CDATA-FD1608GS', label: 'C-Data FD1608GS (8-Port GPON)' },
+        { value: 'BDCOM-P3310C', label: 'BDCOM P3310C (EPON)' },
+        { value: 'BDCOM-P3608', label: 'BDCOM P3608 (EPON)' },
+        { value: 'BDCOM-GP3600', label: 'BDCOM GP3600 (GPON)' },
+      ],
+    },
+    {
+      group: 'Huawei / FiberHome / Raisecom / Dasan (SNMP Monitoring)',
+      items: [
+        { value: 'HUAWEI-MA5608T', label: 'Huawei MA5608T' },
+        { value: 'HUAWEI-MA5683T', label: 'Huawei MA5683T' },
+        { value: 'FIBERHOME-AN5516-04', label: 'FiberHome AN5516-04' },
+        { value: 'FIBERHOME-AN5516-06', label: 'FiberHome AN5516-06' },
+        { value: 'RAISECOM-ISCOM6820', label: 'Raisecom ISCOM6820' },
+        { value: 'DASAN-V5824G', label: 'Dasan V5824G' },
+      ],
+    },
   ];
 
   const statusBadge = (status: string) => {
@@ -1201,11 +1276,19 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
           </div>
 
           <Select
-            label="Type"
+            label="Vendor & Model OLT"
             value={form.type}
             onChange={e => update('type', e.target.value)}
-            options={[{ value: '', label: 'Select Type' }, ...OLT_TYPES.map(t => ({ value: t, label: t }))]}
-          />
+          >
+            <option value="">— Pilih Vendor &amp; Model OLT —</option>
+            {OLT_TYPE_GROUPS.map(grp => (
+              <optgroup key={grp.group} label={grp.group}>
+                {grp.items.map(it => (
+                  <option key={it.value} value={it.value}>{it.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </Select>
 
           {/* SNMP Section */}
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd space-y-3">

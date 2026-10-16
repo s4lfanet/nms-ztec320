@@ -92,6 +92,13 @@ def poll_olt(olt, progress_cb=None, light=False):
         if progress_cb: progress_cb(pct, msg)
         logger.info(f"  [{pct}%] {msg}")
 
+    vendor = (getattr(olt, 'vendor', '') or 'zte').lower()
+    if vendor != 'zte':
+        from olt_adapters import RackAdapterRegistry
+        adapter = RackAdapterRegistry.get_adapter(olt)
+        if adapter and hasattr(adapter, 'poll_olt'):
+            return adapter.poll_olt(progress_cb=progress_cb, light=light)
+
     result = {'system': {}, 'onus': [], 'chassis': {}, 'success': False, 'errors': [], 'telnet_ok': False, 'snmp_ok': False}
 
     # Detect model

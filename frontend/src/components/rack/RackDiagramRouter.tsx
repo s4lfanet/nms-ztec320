@@ -1,10 +1,13 @@
 /**
- * RackDiagramRouter — dispatches to ZTE rack diagram component.
- * ZTE C320 uses the chassis endpoint (RackDiagram), other ZTE models use ZteRackDiagram.
+ * RackDiagramRouter — dispatches to vendor-specific rack diagram component.
+ * ZTE C320 uses the chassis endpoint (RackDiagram), other ZTE models use ZteRackDiagram,
+ * and non-ZTE vendors (HiOSO, HSGQ, VSOL, C-Data, BDCOM, Huawei, FiberHome, etc.)
+ * use StandaloneEponRackDiagram.
  */
 
 import React from 'react';
 import type { RackMetrics } from '../../types/rack';
+import { RackDiagram as ZteC320RackDiagram } from '../RackDiagram';
 
 interface RackDiagramRouterProps {
   oltId: string;
@@ -19,14 +22,12 @@ interface RackDiagramRouterProps {
 }
 
 const ZteRackDiagram = React.lazy(() => import('./ZteRackDiagram'));
-
-// ZTE C320 uses the existing RackDiagram component (chassis endpoint)
-import { RackDiagram as ZteC320RackDiagram } from '../RackDiagram';
+const StandaloneEponRackDiagram = React.lazy(() => import('./StandaloneEponRackDiagram'));
 
 function LoadingFallback() {
   return (
     <div className="flex items-center justify-center h-32 text-tx3 text-sm gap-2">
-      <div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+      <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       Memuat rack diagram...
     </div>
   );
@@ -34,6 +35,7 @@ function LoadingFallback() {
 
 export function RackDiagramRouter({
   oltId,
+  oltVendor = 'zte',
   oltModel,
   oltName,
   oltIp,
@@ -42,10 +44,21 @@ export function RackDiagramRouter({
   onPortClick,
   onMetrics,
 }: RackDiagramRouterProps) {
+  const vendor = (oltVendor || 'zte').toLowerCase();
   const model = (oltModel || '').toUpperCase();
 
-  // ZTE C320 uses the existing RackDiagram component (chassis endpoint)
-  // C300 and other ZTE models use ZteRackDiagram (rack endpoint with proper C300 chassis layout)
+  if (vendor !== 'zte') {
+    return (
+      <React.Suspense fallback={<LoadingFallback />}>
+        <StandaloneEponRackDiagram
+          oltId={oltId}
+          onPortClick={onPortClick}
+          onMetrics={onMetrics}
+        />
+      </React.Suspense>
+    );
+  }
+
   if (model.includes('C320') || !model) {
     return (
       <ZteC320RackDiagram

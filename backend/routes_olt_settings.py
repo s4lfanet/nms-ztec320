@@ -33,11 +33,26 @@ bp = Blueprint('olt_settings', __name__)
 @bp.route('/api/olt/<int:olt_id>/refresh-signal', methods=['POST'])
 @login_required
 def refresh_onu_signal(olt_id):
-    """Fast SNMP-only refresh of status + RX/TX power for all ONUs (ZTE).
+    """Fast SNMP-only refresh of status + RX/TX power for all ONUs (ZTE & multi-vendor).
     Walks oper_state, ONU RX, TX, OLT RX, and serial — updates status + signal in DB."""
     olt = db.session.get(OLT, olt_id)
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
+    if (olt.vendor or 'zte').lower() != 'zte':
+        try:
+            from olt_adapters import RackAdapterRegistry
+            from sync_helper import save_sync_result
+            adapter = RackAdapterRegistry.get_adapter(olt)
+            if not adapter:
+                return jsonify({'success': False, 'message': f"Adapter untuk vendor '{olt.vendor}' belum tersedia"})
+            result = adapter.poll_olt(light=True)
+            if not result.get('success'):
+                return jsonify({'success': False, 'message': '; '.join(result.get('errors') or ['SNMP poll gagal'])})
+            updated, _ = save_sync_result(olt, result, sync=None, light=True)
+            return jsonify({'success': True, 'updated': updated, 'total': olt.total_onu or updated})
+        except Exception as e:
+            logger.error(f"refresh-signal non-ZTE OLT {olt_id} failed: {e}")
+            return jsonify({'success': False, 'message': str(e)})
     try:
         from snmp_collector import SNMPCollector, TelnetCollector, decode_rx_power, parse_serial
         from snmp_core import classify_onu_status, decode_dereg_reason

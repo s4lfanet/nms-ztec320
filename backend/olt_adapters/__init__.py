@@ -1,13 +1,22 @@
-"""OLT vendor adapter package — ZTE-only.
-
-See OLT_NON_ZTE_REFERENCE.md for archived non-ZTE vendor documentation.
-"""
+"""OLT vendor adapter package — auto-registers supported OLT vendors."""
 from .registry import RackAdapterRegistry
 from .base import BaseOLTAdapter
 
-# Only ZTE adapter is active
 from .zte_adapter import ZteAdapter
+from .hioso_adapter import HiosoAdapter
+from .standalone_epon_adapter import StandaloneEponAdapter
 
 RackAdapterRegistry.register('zte', ZteAdapter)
+RackAdapterRegistry.register('hioso', HiosoAdapter)
+RackAdapterRegistry.register('hsgq', StandaloneEponAdapter)
+RackAdapterRegistry.register('vsol', StandaloneEponAdapter)
+RackAdapterRegistry.register('cdata', StandaloneEponAdapter)
+RackAdapterRegistry.register('c-data', StandaloneEponAdapter)
+RackAdapterRegistry.register('bdcom', StandaloneEponAdapter)
+RackAdapterRegistry.register('huawei', StandaloneEponAdapter)
+RackAdapterRegistry.register('fiberhome', StandaloneEponAdapter)
+RackAdapterRegistry.register('raisecom', StandaloneEponAdapter)
+RackAdapterRegistry.register('dasan', StandaloneEponAdapter)
+RackAdapterRegistry.register('standalone_epon', StandaloneEponAdapter)
 
-__all__ = ['RackAdapterRegistry', 'BaseOLTAdapter']
+__all__ = ['RackAdapterRegistry', 'BaseOLTAdapter', 'ZteAdapter', 'HiosoAdapter', 'StandaloneEponAdapter']

@@ -56,7 +56,10 @@ def save_sync_result(olt, result, sync, light=False):
             for cd in chassis['cards']:
                 card = OLTCard(olt_id=olt.id, slot=cd.get('slot', 0),
                                card_type=cd.get('type', ''), status=cd.get('status', ''),
-                               total_ports=cd.get('port_count', 0))
+                               total_ports=cd.get('port_count', 0),
+                               cpu_usage=cd.get('cpu') or cd.get('cpu_usage') or 0,
+                               memory_usage=cd.get('memory') or cd.get('memory_usage') or 0,
+                               temperature=cd.get('temperature'))
                 db.session.add(card)
 
         pon_ports_data = result.get('pon_ports', [])
@@ -491,21 +494,22 @@ def save_sync_result(olt, result, sync, light=False):
     if not light:
         pon_port_objs = OLTPort.query.filter_by(olt_id=olt.id).all()
         for pp in pon_port_objs:
-            m = re.search(r'(\d+)/(\d+)$', pp.port_name)
+            m = re.search(r'(\d+)/(\d+)$', pp.port_name or '')
             if m:
-                # ZTE-style: gpon-olt_1/2/3 → slot=2, port=3
+                # ZTE/EPON-style: gpon-olt_1/2/3 or epon-olt_1/1/2 → slot=2/1, port=3/2
                 _slot, _port = int(m.group(1)), int(m.group(2))
                 port_onus = ONU.query.filter_by(olt_id=olt.id, slot=_slot, port=_port).all()
             else:
-                port_onus = []
+                port_onus = ONU.query.filter_by(olt_id=olt.id, port=pp.port_number).all()
             pp.onu_count = len(port_onus)
             pp.onu_online = sum(1 for o in port_onus if o.status == 'online')
             pp.onu_offline = sum(1 for o in port_onus if o.status != 'online')
 
-    sync.progress = 95
-    sync.status = 'saving'
-    sync.message = f'Saving {len(onus_data)} ONUs...'
-    sync.onu_count = len(onus_data)
+    if sync is not None:
+        sync.progress = 95
+        sync.status = 'saving'
+        sync.message = f'Saving {len(onus_data)} ONUs...'
+        sync.onu_count = len(onus_data)
     db.session.commit()
 
     # Invalidate caches so frontend sees fresh data
