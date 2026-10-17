@@ -363,6 +363,16 @@ class HiosoAdapter(BaseOLTAdapter):
                             'pots': pots_i,
                             'name': cli_name,
                         }
+            # Also read real optical transceiver temperature from PON 0/1 ('show epon optical-ddm 0/1')
+            s.sendall(b'show epon optical-ddm 0/1\r\n')
+            ddm_out = drain()
+            tm = re.search(r'Temperature\s*:\s*([-+]?\d+(?:\.\d+)?)', ddm_out)
+            if tm:
+                try:
+                    specs['_olt_temp'] = int(round(float(tm.group(1))))
+                except Exception:
+                    pass
+            specs['_cli_connected'] = True
         except Exception as e:
             logger.debug(f"[HiOSO:{self.olt.name}] Telnet CLI spec enrichment skipped: {e}")
         finally:
@@ -734,7 +744,8 @@ class HiosoAdapter(BaseOLTAdapter):
                         val = float(m.group(0))
                         if val > 200:
                             val = val / 100.0
-                        if 5 <= val <= 110:
+                        # Ignore 85°C (DS18B20 power-on reset constant when board sensor is unpopulated)
+                        if 5 <= val <= 110 and int(round(val)) != 85:
                             temp = int(round(val))
                             break
             except Exception:
@@ -834,8 +845,12 @@ class HiosoAdapter(BaseOLTAdapter):
 
             if not light:
                 report(80, 'Mengambil informasi port PON, uplink, & kesehatan sasis...')
-                health = {'temperature': None, 'cpu': web_meta.get('cpu'), 'memory': web_meta.get('memory')}
-                if self.olt.snmp_enabled and (health['cpu'] is None or health['memory'] is None):
+                health = {
+                    'temperature': cli_specs.get('_olt_temp'),
+                    'cpu': web_meta.get('cpu'),
+                    'memory': web_meta.get('memory'),
+                }
+                if self.olt.snmp_enabled and (health['temperature'] is None or health['cpu'] is None or health['memory'] is None):
                     snmp_h = self._collect_chassis_health(sc)
                     if health['temperature'] is None:
                         health['temperature'] = snmp_h.get('temperature')

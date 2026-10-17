@@ -25,9 +25,13 @@ def save_sync_result(olt, result, sync, light=False):
     olt.uptime = sys_info.get('uptime', 0)
     olt.is_online = True
     olt.connection_status = 'connected'
-    # Update individual SNMP/CLI status from sync result flags
+    # Update individual SNMP/CLI status from sync result flags.
+    # Light sync intentionally skips CLI to save OLT CPU — preserve prior telnet_status in light mode.
     olt.snmp_status = 'connected' if result.get('snmp_ok') else 'disconnected'
-    olt.telnet_status = 'connected' if result.get('telnet_ok') else 'disconnected'
+    if result.get('telnet_ok'):
+        olt.telnet_status = 'connected'
+    elif not light:
+        olt.telnet_status = 'disconnected' if (olt.telnet_enabled or olt.ssh_enabled) and olt.cli_username else 'not_configured'
     desc = sys_info.get('description', '')
     if desc:
         ver_match = re.search(r'Version\s+([\w.]+)', desc)

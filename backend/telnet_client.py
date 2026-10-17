@@ -437,30 +437,52 @@ class TelnetCollector:
                 return None
             tn.write(self.password + '\n')
 
-            # Read response after password — should get '#' or '>' prompt on success
-            login_resp = tn.read_until(b'#', timeout=10)
+            # Read response after password — accept either '#' or '>' prompt immediately
+            login_resp = b''
+            end_time = datetime.now().timestamp() + 10
+            while datetime.now().timestamp() < end_time:
+                if b'#' in tn.buffer or b'>' in tn.buffer or b'Username:' in tn.buffer:
+                    login_resp += tn.buffer
+                    tn.buffer = b''
+                    break
+                try:
+                    tn.sock.settimeout(1.5)
+                    chunk = tn.sock.recv(4096)
+                    if not chunk:
+                        break
+                    login_resp += tn._handle_iac(chunk)
+                    if b'#' in login_resp or b'>' in login_resp or b'Username:' in login_resp:
+                        break
+                except socket.timeout:
+                    if b'#' in login_resp or b'>' in login_resp:
+                        break
+                except Exception:
+                    break
             login_text = login_resp.decode('utf-8', errors='replace')
 
             # Check for login failure
-            if 'Error' in login_text or 'Username:' in login_text or 'incorrect' in login_text.lower():
+            if 'Error' in login_text or 'Username:' in login_text or 'incorrect' in login_text.lower() or 'fail' in login_text.lower():
                 logger.warning(f"Telnet login {self.ip} failed: {login_text.strip()[:100]}")
                 tn.close()
                 return None
 
-            # Some OLTs use '>' instead of '#' for user mode
             if b'#' not in login_resp and b'>' not in login_resp:
-                # Try reading more for '>' prompt
-                extra = tn.read_until(b'>', timeout=5)
-                login_text += extra.decode('utf-8', errors='replace')
-                if b'>' not in extra and b'#' not in extra:
-                    logger.warning(f"Telnet {self.ip}: no prompt after login: {login_text.strip()[:100]}")
-                    tn.close()
-                    return None
+                logger.warning(f"Telnet {self.ip}: no prompt after login: {login_text.strip()[:100]}")
+                tn.close()
+                return None
+
+            # If logged into user mode ('>', e.g. HiOSO 'EPON>'), elevate with 'enable'
+            if b'>' in login_resp and b'#' not in login_resp:
+                try:
+                    tn.write('enable\n')
+                    tn.read_until(b'#', timeout=2)
+                except Exception:
+                    pass
 
             # Try terminal length 0 (ZTE/Cisco style)
             try:
                 tn.write('terminal length 0\n')
-                tn.read_until(b'#', timeout=3)
+                tn.read_until(b'#', timeout=1.5)
             except Exception:
                 pass
             return tn
