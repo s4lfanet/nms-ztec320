@@ -533,6 +533,8 @@ def save_sync_result(olt, result, sync, light=False):
 
 def check_unregistered_onus(olt):
     """Check for unregistered ONUs and create notification if found (ZTE via CLI — SSH or Telnet)."""
+    if (getattr(olt, 'vendor', '') or 'zte').lower() != 'zte':
+        return 0  # ZTE uncfg CLI syntax doesn't apply to other vendors
     from snmp_collector import create_cli_collector
     tc = create_cli_collector(olt)
     unregistered = tc.collect_unregistered_onus()
