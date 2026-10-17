@@ -373,6 +373,10 @@ class HiosoAdapter(BaseOLTAdapter):
                 except Exception:
                     pass
             specs['_cli_connected'] = True
+            try:
+                s.sendall(b'exit\r\nexit\r\n')
+            except Exception:
+                pass
         except Exception as e:
             logger.debug(f"[HiOSO:{self.olt.name}] Telnet CLI spec enrichment skipped: {e}")
         finally:
