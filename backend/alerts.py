@@ -66,6 +66,27 @@ def _get_check_interval():
     return 60
 
 
+# ─── Vendor helpers ───
+
+# Standalone-EPON vendors whose PON interfaces are always epon-olt_*
+_EPON_VENDORS = {'hsgq', 'bdcom', 'cdata', 'vsol'}
+
+
+def _is_epon_olt(olt, onu=None):
+    """Detect EPON PON addressing for alert interface labels.
+
+    onu.card is only populated for ZTE-collected ONUs — multi-vendor adapter
+    rows leave it empty, so fall back to the OLT's vendor/model (HiOSO HA74xx
+    models are GPON; HA73xx and all standalone-EPON vendors are EPON)."""
+    if onu is not None and (onu.card or '').lower() == 'epon':
+        return True
+    vendor = (olt.vendor or 'zte').lower()
+    model = (olt.model or '').upper()
+    if vendor == 'hioso':
+        return 'HA74' not in model and 'GPON' not in model
+    return vendor in _EPON_VENDORS
+
+
 # ─── OLT Health Check ───
 
 def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
@@ -79,70 +100,98 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
     mem_usage = None
     temperature = None
 
-    # ── SNMP health check ──
-    try:
-        async def _snmp_health():
-            from pysnmp.hlapi.v1arch.asyncio import Slim, ObjectType, ObjectIdentity
-            from snmp_core import OID_SYS_DESCR
+    # ── Reachability + SNMP health check ──
+    if not olt.snmp_enabled:
+        # SNMP disabled (e.g. web/CLI-collected vendors like HiOSO) — an SNMP
+        # ping would produce a false "OLT offline" alert. Use the last sync's
+        # reachability flag instead (set by save_sync_result / sync error paths).
+        is_reachable = bool(olt.is_online)
+    else:
+        try:
+            async def _snmp_health():
+                from pysnmp.hlapi.v1arch.asyncio import Slim, ObjectType, ObjectIdentity
+                from snmp_core import OID_SYS_DESCR
 
-            result = {'reachable': False, 'cpu': None, 'mem': None, 'temp': None}
+                result = {'reachable': False, 'cpu': None, 'mem': None, 'temp': None}
 
-            # Step 1: Ping OLT via sysDescr GET
-            slim = Slim(1)
-            try:
-                ei, es, eidx, vb = await slim.get(
-                    olt.snmp_community or 'public', olt.ip_address, olt.snmp_port or 161,
-                    ObjectType(ObjectIdentity(OID_SYS_DESCR)), timeout=5, retries=2)
-                if not ei and not es:
-                    result['reachable'] = True
-                    result['description'] = str(vb[0][1]).strip()
-            except Exception:
-                pass
-            finally:
-                slim.close()
+                # Step 1: Ping OLT via sysDescr GET
+                slim = Slim(1)
+                try:
+                    ei, es, eidx, vb = await slim.get(
+                        olt.snmp_community or 'public', olt.ip_address, olt.snmp_port or 161,
+                        ObjectType(ObjectIdentity(OID_SYS_DESCR)), timeout=5, retries=2)
+                    if not ei and not es:
+                        result['reachable'] = True
+                        result['description'] = str(vb[0][1]).strip()
+                except Exception:
+                    pass
+                finally:
+                    slim.close()
 
-            if not result['reachable']:
+                if not result['reachable']:
+                    return result
+
+                # Step 2: Check CPU, Memory, Temperature (ZTE C300/C320 OIDs).
+                # These OIDs are from the .3902.1082 tree (C300 enterprise MIB)
+                # and return nothing on non-ZTE vendors — the DB fallback below
+                # covers those (adapter syncs populate olt.temperature and
+                # olt_cards.cpu_usage/memory_usage via web/CLI/vendor MIBs).
+                health_oids = {
+                    'cpu':  '1.3.6.1.4.1.3902.1082.10.1.2.4.1.9.1.1',   # CPU Load %
+                    'mem':  '1.3.6.1.4.1.3902.1082.10.1.2.4.1.11.1.1',  # Memory Usage %
+                    'temp': '1.3.6.1.4.1.3902.1082.10.10.2.1.6.1.2.1.1', # Temperature °C
+                }
+
+                for key, oid in health_oids.items():
+                    slim2 = Slim(1)
+                    try:
+                        ei2, es2, eidx2, vb2 = await slim2.get(
+                            olt.snmp_community or 'public', olt.ip_address, olt.snmp_port or 161,
+                            ObjectType(ObjectIdentity(oid)), timeout=3, retries=1)
+                        if not ei2 and not es2:
+                            val = int(vb2[0][1])
+                            result[key] = val
+                    except Exception:
+                        pass  # OID not supported on this vendor/firmware — skip
+                    finally:
+                        slim2.close()
+
                 return result
 
-            # Step 2: Check CPU, Memory, Temperature (ZTE C300/C320 OIDs)
-            # These OIDs are from the .3902.1082 tree (C300 enterprise MIB)
-            # C320 may or may not support them — failure is gracefully handled
-            health_oids = {
-                'cpu':  '1.3.6.1.4.1.3902.1082.10.1.2.4.1.9.1.1',   # CPU Load %
-                'mem':  '1.3.6.1.4.1.3902.1082.10.1.2.4.1.11.1.1',  # Memory Usage %
-                'temp': '1.3.6.1.4.1.3902.1082.10.10.2.1.6.1.2.1.1', # Temperature °C
-            }
+            loop = asyncio.new_event_loop()
+            try:
+                snmp_result = loop.run_until_complete(_snmp_health())
+            finally:
+                loop.close()
 
-            for key, oid in health_oids.items():
-                slim2 = Slim(1)
-                try:
-                    ei2, es2, eidx2, vb2 = await slim2.get(
-                        olt.snmp_community or 'public', olt.ip_address, olt.snmp_port or 161,
-                        ObjectType(ObjectIdentity(oid)), timeout=3, retries=1)
-                    if not ei2 and not es2:
-                        val = int(vb2[0][1])
-                        result[key] = val
-                except Exception:
-                    pass  # OID not supported on this vendor/firmware — skip
-                finally:
-                    slim2.close()
+            is_reachable = snmp_result.get('reachable', False)
+            cpu_load = snmp_result.get('cpu')
+            mem_usage = snmp_result.get('mem')
+            temperature = snmp_result.get('temp')
 
-            return result
+        except Exception as e:
+            logger.error(f"[ALERT] OLT health SNMP check failed for {olt.name}: {e}")
+            is_reachable = False
 
-        loop = asyncio.new_event_loop()
+    # ── Health metrics fallback (all vendors, incl. ZTE C320 whose .3902 OIDs
+    # are unsupported): use values the vendor adapter stored during the last
+    # full sync — olt.temperature and per-card cpu_usage/memory_usage. ──
+    if is_reachable and (cpu_load is None or mem_usage is None or temperature is None):
         try:
-            snmp_result = loop.run_until_complete(_snmp_health())
-        finally:
-            loop.close()
-
-        is_reachable = snmp_result.get('reachable', False)
-        cpu_load = snmp_result.get('cpu')
-        mem_usage = snmp_result.get('mem')
-        temperature = snmp_result.get('temp')
-
-    except Exception as e:
-        logger.error(f"[ALERT] OLT health SNMP check failed for {olt.name}: {e}")
-        is_reachable = False
+            from models import OLTCard
+            if temperature is None and olt.temperature is not None:
+                temperature = int(round(olt.temperature))
+            cards = OLTCard.query.filter_by(olt_id=olt.id).all()
+            if cpu_load is None:
+                cpu_vals = [c.cpu_usage for c in cards if c.cpu_usage]
+                if cpu_vals:
+                    cpu_load = max(cpu_vals)
+            if mem_usage is None:
+                mem_vals = [c.memory_usage for c in cards if c.memory_usage]
+                if mem_vals:
+                    mem_usage = max(mem_vals)
+        except Exception as e:
+            logger.debug(f"[ALERT] DB health fallback failed for {olt.name}: {e}")
 
     # ── OLT Offline Alert ──
     if not is_reachable:
@@ -157,12 +206,17 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
 
         if not recent:
             title = f"🔴 OLT OFFLINE: {olt.name}"
+            unreachable_hint = (
+                'Tidak dapat dijangkau via SNMP'
+                if olt.snmp_enabled else
+                'Sinkronisasi terakhir gagal (SNMP dinonaktifkan)'
+            )
             message = (
                 f"🔴 OLT OFFLINE 🔴\n\n"
                 f"OLT: {olt.name} ({olt.ip_address})\n"
                 f"Vendor: {olt.vendor or 'Unknown'}\n"
-                f"Status: Tidak dapat dijangkau via SNMP\n\n"
-                f"⚠️ Indikasi: OLT mati, jaringan terputus, atau SNMP tidak merespons.\n"
+                f"Status: {unreachable_hint}\n\n"
+                f"⚠️ Indikasi: OLT mati, jaringan terputus, atau perangkat tidak merespons.\n"
                 f"⚠️ Semua monitoring ONU untuk OLT ini di-sampai OLT kembali online.\n\n"
                 f"🕒 Waktu: {_fmt_time(now)}"
             )
@@ -566,7 +620,7 @@ def _check_onus_for_tenant(force_send=False):
             pon_key = (olt.id, onu.frame, onu.slot, onu.port)
 
             if pon_key not in pon_groups:
-                is_epon = (onu.card or '').lower() == 'epon'
+                is_epon = _is_epon_olt(olt, onu)
                 olt_pfx = 'epon-olt' if is_epon else 'gpon-olt'
                 pon_groups[pon_key] = {
                     'olt': olt, 'frame': onu.frame, 'slot': onu.slot, 'port': onu.port,
@@ -701,9 +755,13 @@ def _check_onus_for_tenant(force_send=False):
             _build_recovery_batch(olt, interface, recovery_onus, total, now,
                                   notifications_to_create, recovery_to_send)
 
-    # ─── Check unregistered ONUs via Telnet (show pon onu uncfg) ───
+    # ─── Check unregistered ONUs via Telnet (show pon onu uncfg — ZTE CLI only) ───
     for olt in olts:
         if not olt.cli_enabled:
+            continue
+        if (olt.vendor or 'zte').lower() != 'zte':
+            # collect_unregistered_onus() sends ZTE-specific CLI commands —
+            # non-ZTE adapters have no unregistered-ONU scan yet.
             continue
         try:
             from snmp_collector import create_cli_collector
