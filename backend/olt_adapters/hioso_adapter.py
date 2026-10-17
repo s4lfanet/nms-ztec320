@@ -317,8 +317,7 @@ class HiosoAdapter(BaseOLTAdapter):
 
             def drain():
                 buf = b''
-                t0 = time.time()
-                while time.time() - t0 < 8:
+                while True:
                     try:
                         d = s.recv(8192)
                         if not d:
@@ -835,11 +834,15 @@ class HiosoAdapter(BaseOLTAdapter):
 
             if not light:
                 report(80, 'Mengambil informasi port PON, uplink, & kesehatan sasis...')
-                health = self._collect_chassis_health(sc) if self.olt.snmp_enabled else {'temperature': None, 'cpu': None, 'memory': None}
-                if web_meta.get('cpu') is not None and health.get('cpu') is None:
-                    health['cpu'] = web_meta['cpu']
-                if web_meta.get('memory') is not None and health.get('memory') is None:
-                    health['memory'] = web_meta['memory']
+                health = {'temperature': None, 'cpu': web_meta.get('cpu'), 'memory': web_meta.get('memory')}
+                if self.olt.snmp_enabled and (health['cpu'] is None or health['memory'] is None):
+                    snmp_h = self._collect_chassis_health(sc)
+                    if health['temperature'] is None:
+                        health['temperature'] = snmp_h.get('temperature')
+                    if health['cpu'] is None:
+                        health['cpu'] = snmp_h.get('cpu')
+                    if health['memory'] is None:
+                        health['memory'] = snmp_h.get('memory')
 
                 model = (self.olt.model or 'HA7304C').upper()
                 is_gpon = '74' in model or 'GPON' in model
