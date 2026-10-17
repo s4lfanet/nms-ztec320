@@ -630,7 +630,7 @@ def _check_onus_for_tenant(force_send=False):
                 }
             pon_groups[pon_key]['total'] += 1
 
-            # ─── Check offline/dyinggasp/los (with debounce) ───
+            # ─── Check offline/dyinggasp/los (with 2-sample debounce) ───
             if onu.status in ('offline', 'dyinggasp', 'los') and rule.check_offline:
                 hist = AlertHistory.query.filter_by(
                     onu_id=onu.id, alert_type=onu.status
@@ -646,7 +646,17 @@ def _check_onus_for_tenant(force_send=False):
                         # Second+ detection — check if debounce period passed
                         debounce_seconds = 120  # 2 minutes
                         elapsed = (now - hist.first_seen_at).total_seconds()
-                        if elapsed >= debounce_seconds:
+                        # The fault must ALSO be confirmed by a NEWER data
+                        # sample: onu.last_seen is stamped by every sync that
+                        # saw this ONU. A single bad sync reading (transient
+                        # dying-gasp, stale SNMP status) otherwise fires an
+                        # alert purely from wall-clock time while the ONU was
+                        # only "down" in one sample — and the next sync would
+                        # immediately produce a bogus recovery alert too.
+                        confirmed = bool(
+                            onu.last_seen and onu.last_seen > hist.first_seen_at
+                        )
+                        if elapsed >= debounce_seconds and confirmed:
                             # Debounce passed — fire alert
                             pon_groups[pon_key]['offline'].append(onu)
                             hist.last_value = onu.status
@@ -658,9 +668,14 @@ def _check_onus_for_tenant(force_send=False):
                                 old_status='online', new_status=onu.status,
                                 changed_at=now
                             ))
-                        # else: within debounce window — wait for next check
+                        # else: within debounce window or awaiting a confirming
+                        # sync sample — wait for next check
                     else:
-                        # First detection — record but don't fire yet
+                        # First detection — record but don't fire yet.
+                        # last_alert_at sentinel marks "never fired" so the
+                        # recovery path can tell a real fired alert apart
+                        # from a debounce-only record (default=now() would
+                        # make recovery fire without a fault alert).
                         if hist:
                             hist.first_seen_at = now
                             hist.last_value = onu.status
@@ -668,6 +683,7 @@ def _check_onus_for_tenant(force_send=False):
                             db.session.add(AlertHistory(
                                 onu_id=onu.id, alert_type=onu.status,
                                 last_value=onu.status, first_seen_at=now,
+                                last_alert_at=datetime(2000, 1, 1),
                             ))
 
             # ─── Check recovery (was offline, now online) ───
@@ -680,7 +696,18 @@ def _check_onus_for_tenant(force_send=False):
                     AlertHistory.last_alert_at > now - timedelta(hours=6)
                 ).first()
 
-                if recent_offline:
+                # Only treat as a recovery when the fault alert actually
+                # fired (last_alert_at stamped AFTER first_seen_at with a
+                # real timestamp — the never-fired sentinel is year 2000).
+                fired_alert = recent_offline and (
+                    recent_offline.first_seen_at is None
+                    or (
+                        recent_offline.last_alert_at
+                        - recent_offline.first_seen_at
+                    ).total_seconds() > 5
+                )
+
+                if fired_alert:
                     pon_groups[pon_key]['recovery'].append(onu)
                     recent_offline.last_alert_at = now - timedelta(hours=24)
                     recent_offline.first_seen_at = None  # reset for next cycle

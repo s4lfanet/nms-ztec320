@@ -2635,5 +2635,88 @@ class TestHiosoMultiVendorAdapter:
             assert onus['1/1/3:8'].actual_type == '6301 (6P)'
 
 
+class TestAlertOfflineDebounce:
+    """Offline/LOS alerts must be confirmed by a second sync sample —
+    a single bad sync reading must not produce a fault+recovery pair."""
+
+    def _mk_olt_onu(self, status='los'):
+        from datetime import datetime, timezone, timedelta
+        from models import ONU, AlertRule
+        olt = OLT(name='OLT-DBNC', ip_address='10.99.0.7', vendor='hioso', model='HA7304V',
+                  snmp_enabled=False, telnet_enabled=False, ssh_enabled=False,
+                  monitoring_enabled=True, is_online=True)
+        db.session.add(olt)
+        rule = AlertRule.query.first() or AlertRule(name='Default', enabled=True)
+        rule.enabled = True
+        rule.check_offline = True
+        rule.check_rx_power = False
+        db.session.add(rule)
+        onu = ONU(olt_id=olt.id, onu_index=1001001, frame=1, slot=1, port=1, onu_id=1,
+                  status=status, name='NA', serial_number='AA:BB:CC:11:22:33',
+                  last_seen=datetime.now(timezone.utc) - timedelta(seconds=10))
+        db.session.add(onu)
+        db.session.commit()
+        return olt, onu.id
+
+    def test_fault_requires_second_sample_and_recovery_requires_fired_alert(self, client):
+        from datetime import datetime, timezone, timedelta
+        from alerts import _check_onus_for_tenant
+        from models import ONU, AlertHistory
+        from unittest.mock import patch as _patch
+
+        with app.app_context():
+            _, onu_id = self._mk_olt_onu(status='los')
+            sent = []
+
+            with _patch('alerts._send_external_alerts',
+                        side_effect=lambda alerts, rule=None: sent.extend(alerts)):
+                # Check 1 — first detection: only records first_seen, no alert
+                _check_onus_for_tenant()
+                assert sent == []
+                hist = AlertHistory.query.filter_by(onu_id=onu_id, alert_type='los').first()
+                assert hist is not None and hist.first_seen_at is not None
+                # Push first_seen far enough back that elapsed > debounce, and
+                # make onu.last_seen even older — i.e. no sync has refreshed
+                # this row since the fault was first detected.
+                hist.first_seen_at = datetime.now(timezone.utc) - timedelta(seconds=300)
+                onu = db.session.get(ONU, onu_id)
+                onu.last_seen = datetime.now(timezone.utc) - timedelta(seconds=400)
+                db.session.commit()
+
+                # Check 2 — debounce elapsed but no NEWER sync sample
+                # (onu.last_seen still predates first_seen) → NO alert
+                _check_onus_for_tenant()
+                assert sent == []
+
+                # A newer sync re-confirms the fault
+                onu = db.session.get(ONU, onu_id)
+                onu.last_seen = datetime.now(timezone.utc)
+                db.session.commit()
+
+                # Check 3 — confirmed by second sample → fault alert fires
+                _check_onus_for_tenant()
+                assert len(sent) == 1
+                assert sent[0]['type'] == 'los'
+                assert sent[0].get('is_recovery') is False
+
+                # ONU back online → recovery alert (fault alert really fired)
+                sent.clear()
+                onu.status = 'online'
+                db.session.commit()
+                _check_onus_for_tenant()
+                assert len(sent) == 1 and sent[0].get('is_recovery') is True
+
+                # Blip scenario: one bad sample then immediately online →
+                # NO phantom recovery alert (fault alert never fired)
+                sent.clear()
+                onu.status = 'los'
+                db.session.commit()
+                _check_onus_for_tenant()          # first detection again
+                onu.status = 'online'
+                db.session.commit()
+                _check_onus_for_tenant()
+                assert sent == []
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
