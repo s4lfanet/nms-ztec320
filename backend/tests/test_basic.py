@@ -2551,6 +2551,89 @@ class TestHiosoMultiVendorAdapter:
             assert card is not None and card.cpu_usage == 18
             assert olt.temperature == 42
 
+    def test_hioso_ha7304v_snmp_only_sync(self, client):
+        """HA7304V older firmware: no web ONU table, no 'show onu info' CLI,
+        .37 names are zero-filled OctetStrings, .13 is a port-count code (NOT
+        a down-reason), .41 dying-gasp table is absent, chassis temp OIDs empty."""
+        from olt_adapters import RackAdapterRegistry
+        from sync_helper import save_sync_result
+        from models import ONU
+
+        class ZeroOctets:
+            """Mimics a pysnmp OctetString full of zero bytes."""
+            def __init__(self, n=16):
+                self._raw = bytes(n)
+            def asOctets(self):
+                return self._raw
+            def __str__(self):
+                return '0x' + self._raw.hex()
+
+        fake_walks = {
+            # .37 names → zero-filled on HA7304V (unset), real text where set
+            '.25355.3.2.6.3.2.1.37': {'1.1.1': ZeroOctets(), '1.1.69': ZeroOctets(), '1.3.8': 'RUMAH-ANDI'},
+            '.25355.3.2.6.3.2.1.11': {'1.1.1': 'f83e9545d7f8', '1.1.69': 'a4f33b895272', '1.3.8': 'e8f9d4eee284'},
+            '.25355.3.2.6.3.2.1.12': {},  # onu_mac empty on HA7304V
+            '.25355.3.2.6.3.2.1.39': {'1.1.1': 1, '1.1.69': 2, '1.3.8': 0},
+            # .13 = port-count code, NOT down reason — 1.1.69 down with '1' must NOT become dyinggasp
+            '.25355.3.2.6.3.2.1.13': {'1.1.1': 5, '1.1.69': 1, '1.3.8': 6},
+            '.25355.3.2.6.3.2.1.15': {'1.1.1': '6301', '1.1.69': '6301', '1.3.8': '6301'},
+            '.25355.3.2.6.3.2.1.41': {},  # no dying-gasp table on HA7304V
+            '.25355.3.2.6.3.2.1.25': {'1.1.1': 1302, '1.1.69': 262, '1.3.8': 303},
+            '.25355.3.2.6.14.2.1.8': {'1.1.1': '-23.67', '1.1.69': '-12.70'},
+            '.25355.3.2.6.14.2.1.4': {'1.1.1': '2.14', '1.1.69': '2.08'},
+            # ifTable for real uplink status
+            '.1.3.6.1.2.1.2.2.1.2': {'1': 'PON-1', '2': 'PON-2', '3': 'PON-3', '4': 'PON-4',
+                                     '5': 'GE1', '6': 'GE2', '7': 'GE3', '8': 'GE4', '9': 'MGT', '10': 'lo'},
+            '.1.3.6.1.2.1.2.2.1.8': {'5': 1, '6': 1, '7': 2, '8': 2, '9': 1, '10': 1},
+            '.1.3.6.1.2.1.2.2.1.7': {'5': 1, '6': 1, '7': 1, '8': 1, '9': 1, '10': 1},
+        }
+
+        async def fake_walk_async(self_sc, oid):
+            return fake_walks.get(oid, {})
+
+        with app.app_context():
+            olt = OLT(name='OLT-HIOSO-V', ip_address='10.10.10.4', vendor='hioso', model='HA7304V',
+                      snmp_enabled=True, telnet_enabled=False)
+            db.session.add(olt)
+            db.session.commit()
+
+            adapter = RackAdapterRegistry.get_adapter(olt)
+            assert adapter is not None and adapter.vendor == 'hioso'
+            assert adapter._cli_pon_base() == 1  # HA7304V uses 1-based PON interfaces
+
+            with patch('snmp_core.SNMPCollector._walk_async', new=fake_walk_async), \
+                 patch('snmp_core.SNMPCollector.collect_system_info', return_value={'uptime': 15831, 'description': 'HA7304V'}), \
+                 patch.object(adapter, '_collect_from_web', return_value=([], {})), \
+                 patch.object(adapter, '_collect_cli_port_specs', return_value={}):
+                res = adapter.poll_olt(light=False)
+
+                assert res['success'] is True
+                assert len(res['onus']) == 3
+                count, _ = save_sync_result(olt, res, sync=None, light=False)
+                assert count == 3
+
+                # Real uplinks come from ifTable (PON-*/lo filtered out)
+                uplink_names = [u['port_name'] for u in res['uplinks']]
+                assert 'PON-1' not in uplink_names and 'lo' not in uplink_names
+                assert 'GE1' in uplink_names
+                ge3 = next(u for u in res['uplinks'] if u['port_name'] == 'GE3')
+                assert ge3['oper_status'] == 'down'
+
+            onus = {o.onu_id_str: o for o in ONU.query.filter_by(olt_id=olt.id).all()}
+            # Zero-filled .37 → 'NA', not '0x0000...'
+            assert onus['1/1/1:1'].name == 'NA'
+            assert onus['1/1/1:1'].serial_number == 'F8:3E:95:45:D7:F8'
+            assert onus['1/1/1:1'].actual_type == '6301 (5P)'
+            assert onus['1/1/1:1'].rx_power == -23.67
+            assert onus['1/1/1:1'].status == 'online'
+            # Down ONU with .13=1 (port-count) must be 'los', NOT 'dyinggasp'
+            assert onus['1/1/1:69'].status == 'los'
+            assert onus['1/1/1:69'].serial_number == 'A4:F3:3B:89:52:72'
+            # .39=0 → offline; real text name preserved
+            assert onus['1/1/3:8'].status == 'offline'
+            assert onus['1/1/3:8'].name == 'RUMAH-ANDI'
+            assert onus['1/1/3:8'].actual_type == '6301 (6P)'
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

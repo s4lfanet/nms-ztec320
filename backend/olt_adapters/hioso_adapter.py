@@ -70,6 +70,42 @@ def format_mac_or_sn(val) -> str:
     return s
 
 
+def clean_snmp_text(val) -> str:
+    """Return printable text from an SNMP value, '' for empty/zero-filled payloads.
+
+    HA7304V-era firmware reports ONU names (.25355.3.2.6.3.2.1.37) as
+    zero-filled OctetStrings when unset — str() on those yields '0x0000...'
+    which must be treated as 'no name', not a literal name.
+    """
+    if val is None:
+        return ''
+    try:
+        if hasattr(val, 'asOctets'):
+            raw = bytes(val.asOctets())
+        elif isinstance(val, (bytes, bytearray)):
+            raw = bytes(val)
+        else:
+            raw = None
+        if raw is not None:
+            if not raw or not all(32 <= b <= 126 for b in raw):
+                return ''
+            return raw.decode('ascii', errors='ignore').strip()
+    except Exception:
+        pass
+    s = str(val).strip()
+    if s.startswith(('0x', '0X')):
+        try:
+            raw = bytes.fromhex(s[2:])
+        except ValueError:
+            return ''
+        if not raw or not all(32 <= b <= 126 for b in raw):
+            return ''
+        return raw.decode('ascii', errors='ignore').strip()
+    if s.lower() in _INVALID_SERIALS:
+        return ''
+    return s
+
+
 def parse_optical_dbm(val):
     """Parse optical power value from SNMP/Web (float string in dBm, or scaled int)."""
     if val is None:
@@ -305,8 +341,19 @@ class HiosoAdapter(BaseOLTAdapter):
             return format_uptime(self.olt.uptime * 100)
         return None
 
+    def _cli_pon_base(self) -> int:
+        """PON interface numbering: 0-based on HA7304C-era firmware ('epon 0/1'),
+        1-based on older 'V' firmware like HA7304V ('epon 1/1')."""
+        m = (self.olt.model or '').upper()
+        return 1 if re.search(r'VX?$', m) else 0
+
     def _collect_cli_port_specs(self) -> dict[tuple[int, int, int], dict]:
-        """Connect via Telnet CLI to read Ge / Fe / Pots port counts per ONU (`show onu info epon 0/{p} all`)."""
+        """Connect via Telnet CLI to read Ge / Fe / Pots port counts per ONU
+        (`show onu info epon 0/{p} all`).
+
+        Older firmware (HA7304V) has no 'show onu info' and numbers PON ports
+        1-based — detect that quickly and fall back to the health commands it
+        does support (optical-ddm / show memory) instead of failing the poll."""
         specs: dict[tuple[int, int, int], dict] = {}
         if not (self.olt.telnet_enabled and self.olt.cli_username):
             return specs
@@ -329,49 +376,91 @@ class HiosoAdapter(BaseOLTAdapter):
                         break
                 return buf.decode('ascii', errors='ignore')
 
+            def send(cmd: str) -> str:
+                s.sendall((cmd + '\r\n').encode())
+                return drain()
+
             drain()
             s.sendall(((self.olt.cli_username or 'admin') + '\r\n').encode())
             drain()
             s.sendall(((self.olt.cli_password or 'admin') + '\r\n').encode())
             drain()
-            s.sendall(b'enable\r\n')
-            drain()
+            send('enable')
 
-            for pnum in range(1, self._default_pon_count() + 1):
-                s.sendall(f'show onu info epon 0/{pnum} all\r\n'.encode())
-                out = drain()
-                for line in out.splitlines():
-                    # Format: 0/1:1  f8:53:29:fc:97:84 Up      3230     6301   4  0  1    CtcNegDone     30     Yes      0H36M1S          [Name]
-                    m = re.match(
-                        r'^\s*0/(\d+):(\d+)\s+([0-9a-fA-F:]{17})\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(.*))?$',
-                        line,
-                    )
-                    if m:
-                        port_i = int(m.group(1))
-                        onu_i = int(m.group(2))
-                        mac_s = m.group(3).upper()
-                        fw_s = m.group(5)
-                        chip_s = m.group(6)
-                        ge_i, fe_i, pots_i = int(m.group(7)), int(m.group(8)), int(m.group(9))
-                        cli_name = (m.group(14) or '').strip()
-                        specs[(1, port_i, onu_i)] = {
-                            'mac': mac_s,
-                            'fw': fw_s,
-                            'chip': chip_s,
-                            'ge': ge_i,
-                            'fe': fe_i,
-                            'pots': pots_i,
-                            'name': cli_name,
-                        }
-            # Also read real optical transceiver temperature from PON 0/1 ('show epon optical-ddm 0/1')
-            s.sendall(b'show epon optical-ddm 0/1\r\n')
-            ddm_out = drain()
-            tm = re.search(r'Temperature\s*:\s*([-+]?\d+(?:\.\d+)?)', ddm_out)
-            if tm:
-                try:
-                    specs['_olt_temp'] = int(round(float(tm.group(1))))
-                except Exception:
-                    pass
+            # Probe which PON base + command syntax this firmware understands
+            pon_base = self._cli_pon_base()
+            info_out = send(f'show onu info epon {pon_base}/1 all')
+            if '%' in info_out:
+                alt = 1 - pon_base
+                alt_out = send(f'show onu info epon {alt}/1 all')
+                if '%' not in alt_out:
+                    pon_base = alt
+                    info_out = alt_out
+                else:
+                    info_out = ''
+            specs['_pon_base'] = pon_base
+
+            if info_out:
+                first = True
+                for pnum in range(1, self._default_pon_count() + 1):
+                    out = info_out if first else send(f'show onu info epon {pon_base}/{pnum} all')
+                    first = False
+                    if '%' in out:
+                        continue
+                    for line in out.splitlines():
+                        # Format: 0/1:1  f8:53:29:fc:97:84 Up      3230     6301   4  0  1    CtcNegDone     30     Yes      0H36M1S          [Name]
+                        m = re.match(
+                            r'^\s*\d+/(\d+):(\d+)\s+([0-9a-fA-F:]{17})\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(.*))?$',
+                            line,
+                        )
+                        if m:
+                            port_i = int(m.group(1))
+                            onu_i = int(m.group(2))
+                            mac_s = m.group(3).upper()
+                            fw_s = m.group(5)
+                            chip_s = m.group(6)
+                            ge_i, fe_i, pots_i = int(m.group(7)), int(m.group(8)), int(m.group(9))
+                            cli_name = (m.group(14) or '').strip()
+                            specs[(1, port_i, onu_i)] = {
+                                'mac': mac_s,
+                                'fw': fw_s,
+                                'chip': chip_s,
+                                'ge': ge_i,
+                                'fe': fe_i,
+                                'pots': pots_i,
+                                'name': cli_name,
+                            }
+
+            # OLT PON SFP temperature — new fw: 'show epon optical-ddm 0/1';
+            # old fw (HA7304V): 'show epon 1/1 optical-ddm'
+            for tcmd in (
+                f'show epon optical-ddm {pon_base}/1',
+                f'show epon {max(pon_base, 1)}/1 optical-ddm',
+            ):
+                ddm_out = send(tcmd)
+                tm = re.search(r'Temperature\s*:\s*([-+]?\d+(?:\.\d+)?)', ddm_out)
+                if tm and '%' not in ddm_out:
+                    try:
+                        specs['_olt_temp'] = int(round(float(tm.group(1))))
+                        break
+                    except Exception:
+                        pass
+
+            # Chassis memory — 'show memory' → 'Used 28800 / Total 127616'
+            mem_out = send('show memory')
+            mm = re.search(r'Used\s+(\d+)\s*/\s*Total\s+(\d+)', mem_out)
+            if mm:
+                used_kb, tot_kb = int(mm.group(1)), int(mm.group(2))
+                if tot_kb > 0:
+                    specs['_mem_pct'] = int(round(used_kb / tot_kb * 100))
+
+            # CPU usage (best-effort — not all firmware revisions expose it)
+            cpu_out = send('show process cpu')
+            if '%' not in cpu_out:
+                cm = re.search(r'(\d{1,3})\s*%', cpu_out)
+                if cm:
+                    specs['_cpu_pct'] = int(cm.group(1))
+
             specs['_cli_connected'] = True
             try:
                 s.sendall(b'exit\r\nexit\r\n')
@@ -525,7 +614,7 @@ class HiosoAdapter(BaseOLTAdapter):
         sn_res = sc._run(sc._walk_async(oids['onu_sn'])) if oids.get('onu_sn') else {}
         mac_res = sc._run(sc._walk_async(oids['onu_mac'])) if oids.get('onu_mac') else {}
         status_res = sc._run(sc._walk_async(oids['onu_status'])) if oids.get('onu_status') else {}
-        ports_res = sc._run(sc._walk_async(oids['onu_down_reason'])) if oids.get('onu_down_reason') else {}
+        ports_res = sc._run(sc._walk_async(oids['onu_port_count'])) if oids.get('onu_port_count') else {}
         chip_res = sc._run(sc._walk_async('.25355.3.2.6.3.2.1.15')) if mode == 'epon' else {}
         dyg_res = sc._run(sc._walk_async('.25355.3.2.6.3.2.1.41')) if mode == 'epon' else {}
         dist_res = sc._run(sc._walk_async(oids['onu_distance'])) if oids.get('onu_distance') else {}
@@ -550,7 +639,7 @@ class HiosoAdapter(BaseOLTAdapter):
                 or format_mac_or_sn(mac_res.get(key))
                 or spec.get('mac', '')
             )
-            raw_name = str(name_res.get(key, '') or '').strip()
+            raw_name = clean_snmp_text(name_res.get(key))
             if (not raw_name or raw_name == 'NA') and spec.get('name'):
                 raw_name = spec['name']
             onu_name = raw_name if raw_name else 'NA'
@@ -562,9 +651,12 @@ class HiosoAdapter(BaseOLTAdapter):
                 s_low = str(raw_status).strip().lower()
                 status_int = 1 if s_low in ('1', 'up', 'online', 'working', 'true') else 0
 
-            raw_ports_or_reason = ports_res.get(key, 0)
+            # .13 = LAN port count/type code (NOT a down-reason — verified on
+            # live HA7304C: '5' for both online and LOS ONUs). Dying-gasp is
+            # only reported by .41 when the firmware exposes that table.
+            raw_port_cnt = ports_res.get(key, 0)
             try:
-                pr_int = int(raw_ports_or_reason)
+                pr_int = int(raw_port_cnt)
             except Exception:
                 pr_int = 0
 
@@ -580,19 +672,18 @@ class HiosoAdapter(BaseOLTAdapter):
             if status_int == 1 or (mode == 'bdcom' and status_int == 3):
                 status = 'online'
                 dereg_reason = ''
+            elif dyg_int == 1:
+                status = 'dyinggasp'
+                dereg_reason = 'PowerOff'
+            elif status_int == 2:
+                status = 'los'
+                dereg_reason = 'LOS'
             else:
-                if dyg_int == 1 or pr_int == 1:
-                    status = 'dyinggasp'
-                    dereg_reason = 'PowerOff'
-                elif pr_int == 3 or status_int == 2:
-                    status = 'los'
-                    dereg_reason = 'LOS'
-                else:
-                    status = 'offline'
-                    dereg_reason = ''
+                status = 'offline'
+                dereg_reason = ''
 
-            chip_str = str(chip_res.get(key, '') or spec.get('chip', '')).strip()
-            ports_cnt_str = str(pr_int) if pr_int in (1, 2, 3, 4, 5, 8, 16, 24) and chip_str else ''
+            chip_str = clean_snmp_text(chip_res.get(key)) or str(spec.get('chip', '')).strip()
+            ports_cnt_str = str(pr_int) if pr_int in (1, 2, 3, 4, 5, 6, 8, 16, 24) and chip_str else ''
             actual_type = (
                 format_hioso_onu_type(
                     chip_str,
@@ -686,7 +777,7 @@ class HiosoAdapter(BaseOLTAdapter):
                 timeout=5,
             ).read()
             form_body = urllib.parse.urlencode({
-                'onuId': f'0/{port}:{onu_id}',
+                'onuId': f'{self._cli_pon_base()}/{port}:{onu_id}',
                 'onuName': clean_name.replace(' ', '_'),
                 'onuOperation': 'nonOp',
             }).encode('utf-8')
@@ -719,7 +810,7 @@ class HiosoAdapter(BaseOLTAdapter):
                 s.sendall(((self.olt.cli_password or 'admin') + '\r\n').encode())
                 time.sleep(0.3)
                 s.recv(4096)
-                for cmd in ('enable', 'configure terminal', f'interface epon 0/{port}', f'onu {onu_id} name {clean_name.replace(" ", "_")}', 'exit', 'exit'):
+                for cmd in ('enable', 'configure terminal', f'interface epon {self._cli_pon_base()}/{port}', f'onu {onu_id} name {clean_name.replace(" ", "_")}', 'exit', 'exit'):
                     s.sendall((cmd + '\r\n').encode())
                     time.sleep(0.25)
                 return True, 'Updated on HiOSO OLT via CLI'
@@ -776,6 +867,35 @@ class HiosoAdapter(BaseOLTAdapter):
             pass
 
         return {'temperature': temp, 'cpu': cpu, 'memory': mem_pct}
+
+    def _collect_uplinks_ifmib(self, sc) -> list:
+        """Read real uplink interfaces from the standard ifTable
+        (ifDescr + ifOperStatus + ifAdminStatus). PON/loopback interfaces are
+        filtered out; returns [] when the walk fails so the caller can keep
+        its hardcoded G1–G4 fallback."""
+        try:
+            descr = sc._run(sc._walk_async('.1.3.6.1.2.1.2.2.1.2'))
+            oper = sc._run(sc._walk_async('.1.3.6.1.2.1.2.2.1.8'))
+            admin = sc._run(sc._walk_async('.1.3.6.1.2.1.2.2.1.7'))
+        except Exception:
+            return []
+        if not descr:
+            return []
+        uplinks = []
+        for idx, dv in descr.items():
+            name = clean_snmp_text(dv)
+            if not name or re.match(r'(?i)^(pon|epon[-_]onu|gpon|loop|lo\b|null|vlan|inband|outband|host)', name):
+                continue
+            uplinks.append({
+                'port_name': name,
+                'speed': '1000M',
+                'duplex': 'full',
+                'admin_status': 'up' if str(admin.get(idx, '1')).strip() == '1' else 'down',
+                'oper_status': 'up' if str(oper.get(idx, '2')).strip() == '1' else 'down',
+                'line_protocol': 'up' if str(oper.get(idx, '2')).strip() == '1' else 'down',
+            })
+        uplinks.sort(key=lambda u: u['port_name'])
+        return uplinks
 
     def poll_olt(self, progress_cb=None, light=False) -> dict:
         """Full or light poll for HiOSO OLT (Web + Telnet CLI + SNMP)."""
@@ -853,8 +973,8 @@ class HiosoAdapter(BaseOLTAdapter):
                 report(80, 'Mengambil informasi port PON, uplink, & kesehatan sasis...')
                 health = {
                     'temperature': cli_specs.get('_olt_temp'),
-                    'cpu': web_meta.get('cpu'),
-                    'memory': web_meta.get('memory'),
+                    'cpu': web_meta.get('cpu') if web_meta.get('cpu') is not None else cli_specs.get('_cpu_pct'),
+                    'memory': web_meta.get('memory') if web_meta.get('memory') is not None else cli_specs.get('_mem_pct'),
                 }
                 if self.olt.snmp_enabled and (health['temperature'] is None or health['cpu'] is None or health['memory'] is None):
                     snmp_h = self._collect_chassis_health(sc)
@@ -883,17 +1003,19 @@ class HiosoAdapter(BaseOLTAdapter):
                         'onu_offline': sum(1 for o in onus if o['port'] == pnum and o['status'] != 'online'),
                     })
 
-                uplinks = [
-                    {
-                        'port_name': f'G{u_idx}',
-                        'speed': '1000M',
-                        'duplex': 'full',
-                        'admin_status': 'up',
-                        'oper_status': 'up' if u_idx == 1 else 'down',
-                        'line_protocol': 'up' if u_idx == 1 else 'down',
-                    }
-                    for u_idx in range(1, 5)
-                ]
+                uplinks = self._collect_uplinks_ifmib(sc) if self.olt.snmp_enabled else []
+                if not uplinks:
+                    uplinks = [
+                        {
+                            'port_name': f'G{u_idx}',
+                            'speed': '1000M',
+                            'duplex': 'full',
+                            'admin_status': 'up',
+                            'oper_status': 'up' if u_idx == 1 else 'down',
+                            'line_protocol': 'up' if u_idx == 1 else 'down',
+                        }
+                        for u_idx in range(1, 5)
+                    ]
 
                 result['pon_ports'] = pon_ports
                 result['uplinks'] = uplinks

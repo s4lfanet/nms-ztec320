@@ -54,7 +54,7 @@ VENDOR_OIDS = {
         'onu_sn':           '.25355.3.2.6.3.2.1.11',
         'onu_mac':          '.25355.3.2.6.3.2.1.12',
         'onu_status':       '.25355.3.2.6.3.2.1.39',
-        'onu_down_reason':  '.25355.3.2.6.3.2.1.13',  # 5=normal, 1=power-down/dyinggasp, 3=LOS
+        'onu_port_count':   '.25355.3.2.6.3.2.1.13',  # LAN port count/type code (5=4GE+1POTS etc.)
         'onu_distance':     '.25355.3.2.6.3.2.1.25',
         'onu_rx':           '.25355.3.2.6.14.2.1.8',  # RX power (negative dBm)
         'onu_tx':           '.25355.3.2.6.14.2.1.4',  # TX power (positive dBm)

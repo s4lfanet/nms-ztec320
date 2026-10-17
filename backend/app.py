@@ -579,6 +579,19 @@ if os.environ.get('NMS_SERVER_PROCESS') == '1' or __name__ == '__main__':
         migrate_schema()
         db.create_all()
         seed_initial_data()
+        # Sync threads are daemonized — a service restart mid-sync leaves
+        # OLTSyncStatus stuck at 'running' forever; mark them interrupted.
+        try:
+            stale_syncs = OLTSyncStatus.query.filter_by(status='running').all()
+            for stale in stale_syncs:
+                stale.status = 'error'
+                stale.message = 'Sync interrupted — service restarted'
+                stale.completed_at = datetime.now(timezone.utc)
+            if stale_syncs:
+                db.session.commit()
+                logger.info(f'Marked {len(stale_syncs)} stale running sync(s) as interrupted')
+        except Exception:
+            db.session.rollback()
 
 
 # _get_nms_branding moved to services_wa.py
