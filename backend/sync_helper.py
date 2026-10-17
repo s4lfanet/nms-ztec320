@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 _VENDOR_NAMES = {'zte', 'huawei', 'fiberhome', 'alcatel-lucent', 'eci', 'unknown', 'all'}
 
 
+def _pos_str(d):
+    """Format an onu_data dict position as frame/slot/port:onu_id for logs."""
+    return f"{d.get('frame', 1)}/{d.get('slot', 1)}/{d.get('port', 1)}:{d.get('onu_id', '?')}"
+
+
 def save_sync_result(olt, result, sync, light=False):
     """Save poll_olt result to DB — system, chassis, config, ONUs.
     
@@ -283,6 +288,43 @@ def save_sync_result(olt, result, sync, light=False):
 
     onus_data = result.get('onus', [])
 
+    # Same-serial dedupe within a single sync result. An OLT can report the
+    # same physical ONU at two positions — e.g. it was re-registered on a
+    # different PON port while the old authorization entry still exists on
+    # the OLT (observed live on HiOSO HA7304V: same MAC at 1/1/3:3 online and
+    # 1/1/4:34 los). Keep only the entry with the "best" status so the stale
+    # binding doesn't become a phantom offline/LOS ONU row.
+    if len(onus_data) > 1:
+        _status_rank = {'online': 4, 'dyinggasp': 3, 'los': 2, 'offline': 1}
+        _pos_by_sn = {}
+        _deduped = []
+        for _od in onus_data:
+            _sn = _od.get('serial_number')
+            if not _sn:
+                _deduped.append(_od)
+                continue
+            _p = _pos_by_sn.get(_sn)
+            if _p is None:
+                _pos_by_sn[_sn] = len(_deduped)
+                _deduped.append(_od)
+                continue
+            _r_new = _status_rank.get(_od.get('status'), 0)
+            _r_old = _status_rank.get(_deduped[_p].get('status'), 0)
+            if _r_new > _r_old:
+                logger.warning(
+                    f"[sync:{olt.id}] Serial {_sn} reported at two positions "
+                    f"({_pos_str(_deduped[_p])} status={_deduped[_p].get('status')} vs "
+                    f"{_pos_str(_od)} status={_od.get('status')}) — keeping the active one; "
+                    f"clean the stale binding on the OLT.")
+                _deduped[_p] = _od
+            else:
+                logger.warning(
+                    f"[sync:{olt.id}] Serial {_sn} reported at two positions — keeping "
+                    f"{_pos_str(_deduped[_p])} status={_deduped[_p].get('status')}, dropping "
+                    f"stale {_pos_str(_od)} status={_od.get('status')}; "
+                    f"clean the stale binding on the OLT.")
+        onus_data = _deduped
+
     # Detect and remove duplicate ONU records (same onu_index) — keep oldest (lowest id)
     all_existing = ONU.query.filter_by(olt_id=olt.id).order_by(ONU.id).all()
     seen_idx_map = {}
@@ -300,6 +342,40 @@ def save_sync_result(olt, result, sync, light=False):
     existing_onus = seen_idx_map
     # Serial-number fallback: match provisioned ONUs (onu_index=0) by serial
     sn_to_onu = {o.serial_number: o for o in all_existing if o.serial_number and o.onu_index == 0 and o.id not in dup_ids}
+
+    # Same-serial reconciliation across positions: if an incoming entry
+    # claims a serial that a DB row holds at a DIFFERENT onu_index, either
+    # the ONU moved PON ports or the OLT still carries a stale binding.
+    # - Target index already owned by another row  -> this row is the stale
+    #   duplicate: delete it now (don't wait for full-sync stale cleanup,
+    #   or it keeps firing los/offline alerts in between).
+    # - Target index free -> repoint this row so id/name/history survive
+    #   the move.
+    _sn_idx = {}
+    for _i, _od in enumerate(onus_data):
+        _sn = _od.get('serial_number')
+        if _sn:
+            _sn_idx[_sn] = _od.get('onu_index', _i)
+    for _o in list(existing_onus.values()):
+        if not _o.serial_number or _o.onu_index == 0:
+            continue
+        _tgt = _sn_idx.get(_o.serial_number)
+        if _tgt is None or _tgt == _o.onu_index:
+            continue
+        if _tgt in existing_onus:
+            logger.info(f"  Removing stale duplicate ONU row id={_o.id} "
+                        f"sn={_o.serial_number} idx={_o.onu_index} "
+                        f"(same serial now at idx={_tgt})")
+            db.session.delete(_o)
+            del existing_onus[_o.onu_index]
+        else:
+            logger.info(f"  ONU {_o.serial_number} moved position "
+                        f"idx={_o.onu_index} -> {_tgt}")
+            del existing_onus[_o.onu_index]
+            _o.onu_index = _tgt
+            existing_onus[_tgt] = _o
+
+    n_pre_existing = len(existing_onus)
     seen_indices = set()
     online = los = dyinggasp = offline = other = 0
 
@@ -317,6 +393,10 @@ def save_sync_result(olt, result, sync, light=False):
             else:
                 onu = ONU(olt_id=olt.id, onu_index=idx)
                 db.session.add(onu)
+            # Register under the new index — a second entry with the same
+            # onu_index later in this same result must UPDATE this row, not
+            # create a duplicate that only next sync's dedup would clean.
+            existing_onus[idx] = onu
 
         onu.frame = onu_data.get('frame', 1)
         onu.slot = onu_data.get('slot', 1)
@@ -447,7 +527,7 @@ def save_sync_result(olt, result, sync, light=False):
         # handful genuinely unplugged), don't trust it enough to delete
         # anything — preserve those rows the same way light mode does, and
         # let a later, hopefully-complete sync clean up any real removals.
-        _prev_total = len(existing_onus)
+        _prev_total = n_pre_existing
         _incomplete_walk = _prev_total >= 20 and len(onus_data) < _prev_total * 0.9
         if _incomplete_walk:
             logger.warning(

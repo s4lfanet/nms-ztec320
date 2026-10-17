@@ -312,3 +312,124 @@ class TestUnknownStatusPreservesPrevious:
             db.session.commit()
             onu = ONU.query.filter_by(olt_id=olt_id).first()
         assert onu.status == 'los'  # real status update, not preserved
+
+
+class TestSameSerialDedupe:
+    """An OLT can report the same physical ONU at two positions — e.g. it was
+    re-registered on another PON port while the old authorization entry still
+    exists (observed live on HiOSO HA7304V: same MAC at 1/1/3:3 online and
+    1/1/4:34 los). On a fresh install this produced "double" ONU rows."""
+
+    def _mk_olt(self, name, ip):
+        olt = OLT(name=name, ip_address=ip, vendor='hioso', model='HA7304V')
+        db.session.add(olt)
+        db.session.commit()
+        sync = OLTSyncStatus(olt_id=olt.id)
+        db.session.add(sync)
+        db.session.commit()
+        return olt, sync
+
+    def test_same_serial_two_positions_keeps_active(self, db_ctx):
+        """Fresh-install case: one sync result carries the same serial at
+        1/1/3:3 (online) and 1/1/4:34 (los) — only the active entry is saved."""
+        from sync_helper import save_sync_result
+        with app.app_context():
+            olt, sync = self._mk_olt('Dup-SN-OLT', '10.9.9.20')
+            olt_id = olt.id
+            result = {
+                'system': {}, 'snmp_ok': True, 'telnet_ok': False,
+                'onus': [
+                    {'onu_index': 103003, 'frame': 1, 'slot': 1, 'port': 3, 'onu_id': 3,
+                     'serial_number': '94:A4:F9:F7:39:76', 'name': 'NA', 'status': 'los'},
+                    {'onu_index': 104034, 'frame': 1, 'slot': 1, 'port': 4, 'onu_id': 34,
+                     'serial_number': '94:A4:F9:F7:39:76', 'name': 'NA', 'status': 'online'},
+                ],
+            }
+            save_sync_result(olt, result, sync, light=True)
+            db.session.commit()
+            onus = ONU.query.filter_by(olt_id=olt_id).all()
+        assert len(onus) == 1
+        # 'online' outranks 'los' — the 1/1/4:34 entry wins
+        assert onus[0].onu_index == 104034
+        assert onus[0].status == 'online'
+
+    def test_stale_binding_row_deleted_when_position_taken(self, db_ctx):
+        """DB already holds BOTH positions for one serial (the live dup in
+        production). Next sync reports only the active position — the stale
+        los row must be deleted immediately, not left as a phantom LOS ONU
+        that the 2-sample alert debounce would eventually confirm."""
+        from sync_helper import save_sync_result
+        with app.app_context():
+            olt, sync = self._mk_olt('Stale-Bind-OLT', '10.9.9.21')
+            db.session.add(ONU(olt_id=olt.id, frame=1, slot=1, port=3, onu_id=3,
+                              onu_index=103003, serial_number='94:A4:F9:F7:39:76',
+                              status='online'))
+            db.session.add(ONU(olt_id=olt.id, frame=1, slot=1, port=4, onu_id=34,
+                              onu_index=104034, serial_number='94:A4:F9:F7:39:76',
+                              status='los'))
+            db.session.commit()
+            olt_id = olt.id
+            result = {
+                'system': {}, 'snmp_ok': True, 'telnet_ok': False,
+                'onus': [
+                    {'onu_index': 103003, 'frame': 1, 'slot': 1, 'port': 3, 'onu_id': 3,
+                     'serial_number': '94:A4:F9:F7:39:76', 'name': 'NA', 'status': 'online'},
+                ],
+            }
+            save_sync_result(olt, result, sync, light=True)
+            db.session.commit()
+            onus = ONU.query.filter_by(olt_id=olt_id).all()
+        assert len(onus) == 1
+        assert onus[0].onu_index == 103003
+        assert onus[0].status == 'online'
+
+    def test_moved_port_row_repointed_keeps_identity(self, db_ctx):
+        """ONU legitimately moved ports (old position now free): the existing
+        row must be repointed — same id, custom name preserved."""
+        from sync_helper import save_sync_result
+        with app.app_context():
+            olt, sync = self._mk_olt('Moved-Port-OLT', '10.9.9.22')
+            old = ONU(olt_id=olt.id, frame=1, slot=1, port=4, onu_id=34,
+                      onu_index=104034, serial_number='94:A4:F9:F7:39:76',
+                      status='los', name='Pelanggan-X')
+            db.session.add(old)
+            db.session.commit()
+            olt_id, old_id = olt.id, old.id
+            result = {
+                'system': {}, 'snmp_ok': True, 'telnet_ok': False,
+                'onus': [
+                    {'onu_index': 103003, 'frame': 1, 'slot': 1, 'port': 3, 'onu_id': 3,
+                     'serial_number': '94:A4:F9:F7:39:76', 'name': 'NA', 'status': 'online'},
+                ],
+            }
+            save_sync_result(olt, result, sync, light=True)
+            db.session.commit()
+            onus = ONU.query.filter_by(olt_id=olt_id).all()
+        assert len(onus) == 1
+        assert onus[0].id == old_id          # same row, not a new one
+        assert onus[0].onu_index == 103003   # repointed to the new position
+        assert (onus[0].slot, onus[0].port, onus[0].onu_id) == (1, 3, 3)
+        assert onus[0].name == 'Pelanggan-X' # custom name survives ('NA' not applied)
+
+    def test_same_index_twice_in_one_result_no_dup(self, db_ctx):
+        """If an adapter ever emits two entries with the SAME onu_index in
+        one result, they must merge into a single row — previously the second
+        entry created a duplicate only next sync's dedup would remove."""
+        from sync_helper import save_sync_result
+        with app.app_context():
+            olt, sync = self._mk_olt('Dup-Idx-OLT', '10.9.9.23')
+            olt_id = olt.id
+            result = {
+                'system': {}, 'snmp_ok': True, 'telnet_ok': False,
+                'onus': [
+                    {'onu_index': 103003, 'frame': 1, 'slot': 1, 'port': 3, 'onu_id': 3,
+                     'serial_number': 'AA:BB:CC:DD:EE:01', 'name': 'First', 'status': 'los'},
+                    {'onu_index': 103003, 'frame': 1, 'slot': 1, 'port': 3, 'onu_id': 3,
+                     'serial_number': 'AA:BB:CC:DD:EE:02', 'name': 'Second', 'status': 'online'},
+                ],
+            }
+            save_sync_result(olt, result, sync, light=True)
+            db.session.commit()
+            onus = ONU.query.filter_by(olt_id=olt_id).all()
+        assert len(onus) == 1
+        assert onus[0].status == 'online'  # second entry updated the same row

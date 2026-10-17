@@ -793,8 +793,8 @@ class SNMPCollector:
         """
         onus = []
         for pon_index, onu_slot in onu_keys:
-            frame, port = parse_pon_index(pon_index)
-            if frame == 0:
+            board, port = parse_pon_index(pon_index)
+            if board == 0:
                 continue
 
             detail = self.collect_onu_detail_batch(pon_index, onu_slot)
@@ -802,11 +802,11 @@ class SNMPCollector:
                 continue
 
             onu = {
-                'frame': frame,
-                'slot': frame,
+                'frame': 1,
+                'slot': board,  # C320 pon_index encodes board = slot; frame is always 1
                 'port': port,
                 'onu_id': onu_slot,
-                'onu_index': frame * 100000 + frame * 10000 + port * 100 + onu_slot,
+                'onu_index': 100000 + board * 10000 + port * 100 + onu_slot,
                 'serial_number': detail['serial_number'],
                 'name': detail['name'],
                 'description': detail['description'],
@@ -1182,8 +1182,8 @@ class SNMPCollector:
         onus = []
         for key in sorted(all_keys):
             pon_index, onu_slot = key
-            frame, port = parse_pon_index(pon_index)
-            if frame == 0: continue  # invalid ponIndex
+            board, port = parse_pon_index(pon_index)
+            if board == 0: continue  # invalid ponIndex
 
             sn = sn_by_key.get(key, '')
             if not sn: continue  # skip entries without serial
@@ -1217,11 +1217,11 @@ class SNMPCollector:
                 status = classify_onu_status(oper_val, dereg_val, olt_rx, onu_rx)
 
             onu = {
-                'frame': frame,
-                'slot': frame,  # ZTE C320: board 1 = slot 1, board 2 = slot 2
+                'frame': 1,
+                'slot': board,  # ZTE C320: pon_index encodes board = slot; frame is always 1
                 'port': port,
                 'onu_id': onu_slot,
-                'onu_index': frame * 100000 + frame * 10000 + port * 100 + onu_slot,
+                'onu_index': 100000 + board * 10000 + port * 100 + onu_slot,
                 'serial_number': sn,
                 'name': name_by_key.get(key, ''),
                 'description': desc_by_key.get(key, ''),
