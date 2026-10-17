@@ -100,6 +100,8 @@ def _run_ztp_pass(app):
     for olt in olts:
         if not olt.cli_enabled or not olt.cli_username:
             continue
+        if (olt.vendor or 'zte').lower() != 'zte':
+            continue  # ZTP registration uses ZTE CLI — non-ZTE adapters are monitoring-only
         # Don't telnet the OLT while a sync is holding its lock — the extra
         # CLI session competes with the sync's SNMP walks on OLT CPU.
         from sync_lock import is_sync_locked

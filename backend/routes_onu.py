@@ -31,6 +31,20 @@ from cli_sanitize import CliValidationError, sanitize_cli_text, sanitize_cli_int
 
 bp = Blueprint('onu', __name__)
 
+
+def _zte_cli_unsupported(olt):
+    """Return a 400 response when an endpoint needs ZTE C320 CLI but the OLT is
+    another vendor (monitoring-only adapter). None when ZTE — proceed normally."""
+    vendor = (olt.vendor or 'zte').lower()
+    if vendor == 'zte':
+        return None
+    return jsonify({
+        'success': False,
+        'message': (f'Fitur ini memakai perintah CLI ZTE C320 — tidak didukung untuk OLT '
+                    f'{vendor.upper()}. Monitoring (status/RX/MAC/nama) tetap berjalan via adapter.'),
+    }), 400
+
+
 @bp.route('/api/onu/lookup/<int:olt_id>/<int:frame>/<int:port>/<int:onu_num>')
 @login_required
 def onu_lookup(olt_id, frame, port, onu_num):
@@ -96,8 +110,10 @@ def api_onu_live_detail(onu_id):
     # last good data instead of blanking the service config out.
     live_detail_error = None
 
-    if olt and olt.cli_enabled and olt.cli_username:
-        # ZTE: CLI-based live detail (SSH or Telnet)
+    if olt and olt.cli_enabled and olt.cli_username and (olt.vendor or 'zte').lower() == 'zte':
+        # ZTE: CLI-based live detail (SSH or Telnet). Other vendors' adapters are
+        # monitoring-only — collect_onu_detail() sends C320 commands that would
+        # return syntax errors on HiOSO/EPON OLTs.
         from snmp_collector import TelnetCollector, create_cli_collector
         from sync_lock import acquire_sync_lock, release_sync_lock
         try:
@@ -205,26 +221,29 @@ def update_onu(onu_id):
     data = request.get_json()
     logger.info(f"[update_onu] ONU {onu_id} payload={data} by user={current_user.username}")
     olt = db.session.get(OLT, onu.olt_id) if onu.olt_id else None
+    vendor = (olt.vendor or 'zte').lower() if olt else 'zte'
     is_epon = (onu.card or '').lower() == 'epon'
-    cli_cmds = []  # Collect CLI commands to send to OLT after DB save
+    cli_cmds = []  # Collect CLI commands to send to OLT after DB save (ZTE only)
     needs_epon_desc_update = False
     if 'name' in data:
         if not current_user.has_permission('edit_onu_name'):
             return jsonify({'success': False, 'message': 'Permission denied: edit_onu_name'}), 403
         onu.name = data['name']
-        if is_epon:
-            needs_epon_desc_update = True
-        else:
-            cli_cmds.append(f'name {data["name"]}')
+        if vendor == 'zte':
+            if is_epon:
+                needs_epon_desc_update = True
+            else:
+                cli_cmds.append(f'name {data["name"]}')
     if 'description' in data:
         if not current_user.has_permission('edit_onu_description'):
             return jsonify({'success': False, 'message': 'Permission denied: edit_onu_description'}), 403
         onu.description = data['description']
-        if is_epon:
-            needs_epon_desc_update = True
-        else:
-            cli_cmds.append(f'description {data["description"]}')
-    if is_epon and needs_epon_desc_update:
+        if vendor == 'zte':
+            if is_epon:
+                needs_epon_desc_update = True
+            else:
+                cli_cmds.append(f'description {data["description"]}')
+    if vendor == 'zte' and is_epon and needs_epon_desc_update:
         # EPON ONUs don't support separate 'name'/'description' CLI commands —
         # both are set together via a single 'property description $$Name$$Desc'
         # command (matches the fix already applied in update_onu_field() below).
@@ -241,8 +260,8 @@ def update_onu(onu_id):
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
         onu.onu_type = data['onu_type'].strip()
-        # Re-register ONU with new type on OLT (preserves existing config)
-        if olt and olt.cli_enabled and olt.cli_username and onu.serial_number:
+        # Re-register ONU with new type on OLT (preserves existing config) — ZTE CLI only
+        if vendor == 'zte' and olt and olt.cli_enabled and olt.cli_username and onu.serial_number:
             try:
                 from snmp_collector import create_cli_collector
                 tc = create_cli_collector(olt)
@@ -398,6 +417,9 @@ def migrate_onu(onu_id):
     olt = onu.olt
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
 
     # Calculate new ONU ID
     if onu_id_mode == 'auto':
@@ -513,8 +535,9 @@ def delete_onu(onu_id):
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
     olt = onu.olt
     olt_id = onu.olt_id
-    # Deregister from OLT via CLI if configured (SSH or Telnet)
-    if olt and olt.cli_enabled:
+    # Deregister from OLT via CLI if configured (SSH or Telnet — ZTE only;
+    # non-ZTE rows are removed from NMS DB only, the OLT keeps its own record)
+    if olt and olt.cli_enabled and (olt.vendor or 'zte').lower() == 'zte':
         from snmp_collector import TelnetCollector, create_cli_collector
         tc = create_cli_collector(olt)
         is_epon = (onu.card or '').lower() == 'epon'
@@ -659,6 +682,9 @@ def onu_action(onu_id):
 
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
 
     use_snmp = data.get('register_mode', 'cli') == 'snmp' and olt.snmp_enabled
 
@@ -816,6 +842,9 @@ def onu_live_info(onu_id):
     olt = onu.olt
     if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
 
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
@@ -837,6 +866,9 @@ def onu_get_status(onu_id):
     olt = onu.olt
     if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
 
     from snmp_collector import create_cli_collector
     import re as _re
@@ -1160,6 +1192,9 @@ def onu_refresh_status(onu_id):
 
     if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
     is_epon = (onu.card or '').lower() == 'epon'
@@ -1191,6 +1226,9 @@ def onu_running_config(onu_id):
     olt = onu.olt
     if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
     from snmp_collector import TelnetCollector, create_cli_collector
     tc = create_cli_collector(olt)
     is_epon = (onu.card or '').lower() == 'epon'
@@ -1237,6 +1275,9 @@ def onu_resync_config(onu_id):
 
     if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
     try:
         from snmp_collector import TelnetCollector, create_cli_collector
         tc = create_cli_collector(olt)
@@ -1318,6 +1359,9 @@ def onu_replace(onu_id):
     olt = onu.olt
     if not olt or not olt.cli_enabled:
         return jsonify({'success': False, 'message': 'OLT not configured for CLI access'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
 
     if not current_user.has_permission('configure_onu'):
         return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
@@ -1685,6 +1729,8 @@ def update_onu_field(onu_id):
         """Helper: send CLI command to ONU interface on OLT (ZTE only)."""
         if not olt or not olt.cli_enabled or not olt.cli_username:
             return
+        if (olt.vendor or 'zte').lower() != 'zte':
+            return  # 'name'/'property description'/interface cmds below are ZTE CLI
         try:
             from snmp_collector import create_cli_collector
             tc = create_cli_collector(olt)
@@ -1705,11 +1751,21 @@ def update_onu_field(onu_id):
 
     if field == 'name':
         onu.name = value
-        is_epon = (onu.card or '').lower() == 'epon'
-        if is_epon:
-            _send_onu_cli(olt, onu, f'property description $${value}$${onu.description or ""}')
+        vendor = (olt.vendor or 'zte').lower() if olt else 'zte'
+        if vendor == 'hioso':
+            # Push rename to the OLT itself (POST /goform/setOnu, Telnet fallback)
+            try:
+                from olt_adapters.hioso_adapter import HiosoAdapter
+                ok, detail = HiosoAdapter(olt).set_onu_name(onu.port, onu.onu_id, value)
+                logger.info(f"[update_onu_field] HiOSO set_onu_name {onu.port}:{onu.onu_id} -> {ok} ({detail})")
+            except Exception as e:
+                logger.warning(f"[update_onu_field] HiOSO set_onu_name failed: {e}")
         else:
-            _send_onu_cli(olt, onu, f'name {value}')
+            is_epon = (onu.card or '').lower() == 'epon'
+            if is_epon:
+                _send_onu_cli(olt, onu, f'property description $${value}$${onu.description or ""}')
+            else:
+                _send_onu_cli(olt, onu, f'name {value}')
     elif field == 'description':
         onu.description = value
         is_epon = (onu.card or '').lower() == 'epon'
@@ -1721,8 +1777,9 @@ def update_onu_field(onu_id):
         onu.actual_type = value
     elif field == 'onu_type':
         onu.onu_type = value
-        # Send CLI to OLT — re-register ONU with new type (preserves existing config)
-        if olt and olt.cli_enabled and olt.cli_username:
+        # Send CLI to OLT — re-register ONU with new type (preserves existing config).
+        # ZTE-only: 'onu N type X sn/mac' is C320 syntax, not valid on other vendors.
+        if olt and (olt.vendor or 'zte').lower() == 'zte' and olt.cli_enabled and olt.cli_username:
             try:
                 from snmp_collector import create_cli_collector
                 tc = create_cli_collector(olt)
@@ -1770,8 +1827,9 @@ def update_onu_field(onu_id):
         pass
 
     log_action('onu_field_update', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'{field}="{value}"')
-    # Auto-save config to startup-config for fields that modify OLT running-config
-    if field in ('name', 'description', 'onu_type'):
+    # Auto-save config to startup-config for fields that modify OLT running-config.
+    # 'write' is a ZTE CLI command — non-ZTE vendors persist their own way.
+    if field in ('name', 'description', 'onu_type') and olt and (olt.vendor or 'zte').lower() == 'zte':
         _auto_write_config(onu.olt_id)
     return jsonify({'success': True, 'message': f'{field} updated to "{value}"'})
 
@@ -2406,6 +2464,9 @@ def provision_unified():
     olt = db.session.get(OLT, olt_id) if olt_id else None
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
 
     frame = data.get('frame', 1)
     slot = data.get('slot', 1)
@@ -2629,6 +2690,9 @@ def pre_register_onu():
     olt = db.session.get(OLT, olt_id) if olt_id else None
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
 
     frame = data.get('frame', 1)
     slot = data.get('slot', 1)
@@ -2801,6 +2865,9 @@ def scan_unconfigured():
     olt = db.session.get(OLT, olt_id) if olt_id else None
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
+    unsupported = _zte_cli_unsupported(olt)
+    if unsupported:
+        return unsupported
 
     use_snmp = data.get('register_mode', 'cli') == 'snmp' and olt.snmp_enabled
 
