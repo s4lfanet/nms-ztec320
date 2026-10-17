@@ -833,7 +833,7 @@ class HiosoAdapter(BaseOLTAdapter):
 
         for t_oid in (epon_oids['chassis_temp'], epon_oids['chassis_temp_alt'], VENDOR_OIDS['hioso_gpon']['chassis_temp']):
             try:
-                res = sc._run(sc._walk_async(t_oid))
+                res = sc._run(sc._walk_async(t_oid, max_rows=50))
                 if res:
                     raw_val = next(iter(res.values()))
                     m = re.search(r'[-+]?\d+(?:\.\d+)?', str(raw_val))
@@ -849,15 +849,15 @@ class HiosoAdapter(BaseOLTAdapter):
                 pass
 
         try:
-            cpu_res = sc._run(sc._walk_async(epon_oids['hr_cpu']))
+            cpu_res = sc._run(sc._walk_async(epon_oids['hr_cpu'], max_rows=50))
             if cpu_res:
                 cpu = int(float(str(next(iter(cpu_res.values())))))
         except Exception:
             pass
 
         try:
-            tot_res = sc._run(sc._walk_async(epon_oids['hr_mem_total']))
-            used_res = sc._run(sc._walk_async(epon_oids['hr_mem_used']))
+            tot_res = sc._run(sc._walk_async(epon_oids['hr_mem_total'], max_rows=50))
+            used_res = sc._run(sc._walk_async(epon_oids['hr_mem_used'], max_rows=50))
             if tot_res and used_res:
                 tot = float(str(next(iter(tot_res.values()))))
                 used = float(str(next(iter(used_res.values()))))
@@ -874,9 +874,9 @@ class HiosoAdapter(BaseOLTAdapter):
         filtered out; returns [] when the walk fails so the caller can keep
         its hardcoded G1–G4 fallback."""
         try:
-            descr = sc._run(sc._walk_async('.1.3.6.1.2.1.2.2.1.2'))
-            oper = sc._run(sc._walk_async('.1.3.6.1.2.1.2.2.1.8'))
-            admin = sc._run(sc._walk_async('.1.3.6.1.2.1.2.2.1.7'))
+            descr = sc._run(sc._walk_async('.1.3.6.1.2.1.2.2.1.2', max_rows=256))
+            oper = sc._run(sc._walk_async('.1.3.6.1.2.1.2.2.1.8', max_rows=256))
+            admin = sc._run(sc._walk_async('.1.3.6.1.2.1.2.2.1.7', max_rows=256))
         except Exception:
             return []
         if not descr:

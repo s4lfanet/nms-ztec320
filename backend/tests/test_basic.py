@@ -2511,7 +2511,7 @@ class TestHiosoMultiVendorAdapter:
             '.1.3.6.1.2.1.25.3.3.1.2.768': {'0': 18},
         }
 
-        async def fake_walk_async(self_sc, oid):
+        async def fake_walk_async(self_sc, oid, max_rows=None):
             return fake_walks.get(oid, {})
 
         with app.app_context():
@@ -2588,7 +2588,7 @@ class TestHiosoMultiVendorAdapter:
             '.1.3.6.1.2.1.2.2.1.7': {'5': 1, '6': 1, '7': 1, '8': 1, '9': 1, '10': 1},
         }
 
-        async def fake_walk_async(self_sc, oid):
+        async def fake_walk_async(self_sc, oid, max_rows=None):
             return fake_walks.get(oid, {})
 
         with app.app_context():

@@ -826,11 +826,18 @@ class SNMPCollector:
         logger.info(f"SNMP batch GET: collected {len(onus)} ONUs ({len(onu_keys)} keys)")
         return onus
 
-    async def _bulk_walk(self, oid, max_repetitions=None):
+    async def _bulk_walk(self, oid, max_repetitions=None, max_rows=None):
         """SNMP GETBULK walk — fetches up to max_repetitions OIDs per packet.
-        
+
         Falls back to GETNEXT (1 OID per packet) if GETBULK fails.
         When self.use_walk=True, always uses GETNEXT (for lossy/high-latency links).
+
+        max_rows bounds the total collected rows — use it for scalar/column
+        probes (e.g. chassis temperature) so a firmware exposing a huge table
+        under that column (HiOSO HA7304V .25355.3.1.8.1.1.9) can't stall the
+        walk for minutes. Also stops when the agent stops advancing (buggy
+        firmware returning duplicate OIDs).
+
         Returns list of (oid_str, raw_val, str_val) tuples.
         """
         from pysnmp.hlapi.v1arch.asyncio import Slim, ObjectType, ObjectIdentity
@@ -845,6 +852,7 @@ class SNMPCollector:
         use_bulk = not self.use_walk  # If use_walk=True, start with GetNext
         try:
             while True:
+                cur_before = cur
                 try:
                     if use_bulk:
                         ei, es, eidx, vb = await slim.get_bulk(
@@ -889,14 +897,20 @@ class SNMPCollector:
                         break
                     results.append((roid, val, val_str))
                     cur = roid
-                if done:
+                    if max_rows and len(results) >= max_rows:
+                        done = True
+                        break
+                if done or cur == cur_before:
+                    # cur == cur_before: agent returned rows but none advanced
+                    # the walk position (duplicate/non-lexicographic OIDs on
+                    # buggy firmware) — bail instead of looping forever.
                     break
                 errors = 0
         finally:
             slim.close()
         return results
 
-    async def _walk_async(self, oid):
+    async def _walk_async(self, oid, max_rows=None):
         """Walk an OID and return dict {index_suffix: value}.
 
         Accepts both full OIDs (e.g. '1.3.6.1.2.1.2.2.1.2') and relative
@@ -911,7 +925,7 @@ class SNMPCollector:
         # Also strip from the comparison base
         oid_base = oid
 
-        raw = await self._bulk_walk(oid_base)
+        raw = await self._bulk_walk(oid_base, max_rows=max_rows)
         result = {}
         for oid_str, val, val_str in raw:
             # Extract index suffix (everything after the base OID)
