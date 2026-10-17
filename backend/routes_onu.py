@@ -296,7 +296,15 @@ def update_onu(onu_id):
         db.session.flush()
     db.session.commit()
     logger.info(f"[update_onu] DB committed for ONU {onu_id}, fields: {list(data.keys())}")
-    if cli_cmds and olt and olt.cli_enabled and olt.cli_username:
+    if olt and (olt.vendor or 'zte').lower() == 'hioso':
+        if 'name' in data:
+            try:
+                from olt_adapters.hioso_adapter import HiosoAdapter
+                ok, detail = HiosoAdapter(olt).set_onu_name(onu.port, onu.onu_id, data['name'])
+                logger.info(f"[update_onu] HiOSO set_onu_name {onu.port}:{onu.onu_id} -> {ok} ({detail})")
+            except Exception as e:
+                logger.warning(f"[update_onu] HiOSO set_onu_name failed: {e}")
+    elif cli_cmds and olt and olt.cli_enabled and olt.cli_username:
         try:
             from snmp_collector import create_cli_collector
             tc = create_cli_collector(olt)

@@ -321,7 +321,11 @@ def save_sync_result(olt, result, sync, light=False):
         onu.serial_number = onu_data.get('serial_number', '')
         _new_name = onu_data.get('name', '') or onu_data.get('description', '')
         if _new_name:
-            onu.name = _new_name
+            _cur_name = (onu.name or '').strip()
+            if _new_name == 'NA' and _cur_name and _cur_name not in ('Unnamed', 'NA') and not _cur_name.startswith('ONU_'):
+                pass
+            else:
+                onu.name = _new_name
         _new_desc = onu_data.get('description', '')
         if _new_desc:
             onu.description = _new_desc

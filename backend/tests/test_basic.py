@@ -2497,11 +2497,14 @@ class TestHiosoMultiVendorAdapter:
         from models import ONU, OLTPort, OLTCard
 
         fake_walks = {
-            '.25355.3.2.6.3.2.1.37': {'1.1.1': 'Pelanggan-A', '1.1.2': 'Pelanggan-LOS', '1.2.1': 'Pelanggan-DYG'},
-            '.25355.3.2.6.3.2.1.12': {'1.1.1': b'\xc4\x16\xc8\x09\xb5\x9d', '1.1.2': 'aabbcc112233', '1.2.1': 'ddeeff445566'},
-            '.25355.3.2.6.3.2.1.39': {'1.1.1': 1, '1.1.2': 0, '1.2.1': 0},
-            '.25355.3.2.6.3.2.1.13': {'1.1.1': 5, '1.1.2': 3, '1.2.1': 1},  # 3=LOS, 1=PowerOff/DyingGasp
-            '.25355.3.2.6.3.2.1.25': {'1.1.1': 450, '1.1.2': 820, '1.2.1': 310},
+            '.25355.3.2.6.3.2.1.37': {'1.1.1': '', '1.1.2': 'Pelanggan-LOS', '1.2.1': 'Pelanggan-DYG'},
+            '.25355.3.2.6.3.2.1.11': {'1.1.1': 'f85329fc9784', '1.1.2': 'aabbcc112233', '1.2.1': 'ddeeff445566'},
+            '.25355.3.2.6.3.2.1.12': {'1.1.1': 0, '1.1.2': 0, '1.2.1': 0},  # HA7304C returns '0' on .12
+            '.25355.3.2.6.3.2.1.39': {'1.1.1': 1, '1.1.2': 2, '1.2.1': 0},
+            '.25355.3.2.6.3.2.1.13': {'1.1.1': 5, '1.1.2': 3, '1.2.1': 5},
+            '.25355.3.2.6.3.2.1.15': {'1.1.1': '6301', '1.1.2': '9127', '1.2.1': '6301'},
+            '.25355.3.2.6.3.2.1.41': {'1.1.1': 0, '1.1.2': 0, '1.2.1': 1},  # .41 = DyingGasp flag
+            '.25355.3.2.6.3.2.1.25': {'1.1.1': 300, '1.1.2': 600, '1.2.1': 450},
             '.25355.3.2.6.14.2.1.8': {'1.1.1': '-19.45', '1.1.2': '-40.0', '1.2.1': '0'},
             '.25355.3.2.6.14.2.1.4': {'1.1.1': '2.15'},
             '.25355.3.2.1.1.1.2.0': {'0': '42'},
@@ -2512,7 +2515,7 @@ class TestHiosoMultiVendorAdapter:
             return fake_walks.get(oid, {})
 
         with app.app_context():
-            olt = OLT(name='OLT-HIOSO-1', ip_address='10.10.10.2', vendor='hioso', model='HA7304', snmp_enabled=True)
+            olt = OLT(name='OLT-HIOSO-1', ip_address='10.10.10.2', vendor='hioso', model='HA7304C', snmp_enabled=True, telnet_enabled=False)
             db.session.add(olt)
             db.session.commit()
 
@@ -2521,20 +2524,23 @@ class TestHiosoMultiVendorAdapter:
             assert adapter.vendor == 'hioso'
 
             with patch('snmp_core.SNMPCollector._walk_async', new=fake_walk_async), \
-                 patch('snmp_core.SNMPCollector.collect_system_info', return_value={'uptime': 36000, 'description': 'HiOSO HA7304 V1.2'}):
+                 patch('snmp_core.SNMPCollector.collect_system_info', return_value={'uptime': 36000, 'description': 'HiOSO HA7304C V2.2.85'}), \
+                 patch.object(adapter, '_collect_from_web', return_value=([], {})), \
+                 patch.object(adapter, '_collect_cli_port_specs', return_value={(1, 1, 1): {'ge': 4, 'fe': 0, 'pots': 1, 'chip': '6301'}}):
                 res = adapter.poll_olt(light=False)
                 assert res['success'] is True
                 assert len(res['onus']) == 3
                 count, _ = save_sync_result(olt, res, sync=None, light=False)
                 assert count == 3
 
-            onus = {o.name: o for o in ONU.query.filter_by(olt_id=olt.id).all()}
-            assert onus['Pelanggan-A'].status == 'online'
-            assert onus['Pelanggan-A'].serial_number == 'C4:16:C8:09:B5:9D'
-            assert onus['Pelanggan-A'].rx_power == -19.45
-            assert onus['Pelanggan-A'].onu_rx_power == -19.45
-            assert onus['Pelanggan-LOS'].status == 'los'
-            assert onus['Pelanggan-DYG'].status == 'dyinggasp'
+            onus = {o.onu_id_str: o for o in ONU.query.filter_by(olt_id=olt.id).all()}
+            assert onus['1/1/1:1'].name == 'NA'
+            assert onus['1/1/1:1'].serial_number == 'F8:53:29:FC:97:84'
+            assert onus['1/1/1:1'].actual_type == '6301 (4GE+1POTS)'
+            assert onus['1/1/1:1'].rx_power == -19.45
+            assert onus['1/1/1:2'].status == 'los'
+            assert onus['1/1/1:2'].serial_number == 'AA:BB:CC:11:22:33'
+            assert onus['1/1/2:1'].status == 'dyinggasp'
 
             # Verify rack data & PON port stats
             rack = adapter.get_rack_data().to_dict()
