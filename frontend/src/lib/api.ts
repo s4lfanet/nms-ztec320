@@ -155,6 +155,7 @@ export const api = {
   mikrotikUpdate: (id: number, data: Partial<MikrotikDevice> & { api_password?: string }) => request<{ success: boolean; device: MikrotikDevice }>(`/api/mikrotik/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   mikrotikDelete: (id: number) => request<{ success: boolean }>(`/api/mikrotik/${id}`, { method: 'DELETE' }),
   mikrotikTest: (id: number) => request<{ success: boolean; identity?: string; active_sessions?: number; message?: string }>(`/api/mikrotik/${id}/test`, { method: 'POST' }),
+  mikrotikPollNow: () => request<{ success: boolean; devices: { name: string; ok: boolean; sessions?: number; error?: string }[]; states: Record<string, number>; reconciled: number; message?: string }>('/api/mikrotik/poll-now', { method: 'POST' }),
   onuLinkState: (onuId: number) => request<{ success: boolean; state: OnuLinkState | null }>(`/api/onu/${onuId}/link-state`),
   onuPingClient: (onuId: number) => request<{ success: boolean; source: string; ip: string; ping: { sent: number; received: number; loss_pct: number; avg_rtt_ms: number | null }; state: OnuLinkState; message?: string }>(`/api/onu/${onuId}/ping`, { method: 'POST' }),
   ftthImpact: (nodeType: 'otb' | 'jc' | 'odc' | 'odp', nodeId: number) => request<{ success: boolean; total: number; online: number; offline: number; customers: Array<{ id: number; name: string; serial: string; status: string }>; truncated: boolean }>(`/api/ftth/impact/${nodeType}/${nodeId}`),

@@ -9,7 +9,7 @@ import { confirm } from '../components/ConfirmDialog';
 import {
   Eye, Edit3, Trash2,
   CheckCircle2, AlertTriangle, XCircle, HelpCircle, Wifi,
-  Satellite, Download, Split, Radio, Wrench, MapPin
+  Satellite, Download, Split, Radio, Wrench, MapPin, RefreshCw
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useDashboardWs } from '../hooks/useDashboardWs';
@@ -133,6 +133,18 @@ export function AllOnus() {
     onError: () => toast.error('Signal refresh failed'),
   });
 
+  const linkSyncMutation = useMutation({
+    mutationFn: api.mikrotikPollNow,
+    onSuccess: (d) => {
+      const s = d.states || {};
+      const ok = (s.ok || 0) + (s.slow || 0) + (s.down || 0);
+      toast.success(`Link sync selesai — ${ok} aktif, ${s.no_session || 0} tanpa sesi`);
+      queryClient.invalidateQueries({ queryKey: ['all-onus'] });
+      queryClient.invalidateQueries({ queryKey: ['ftth-map'] });
+    },
+    onError: (e: Error) => toast.error(e.message || 'Link sync gagal'),
+  });
+
   // Reset page when filters change
   useEffect(() => { setPage(1); }, [oltFilter, statusFilter, signalFilter, slotFilter, ponFilter, debouncedSearch, pageSize]);
 
@@ -244,6 +256,17 @@ export function AllOnus() {
             >
               {refreshSignalMutation.isPending ? 'Refreshing...' : 'Signal'}
             </Button>
+            {hasPerm('settings_ip_olts') && (
+              <Button
+                variant="secondary"
+                title="Sync sesi PPPoE dari Mikrotik + auto-nama ONU + ping link"
+                icon={<RefreshCw size={15} className={linkSyncMutation.isPending ? 'animate-spin' : ''} />}
+                onClick={() => linkSyncMutation.mutate()}
+                disabled={linkSyncMutation.isPending}
+              >
+                {linkSyncMutation.isPending ? 'Syncing...' : 'Link PPPoE'}
+              </Button>
+            )}
           </>
         }
       />

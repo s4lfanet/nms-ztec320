@@ -152,6 +152,43 @@ def _state_to_dict(s):
     }
 
 
+@bp.route('/api/mikrotik/poll-now', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def poll_now():
+    """Run one full poll cycle synchronously (session match + name/MAC
+    auto-naming + ping batch + no_session reconcile). The result mirrors what
+    the background poller does every link_check_interval seconds."""
+    from link_state_poller import poll_device, reconcile_no_session, _poll_lock
+    if not _poll_lock.acquire(blocking=False):
+        return jsonify({'success': False,
+                        'message': 'Poller sedang berjalan — coba lagi beberapa detik'}), 409
+    try:
+        all_users, ok_ids, results = set(), set(), []
+        for dev in MikrotikDevice.query.filter_by(enabled=True).all():
+            try:
+                users = poll_device(dev)
+            except Exception as e:
+                db.session.rollback()
+                results.append({'name': dev.name, 'ok': False, 'error': str(e)[:200]})
+                continue
+            if users is None:
+                results.append({'name': dev.name, 'ok': False, 'error': dev.last_error})
+            else:
+                all_users |= users
+                ok_ids.add(dev.id)
+                results.append({'name': dev.name, 'ok': True, 'sessions': len(users)})
+        reconciled = reconcile_no_session(all_users, ok_ids) if ok_ids else 0
+        states = {r[0]: r[1] for r in db.session.query(
+            OnuLinkState.link_state, db.func.count()).group_by(OnuLinkState.link_state)}
+        log_action('mikrotik_poll_now', 'settings', target='all',
+                   detail=f'manual link-state poll: {results}')
+        return jsonify({'success': True, 'devices': results,
+                        'states': states, 'reconciled': reconciled})
+    finally:
+        _poll_lock.release()
+
+
 @bp.route('/api/mikrotik/link-state', methods=['GET'])
 @login_required
 def link_states():

@@ -6,7 +6,7 @@ import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
   Router, Plus, Trash2, Edit3, CheckCircle, XCircle,
-  Loader2, Wifi, WifiOff, Zap,
+  Loader2, Wifi, WifiOff, Zap, RefreshCw,
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -87,6 +87,23 @@ export function MikrotikSettings() {
     }
   };
 
+  const pollNowMutation = useMutation({
+    mutationFn: api.mikrotikPollNow,
+    onSuccess: (d) => {
+      const s = d.states || {};
+      const failed = (d.devices || []).filter(x => !x.ok);
+      if (failed.length) {
+        toast.error(`${failed.map(x => x.name).join(', ')}: ${failed[0].error || 'gagal'}`);
+      } else {
+        toast.success(`Sync link selesai — ${s.ok || 0} ok, ${s.slow || 0} lambat, ${s.down || 0} down, ${s.no_session || 0} tanpa sesi`);
+      }
+      invalidate();
+      qc.invalidateQueries({ queryKey: ['ftth-map'] });
+      qc.invalidateQueries({ queryKey: ['all-onus'] });
+    },
+    onError: (e: Error) => toast.error(e.message || 'Poll gagal'),
+  });
+
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm(f => ({ ...f, [k]: v }));
 
@@ -105,7 +122,18 @@ export function MikrotikSettings() {
         title="Mikrotik PPPoE Servers"
         description="RouterOS devices dipoll untuk sesi PPPoE + ping client — mewarnai garis ODP→ONU di peta FTTH."
         action={canManage && (
-          <Button onClick={openAdd} icon={<Plus size={16} />}>Tambah Mikrotik</Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => pollNowMutation.mutate()}
+              disabled={pollNowMutation.isPending || devices.length === 0}
+              title="Jalankan match sesi PPPoE + auto-nama ONU + ping sekarang"
+              icon={<RefreshCw size={15} className={pollNowMutation.isPending ? 'animate-spin' : ''} />}
+            >
+              {pollNowMutation.isPending ? 'Syncing…' : 'Sync Sekarang'}
+            </Button>
+            <Button onClick={openAdd} icon={<Plus size={16} />}>Tambah Mikrotik</Button>
+          </div>
         )}
       />
 
