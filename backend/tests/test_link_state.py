@@ -261,6 +261,43 @@ class TestLinkStatePoller:
         assert lsp.reconcile_no_session({'up@rw01'}, {1}) == 0
         assert OnuLinkState.query.count() == 0
 
+    def test_reconcile_skips_unidentifiable_onu(self, ctx):
+        """HiOSO-style 'NA' names are not PPPoE usernames — no_session would
+        falsely read as 'customer offline'; they stay 'unknown'."""
+        import link_state_poller as lsp
+        from models import OnuLinkState
+        _, onu = _mk_olt_onu(pppoe='')
+        onu.name = 'NA'
+        db.session.commit()
+        assert lsp.reconcile_no_session(set(), {1}) == 0
+        assert OnuLinkState.query.filter_by(onu_id=onu.id).first() is None
+
+    def test_reconcile_resets_stale_no_session_on_na_onu(self, ctx):
+        """A no_session row already created for an unidentifiable ONU resets
+        back to unknown on the next reconcile."""
+        import link_state_poller as lsp
+        from models import OnuLinkState
+        _, onu = _mk_olt_onu(pppoe='')
+        onu.name = 'NA'
+        st = OnuLinkState(onu_id=onu.id, link_state='no_session', session_up=False)
+        db.session.add(st); db.session.commit()
+        lsp.reconcile_no_session(set(), {1})
+        db.session.refresh(st)
+        assert st.link_state == 'unknown'
+
+    def test_na_name_does_not_bind_session(self, ctx):
+        """A session literally named 'NA' must not mass-bind every 'NA'-named
+        ONU."""
+        from models import OnuLinkState
+        _, onu = _mk_olt_onu(pppoe='')
+        onu.name = 'NA'
+        db.session.commit()
+        dev = _mk_dev()
+        with patch('link_state_poller.RouterOSClient',
+                   return_value=_fake_client([{'name': 'NA', 'address': '1.2.3.4'}])):
+            run_poll(dev)
+        assert OnuLinkState.query.filter_by(onu_id=onu.id).first() is None
+
     def test_reconcile_leaves_row_bound_to_failed_device(self, ctx):
         """State bound to a device that failed this cycle must not flip to
         no_session — the session may still be live on that router."""

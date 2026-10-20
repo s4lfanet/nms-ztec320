@@ -28,6 +28,28 @@ logger = logging.getLogger(__name__)
 _poll_lock = threading.Lock()
 _rr_cursor = {}  # mikrotik_id -> round-robin offset into its session list
 
+# ONU names that can never be PPPoE usernames — e.g. HiOSO sync stores 'NA'
+# for every ONU. Skipping them avoids both false 'no_session' mass-marks and
+# the pathological case of a real session literally named 'NA' binding to
+# hundreds of ONUs at once.
+_BAD_ONU_NAMES = {'', 'na', 'n/a', 'none', '-', 'onu', 'unknown'}
+
+
+def _name_is_usable(name):
+    return bool(name) and name.strip().lower() not in _BAD_ONU_NAMES
+
+
+def _ident_key(o):
+    """The identity used to decide 'no_session' vs 'unknown'.
+    pppoe column is always trustworthy; a name only counts when it looks
+    like a PPPoE username (ISP convention: user@realm)."""
+    if o.pppoe:
+        return o.pppoe
+    n = (o.name or '').strip()
+    if _name_is_usable(n) and '@' in n:
+        return n
+    return None
+
 
 def _cfg_int(key, default, lo=None, hi=None):
     row = SystemConfig.query.filter_by(key=key).first()
@@ -122,7 +144,7 @@ def poll_device(dev):
     for o in onus:
         if o.pppoe:
             by_pppoe.setdefault(o.pppoe, []).append(o)
-        if o.name:
+        if _name_is_usable(o.name):
             by_name.setdefault(o.name, []).append(o)
 
     slow_rtt = _cfg_int('link_slow_rtt_ms', 150)
@@ -202,16 +224,31 @@ def reconcile_no_session(all_users, ok_dev_ids):
     session list get link_state='no_session' — including rows that never had a
     state before (so map lines show grey-dashed, not 'unknown'). Rows bound to
     a device that failed this cycle are left untouched (stale is safer than
-    falsely declaring the session down)."""
+    falsely declaring the session down).
+
+    ONUs that can't be identified on PPPoE at all (no pppoe value and a name
+    that isn't a plausible username — e.g. HiOSO 'NA') keep/reset to
+    'unknown': we simply can't tell whether their customer has a session."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     changed = []
     onus = ONU.query.filter(db.or_(
         db.and_(ONU.pppoe.isnot(None), ONU.pppoe != ''),
         db.and_(ONU.name.isnot(None), ONU.name != ''))).all()
     for o in onus:
-        if (o.pppoe and o.pppoe in all_users) or (o.name and o.name in all_users):
+        if (o.pppoe and o.pppoe in all_users) or (
+                _name_is_usable(o.name) and o.name in all_users):
             continue
         st = OnuLinkState.query.filter_by(onu_id=o.id).first()
+        if _ident_key(o) is None:
+            # Not identifiable on PPPoE (e.g. HiOSO 'NA' names, auto-generated
+            # labels) — 'unknown' is honest; 'no_session' would falsely read as
+            # "customer offline". Clear a stale no_session left by older runs.
+            if st is not None and st.link_state == 'no_session':
+                st.link_state = 'unknown'
+                st.session_up = False
+                st.checked_at = now
+                changed.append(st)
+            continue
         if st is None:
             st = OnuLinkState(onu_id=o.id, pppoe_user=o.pppoe or o.name,
                               link_state='no_session', session_up=False,
