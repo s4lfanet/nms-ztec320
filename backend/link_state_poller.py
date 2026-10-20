@@ -14,6 +14,7 @@ Config keys in SystemConfig:
   link_fail_threshold  consecutive timeouts ->down (default 2)
 """
 import logging
+import re
 import subprocess
 import threading
 import time
@@ -49,6 +50,21 @@ def _ident_key(o):
     if _name_is_usable(n) and '@' in n:
         return n
     return None
+
+
+def _norm_mac(v):
+    """Normalize a MAC/serial to 12 uppercase hex chars, '' if not a MAC."""
+    h = re.sub(r'[^0-9A-Fa-f]', '', v or '').upper()
+    return h if len(h) == 12 else ''
+
+
+def _session_variants(name):
+    """Yield match keys for a session name: exact first, then with the
+    RouterOS duplicate-session suffix stripped ('user@rw03-1' -> 'user@rw03')."""
+    yield name
+    base = re.sub(r'-\d+$', '', name or '')
+    if base != name:
+        yield base
 
 
 def _cfg_int(key, default, lo=None, hi=None):
@@ -139,13 +155,17 @@ def poll_device(dev):
     # onu.name conventionally equals the PPPoE username, so fall back to name.
     onus = ONU.query.filter(db.or_(
         db.and_(ONU.pppoe.isnot(None), ONU.pppoe != ''),
-        db.and_(ONU.name.isnot(None), ONU.name != ''))).all()
-    by_pppoe, by_name = {}, {}
+        db.and_(ONU.name.isnot(None), ONU.name != ''),
+        db.and_(ONU.serial_number.isnot(None), ONU.serial_number != ''))).all()
+    by_pppoe, by_name, by_mac = {}, {}, {}
     for o in onus:
         if o.pppoe:
             by_pppoe.setdefault(o.pppoe, []).append(o)
         if _name_is_usable(o.name):
             by_name.setdefault(o.name, []).append(o)
+        mac = _norm_mac(o.serial_number)
+        if mac:
+            by_mac.setdefault(mac, []).append(o)
 
     slow_rtt = _cfg_int('link_slow_rtt_ms', 150)
     fail_th = _cfg_int('link_fail_threshold', 2, 1, 10)
@@ -157,11 +177,21 @@ def poll_device(dev):
     # --- sessions that map to known ONUs ----------------------------------
     matched = []
     for user, sess in sess_by_name.items():
-        # pppoe column wins; fall back to ONU name (bridge-mode ONUs)
-        targets = by_pppoe.get(user) or by_name.get(user, [])
+        # Priority: pppoe column > ONU name (bridge-mode ONUs) > caller-id MAC
+        # == serial_number (HiOSO/other OLTs whose ONUs dial PPPoE themselves —
+        # the ONU MAC then arrives as the session's caller-id).
+        targets = []
+        for key in _session_variants(user):
+            targets = by_pppoe.get(key) or by_name.get(key)
+            if targets:
+                break
+        if not targets:
+            targets = by_mac.get(_norm_mac(sess.get('caller-id'))) or []
         for onu in targets:
             if not onu.pppoe:
                 onu.pppoe = user  # backfill for future syncs/map/searches
+            if not _name_is_usable(onu.name):
+                onu.name = user  # auto-name 'NA' ONUs (HiOSO) from session
             st = _get_or_create_state(onu.id)
             old = st.link_state
             st.mikrotik_id = dev.id

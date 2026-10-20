@@ -298,6 +298,39 @@ class TestLinkStatePoller:
             run_poll(dev)
         assert OnuLinkState.query.filter_by(onu_id=onu.id).first() is None
 
+    def test_match_by_caller_id_mac(self, ctx):
+        """HiOSO/router-mode ONU: session caller-id (client MAC) equals the
+        ONU serial_number — matches, and auto-names the 'NA' ONU."""
+        from models import OnuLinkState
+        _, onu = _mk_olt_onu(pppoe='')
+        onu.name = 'NA'
+        onu.serial_number = 'F8:3E:95:45:D7:F8'
+        db.session.commit()
+        dev = _mk_dev()
+        sessions = [{'name': 'dera@cimerta', 'address': '10.5.5.5',
+                     'caller-id': 'F8:3E:95:45:D7:F8'}]
+        with patch('link_state_poller.RouterOSClient', return_value=_fake_client(sessions)):
+            run_poll(dev)
+        st = OnuLinkState.query.filter_by(onu_id=onu.id).one()
+        assert st.link_state == 'ok'
+        db.session.refresh(onu)
+        assert onu.pppoe == 'dera@cimerta'   # backfilled
+        assert onu.name == 'dera@cimerta'    # auto-named
+
+    def test_match_strips_duplicate_session_suffix(self, ctx):
+        """'user@rw03-1' (RouterOS duplicate-session suffix) still matches an
+        ONU named 'user@rw03'."""
+        from models import OnuLinkState
+        _, onu = _mk_olt_onu(pppoe='')
+        onu.name = 'ade@rw04'
+        db.session.commit()
+        dev = _mk_dev()
+        sessions = [{'name': 'ade@rw04-2', 'address': '10.6.6.6'}]
+        with patch('link_state_poller.RouterOSClient', return_value=_fake_client(sessions)):
+            run_poll(dev)
+        st = OnuLinkState.query.filter_by(onu_id=onu.id).one()
+        assert st.link_state == 'ok'
+
     def test_reconcile_leaves_row_bound_to_failed_device(self, ctx):
         """State bound to a device that failed this cycle must not flip to
         no_session — the session may still be live on that router."""
