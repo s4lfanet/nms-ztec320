@@ -225,6 +225,7 @@ def update_onu(onu_id):
     is_epon = (onu.card or '').lower() == 'epon'
     cli_cmds = []  # Collect CLI commands to send to OLT after DB save (ZTE only)
     needs_epon_desc_update = False
+    type_cli = None  # change_onu_type result for the response
     if 'name' in data:
         if not current_user.has_permission('edit_onu_name'):
             return jsonify({'success': False, 'message': 'Permission denied: edit_onu_name'}), 403
@@ -260,28 +261,21 @@ def update_onu(onu_id):
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
         onu.onu_type = data['onu_type'].strip()
-        # Re-register ONU with new type on OLT (preserves existing config) — ZTE CLI only
+        # Re-register ONU with new type on OLT — ZTE CLI only.
+        # 'onu N type X sn S' on an existing ONU is a silent no-op on C320
+        # (the OLT replies '%Code 62391 re-create' but the type stays). Real
+        # type change needs delete+re-register — change_onu_type backs up
+        # interface/pon-onu-mng config first, then restores it.
         if vendor == 'zte' and olt and olt.cli_enabled and olt.cli_username and onu.serial_number:
             try:
                 from snmp_collector import create_cli_collector
                 tc = create_cli_collector(olt)
-                tn = tc._connect()
-                if tn:
-                    is_epon = (onu.card or '').lower() == 'epon'
-                    olt_pfx = 'epon-olt' if is_epon else 'gpon-olt'
-                    pon_if = f'{olt_pfx}_{onu.frame}/{onu.slot}/{onu.port}'
-                    tc._send_command(tn, 'end')
-                    tc._send_command(tn, 'configure terminal')
-                    tc._send_command(tn, f'interface {pon_if}')
-                    if is_epon:
-                        from telnet_client import _format_epon_mac
-                        tc._send_command(tn, f'onu {onu.onu_id} type {data["onu_type"].strip()} mac {_format_epon_mac(onu.serial_number)}')
-                    else:
-                        tc._send_command(tn, f'onu {onu.onu_id} type {data["onu_type"].strip()} sn {onu.serial_number}')
-                    tc._send_command(tn, 'end')
-                    tn.close()
-                    logger.info(f"[update_onu] CLI: re-registered ONU {onu.onu_id} type={data['onu_type'].strip()}")
+                ok, msg = tc.change_onu_type(onu.frame, onu.slot, onu.port, onu.onu_id,
+                                             onu.serial_number, data['onu_type'].strip(), is_epon=is_epon)
+                type_cli = {'ok': ok, 'message': msg}
+                logger.info(f"[update_onu] change_onu_type {onu.onu_id_str} -> {ok}: {msg}")
             except Exception as e:
+                type_cli = {'ok': False, 'message': str(e)}
                 logger.warning(f"[update_onu] onu_type CLI failed: {e}")
     if 'serial_number' in data:
         if not current_user.has_permission('configure_onu'):
@@ -356,9 +350,12 @@ def update_onu(onu_id):
 
     log_action('onu_update', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'Updated {onu.name} — fields: {list(data.keys())}')
     # Auto-save config to startup-config if CLI commands were sent to OLT
-    if cli_cmds:
+    if cli_cmds or (type_cli and type_cli.get('ok')):
         _auto_write_config(onu.olt_id)
-    return jsonify({'success': True})
+    resp = {'success': True}
+    if type_cli is not None:
+        resp['onu_type_result'] = type_cli
+    return jsonify(resp)
 
 
 @bp.route('/api/onu/<int:onu_id>/move', methods=['POST'])
@@ -1711,6 +1708,7 @@ def update_onu_field(onu_id):
     data = request.get_json()
     field = data.get('field')
     value = data.get('value', '').strip()
+    cli_note = None  # appended to the response message when CLI was invoked
     logger.info(f"[update-field] ONU {onu_id} field='{field}' value='{value}' by user={current_user.username}")
 
     field_perms = {
@@ -1777,31 +1775,22 @@ def update_onu_field(onu_id):
         onu.actual_type = value
     elif field == 'onu_type':
         onu.onu_type = value
-        # Send CLI to OLT — re-register ONU with new type (preserves existing config).
-        # ZTE-only: 'onu N type X sn/mac' is C320 syntax, not valid on other vendors.
-        if olt and (olt.vendor or 'zte').lower() == 'zte' and olt.cli_enabled and olt.cli_username:
+        # Send CLI to OLT — re-register ONU with new type.
+        # ZTE-only: on C320, re-issuing 'onu N type X sn S' for an existing
+        # ONU is a silent no-op ('%Code 62391 re-create' — the type stays).
+        # Real type change needs delete+re-register; change_onu_type backs up
+        # the interface/pon-onu-mng config first, then restores it.
+        if olt and (olt.vendor or 'zte').lower() == 'zte' and olt.cli_enabled and olt.cli_username and onu.serial_number:
             try:
                 from snmp_collector import create_cli_collector
                 tc = create_cli_collector(olt)
-                tn = tc._connect()
-                if tn:
-                    is_epon = (onu.card or '').lower() == 'epon'
-                    olt_pfx = 'epon-olt' if is_epon else 'gpon-olt'
-                    pon_if = f'{olt_pfx}_{onu.frame}/{onu.slot}/{onu.port}'
-                    tc._send_command(tn, 'end')
-                    tc._send_command(tn, 'configure terminal')
-                    tc._send_command(tn, f'interface {pon_if}')
-                    # Re-register with new type WITHOUT removing first — preserves config
-                    # EPON uses 'mac' keyword, GPON uses 'sn' keyword
-                    if is_epon:
-                        from telnet_client import _format_epon_mac
-                        tc._send_command(tn, f'onu {onu.onu_id} type {value} mac {_format_epon_mac(onu.serial_number)}')
-                    else:
-                        tc._send_command(tn, f'onu {onu.onu_id} type {value} sn {onu.serial_number}')
-                    tc._send_command(tn, 'end')
-                    tn.close()
-                    logger.info(f"[update_onu_type] CLI: re-registered ONU {onu.onu_id} type={value}")
+                is_epon = (onu.card or '').lower() == 'epon'
+                ok, msg = tc.change_onu_type(onu.frame, onu.slot, onu.port, onu.onu_id,
+                                             onu.serial_number, value, is_epon=is_epon)
+                cli_note = msg
+                logger.info(f"[update_onu_type] change_onu_type -> {ok}: {msg}")
             except Exception as e:
+                cli_note = f'CLI error: {e}'
                 logger.warning(f"[update_onu_type] CLI failed: {e}")
     elif field == 'serial_number':
         onu.serial_number = value
@@ -1831,7 +1820,7 @@ def update_onu_field(onu_id):
     # 'write' is a ZTE CLI command — non-ZTE vendors persist their own way.
     if field in ('name', 'description', 'onu_type') and olt and (olt.vendor or 'zte').lower() == 'zte':
         _auto_write_config(onu.olt_id)
-    return jsonify({'success': True, 'message': f'{field} updated to "{value}"'})
+    return jsonify({'success': True, 'message': f'{field} updated to "{value}"' + (f' — {cli_note}' if cli_note else '')})
 
 
 @bp.route('/api/onu/<int:onu_id>/section-config', methods=['POST'])

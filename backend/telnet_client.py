@@ -1261,10 +1261,37 @@ class TelnetCollector:
         try:
             # Step 1: Backup running-config
             cfg = self._send_command(tn, f'show running-config interface {iface}', timeout=15)
+            cfg = self._join_wrapped_lines(cfg)
             if not cfg or 'error' in cfg.lower():
                 report('backup', 'Failed to read running-config')
                 tn.close()
                 return False, 'Failed to read old ONU running-config'
+
+            # The pon-onu-mng section is a SEPARATE running-config block —
+            # 'show running-config interface' never includes it, and
+            # 'show running-config pon-onu-mng <iface>' is rejected on V2.1.0.
+            # Without it, replace/type-change silently loses PPPoE, WiFi,
+            # VLAN mapping, TR-069, etc. Extract it from the full config
+            # (same fallback as collect_onu_detail).
+            if not is_epon:
+                cfg_ponmng = self._send_command(tn, f'show running-config pon-onu-mng {iface}', timeout=15)
+                if '%Error' in cfg_ponmng or 'Invalid' in cfg_ponmng:
+                    global_cfg = self._send_command_idle(tn, 'show running-config')
+                    cfg_ponmng = ''
+                    in_mng = False
+                    for line in global_cfg.split('\n'):
+                        ls = line.strip()
+                        if ls == f'pon-onu-mng {iface}':
+                            in_mng = True
+                            cfg_ponmng += line + '\n'
+                            continue
+                        if in_mng and (ls.startswith('pon-onu-mng ') or ls == '!' or ls == 'end'):
+                            in_mng = False
+                            continue
+                        if in_mng:
+                            cfg_ponmng += line + '\n'
+                if cfg_ponmng.strip():
+                    cfg = cfg + '\n' + self._join_wrapped_lines(cfg_ponmng)
 
             # Parse config into sections
             service_ports = []
@@ -1372,15 +1399,17 @@ class TelnetCollector:
                 tn.write(line + '\n')
                 tn.read_until(b'#', timeout=5)
 
-            tn.write('exit\n')
-            tn.read_until(b'#', timeout=5)
-
-            # Re-apply service-ports from global context
+            # Re-apply service-ports — they belong to the interface gpon-onu
+            # context too (global context rejects them with %Error 20200).
+            # Must come AFTER tcont/gemport lines since vport maps to gemport.
             if service_ports:
                 report('apply', f'Applying {len(service_ports)} service-ports...')
                 for sp in service_ports:
                     tn.write(sp + '\n')
                     tn.read_until(b'#', timeout=5)
+
+            tn.write('exit\n')
+            tn.read_until(b'#', timeout=5)
 
             # Re-apply pon-onu-mng config (GPON only — EPON uses ExtOAM)
             if pon_mng_lines and not is_epon:
@@ -1388,9 +1417,18 @@ class TelnetCollector:
                 tn.write(f'pon-onu-mng {iface}\n')
                 out = tn.read_until(b'#', timeout=5).decode('utf-8', errors='replace')
                 if 'error' not in out.lower():
+                    masked = 0
                     for line in pon_mng_lines:
+                        # running-config masks secrets as '***' (e.g. tr069
+                        # acs password) — replaying the literal would corrupt
+                        # them. Skipping leaves the ONU's own stored value.
+                        if '***' in line:
+                            masked += 1
+                            continue
                         tn.write(line + '\n')
                         tn.read_until(b'#', timeout=5)
+                    if masked:
+                        report('apply', f'Skipped {masked} masked-secret line(s) — ONU keeps stored values')
                     tn.write('exit\n')
                     tn.read_until(b'#', timeout=5)
                 else:
@@ -1408,6 +1446,25 @@ class TelnetCollector:
             try: tn.close()
             except: pass
             return False, str(e)
+
+    def change_onu_type(self, frame, slot, port, onu_id, serial, new_type, is_epon=False):
+        """Change the registered ONU type on the OLT.
+
+        Re-issuing 'onu N type X sn S' for an already-registered ONU is a
+        silent no-op on ZTE C320 — the OLT replies '%Code 62391 ... This is
+        a re-create operation.' but the type never changes (verified live on
+        V2.1.0). The only way is 'no onu N' + re-register, which also wipes
+        the gpon-onu interface + pon-onu-mng config — so this reuses the
+        replace_onu backup/restore flow with the same serial.
+        """
+        ok, msg = self.replace_onu(
+            frame, slot, port, onu_id,
+            new_serial=serial, old_serial=serial,
+            is_epon=is_epon, onu_type=new_type,
+        )
+        if ok:
+            return True, f'ONU type changed to {new_type} (re-registered — brief downtime, config restored)'
+        return ok, msg
 
     def register_onu(self, frame, slot, port, onu_id, onu_type='ZTE-F609', serial='', vlan=100, is_epon=False):
         """Pre-register a new ONU on the OLT"""
