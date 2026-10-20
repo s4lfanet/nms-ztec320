@@ -85,7 +85,8 @@ def _get_or_create_state(onu_id):
 
 
 def poll_device(dev):
-    """One poll cycle for a single Mikrotik device. Returns # of ONU states touched."""
+    """One poll cycle for a single Mikrotik device.
+    Returns the set of active session names seen, or None on failure."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
         cli = RouterOSClient(dev.host, dev.api_mode, dev.api_port, dev.api_ssl,
@@ -94,7 +95,7 @@ def poll_device(dev):
         dev.last_ok, dev.last_error, dev.last_polled_at = False, str(e)[:300], now
         db.session.commit()
         logger.warning('mikrotik %s poll failed: %s', dev.host, e)
-        return 0
+        return None
 
     try:
         sessions = cli.get_pppoe_active() or []
@@ -103,17 +104,26 @@ def poll_device(dev):
         dev.last_ok, dev.last_error, dev.last_polled_at = False, str(e)[:300], now
         db.session.commit()
         logger.warning('mikrotik %s /ppp/active failed: %s', dev.host, e)
-        return 0
+        return None
 
     dev.last_ok, dev.last_error, dev.last_polled_at = True, '', now
 
     # session name -> session row (name is the PPPoE username)
     sess_by_name = {s['name']: s for s in sessions if s.get('name')}
 
-    onus = ONU.query.filter(ONU.pppoe.isnot(None), ONU.pppoe != '').all()
-    by_user = {}
+    # Session name -> ONU. Primary key is onu.pppoe (parsed from the OLT's
+    # `pppoe N nat enable user X` config). ONUs in bridge mode — PPPoE dialled
+    # on the CPE/ONU via ACS rather than by OLT CLI — have pppoe='' but their
+    # onu.name conventionally equals the PPPoE username, so fall back to name.
+    onus = ONU.query.filter(db.or_(
+        db.and_(ONU.pppoe.isnot(None), ONU.pppoe != ''),
+        db.and_(ONU.name.isnot(None), ONU.name != ''))).all()
+    by_pppoe, by_name = {}, {}
     for o in onus:
-        by_user.setdefault(o.pppoe, []).append(o)
+        if o.pppoe:
+            by_pppoe.setdefault(o.pppoe, []).append(o)
+        if o.name:
+            by_name.setdefault(o.name, []).append(o)
 
     slow_rtt = _cfg_int('link_slow_rtt_ms', 150)
     fail_th = _cfg_int('link_fail_threshold', 2, 1, 10)
@@ -125,7 +135,11 @@ def poll_device(dev):
     # --- sessions that map to known ONUs ----------------------------------
     matched = []
     for user, sess in sess_by_name.items():
-        for onu in by_user.get(user, []):
+        # pppoe column wins; fall back to ONU name (bridge-mode ONUs)
+        targets = by_pppoe.get(user) or by_name.get(user, [])
+        for onu in targets:
+            if not onu.pppoe:
+                onu.pppoe = user  # backfill for future syncs/map/searches
             st = _get_or_create_state(onu.id)
             old = st.link_state
             st.mikrotik_id = dev.id
@@ -178,7 +192,44 @@ def poll_device(dev):
 
     for st in changed:
         _broadcast_state(st)
-    return len(matched)
+    return set(sess_by_name)
+
+
+def reconcile_no_session(all_users, ok_dev_ids):
+    """Global pass after all devices in a cycle have been polled.
+
+    ONUs whose PPPoE username (or name fallback) is in *no* device's active
+    session list get link_state='no_session' — including rows that never had a
+    state before (so map lines show grey-dashed, not 'unknown'). Rows bound to
+    a device that failed this cycle are left untouched (stale is safer than
+    falsely declaring the session down)."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    changed = []
+    onus = ONU.query.filter(db.or_(
+        db.and_(ONU.pppoe.isnot(None), ONU.pppoe != ''),
+        db.and_(ONU.name.isnot(None), ONU.name != ''))).all()
+    for o in onus:
+        if (o.pppoe and o.pppoe in all_users) or (o.name and o.name in all_users):
+            continue
+        st = OnuLinkState.query.filter_by(onu_id=o.id).first()
+        if st is None:
+            st = OnuLinkState(onu_id=o.id, pppoe_user=o.pppoe or o.name,
+                              link_state='no_session', session_up=False,
+                              checked_at=now)
+            db.session.add(st)
+            changed.append(st)
+        elif st.link_state != 'no_session' and (
+                st.mikrotik_id is None or st.mikrotik_id in ok_dev_ids):
+            st.link_state = 'no_session'
+            st.session_up = False
+            st.fail_count = 0
+            st.checked_at = now
+            changed.append(st)
+    if changed:
+        db.session.commit()
+        for st in changed:
+            _broadcast_state(st)
+    return len(changed)
 
 
 def _broadcast_state(st):
@@ -205,12 +256,18 @@ def run_link_poller(app):
                 if _poll_lock.acquire(blocking=False):
                     try:
                         devs = MikrotikDevice.query.filter_by(enabled=True).all()
+                        all_users, ok_dev_ids = set(), set()
                         for dev in devs:
                             try:
-                                poll_device(dev)
+                                users = poll_device(dev)
+                                if users is not None:
+                                    all_users |= users
+                                    ok_dev_ids.add(dev.id)
                             except Exception as e:
                                 db.session.rollback()
                                 logger.warning('mikrotik %s cycle error: %s', dev.host, e)
+                        if devs:
+                            reconcile_no_session(all_users, ok_dev_ids)
                     finally:
                         _poll_lock.release()
             except Exception as e:

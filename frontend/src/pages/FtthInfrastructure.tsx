@@ -1014,6 +1014,18 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
     saveMut.mutate({ id: port.id, onu_id: null, customer_name: '', customer_phone: '' });
   };
 
+  const seedCoordsMut = useMutation({
+    mutationFn: () => api.ftthOdpSeedOnuCoords(odp.id),
+    onSuccess: (d) => {
+      if (d.updated > 0) toast.success(d.message);
+      else toast.success('Semua pelanggan sudah punya koordinat');
+      qc.invalidateQueries({ queryKey: ['ftth-odp-ports', odp.id] });
+      qc.invalidateQueries({ queryKey: ['ftth-map'] });
+      onUpdated();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const cols = ports.length <= 6 ? ports.length : ports.length <= 12 ? 6 : ports.length <= 24 ? 8 : 12;
 
   return (
@@ -1026,6 +1038,16 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
             <p className="text-xs text-tx3 mt-0.5 truncate">{odp.splitter_model} • {odp.used_ports}/{odp.total_ports} used • Core {odp.odc_core_number} from {odp.odc_name}</p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
+            {odp.latitude && odp.longitude && (
+              <button
+                onClick={() => seedCoordsMut.mutate()}
+                disabled={seedCoordsMut.isPending}
+                title="Isi lokasi pelanggan dari posisi ODP (untuk ONU yang belum punya koordinat)"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+              >
+                <MapPin size={12} /> {seedCoordsMut.isPending ? 'Mengisi…' : 'Lokasi dari ODP'}
+              </button>
+            )}
             <div className="hidden md:flex items-center rounded-lg bg-glass/60 p-0.5 mr-1">
               <button onClick={() => setViewMode('diagram')} className={cn('p-1.5 rounded-md transition-colors', viewMode === 'diagram' ? 'bg-surface text-accent shadow-sm' : 'text-tx3 hover:text-tx1')} title="Diagram view"><LayoutGrid size={14} /></button>
               <button onClick={() => setViewMode('list')} className={cn('p-1.5 rounded-md transition-colors', viewMode === 'list' ? 'bg-surface text-accent shadow-sm' : 'text-tx3 hover:text-tx1')} title="List view"><List size={14} /></button>

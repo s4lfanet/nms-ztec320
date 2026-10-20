@@ -206,6 +206,75 @@ class TestLinkStatePoller:
         st = OnuLinkState.query.filter_by(onu_id=onu.id).one()
         assert st.pppoe_ip == '10.0.0.99'
 
+    def test_match_by_onu_name_fallback(self, ctx):
+        """Bridge-mode ONU (pppoe='') whose name equals the PPPoE username
+        still gets matched — and pppoe is backfilled."""
+        from models import OnuLinkState
+        _, onu = _mk_olt_onu(pppoe='')
+        onu.name = 'marlin@rw03'
+        db.session.commit()
+        dev = _mk_dev()
+        sessions = [{'name': 'marlin@rw03', 'address': '10.9.9.9'}]
+        with patch('link_state_poller.RouterOSClient', return_value=_fake_client(sessions)):
+            run_poll(dev)
+        st = OnuLinkState.query.filter_by(onu_id=onu.id).one()
+        assert st.link_state == 'ok'
+        assert st.pppoe_user == 'marlin@rw03'
+        db.session.refresh(onu)
+        assert onu.pppoe == 'marlin@rw03'  # backfilled
+
+    def test_pppoe_takes_priority_over_name(self, ctx):
+        """A session name matching ONU-A's pppoe must not also bind to ONU-B
+        that happens to share the same name string."""
+        _, onu_a = _mk_olt_onu(pppoe='u@x')
+        onu_a.name = 'u@x'
+        _, onu_b = _mk_olt_onu(pppoe='other@y')
+        onu_b.name = 'u@x'
+        onu_b.serial_number = 'ZTEG00000002'
+        onu_b.onu_index = 120102
+        db.session.commit()
+        dev = _mk_dev()
+        with patch('link_state_poller.RouterOSClient',
+                   return_value=_fake_client([{'name': 'u@x', 'address': '10.1.1.1'}])):
+            run_poll(dev)
+        # by_pppoe match wins: ONU-A binds, ONU-B does not get a second row
+        from models import OnuLinkState
+        assert OnuLinkState.query.filter_by(onu_id=onu_a.id).one().link_state == 'ok'
+        assert OnuLinkState.query.filter_by(onu_id=onu_b.id).first() is None
+
+    def test_reconcile_no_session_for_unseen_onu(self, ctx):
+        """ONU with a pppoe username absent from every device's session list
+        gets a no_session row (grey dashed on the map, not 'unknown')."""
+        import link_state_poller as lsp
+        from models import OnuLinkState
+        _, onu = _mk_olt_onu(pppoe='gone@rw01')
+        changed = lsp.reconcile_no_session(set(), {1})
+        assert changed == 1
+        st = OnuLinkState.query.filter_by(onu_id=onu.id).one()
+        assert st.link_state == 'no_session'
+        assert st.session_up is False
+
+    def test_reconcile_skips_onu_with_active_session(self, ctx):
+        import link_state_poller as lsp
+        from models import OnuLinkState
+        _, onu = _mk_olt_onu(pppoe='up@rw01')
+        assert lsp.reconcile_no_session({'up@rw01'}, {1}) == 0
+        assert OnuLinkState.query.count() == 0
+
+    def test_reconcile_leaves_row_bound_to_failed_device(self, ctx):
+        """State bound to a device that failed this cycle must not flip to
+        no_session — the session may still be live on that router."""
+        import link_state_poller as lsp
+        from models import OnuLinkState
+        _, onu = _mk_olt_onu(pppoe='renny@rw02')
+        dev = _mk_dev()
+        with patch('link_state_poller.RouterOSClient',
+                   return_value=_fake_client([{'name': 'renny@rw02', 'address': '10.0.0.5'}])):
+            run_poll(dev)
+        assert lsp.reconcile_no_session(set(), set()) == 0  # dev failed -> untouched
+        st = OnuLinkState.query.filter_by(onu_id=onu.id).one()
+        assert st.link_state == 'ok'
+
     def test_map_line_carries_link_state(self, ctx):
         """ftth map ODP->ONU line includes link_state fields."""
         import link_state_poller as lsp

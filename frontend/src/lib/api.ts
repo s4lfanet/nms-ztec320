@@ -134,6 +134,7 @@ export const api = {
   ftthOdpUpdate: (id: number, data: Partial<FTTHOdp>) => request<{ success: boolean; item: FTTHOdp }>(`/api/ftth/odp/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthOdpDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/odp/${id}`, { method: 'DELETE' }),
   ftthOdpPorts: (odpId: number) => request<{ success: boolean; ports: FTTHOdpPort[] }>(`/api/ftth/odp/${odpId}/ports`),
+  ftthOdpSeedOnuCoords: (odpId: number) => request<{ success: boolean; updated: number; skipped: number; message: string }>(`/api/ftth/odp/${odpId}/seed-onu-coords`, { method: 'POST' }),
   ftthOdpPortUpdate: (id: number, data: Partial<FTTHOdpPort> & { latitude?: number | null; longitude?: number | null }) => request<{ success: boolean; port: FTTHOdpPort }>(`/api/ftth/odp-port/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthOdpPortDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/odp-port/${id}`, { method: 'DELETE' }),
   ftthJcList: () => request<{ success: boolean; items: FTTHJc[] }>('/api/ftth/jc'),

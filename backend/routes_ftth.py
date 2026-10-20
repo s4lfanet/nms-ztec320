@@ -827,6 +827,40 @@ def ftth_odp_port_update(port_id):
     return jsonify({'success': True, 'port': _odp_port_to_dict(p)})
 
 
+@bp.route('/api/ftth/odp/<int:odp_id>/seed-onu-coords', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_odp_seed_onu_coords(odp_id):
+    """Copy the ODP's location to every linked customer ONU that lacks
+    coordinates, with a small deterministic jitter per port so the map
+    marker and drop line are visible instead of stacked on the ODP."""
+    import math
+    odp = db.session.get(FTTHODP, odp_id)
+    if not odp:
+        return jsonify({'success': False, 'message': 'Not found'}), 404
+    if not (odp.latitude and odp.longitude):
+        return jsonify({'success': False, 'message': 'ODP belum punya koordinat'}), 400
+    updated, skipped = 0, 0
+    for p in FTTHODPPort.query.filter_by(odp_id=odp_id).all():
+        if not p.onu_id:
+            continue
+        onu = db.session.get(ONU, p.onu_id)
+        if not onu:
+            continue
+        if onu.latitude and onu.longitude:
+            skipped += 1
+            continue
+        ang = math.radians((p.port_number or 1) * 137.5)
+        r = 15 + ((p.port_number or 1) % 3) * 10  # 15-35 m ring around the ODP
+        onu.latitude = round(odp.latitude + r * math.cos(ang) / 111320.0, 7)
+        onu.longitude = round(odp.longitude
+                              + r * math.sin(ang) / (111320.0 * math.cos(math.radians(odp.latitude))), 7)
+        updated += 1
+    db.session.commit()
+    return jsonify({'success': True, 'updated': updated, 'skipped': skipped,
+                    'message': f'{updated} lokasi pelanggan diisi dari posisi ODP'})
+
+
 @bp.route('/api/ftth/odp-port/<int:port_id>', methods=['DELETE'])
 @login_required
 @permission_required('settings_ip_olts')
