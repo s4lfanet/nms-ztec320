@@ -980,6 +980,7 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
     feed_source: 'direct' as 'direct' | 'jc', jc_id: '' as string | number, jc_core_number: '' as string | number,
     cable_length_meters: '' as string | number, cable_attenuation_per_km: 0.35 as string | number,
   });
+  const [portCoords, setPortCoords] = useState({ latitude: '', longitude: '' });
   const [showLink, setShowLink] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'diagram' | 'list'>('diagram');
 
@@ -989,11 +990,15 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
       feed_source: p.feed_source || 'direct', jc_id: p.jc_id || '', jc_core_number: p.jc_core_number || '',
       cable_length_meters: p.cable_length_meters ?? '', cable_attenuation_per_km: p.cable_attenuation_per_km ?? 0.35,
     });
+    setPortCoords({
+      latitude: p.onu_latitude != null ? String(p.onu_latitude) : '',
+      longitude: p.onu_longitude != null ? String(p.onu_longitude) : '',
+    });
   };
   const selectedPortJc = jcList.find(j => j.id === Number(portFeed.jc_id));
 
   const saveMut = useMutation({
-    mutationFn: (data: Partial<FTTHOdpPort> & { id: number }) => api.ftthOdpPortUpdate(data.id, data),
+    mutationFn: (data: Partial<FTTHOdpPort> & { id: number; latitude?: number | null; longitude?: number | null }) => api.ftthOdpPortUpdate(data.id, data),
     onSuccess: () => { toast.success('Port updated'); qc.invalidateQueries({ queryKey: ['ftth-odp-ports', odp.id] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); setEditingPort(null); setShowLink(null); onUpdated(); },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1161,6 +1166,16 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
                   <FormField label="Panjang Drop Cable (m, opsional)"><input className="input-field" type="number" step="1" value={portFeed.cable_length_meters} onChange={e => setPortFeed({ ...portFeed, cable_length_meters: e.target.value })} placeholder="mis. 50" /></FormField>
                   <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={portFeed.cable_attenuation_per_km} onChange={e => setPortFeed({ ...portFeed, cable_attenuation_per_km: e.target.value })} /></FormField>
                 </div>
+                {editingPort.onu_id && (
+                  <div className="pt-3 border-t border-brd">
+                    <div className="flex items-center gap-1.5 text-sm font-medium mb-2"><MapPin size={14} className="text-accent" /> Koordinat Pelanggan (ONU) — tampil di peta</div>
+                    <LocationPicker
+                      latitude={portCoords.latitude}
+                      longitude={portCoords.longitude}
+                      onChange={(lat, lng) => setPortCoords({ latitude: lat, longitude: lng })}
+                    />
+                  </div>
+                )}
                 <div className="flex justify-end gap-2 pt-2">
                   <button onClick={() => setEditingPort(null)} className="btn-cancel text-sm">Cancel</button>
                   <button onClick={() => saveMut.mutate({
@@ -1170,6 +1185,10 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
                     jc_core_number: portFeed.jc_core_number === '' ? null : Number(portFeed.jc_core_number),
                     cable_length_meters: portFeed.cable_length_meters === '' ? null : Number(portFeed.cable_length_meters),
                     cable_attenuation_per_km: Number(portFeed.cable_attenuation_per_km) || 0.35,
+                    ...(editingPort.onu_id ? {
+                      latitude: portCoords.latitude === '' ? null : Number(portCoords.latitude),
+                      longitude: portCoords.longitude === '' ? null : Number(portCoords.longitude),
+                    } : {}),
                   })} className="btn-primary text-sm">Save</button>
                 </div>
               </div>

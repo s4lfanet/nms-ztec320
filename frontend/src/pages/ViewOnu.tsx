@@ -8,8 +8,9 @@ import {
   Wifi, Clock, RefreshCw, RotateCcw, Trash2, Ban, Eraser,
   FileText, Radio, Globe, Shield, Key, Plug, Database, Layers,
   Edit3, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff, ChevronDown, Replace,
-  Cable, Cpu, Server, GitMerge, Box, Split, Home, AlertTriangle, ChevronRight,
+  Cable, Cpu, Server, GitMerge, Box, Split, Home, AlertTriangle, ChevronRight, MapPin,
 } from 'lucide-react';
+import { LocationPicker } from '../components/LocationPicker';
 import { useState, useEffect, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useHasPerm } from '../hooks/useHasPerm';
@@ -410,6 +411,9 @@ export function ViewOnu() {
             <DetailField label="Online Duration" value={ld.online_duration as string || (onu.status === 'online' ? 'Active' : '-')} />
             <EditableField label="Name" field="name" value={onu.name} onEdit={hasPerm('edit_onu_name') ? openFieldEdit : () => {}} />
             <EditableField label="Description" field="description" value={onu.description} onEdit={hasPerm('edit_onu_description') ? openFieldEdit : () => {}} />
+            <DetailField label="Location" mono
+              value={onu.latitude != null && onu.longitude != null ? `${onu.latitude}, ${onu.longitude}` : ''}
+              onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'location' }) : undefined} />
           </div>
 
           {/* Traffic: current values */}
@@ -684,6 +688,14 @@ export function ViewOnu() {
 
       {/* MODALS */}
       {modal?.type === 'editField' && <EditFieldModal data={modal.data!} onSave={(value) => updateFieldMut.mutate({ field: modal.data!.field as string, value })} onClose={() => setModal(null)} loading={updateFieldMut.isPending} />}
+      {modal?.type === 'location' && (
+        <LocationEditModal
+          latitude={onu.latitude} longitude={onu.longitude}
+          loading={updateFieldMut.isPending}
+          onSave={(lat, lng) => updateFieldMut.mutate({ field: 'location', value: `${lat},${lng}` })}
+          onClose={() => setModal(null)}
+        />
+      )}
       {modal?.type === 'onuType' && <OnuTypeModal onuId={onuId} oltId={onu.olt_id} currentType={onu.onu_type || (ld.onu_type as string) || ''} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
       {modal?.type === 'moveOnu' && <MoveOnuModal onuId={onuId} onu={onu} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); toast.success('ONU moved!'); }} />}
       {modal?.type === 'sectionEdit' && <SectionEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); setModal(null); }} />}
@@ -1697,4 +1709,32 @@ function DataTable({ headers, children }: { headers: string[]; children: React.R
 }
 function Skeleton() {
   return (<div className="space-y-5 animate-pulse"><div className="h-5 w-48 bg-glass rounded-lg" /><div className="glass-card h-64" /><div className="flex gap-2">{[...Array(5)].map((_, i) => <div key={i} className="h-9 w-24 bg-glass rounded-xl" />)}</div><div className="glass-card h-48" /><div className="glass-card h-48" /></div>);
+}
+
+function LocationEditModal({ latitude, longitude, onSave, onClose, loading }: {
+  latitude: number | null; longitude: number | null;
+  onSave: (lat: string, lng: string) => void; onClose: () => void; loading: boolean;
+}) {
+  const [coords, setCoords] = useState({
+    lat: latitude != null ? String(latitude) : '',
+    lng: longitude != null ? String(longitude) : '',
+  });
+  const valid = coords.lat !== '' && coords.lng !== ''
+    && !isNaN(parseFloat(coords.lat)) && !isNaN(parseFloat(coords.lng));
+  return (
+    <Modal open onClose={onClose} icon={<MapPin size={16} />} title="ONU Location" size="md">
+      <LocationPicker
+        latitude={coords.lat}
+        longitude={coords.lng}
+        onChange={(lat, lng) => setCoords({ lat, lng })}
+      />
+      <p className="text-xs text-tx3 mt-3">Koordinat ini menentukan posisi marker pelanggan di peta FTTH.</p>
+      <div className="flex justify-end gap-2 mt-4">
+        <Button variant="ghost" onClick={onClose}>Batal</Button>
+        <Button onClick={() => onSave(parseFloat(coords.lat).toFixed(6), parseFloat(coords.lng).toFixed(6))} disabled={!valid || loading}>
+          {loading ? 'Menyimpan…' : 'Simpan'}
+        </Button>
+      </div>
+    </Modal>
+  );
 }

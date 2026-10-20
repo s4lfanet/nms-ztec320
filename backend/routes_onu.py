@@ -1794,6 +1794,19 @@ def update_onu_field(onu_id):
                 logger.warning(f"[update_onu_type] CLI failed: {e}")
     elif field == 'serial_number':
         onu.serial_number = value
+    elif field in ('latitude', 'longitude'):
+        try:
+            setattr(onu, field, float(value) if value not in ('', None) else None)
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'message': 'Invalid coordinate — use decimal degrees, e.g. -6.575317'})
+        value = getattr(onu, field)
+    elif field == 'location':
+        # combined "lat,lng" — e.g. "-6.575317,107.754844"
+        try:
+            lat_s, lng_s = (v.strip() for v in value.split(',', 1))
+            onu.latitude, onu.longitude = float(lat_s), float(lng_s)
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'message': 'Invalid location — use "lat,lng" decimal format'})
     elif field == 'onu_id':
         try:
             new_oid = int(value)

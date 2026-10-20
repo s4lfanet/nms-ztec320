@@ -134,7 +134,7 @@ export const api = {
   ftthOdpUpdate: (id: number, data: Partial<FTTHOdp>) => request<{ success: boolean; item: FTTHOdp }>(`/api/ftth/odp/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthOdpDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/odp/${id}`, { method: 'DELETE' }),
   ftthOdpPorts: (odpId: number) => request<{ success: boolean; ports: FTTHOdpPort[] }>(`/api/ftth/odp/${odpId}/ports`),
-  ftthOdpPortUpdate: (id: number, data: Partial<FTTHOdpPort>) => request<{ success: boolean; port: FTTHOdpPort }>(`/api/ftth/odp-port/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  ftthOdpPortUpdate: (id: number, data: Partial<FTTHOdpPort> & { latitude?: number | null; longitude?: number | null }) => request<{ success: boolean; port: FTTHOdpPort }>(`/api/ftth/odp-port/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthOdpPortDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/odp-port/${id}`, { method: 'DELETE' }),
   ftthJcList: () => request<{ success: boolean; items: FTTHJc[] }>('/api/ftth/jc'),
   ftthJcCreate: (data: Partial<FTTHJc>) => request<{ success: boolean; item: FTTHJc }>('/api/ftth/jc', { method: 'POST', body: JSON.stringify(data) }),
@@ -985,6 +985,8 @@ export interface FTTHOdpPort {
   onu_id_str: string;
   fed_odp_id: number | null;
   fed_odp_name: string;
+  onu_latitude?: number | null;
+  onu_longitude?: number | null;
   cable_length_meters: number | null;
   cable_attenuation_per_km: number;
   cable_attenuation_db: number | null;

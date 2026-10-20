@@ -384,6 +384,8 @@ def _odp_port_to_dict(p):
         'onu_serial': onu.serial_number if onu else '',
         'onu_status': onu.status if onu else '',
         'onu_id_str': onu.onu_id_str if onu else '',
+        'onu_latitude': onu.latitude if onu else None,
+        'onu_longitude': onu.longitude if onu else None,
         'fed_odp_id': fed_odp.id if fed_odp else None,
         'fed_odp_name': fed_odp.name if fed_odp else '',
         **_cable_fields(p),
@@ -804,6 +806,18 @@ def ftth_odp_port_update(port_id):
         p.status = 'used'
     elif p.status == 'used':
         p.status = 'available'
+    # Customer coordinates are stored on the linked ONU (onus.latitude/
+    # longitude drive the map marker), not on the port itself.
+    if ('latitude' in d or 'longitude' in d) and p.onu_id:
+        onu = db.session.get(ONU, p.onu_id)
+        if onu:
+            try:
+                if 'latitude' in d:
+                    onu.latitude = float(d['latitude']) if d['latitude'] not in (None, '') else None
+                if 'longitude' in d:
+                    onu.longitude = float(d['longitude']) if d['longitude'] not in (None, '') else None
+            except (ValueError, TypeError):
+                return jsonify({'success': False, 'message': 'Format koordinat tidak valid'}), 400
     if old_feed_source == 'jc' and old_jc_id and old_jc_core_number and \
        (p.feed_source != 'jc' or p.jc_id != old_jc_id or p.jc_core_number != old_jc_core_number):
         _release_core('jc', old_jc_id, old_jc_core_number, reason='ODP port feed changed')
