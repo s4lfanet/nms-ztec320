@@ -67,14 +67,15 @@ export function FtthInfrastructure() {
     queryKey: ['ftth-map'],
     queryFn: api.ftthMap,
     enabled: tab === 'map',
-    refetchInterval: tab === 'map' ? 15000 : false,
+    refetchInterval: tab === 'map' ? 45000 : false,
   });
 
   // WebSocket: realtime refresh on ONU status changes
   // ('onu_change' also covers sync completion — see ws_bridge.py)
   const mapWsMsg = useDashboardWs();
   useEffect(() => {
-    if (mapWsMsg && (mapWsMsg.event === 'onu_change' || mapWsMsg.event === 'alert')) {
+    if (mapWsMsg && (mapWsMsg.event === 'onu_change' || mapWsMsg.event === 'alert'
+        || mapWsMsg.event === 'onu_link_state')) {
       qc.invalidateQueries({ queryKey: ['ftth-map'] });
       qc.invalidateQueries({ queryKey: ['ftth-stats'] });
       qc.invalidateQueries({ queryKey: ['ftth-tree'] });

@@ -12,6 +12,7 @@ const AllOnus = lazy(() => import('./pages/AllOnus').then(m => ({ default: m.All
 const ViewOnu = lazy(() => import('./pages/ViewOnu').then(m => ({ default: m.ViewOnu })));
 const AddOnu = lazy(() => import('./pages/AddOnu').then(m => ({ default: m.AddOnu })));
 const OltSettings = lazy(() => import('./pages/OltSettings').then(m => ({ default: m.OltSettings })));
+const MikrotikSettings = lazy(() => import('./pages/MikrotikSettings').then(m => ({ default: m.MikrotikSettings })));
 const UserManagement = lazy(() => import('./pages/UserManagement').then(m => ({ default: m.UserManagement })));
 const Customization = lazy(() => import('./pages/Customization').then(m => ({ default: m.Customization })));
 const RegisterWizard = lazy(() => import('./pages/RegisterWizard').then(m => ({ default: m.RegisterWizard })));
@@ -43,6 +44,7 @@ const routePermissions: Record<string, string> = {
   '/dashboard/onus/wizard/provision': 'add_onu',
   '/dashboard/onus/wizard/preconfig': 'add_onu',
   '/dashboard/settings/olts': 'settings_ip_olts',
+  '/dashboard/settings/mikrotik': 'settings_ip_olts',
   '/dashboard/customization': 'customization',
   '/dashboard/users': 'manage_users',
   '/dashboard/templates': 'manage_templates',
@@ -183,6 +185,7 @@ export default function App() {
         <Route path="onus/:id" element={<ViewOnu />} />
         <Route path="all-onus/view-c3-r/gpon/:oltId/:frame/:slot/:onuNum" element={<ViewOnu />} />
         <Route path="settings/olts" element={<OltSettings />} />
+        <Route path="settings/mikrotik" element={<MikrotikSettings />} />
         <Route path="settings/olts/:oltId/config" element={<OltConfiguration />} />
         <Route path="customization" element={<Customization />} />
         <Route path="users" element={<UserManagement />} />

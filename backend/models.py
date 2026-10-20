@@ -1048,6 +1048,65 @@ class ActionLog(db.Model):
     )
 
 
+class MikrotikDevice(db.Model):
+    """Mikrotik RouterOS device — PPPoE concentrator polled for link-state.
+
+    api_mode 'api'   = classic binary API (port 8728/8729) — works on v6.43+ and v7
+    api_mode 'rest'  = RouterOS v7 REST API (port 443/80)
+    """
+    __tablename__ = 'mikrotik_devices'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, default=0)
+    name = db.Column(db.String(120), nullable=False)
+    host = db.Column(db.String(120), nullable=False)
+    api_mode = db.Column(db.String(10), default='api')   # api | rest
+    api_port = db.Column(db.Integer, default=8728)
+    api_ssl = db.Column(db.Boolean, default=False)
+    api_user = db.Column(db.String(80), default='')
+    api_password = db.Column(db.String(200), default='')
+    enabled = db.Column(db.Boolean, default=True)
+    ping_enabled = db.Column(db.Boolean, default=True)
+    ping_batch = db.Column(db.Integer, default=25)  # max clients pinged per cycle
+    last_ok = db.Column(db.Boolean, default=False)
+    last_error = db.Column(db.String(300), default='')
+    last_polled_at = db.Column(db.DateTime)
+
+
+class OnuLinkState(db.Model):
+    """Live service-layer state per ONU — PPPoE session + ping result.
+
+    link_state: ok | slow | down | no_session | unknown
+      ok         = PPPoE session up + ping replies with normal RTT
+      slow       = ping replies but high RTT or partial loss (or first timeout)
+      down       = session up but ping timed out on consecutive checks
+      no_session = no active PPPoE session for this ONU's username
+      unknown    = session state not yet evaluated / ping never checked
+    """
+    __tablename__ = 'onu_link_states'
+    id = db.Column(db.Integer, primary_key=True)
+    onu_id = db.Column(db.Integer, db.ForeignKey('onus.id'), unique=True, nullable=False)
+    mikrotik_id = db.Column(db.Integer, db.ForeignKey('mikrotik_devices.id'))
+    pppoe_user = db.Column(db.String(128), default='')
+    pppoe_ip = db.Column(db.String(45), default='')
+    session_up = db.Column(db.Boolean, default=False)
+    session_uptime = db.Column(db.String(40), default='')
+    caller_id = db.Column(db.String(64), default='')
+    rtt_ms = db.Column(db.Float)
+    loss_pct = db.Column(db.Float)
+    fail_count = db.Column(db.Integer, default=0)  # consecutive ping timeouts
+    link_state = db.Column(db.String(20), default='unknown')
+    checked_at = db.Column(db.DateTime)
+    ping_checked_at = db.Column(db.DateTime)
+
+    onu = db.relationship('ONU', backref=db.backref('link_state_row', uselist=False))
+    mikrotik = db.relationship('MikrotikDevice', backref=db.backref('link_states', lazy=True))
+
+    __table_args__ = (
+        db.Index('ix_onu_link_states_onu_id', 'onu_id'),
+        db.Index('ix_onu_link_states_link_state', 'link_state'),
+    )
+
+
 class OnuStatusHistory(db.Model):
     """Track every ONU status change (online -> offline/dyinggasp/los and back)"""
     __tablename__ = 'onu_status_history'

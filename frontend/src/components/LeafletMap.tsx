@@ -57,6 +57,13 @@ export interface MapMarker {
   odp_port?: number;
   customer_name?: string;
   customer_phone?: string;
+  // Live link-state (PPPoE session + ping, polled from Mikrotik)
+  link_state?: 'ok' | 'slow' | 'down' | 'no_session' | 'unknown';
+  pppoe_ip?: string;
+  rtt_ms?: number | null;
+  loss_pct?: number | null;
+  session_uptime?: string;
+  link_checked_at?: string | null;
   [key: string]: unknown;
 }
 
@@ -70,6 +77,27 @@ export interface MapLine {
   from_id?: number;
   to_id?: number;
   label: string;
+  // Live service link-state (only present on →ONU lines)
+  link_state?: 'ok' | 'slow' | 'down' | 'no_session' | 'unknown';
+  pppoe_ip?: string;
+  rtt_ms?: number | null;
+  loss_pct?: number | null;
+  session_uptime?: string;
+  link_checked_at?: string | null;
+}
+
+// ODP→ONU line appearance by live link-state (PPPoE session + ping)
+const LINK_LINE_STYLE: Record<string, { color: string; dash?: string; label: string }> = {
+  ok: { color: '#10b981', label: 'Link OK (PPPoE + ping)' },
+  slow: { color: '#f59e0b', label: 'Link lambat / loss' },
+  down: { color: '#ef4444', label: 'Link down (ping timeout)' },
+  no_session: { color: '#64748b', dash: '4 3', label: 'Tidak ada sesi PPPoE' },
+  unknown: { color: '#06b6d4', dash: '4 3', label: 'Belum dicek' },
+};
+
+function onuLineStyle(line: MapLine) {
+  const st = LINK_LINE_STYLE[line.link_state || 'unknown'] || LINK_LINE_STYLE.unknown;
+  return { color: st.color, weight: 2, opacity: 0.85, dashArray: st.dash };
 }
 
 let leafletLoaded = false;
@@ -225,6 +253,17 @@ function buildPopupHtml(m: MapMarker): string {
     html += popupSection('Optical', optical);
     html += popupSection('Identity', identity);
     html += popupSection('Customer', customer);
+    if (m.link_state) {
+      const stMeta = LINK_LINE_STYLE[m.link_state] || LINK_LINE_STYLE.unknown;
+      const service: string[] = [
+        popupRow('Link', stMeta.label, { color: stMeta.color, bold: true }),
+        popupRow('IP', m.pppoe_ip),
+        popupRow('Session', m.session_uptime),
+        popupRow('RTT', m.rtt_ms != null ? `${m.rtt_ms} ms` : ''),
+        popupRow('Loss', m.loss_pct != null ? `${m.loss_pct}%` : ''),
+      ];
+      html += popupSection('Service (PPPoE)', service);
+    }
   } else if (m.type === 'otb') {
     const util = m.total_cores && m.total_cores > 0 ? `${m.used_cores ?? 0}/${m.total_cores} cores` : '';
     const infra: string[] = [
@@ -414,17 +453,30 @@ export function LeafletMap({
     if (clusterRef.current) clusterRef.current.clearLayers();
     if (highlightRef.current) highlightRef.current.clearLayers();
 
-    // Draw lines (base layer, dimmed)
+    // Draw lines (base layer, dimmed) — ONU-facing lines get live link-state colours
     for (const line of lines) {
-      L.polyline(
+      const isOnuLine = line.to_type === 'onu';
+      const style = isOnuLine
+        ? onuLineStyle(line)
+        : { color: '#64748b', weight: 2, opacity: 0.5, dashArray: '4 3' };
+      const pl = L.polyline(
         [[line.from_lat, line.from_lng], [line.to_lat, line.to_lng]],
-        {
-          color: line.to_type === 'onu' ? '#06b6d4' : '#64748b',
-          weight: line.to_type === 'onu' ? 1.5 : 2,
-          opacity: 0.5,
-          dashArray: '4 3',
-        }
-      ).addTo(layer);
+        style
+      );
+      if (isOnuLine) {
+        const st = LINK_LINE_STYLE[line.link_state || 'unknown'] || LINK_LINE_STYLE.unknown;
+        const extra = [
+          line.pppoe_ip ? `IP: ${line.pppoe_ip}` : '',
+          line.rtt_ms != null ? `RTT: ${line.rtt_ms} ms` : '',
+          line.loss_pct != null ? `Loss: ${line.loss_pct}%` : '',
+          line.session_uptime ? `Uptime: ${line.session_uptime}` : '',
+        ].filter(Boolean).join(' · ');
+        pl.bindTooltip(
+          `<b>${line.label}</b><br/>${st.label}${extra ? `<br/>${extra}` : ''}`,
+          { sticky: true }
+        );
+      }
+      pl.addTo(layer);
     }
 
     // Draw markers — use cluster for ONUs, direct layer for infrastructure
@@ -584,6 +636,23 @@ export function LeafletMap({
         <div className="flex items-center gap-1.5 text-xs">
           <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--color-offline)', border: '1px solid var(--text-3)' }} />
           <span className="text-tx3">Unregister</span>
+        </div>
+        {/* ODP→ONU live link-state legend */}
+        <div className="flex items-center gap-1.5 text-xs">
+          <div className="w-6 h-0.5 rounded" style={{ background: '#10b981' }} />
+          <span className="text-tx3">Link OK</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs">
+          <div className="w-6 h-0.5 rounded" style={{ background: '#f59e0b' }} />
+          <span className="text-tx3">Link Lambat</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs">
+          <div className="w-6 h-0.5 rounded" style={{ background: '#ef4444' }} />
+          <span className="text-tx3">Link Down</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs">
+          <div className="w-6 h-0.5 rounded" style={{ background: 'repeating-linear-gradient(90deg,#64748b 0 4px,transparent 4px 7px)' }} />
+          <span className="text-tx3">No Session</span>
         </div>
         {selectedMarker && (
           <div className="flex items-center gap-1.5 text-xs ml-auto">

@@ -1303,6 +1303,22 @@ def ftth_map():
     # Technician name lookup
     from models import User
     tech_map = {u.id: u.full_name for u in User.query.all()}
+    # Live PPPoE/ping link-state per ONU (polled from Mikrotik devices)
+    from models import OnuLinkState
+    link_state_map = {s.onu_id: s for s in OnuLinkState.query.all()}
+
+    def _onu_link_fields(onu_id):
+        s = link_state_map.get(onu_id)
+        if not s:
+            return {'link_state': 'unknown'}
+        return {
+            'link_state': s.link_state or 'unknown',
+            'pppoe_ip': s.pppoe_ip or '',
+            'session_uptime': s.session_uptime or '',
+            'rtt_ms': s.rtt_ms,
+            'loss_pct': s.loss_pct,
+            'link_checked_at': s.checked_at.isoformat() + 'Z' if s.checked_at else None,
+        }
 
     for o in FTTHOTB.query.all():
         if o.latitude and o.longitude:
@@ -1388,7 +1404,8 @@ def ftth_map():
                             'actual_type': o.actual_type or '',
                             'technician': tech_map.get(o.technician_id, '') if o.technician_id else '',
                             'odp_name': odp_name, 'odp_port': odp_port,
-                            'customer_name': cust_name, 'customer_phone': cust_phone})
+                            'customer_name': cust_name, 'customer_phone': cust_phone,
+                            **_onu_link_fields(o.id)})
     # Build connections (lines) with from_id/to_id for path highlighting
     def _node_latlng(ntype, nid):
         model = {'otb': FTTHOTB, 'odc': FTTHODC, 'odp': FTTHODP, 'jc': FTTHJC}.get(ntype)
@@ -1442,6 +1459,7 @@ def ftth_map():
                     onu = db.session.get(ONU, port.onu_id)
                     if not (onu and onu.latitude):
                         continue
+                    link_fields = _onu_link_fields(onu.id)
                     if port.feed_source == 'jc' and port.jc_id:
                         j_ll = _node_latlng('jc', port.jc_id)
                         if j_ll:
@@ -1449,13 +1467,15 @@ def ftth_map():
                                           'to_lat': onu.latitude, 'to_lng': onu.longitude,
                                           'from_type': 'jc', 'to_type': 'onu',
                                           'from_id': port.jc_id, 'to_id': onu.id,
-                                          'label': f'Core {port.jc_core_number}'})
+                                          'label': f'Core {port.jc_core_number}',
+                                          **link_fields})
                             continue
                     lines.append({'from_lat': odp.latitude, 'from_lng': odp.longitude,
                                   'to_lat': onu.latitude, 'to_lng': onu.longitude,
                                   'from_type': 'odp', 'to_type': 'onu',
                                   'from_id': odp.id, 'to_id': onu.id,
-                                  'label': f'Port {port.port_number}'})
+                                  'label': f'Port {port.port_number}',
+                                  **link_fields})
     return jsonify({'success': True, 'markers': markers, 'lines': lines})
 
 

@@ -129,6 +129,15 @@ def start_servers(flask_port: int = 5000, ws_port: int = 8765,
     ztp_thread.start()
     logger.info("ZTP auto-provision monitor started")
 
+    # Start link-state poller (Mikrotik PPPoE sessions + client ping — feeds
+    # the FTTH map's per-ONU line colouring; no-op until a device is added)
+    from link_state_poller import run_link_poller
+    link_thread = threading.Thread(
+        target=run_link_poller, args=(flask_app,), daemon=True, name="link-poller"
+    )
+    link_thread.start()
+    logger.info("Link-state poller started")
+
     # Start Flask in a background thread
     flask_thread = threading.Thread(
         target=run_flask,

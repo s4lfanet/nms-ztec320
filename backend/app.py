@@ -49,6 +49,7 @@ from routes_cloudflare import bp as cloudflare_bp
 from routes_ftth import bp as ftth_bp
 from routes_traffic import bp as traffic_bp
 from routes_auto_provision import bp as auto_provision_bp
+from routes_mikrotik import bp as mikrotik_bp
 from metrics_service import (
     metrics_response, track_http_request, track_snmp_poll, track_sync,
     update_olt_gauge, update_onu_gauge, track_cache_hit, track_cache_miss,
@@ -85,6 +86,7 @@ app.register_blueprint(cloudflare_bp)
 app.register_blueprint(ftth_bp)
 app.register_blueprint(traffic_bp)
 app.register_blueprint(auto_provision_bp)
+app.register_blueprint(mikrotik_bp)
 
 
 @app.before_request

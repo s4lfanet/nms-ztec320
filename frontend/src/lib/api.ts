@@ -147,6 +147,15 @@ export const api = {
   ftthCores: (ownerType: 'otb' | 'odc' | 'jc', ownerId: number) => request<{ success: boolean; cores: FTTHFiberCore[] }>(`/api/ftth/cores/${ownerType}/${ownerId}`),
   ftthCoreHistory: (coreId: number) => request<{ success: boolean; history: FTTHCoreHistoryEntry[] }>(`/api/ftth/cores/${coreId}/history`),
   ftthTraceOnu: (onuId: number) => request<{ success: boolean; complete: boolean; hops: FTTHTraceHop[]; message?: string; total_attenuation_db: number | null }>(`/api/ftth/trace/onu/${onuId}`),
+
+  // Mikrotik link-state monitoring
+  mikrotikList: () => request<{ success: boolean; devices: MikrotikDevice[] }>('/api/mikrotik'),
+  mikrotikCreate: (data: Partial<MikrotikDevice> & { api_password?: string }) => request<{ success: boolean; device: MikrotikDevice }>('/api/mikrotik', { method: 'POST', body: JSON.stringify(data) }),
+  mikrotikUpdate: (id: number, data: Partial<MikrotikDevice> & { api_password?: string }) => request<{ success: boolean; device: MikrotikDevice }>(`/api/mikrotik/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  mikrotikDelete: (id: number) => request<{ success: boolean }>(`/api/mikrotik/${id}`, { method: 'DELETE' }),
+  mikrotikTest: (id: number) => request<{ success: boolean; identity?: string; active_sessions?: number; message?: string }>(`/api/mikrotik/${id}/test`, { method: 'POST' }),
+  onuLinkState: (onuId: number) => request<{ success: boolean; state: OnuLinkState | null }>(`/api/onu/${onuId}/link-state`),
+  onuPingClient: (onuId: number) => request<{ success: boolean; source: string; ip: string; ping: { sent: number; received: number; loss_pct: number; avg_rtt_ms: number | null }; state: OnuLinkState; message?: string }>(`/api/onu/${onuId}/ping`, { method: 'POST' }),
   ftthImpact: (nodeType: 'otb' | 'jc' | 'odc' | 'odp', nodeId: number) => request<{ success: boolean; total: number; online: number; offline: number; customers: Array<{ id: number; name: string; serial: string; status: string }>; truncated: boolean }>(`/api/ftth/impact/${nodeType}/${nodeId}`),
   ftthPonList: () => request<{ success: boolean; items: FTTHPonPort[] }>('/api/ftth/pon'),
   ftthPonRealPorts: (oltId: number) => request<{ success: boolean; olt_name: string; ports: FTTHRealPonPort[] }>(`/api/ftth/pon/real/${oltId}`),
@@ -1068,6 +1077,41 @@ export interface FTTHLine {
   from_id?: number;
   to_id?: number;
   label: string;
+  link_state?: 'ok' | 'slow' | 'down' | 'no_session' | 'unknown';
+  pppoe_ip?: string;
+  rtt_ms?: number | null;
+  loss_pct?: number | null;
+  session_uptime?: string;
+  link_checked_at?: string | null;
+}
+
+export interface MikrotikDevice {
+  id: number;
+  name: string;
+  host: string;
+  api_mode: 'api' | 'rest';
+  api_port: number;
+  api_ssl: boolean;
+  api_user: string;
+  has_password: boolean;
+  enabled: boolean;
+  ping_enabled: boolean;
+  ping_batch: number;
+  last_ok: boolean;
+  last_error: string;
+  last_polled_at: string | null;
+}
+
+export interface OnuLinkState {
+  link_state: 'ok' | 'slow' | 'down' | 'no_session' | 'unknown';
+  pppoe_user: string;
+  pppoe_ip: string;
+  session_up: boolean;
+  session_uptime: string;
+  rtt_ms: number | null;
+  loss_pct: number | null;
+  checked_at: string | null;
+  ping_checked_at: string | null;
 }
 
 export interface FTTHFiberPath {
