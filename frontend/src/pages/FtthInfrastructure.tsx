@@ -83,6 +83,13 @@ export function FtthInfrastructure() {
     }
   }, [mapWsMsg, qc]);
 
+  // Instant refresh after an on-demand "Ping client" from a map popup
+  useEffect(() => {
+    const handler = () => qc.invalidateQueries({ queryKey: ['ftth-map'] });
+    window.addEventListener('onu-link-refresh', handler);
+    return () => window.removeEventListener('onu-link-refresh', handler);
+  }, [qc]);
+
   // Countdown ticker (only when overview tab is active)
   useEffect(() => {
     if (tab !== 'overview') return;

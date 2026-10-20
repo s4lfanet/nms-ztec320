@@ -261,8 +261,15 @@ function buildPopupHtml(m: MapMarker): string {
         popupRow('Session', m.session_uptime),
         popupRow('RTT', m.rtt_ms != null ? `${m.rtt_ms} ms` : ''),
         popupRow('Loss', m.loss_pct != null ? `${m.loss_pct}%` : ''),
+        popupRow('Checked', m.link_checked_at ? new Date(m.link_checked_at).toLocaleTimeString() : ''),
       ];
       html += popupSection('Service (PPPoE)', service);
+    }
+    if (m.pppoe) {
+      html += `<div style="margin-top:6px">`
+        + `<button type="button" class="onu-ping-now" data-onu-id="${m.id}" style="width:100%;padding:4px 8px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid rgba(6,182,212,.45);background:rgba(6,182,212,.12);color:#06b6d4;cursor:pointer">Ping client</button>`
+        + `<div class="onu-ping-result" style="margin-top:3px;font-size:10px;color:var(--text-3)"></div>`
+        + `</div>`;
     }
   } else if (m.type === 'otb') {
     const util = m.total_cores && m.total_cores > 0 ? `${m.used_cores ?? 0}/${m.total_cores} cores` : '';
@@ -505,6 +512,51 @@ export function LeafletMap({
         highlightPath(m, lines);
         if (onMarkerClick) onMarkerClick(m);
       });
+
+      // On-demand "Ping client" inside ONU popups — runs a live ping via the
+      // Mikrotik (or NMS fallback) so clicking a marker shows actual state now,
+      // not the last poller sample. State changes are broadcast over WS and the
+      // page refetches, so the line colour updates on its own.
+      const wirePingButton = () => {
+        const root: HTMLElement | undefined = marker.getPopup()?.getElement?.();
+        const btn = root?.querySelector('.onu-ping-now') as HTMLButtonElement | null;
+        const out = root?.querySelector('.onu-ping-result') as HTMLElement | null;
+        if (!btn || !out || (btn as any).__wired) return;
+        (btn as any).__wired = true;
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-onu-id');
+          btn.disabled = true;
+          btn.textContent = 'Pinging…';
+          try {
+            const res = await fetch(`/api/onu/${id}/ping`, { method: 'POST', credentials: 'include' });
+            const d = await res.json();
+            if (d.success && d.ping) {
+              const st = LINK_LINE_STYLE[d.state?.link_state || 'unknown'] || LINK_LINE_STYLE.unknown;
+              const parts = [
+                d.ip ? `IP ${d.ip}` : '',
+                d.ping.avg_rtt_ms != null ? `${d.ping.avg_rtt_ms} ms` : '',
+                d.ping.loss_pct != null ? `loss ${d.ping.loss_pct}%` : '',
+                d.source ? `via ${d.source}` : '',
+              ].filter(Boolean).join(' · ');
+              out.innerHTML = `<span style="color:${st.color};font-weight:600">${st.label}</span><br/>${parts}`;
+              if (d.state) {
+                m.link_state = d.state.link_state;
+                m.rtt_ms = d.state.rtt_ms;
+                m.loss_pct = d.state.loss_pct;
+                m.link_checked_at = d.state.ping_checked_at || d.state.checked_at;
+              }
+              window.dispatchEvent(new CustomEvent('onu-link-refresh'));
+            } else {
+              out.textContent = d.message || 'Ping gagal';
+            }
+          } catch {
+            out.textContent = 'Ping gagal (network error)';
+          }
+          btn.disabled = false;
+          btn.textContent = 'Ping client';
+        });
+      };
+      marker.on('popupopen', wirePingButton);
 
       // Add ONUs to cluster, infrastructure directly to layer
       if (clusterRef.current && m.type === 'onu') {
