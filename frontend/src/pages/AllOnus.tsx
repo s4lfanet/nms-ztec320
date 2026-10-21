@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api, type ONUData, type AllOnusData, type TechnicianData, type RxColorRange } from '../lib/api';
+import { api, type ONUData, type AllOnusData, type TechnicianData, type RxColorRange, type MacMatchResult } from '../lib/api';
 import { collectOdpPortOptions } from '../lib/ftthTree';
 import { cn, formatSn } from '../lib/utils';
 import { toast } from '../components/Toast';
@@ -9,7 +9,7 @@ import { confirm } from '../components/ConfirmDialog';
 import {
   Eye, Edit3, Trash2,
   CheckCircle2, AlertTriangle, XCircle, HelpCircle, Wifi,
-  Satellite, Download, Split, Radio, Wrench, MapPin, RefreshCw
+  Satellite, Download, Split, Radio, Wrench, MapPin, RefreshCw, Fingerprint
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useDashboardWs } from '../hooks/useDashboardWs';
@@ -45,6 +45,7 @@ export function AllOnus() {
   const [editLongitude, setEditLongitude] = useState<string>('');
   const [showMap, setShowMap] = useState(false);
   const [inlineEdit, setInlineEdit] = useState<{ onuId: number; field: 'technician' | 'odp' } | null>(null);
+  const [showMacMatch, setShowMacMatch] = useState(false);
   const [sortBy, setSortBy] = useState<string>('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -144,6 +145,18 @@ export function AllOnus() {
     },
     onError: (e: Error) => toast.error(e.message || 'Link sync gagal'),
   });
+
+  const macMatchMutation = useMutation({
+    mutationFn: (pairs: { onu_id: number; name: string }[]) => api.mikrotikMacMatchApply(pairs),
+    onSuccess: (d) => {
+      toast.success(`${d.updated} nama ONU ditulis dari match PPPoE`);
+      if (d.errors?.length) toast.warning(`${d.errors.length} gagal — cek konsol`);
+      queryClient.invalidateQueries({ queryKey: ['all-onus'] });
+      queryClient.invalidateQueries({ queryKey: ['ftth-map'] });
+    },
+    onError: (e: Error) => toast.error(e.message || 'Apply gagal'),
+  });
+  const handleMacApply = (pairs: { onu_id: number; name: string }[]) => macMatchMutation.mutate(pairs);
 
   // Reset page when filters change
   useEffect(() => { setPage(1); }, [oltFilter, statusFilter, signalFilter, slotFilter, ponFilter, debouncedSearch, pageSize]);
@@ -265,6 +278,16 @@ export function AllOnus() {
                 disabled={linkSyncMutation.isPending}
               >
                 {linkSyncMutation.isPending ? 'Syncing...' : 'Link PPPoE'}
+              </Button>
+            )}
+            {hasPerm('settings_ip_olts') && (
+              <Button
+                variant="secondary"
+                title="Cocokkan MAC ONU dengan caller-id sesi PPPoE aktif — preview dulu, lalu apply nama"
+                icon={<Fingerprint size={15} />}
+                onClick={() => setShowMacMatch(true)}
+              >
+                Match MAC
               </Button>
             )}
           </>
@@ -719,6 +742,17 @@ export function AllOnus() {
           </>
         )}
       </Modal>
+
+      {/* MAC Match Modal — cocokkan MAC ONU (non-ZTE) dengan caller-id sesi PPPoE aktif */}
+      <Modal
+        open={showMacMatch}
+        onClose={() => setShowMacMatch(false)}
+        title="Match MAC — Sesi PPPoE Aktif"
+        icon={<Fingerprint size={16} />}
+        size="xl"
+      >
+        <MacMatchPanel onApply={handleMacApply} applying={macMatchMutation.isPending} />
+      </Modal>
     </PageContainer>
   );
 }
@@ -928,5 +962,124 @@ function SortTh({ col, sortBy, sortDir, onSort, children }: {
         {active && <span className="text-accent">{sortDir === 'asc' ? '↑' : '↓'}</span>}
       </span>
     </th>
+  );
+}
+
+function MacMatchPanel({ onApply, applying }: {
+  onApply: (pairs: { onu_id: number; name: string }[]) => void;
+  applying: boolean;
+}) {
+  const [strip, setStrip] = useState(0);
+  const [scanning, setScanning] = useState(false);
+  const [data, setData] = useState<{
+    matches: MacMatchResult[]; collisions: number; sessions: number;
+    onus_scanned: number; device_errors: string[];
+  } | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  const scan = async (s: number) => {
+    setScanning(true); setData(null); setSelected(new Set());
+    try {
+      const d = await api.mikrotikMacMatch(s);
+      setData(d);
+      setSelected(new Set(d.matches.filter(m => !m.collision).map(m => m.onu_id)));
+      if (!d.matches.length) toast.info('Tidak ada MAC yang cocok dengan sesi aktif');
+    } catch (e) {
+      toast.error((e as Error).message || 'Scan gagal');
+    } finally { setScanning(false); }
+  };
+
+  const toggle = (id: number) => setSelected(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+
+  const rows = data?.matches || [];
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="w-56">
+          <Select
+            label="Pengurangan oktet MAC"
+            value={String(strip)}
+            onChange={e => setStrip(Number(e.target.value))}
+            options={[
+              { value: '0', label: 'Exact — MAC penuh' },
+              { value: '1', label: '-1 oktet terakhir' },
+              { value: '2', label: '-2 oktet terakhir' },
+              { value: '3', label: '-3 oktet (hanya OUI — hati-hati)' },
+            ]}
+          />
+        </div>
+        <Button variant="primary" icon={<RefreshCw size={15} className={scanning ? 'animate-spin' : ''} />}
+          onClick={() => scan(strip)} disabled={scanning || applying}>
+          {scanning ? 'Scanning…' : 'Scan Sesi Aktif'}
+        </Button>
+        {data && (
+          <Button variant="primary" disabled={!selected.size || applying}
+            onClick={() => onApply(rows.filter(r => selected.has(r.onu_id)).map(r => ({ onu_id: r.onu_id, name: r.session_name })))}>
+            {applying ? 'Applying…' : `Apply ${selected.size} terpilih`}
+          </Button>
+        )}
+      </div>
+
+      {data && (
+        <p className="text-xs text-tx3">
+          {data.sessions} sesi aktif · {data.onus_scanned} ONU non-ZTE discan ·
+          <span className="text-accent"> {rows.length} match</span>
+          {data.collisions > 0 && <span className="text-warning"> · {data.collisions} ambigu (MAC prefix sama &gt;1 ONU)</span>}
+        </p>
+      )}
+      {data?.device_errors?.length ? (
+        <p className="text-xs text-danger">{data.device_errors.join(' · ')}</p>
+      ) : null}
+
+      {rows.length > 0 && (
+        <div className="max-h-80 overflow-y-auto border border-line rounded-lg">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-surface2">
+              <tr>
+                <th className="px-3 py-2 w-8"></th>
+                <th className="px-3 py-2 text-left">Username PPPoE → nama baru</th>
+                <th className="px-3 py-2 text-left">Caller-ID</th>
+                <th className="px-3 py-2 text-left">ONU</th>
+                <th className="px-3 py-2 text-left">MAC ONU</th>
+                <th className="px-3 py-2 text-left">Match</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={`${r.onu_id}-${r.session_name}`}
+                  className={cn('border-t border-line/50', r.collision && 'opacity-50')}>
+                  <td className="px-3 py-2">
+                    <input type="checkbox" checked={selected.has(r.onu_id)} disabled={r.collision}
+                      onChange={() => toggle(r.onu_id)} className="accent-accent" />
+                  </td>
+                  <td className="px-3 py-2 font-medium text-tx1">{r.session_name}
+                    <span className="block text-tx3 font-normal">{r.address} · {r.device}</span>
+                  </td>
+                  <td className="px-3 py-2 font-mono text-tx2">{r.caller_id}</td>
+                  <td className="px-3 py-2 text-tx2">{r.onu_index}
+                    <span className="block text-tx3">{r.onu_name || '—'}</span>
+                  </td>
+                  <td className="px-3 py-2 font-mono text-tx2">{r.serial}</td>
+                  <td className="px-3 py-2">
+                    <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase',
+                      r.match === 'exact' ? 'bg-success/15 text-success'
+                        : r.collision ? 'bg-danger/15 text-danger' : 'bg-warning/15 text-warning')}>
+                      {r.collision ? 'ambigu' : r.match}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="text-[11px] text-tx3 leading-relaxed">
+        Hanya ONU non-ZTE dengan nama belum terisi (NA) yang discan. Apply menulis username PPPoE
+        ke field <b>Name</b> dan <b>PPPoE</b> ONU. Match <b>ambigu</b> (beberapa ONU berbagi prefix MAC — biasanya
+        OUI pabrikan sama) tidak bisa dipilih; perkecil pengurangan oktet atau isi nama manual.
+      </p>
+    </div>
   );
 }

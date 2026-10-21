@@ -156,6 +156,8 @@ export const api = {
   mikrotikDelete: (id: number) => request<{ success: boolean }>(`/api/mikrotik/${id}`, { method: 'DELETE' }),
   mikrotikTest: (id: number) => request<{ success: boolean; identity?: string; active_sessions?: number; message?: string }>(`/api/mikrotik/${id}/test`, { method: 'POST' }),
   mikrotikPollNow: () => request<{ success: boolean; devices: { name: string; ok: boolean; sessions?: number; error?: string }[]; states: Record<string, number>; reconciled: number; message?: string }>('/api/mikrotik/poll-now', { method: 'POST' }),
+  mikrotikMacMatch: (strip = 0) => request<{ success: boolean; matches: MacMatchResult[]; collisions: number; sessions: number; onus_scanned: number; device_errors: string[] }>(`/api/mikrotik/mac-match?strip=${strip}`),
+  mikrotikMacMatchApply: (pairs: { onu_id: number; name: string }[]) => request<{ success: boolean; updated: number; errors: string[] }>('/api/mikrotik/mac-match', { method: 'POST', body: JSON.stringify({ pairs }) }),
   onuLinkState: (onuId: number) => request<{ success: boolean; state: OnuLinkState | null }>(`/api/onu/${onuId}/link-state`),
   onuPingClient: (onuId: number) => request<{ success: boolean; source: string; ip: string; ping: { sent: number; received: number; loss_pct: number; avg_rtt_ms: number | null }; state: OnuLinkState; message?: string }>(`/api/onu/${onuId}/ping`, { method: 'POST' }),
   ftthImpact: (nodeType: 'otb' | 'jc' | 'odc' | 'odp', nodeId: number) => request<{ success: boolean; total: number; online: number; offline: number; customers: Array<{ id: number; name: string; serial: string; status: string }>; truncated: boolean }>(`/api/ftth/impact/${nodeType}/${nodeId}`),
@@ -1104,6 +1106,21 @@ export interface MikrotikDevice {
   last_ok: boolean;
   last_error: string;
   last_polled_at: string | null;
+}
+
+export interface MacMatchResult {
+  onu_id: number;
+  onu_index: string;
+  onu_name: string;
+  serial: string;
+  olt_id: number;
+  session_name: string;
+  caller_id: string;
+  address: string;
+  uptime: string;
+  device: string;
+  match: string;
+  collision: boolean;
 }
 
 export interface OnuLinkState {

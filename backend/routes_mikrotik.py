@@ -17,7 +17,7 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
 from helpers import log_action, permission_required
-from models import db, MikrotikDevice, ONU, OnuLinkState
+from models import db, MikrotikDevice, ONU, OLT, OnuLinkState
 from routeros_client import RouterOSClient
 
 bp = Blueprint('mikrotik', __name__)
@@ -150,6 +150,101 @@ def _state_to_dict(s):
         'checked_at': s.checked_at.isoformat() + 'Z' if s.checked_at else None,
         'ping_checked_at': s.ping_checked_at.isoformat() + 'Z' if s.ping_checked_at else None,
     }
+
+
+@bp.route('/api/mikrotik/mac-match', methods=['GET'])
+@login_required
+@permission_required('settings_ip_olts')
+def mac_match_preview():
+    """Preview: match active PPPoE sessions to non-ZTE ONUs by caller-id MAC.
+
+    ?strip=N (0-3) drops the last N MAC octets on both sides before comparing
+    — useful when the CPE's dialing MAC differs from the ONU's base MAC.
+    Only unambiguous (single-ONU) matches are marked eligible.
+    """
+    import link_state_poller as lsp
+    strip = min(3, max(0, int(request.args.get('strip') or 0)))
+    only_unnamed = request.args.get('unnamed', '1') == '1'
+
+    sessions, dev_errors = [], []
+    for dev in MikrotikDevice.query.filter_by(enabled=True).all():
+        try:
+            with RouterOSClient(dev.host, dev.api_mode, dev.api_port, dev.api_ssl,
+                                dev.api_user, dev.api_password, timeout=15) as cli:
+                for s in cli.get_pppoe_active() or []:
+                    sessions.append({'name': s.get('name', ''),
+                                     'caller_id': s.get('caller-id', ''),
+                                     'address': s.get('address', ''),
+                                     'uptime': s.get('uptime', ''),
+                                     'device': dev.name})
+        except Exception as e:
+            dev_errors.append(f'{dev.name}: {str(e)[:120]}')
+
+    olt_vendor = {o.id: (o.vendor or 'zte') for o in OLT.query.all()}
+    onus = [o for o in ONU.query.all()
+            if olt_vendor.get(o.olt_id) != 'zte' and lsp._norm_mac(o.serial_number)]
+    if only_unnamed:
+        onus = [o for o in onus if not lsp._name_is_usable(o.name)]
+
+    keep = 12 - 2 * strip  # hex chars compared
+    mac_idx = {}
+    for o in onus:
+        mac_idx.setdefault(lsp._norm_mac(o.serial_number)[:keep], []).append(o)
+
+    matches, collisions = [], 0
+    for s in sessions:
+        cid = lsp._norm_mac(s['caller_id'])
+        if not cid:
+            continue
+        cands = mac_idx.get(cid[:keep], [])
+        if len(cands) > 1:
+            collisions += 1
+        for o in cands[:1]:
+            matches.append({
+                'onu_id': o.id, 'onu_index': o.onu_index,
+                'onu_name': o.name or '', 'serial': o.serial_number,
+                'olt_id': o.olt_id,
+                'session_name': s['name'], 'caller_id': s['caller_id'],
+                'address': s['address'], 'uptime': s['uptime'],
+                'device': s['device'],
+                'match': 'exact' if strip == 0 else f'partial-{strip}',
+                'collision': len(cands) > 1,
+            })
+    return jsonify({'success': True, 'matches': matches, 'collisions': collisions,
+                    'sessions': len(sessions), 'onus_scanned': len(onus),
+                    'device_errors': dev_errors})
+
+
+@bp.route('/api/mikrotik/mac-match', methods=['POST'])
+@login_required
+@permission_required('edit_onu_name')
+def mac_match_apply():
+    """Apply reviewed matches: write session username to onu.name (+pppoe)."""
+    import re as _re
+    pairs = (request.get_json() or {}).get('pairs') or []
+    if not isinstance(pairs, list) or len(pairs) > 500:
+        return jsonify({'success': False, 'message': 'pairs invalid'}), 400
+    updated, errors = 0, []
+    for p in pairs:
+        try:
+            onu_id, name = int(p['onu_id']), str(p['name']).strip()[:120]
+            if not name or not _re.match(r'^[\w@.\-]+$', name):
+                errors.append(f'#{onu_id}: nama tidak valid')
+                continue
+            onu = db.session.get(ONU, onu_id)
+            if not onu:
+                errors.append(f'#{onu_id}: ONU tidak ditemukan')
+                continue
+            onu.name = name
+            if not onu.pppoe:
+                onu.pppoe = name
+            updated += 1
+        except Exception as e:
+            errors.append(str(e)[:120])
+    db.session.commit()
+    log_action('mikrotik_mac_match', 'settings', target='onus',
+               detail=f'applied {updated} names from PPPoE/MAC match')
+    return jsonify({'success': True, 'updated': updated, 'errors': errors})
 
 
 @bp.route('/api/mikrotik/poll-now', methods=['POST'])
