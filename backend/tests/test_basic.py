@@ -2720,3 +2720,56 @@ class TestAlertOfflineDebounce:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+class TestOltDelete:
+    """Regression: DELETE /api/olt/<id> must remove the OLT plus every
+    ONU-keyed and OLT-keyed child row (link states, status history, sync
+    jobs, traffic logs) and must not leave ftth_odp_port.onu_id dangling."""
+
+    def _login(self, client):
+        resp = client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        assert resp.status_code == 200
+
+    def test_delete_olt_cascades_children(self, client):
+        from models import (OLT, ONU, OnuLinkState, OnuStatusHistory, SyncJob,
+                            TrafficLog, FTTHODP, FTTHODPPort, OLTPort)
+        self._login(client)
+        with app.app_context():
+            olt = OLT(name='DEL-ME', ip_address='10.99.99.1', vendor='hioso')
+            db.session.add(olt)
+            db.session.flush()
+            onu = ONU(olt_id=olt.id, name='cust@rw01', serial_number='AABBCCDDEEFF')
+            db.session.add(onu)
+            db.session.flush()
+            db.session.add_all([
+                OnuLinkState(onu_id=onu.id, link_state='ok'),
+                OnuStatusHistory(onu_id=onu.id, olt_id=olt.id, new_status='online'),
+                SyncJob(job_id='job-del-1', olt_id=olt.id, status='completed'),
+                TrafficLog(olt_id=olt.id, port_type='pon', port_name='epon-olt_1/1'),
+                OLTPort(olt_id=olt.id, port_number=1, port_name='epon-olt_1/1'),
+            ])
+            odp = FTTHODP(name='ODP-DEL', latitude=-6.2, longitude=106.8)
+            db.session.add(odp)
+            db.session.flush()
+            port = FTTHODPPort(odp_id=odp.id, port_number=1, onu_id=onu.id, status='used')
+            db.session.add(port)
+            db.session.commit()
+            olt_id, onu_id, port_id = olt.id, onu.id, port.id
+
+        resp = client.delete(f'/api/olt/{olt_id}',
+                             headers={'X-Requested-With': 'XMLHttpRequest'})
+        assert resp.status_code == 200, resp.get_json()
+        assert resp.get_json()['success'] is True
+
+        with app.app_context():
+            assert db.session.get(OLT, olt_id) is None
+            assert db.session.get(ONU, onu_id) is None
+            assert OnuLinkState.query.filter_by(onu_id=onu_id).count() == 0
+            assert OnuStatusHistory.query.filter_by(onu_id=onu_id).count() == 0
+            assert SyncJob.query.filter_by(olt_id=olt_id).count() == 0
+            assert TrafficLog.query.filter_by(olt_id=olt_id).count() == 0
+            # ODP port survives but its ONU link is nulled, not dangling
+            assert db.session.get(FTTHODPPort, port_id).onu_id is None

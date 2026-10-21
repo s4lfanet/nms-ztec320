@@ -16,7 +16,8 @@ from models import (
     WanIpProfile, OLTPort, AVAILABLE_PERMISSIONS, Notification, AlertRule,
     AlertHistory, BotConfig, FTTHOTB, FTTHODC, FTTHODP, FTTHODPPort,
     FTTHPonPort, FTTHFiberPath, SystemConfig, ActionLog, MetricHistory,
-    TrafficLog, TrafficLogHourly, OLTConfigBackup,
+    TrafficLog, TrafficLogHourly, OLTConfigBackup, SyncJob,
+    OnuLinkState, OnuStatusHistory,
 )
 from extensions import logger
 from helpers import (
@@ -1320,9 +1321,20 @@ def delete_olt(olt_id):
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
     from models import MaintenanceWindow
+    name, ip = olt.name, olt.ip_address  # captured before delete — the object is expired after commit
     try:
+        # Clean ONU-keyed rows first (ftth_odp_port.onu_id is a nullable ref —
+        # null it; link-state/history rows are deleted with their ONU)
+        onu_ids = [r[0] for r in db.session.query(ONU.id).filter_by(olt_id=olt_id).all()]
+        if onu_ids:
+            OnuLinkState.query.filter(OnuLinkState.onu_id.in_(onu_ids)).delete(synchronize_session=False)
+            OnuStatusHistory.query.filter(OnuStatusHistory.onu_id.in_(onu_ids)).delete(synchronize_session=False)
+            FTTHODPPort.query.filter(FTTHODPPort.onu_id.in_(onu_ids)).update(
+                {'onu_id': None}, synchronize_session=False)
         # Delete all child records explicitly to avoid FK constraint errors
         ONU.query.filter_by(olt_id=olt_id).delete()
+        SyncJob.query.filter_by(olt_id=olt_id).delete()
+        TrafficLog.query.filter_by(olt_id=olt_id).delete()
         Fan.query.filter_by(olt_id=olt_id).delete()
         OLTCard.query.filter_by(olt_id=olt_id).delete()
         OLTUplink.query.filter_by(olt_id=olt_id).delete()
@@ -1344,8 +1356,8 @@ def delete_olt(olt_id):
         TR069Profile.query.filter_by(default_olt_id=olt_id).update({'default_olt_id': None})
         db.session.delete(olt)
         db.session.commit()
-        log_action('olt_delete', 'olt', target=olt.name, detail=f'Deleted OLT {olt.name} ({olt.ip_address})')
-        return jsonify({'success': True, 'message': f'OLT "{olt.name}" deleted successfully.'})
+        log_action('olt_delete', 'olt', target=name, detail=f'Deleted OLT {name} ({ip})')
+        return jsonify({'success': True, 'message': f'OLT "{name}" deleted successfully.'})
     except Exception as e:
         db.session.rollback()
         logging.error(f'Delete OLT {olt_id} failed: {e}')

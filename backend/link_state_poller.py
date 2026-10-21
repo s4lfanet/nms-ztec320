@@ -145,6 +145,10 @@ def poll_device(dev):
         return None
 
     dev.last_ok, dev.last_error, dev.last_polled_at = True, '', now
+    db.session.commit()  # flush device bookkeeping now — never carry a dirty
+    # session into the ping phase, or the open write transaction holds SQLite's
+    # RESERVED lock for the whole (slow) network round-trip and every other
+    # writer (UI edits, OLT delete, sync commits) dies with 'database is locked'.
 
     # session name -> session row (name is the PPPoE username)
     sess_by_name = {s['name']: s for s in sessions if s.get('name')}
@@ -172,10 +176,11 @@ def poll_device(dev):
     batch = max(1, dev.ping_batch or 25)
 
     seen_users = set(sess_by_name)
-    changed = []
 
-    # --- sessions that map to known ONUs ----------------------------------
-    matched = []
+    # --- phase 1 (read-only + network): build match plan, then ping ---------
+    # Nothing is written to db.session here, so no write lock is held while
+    # we wait on RouterOS/VPS ping round-trips.
+    plans = []  # (onu, user, sess)
     for user, sess in sess_by_name.items():
         # Priority: pppoe column > ONU name (bridge-mode ONUs) > caller-id MAC
         # == serial_number (HiOSO/other OLTs whose ONUs dial PPPoE themselves —
@@ -188,47 +193,58 @@ def poll_device(dev):
         if not targets:
             targets = by_mac.get(_norm_mac(sess.get('caller-id'))) or []
         for onu in targets:
-            if not onu.pppoe:
-                onu.pppoe = user  # backfill for future syncs/map/searches
-            if not _name_is_usable(onu.name):
-                onu.name = user  # auto-name 'NA' ONUs (HiOSO) from session
-            st = _get_or_create_state(onu.id)
-            old = st.link_state
-            st.mikrotik_id = dev.id
-            st.pppoe_user = user
-            st.pppoe_ip = sess.get('address', '')
-            st.session_up = True
-            st.session_uptime = sess.get('uptime', '')
-            st.caller_id = sess.get('caller-id', '')
-            st.checked_at = now
-            matched.append((st, st.pppoe_ip))
-            if old == 'no_session':
-                st.link_state = 'unknown'  # ping below resolves it
-                changed.append(st)
+            plans.append((onu, user, sess))
 
-    # --- ping batch (round-robin over matched sessions) --------------------
-    if dev.ping_enabled and matched:
+    pings = {}  # onu_id -> ping result (or None when ping failed both ways)
+    if dev.ping_enabled and plans:
         off = _rr_cursor.get(dev.id, 0)
-        ordered = matched[off % len(matched):] + matched[:off % len(matched)]
-        _rr_cursor[dev.id] = (off + batch) % len(matched)
-        for st, ip in ordered[:batch]:
+        ordered = plans[off % len(plans):] + plans[:off % len(plans)]
+        _rr_cursor[dev.id] = (off + batch) % len(plans)
+        for onu, _user, sess in ordered[:batch]:
+            ip = sess.get('address', '')
             if not ip:
                 continue
-            old = st.link_state
             try:
-                ping = cli.ping(ip, count=3)
+                pings[onu.id] = cli.ping(ip, count=3)
             except Exception as e:
                 logger.debug('mikrotik ping %s via %s failed: %s', ip, dev.host, e)
-                ping = ping_from_vps(ip)
-            new_state, fails = _classify(st, ping, slow_rtt, fail_th)
-            st.link_state, st.fail_count = new_state, fails
-            st.ping_checked_at = now
-            if ping:
-                st.rtt_ms, st.loss_pct = ping.get('avg_rtt_ms'), ping.get('loss_pct')
-            if new_state != old:
-                changed.append(st)
+                pings[onu.id] = ping_from_vps(ip)
 
     cli.close()
+
+    # --- phase 2: apply everything in one short write transaction -----------
+    st_map = {st.onu_id: st for st in OnuLinkState.query.filter(
+        OnuLinkState.onu_id.in_([o.id for o, _u, _s in plans])).all()}
+    changed = []
+    for onu, user, sess in plans:
+        if not onu.pppoe:
+            onu.pppoe = user  # backfill for future syncs/map/searches
+        if not _name_is_usable(onu.name):
+            onu.name = user  # auto-name 'NA' ONUs (HiOSO) from session
+        st = st_map.get(onu.id)
+        if st is None:
+            st = OnuLinkState(onu_id=onu.id, link_state='unknown')
+            db.session.add(st)
+            st_map[onu.id] = st
+        old = st.link_state
+        st.mikrotik_id = dev.id
+        st.pppoe_user = user
+        st.pppoe_ip = sess.get('address', '')
+        st.session_up = True
+        st.session_uptime = sess.get('uptime', '')
+        st.caller_id = sess.get('caller-id', '')
+        st.checked_at = now
+        if old == 'no_session':
+            st.link_state = 'unknown'  # ping below resolves it
+        if onu.id in pings:
+            new_state, fails = _classify(st, pings[onu.id], slow_rtt, fail_th)
+            st.link_state, st.fail_count = new_state, fails
+            st.ping_checked_at = now
+            if pings[onu.id]:
+                st.rtt_ms = pings[onu.id].get('avg_rtt_ms')
+                st.loss_pct = pings[onu.id].get('loss_pct')
+        if st.link_state != old:
+            changed.append(st)
 
     # --- rows bound to this device whose session vanished ------------------
     for st in OnuLinkState.query.filter_by(mikrotik_id=dev.id).all():
