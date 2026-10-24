@@ -539,11 +539,13 @@ def delete_onu(onu_id):
         tc = create_cli_collector(olt)
         is_epon = (onu.card or '').lower() == 'epon'
         tc.deregister_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
-    db.session.delete(onu)
+    target, detail = onu.onu_id_str or str(onu.id), f'Deleted {onu.name} ({onu.serial_number}) from {olt.name if olt else "unknown"}'
+    from helpers import delete_onu_row
+    delete_onu_row(onu)
     db.session.commit()
     # Auto-sync OLT after delete — full sync with delay to clean stale ONUs
     _auto_sync_olt(olt_id, light=False, delay=3)
-    log_action('onu_delete', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'Deleted {onu.name} ({onu.serial_number}) from {olt.name if olt else "unknown"}')
+    log_action('onu_delete', 'onu', target=target, detail=detail)
     return jsonify({'success': True, 'message': 'ONU deleted. Auto-syncing OLT...'})
 
 
@@ -673,7 +675,7 @@ def onu_action(onu_id):
     onu = db.session.get(ONU, onu_id)
     if not onu:
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     action = data.get('action')
     olt = onu.olt
 
@@ -696,7 +698,8 @@ def onu_action(onu_id):
         success, msg = collector.deregister_onu_snmp(onu.frame, onu.slot, onu.port, onu.onu_id, write_community=wc)
         collector.close()
         if success:
-            db.session.delete(onu)
+            from helpers import delete_onu_row
+            delete_onu_row(onu)
             db.session.commit()
             _auto_sync_olt(olt_id_for_sync, light=False, delay=3)
         return jsonify({'success': success, 'message': msg})
@@ -730,7 +733,10 @@ def onu_action(onu_id):
         olt_id_for_sync = onu.olt_id
         success, msg = tc.deregister_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
         if success:
-            db.session.delete(onu)
+            # capture before delete: log_action below must not touch a deleted object
+            onu_label, onu_desc = onu.onu_id_str or str(onu.id), f'{onu.name} ({onu.serial_number})'
+            from helpers import delete_onu_row
+            delete_onu_row(onu)
             db.session.commit()
             # Auto-trigger FULL sync after delete with 3s delay — gives OLT time
             # to process deregistration so SNMP won't re-create the ONU in DB
@@ -825,7 +831,10 @@ def onu_action(onu_id):
         return jsonify({'success': False, 'message': f'Unknown action: {action}'})
     logger.info(f"[onu-action] ONU {onu_id} action='{action}' ({device_type}): final success={success} msg={msg}")
     if success:
-        log_action(f'onu_{action}', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'{action} on {onu.name} ({onu.serial_number}) — {msg}')
+        if action == 'delete':
+            log_action('onu_delete', 'onu', target=onu_label, detail=f'delete on {onu_desc} — {msg}')
+        else:
+            log_action(f'onu_{action}', 'onu', target=onu.onu_id_str or str(onu.id), detail=f'{action} on {onu.name} ({onu.serial_number}) — {msg}')
     return jsonify({'success': success, 'message': msg})
 
 

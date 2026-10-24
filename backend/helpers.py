@@ -201,3 +201,18 @@ def clear_failed_logins(ip):
             pass  # Fall back to in-memory
 
     _login_attempts.pop(ip, None)
+
+
+def delete_onu_row(onu):
+    """Delete an ONU row together with its dependent rows.
+
+    onu_link_states.onu_id is NOT NULL, so a plain session.delete(onu) makes
+    SQLAlchemy try to NULL it (backref) and the commit dies with IntegrityError.
+    ODP ports are released, history/link-state rows are removed. Caller commits.
+    """
+    from models import OnuLinkState, OnuStatusHistory, FTTHODPPort
+    FTTHODPPort.query.filter_by(onu_id=onu.id).update(
+        {'onu_id': None, 'status': 'available'}, synchronize_session=False)
+    OnuLinkState.query.filter_by(onu_id=onu.id).delete(synchronize_session=False)
+    OnuStatusHistory.query.filter_by(onu_id=onu.id).delete(synchronize_session=False)
+    db.session.delete(onu)

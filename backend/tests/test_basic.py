@@ -2773,3 +2773,51 @@ class TestOltDelete:
             assert TrafficLog.query.filter_by(olt_id=olt_id).count() == 0
             # ODP port survives but its ONU link is nulled, not dangling
             assert db.session.get(FTTHODPPort, port_id).onu_id is None
+
+
+class TestDeleteOnuRow:
+    """ONU delete must not die on dependent rows (onu_link_states.onu_id NOT NULL)."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_db(self):
+        """Set up isolated temp DB for tests that use app.app_context() directly."""
+        import tempfile, os
+        from sqlalchemy import create_engine as _create_engine
+        _tmpdb = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        _tmpdb.close()
+        _test_engine = _create_engine(f'sqlite:///{_tmpdb.name}')
+        with app.app_context():
+            _orig_engine = db.engines.get(None)
+            db.engines[None] = _test_engine
+            db.create_all()
+            yield
+            db.drop_all()
+            if _orig_engine is not None:
+                db.engines[None] = _orig_engine
+            else:
+                db.engines.pop(None, None)
+        _test_engine.dispose()
+        try:
+            os.unlink(_tmpdb.name)
+        except OSError:
+            pass
+
+    def test_delete_onu_with_link_state(self):
+        with app.app_context():
+            from models import db, OLT, ONU, OnuLinkState, OnuStatusHistory
+            from helpers import delete_onu_row
+            olt = OLT(name='Del OLT', ip_address='10.9.9.9')
+            db.session.add(olt)
+            db.session.flush()
+            onu = ONU(olt_id=olt.id, onu_index='1/1/1:1', serial_number='DEL1')
+            db.session.add(onu)
+            db.session.flush()
+            oid = onu.id
+            db.session.add(OnuLinkState(onu_id=oid))
+            db.session.add(OnuStatusHistory(onu_id=oid, olt_id=olt.id))
+            db.session.commit()
+            delete_onu_row(onu)
+            db.session.commit()
+            assert db.session.get(ONU, oid) is None
+            assert OnuLinkState.query.filter_by(onu_id=oid).count() == 0
+            assert OnuStatusHistory.query.filter_by(onu_id=oid).count() == 0

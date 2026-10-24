@@ -546,7 +546,8 @@ def save_sync_result(olt, result, sync, light=False):
         else:
             for idx, onu in existing_onus.items():
                 if idx not in seen_indices:
-                    db.session.delete(onu)
+                    from helpers import delete_onu_row
+                    delete_onu_row(onu)
                     stale_count += 1
     else:
         # A partial SNMP walk (concurrent bulk-walks in
