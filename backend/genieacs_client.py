@@ -465,3 +465,92 @@ def delete_object(device_id, object_name):
         return False, f'HTTP {r.status_code}'
     except Exception as e:
         return False, str(e)[:200]
+
+
+def _vlan_param_name(leaves):
+    """Cari nama param VLAN bind yang dipakai device ini dari leaf WAN.
+    Return (parent_kind, leaf_name) mis. ('WANConnectionDevice', 'VLANID')."""
+    for p, _ in leaves.items():
+        m = re.search(r'(WAN(?:ConnectionDevice|PPPConnection|IPConnection))\.\d+\.(\w*VLAN\w*)$', p)
+        if m:
+            return m.group(1), m.group(2)
+    return None, None
+
+
+def add_wan(device_id, conn_type='pppoe', vlan_id='', username='', password='',
+            service='INTERNET', nat=True, addressing='DHCP'):
+    """Tambah WAN connection lengkap: addObject + setParameterValues (vlan/nat/user).
+    conn_type: 'pppoe' | 'ip'. Return (ok, msg_or_instance)."""
+    url, user, pwd = _nbi_config()
+    if not url or not device_id:
+        return False, 'NBI not configured'
+    leaf = 'WANPPPConnection' if conn_type == 'pppoe' else 'WANIPConnection'
+    parent = f'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.{leaf}'
+    ok, info = add_object(device_id, parent + '.')
+    if not ok:
+        return False, info
+    instance = str(info or '').strip()
+    if not instance.isdigit():
+        # NBI lama tidak mengembalikan instance — cari index tertinggi
+        try:
+            r = httpx.get(f'{url}/devices', params={'query': json.dumps({'_id': device_id})},
+                          auth=_auth(user, pwd), timeout=_TIMEOUT)
+            idxs = [int(m.group(1)) for p, _ in _collect(r.json()[0])
+                    for m in [re.search(rf'{leaf}\.(\d+)\.', p)] if m]
+            instance = str(max(idxs)) if idxs else '1'
+        except Exception:
+            instance = '1'
+    base = f'{parent}.{instance}'
+    pairs = {
+        f'{base}.Enable': True,
+        f'{base}.ConnectionType': 'IP_Routed',
+        f'{base}.ServiceList': service or 'INTERNET',
+        f'{base}.NATEnabled': nat,
+    }
+    if conn_type == 'pppoe':
+        if username:
+            pairs[f'{base}.Username'] = username
+        if password:
+            pairs[f'{base}.Password'] = password
+    else:
+        pairs[f'{base}.AddressingType'] = addressing or 'DHCP'
+    # VLAN bind — temukan nama param asli dari device doc
+    if str(vlan_id).strip():
+        try:
+            r = httpx.get(f'{url}/devices', params={'query': json.dumps({'_id': device_id})},
+                          auth=_auth(user, pwd), timeout=_TIMEOUT)
+            parent_kind, leaf_name = _vlan_param_name(_collect(r.json()[0]))
+        except Exception:
+            parent_kind, leaf_name = None, None
+        if leaf_name:
+            vlan_path = f'{base}.{leaf_name}' if parent_kind != 'WANConnectionDevice' \
+                else f'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.{leaf_name}'
+        else:
+            vlan_path = f'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.VLANID'
+        pairs[vlan_path] = str(vlan_id).strip()
+    ok2, err2 = set_params(device_id, pairs)
+    return (True, instance) if ok2 else (False, err2)
+
+
+def bind_wan_vlan(device_id, conn_key, vlan_id):
+    """Bind VLAN ke WAN instance existing. conn_key = 'WANPPPConnection.3'."""
+    url, user, pwd = _nbi_config()
+    if not url or not device_id:
+        return False, 'NBI not configured'
+    try:
+        r = httpx.get(f'{url}/devices', params={'query': json.dumps({'_id': device_id})},
+                      auth=_auth(user, pwd), timeout=_TIMEOUT)
+        arr = r.json()
+        if not arr:
+            return False, 'device not found'
+        parent_kind, leaf_name = _vlan_param_name(_collect(arr[0]))
+        kind, idx = conn_key.rsplit('.', 1)
+        if leaf_name:
+            base = f'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.{kind}.{idx}'
+            path = f'{base}.{leaf_name}' if parent_kind != 'WANConnectionDevice' \
+                else f'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.{idx}.{leaf_name}'
+        else:
+            path = f'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.{idx}.VLANID'
+        return set_params(device_id, {path: str(vlan_id)})
+    except Exception as e:
+        return False, str(e)[:200]

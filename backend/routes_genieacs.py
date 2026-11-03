@@ -242,3 +242,38 @@ def tr069_del_object(onu_id):
     ok, err = genieacs_client.delete_object(mapping.device_id, obj)
     log_action('tr069_del_object', 'onu', target=str(onu_id), detail=f'{obj} ok={ok}')
     return jsonify({'success': ok, 'message': err})
+
+
+@bp.route('/api/onu/<int:onu_id>/tr069/add-wan', methods=['POST'])
+@login_required
+@permission_required(_PERM)
+def tr069_add_wan(onu_id):
+    """Tambah WAN connection lengkap: {type: pppoe|ip, vlan_id, username, password, service, nat, addressing}."""
+    mapping = _mapped(onu_id)
+    if not mapping:
+        return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
+    d = request.get_json() or {}
+    ok, info = genieacs_client.add_wan(
+        mapping.device_id, d.get('type', 'pppoe'), d.get('vlan_id', ''),
+        d.get('username', ''), d.get('password'), d.get('service', 'INTERNET'),
+        d.get('nat', True), d.get('addressing', 'DHCP'))
+    log_action('tr069_add_wan', 'onu', target=str(onu_id),
+               detail=f'type={d.get("type")} vlan={d.get("vlan_id")} ok={ok}')
+    return jsonify({'success': ok, 'instance': info if ok else '', 'message': '' if ok else info})
+
+
+@bp.route('/api/onu/<int:onu_id>/tr069/wan-bind', methods=['POST'])
+@login_required
+@permission_required(_PERM)
+def tr069_wan_bind(onu_id):
+    """Bind VLAN ke WAN instance existing: {conn_key: 'WANPPPConnection.3', vlan_id}."""
+    mapping = _mapped(onu_id)
+    if not mapping:
+        return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
+    d = request.get_json() or {}
+    if not d.get('conn_key') or not d.get('vlan_id'):
+        return jsonify({'success': False, 'message': 'conn_key & vlan_id required'}), 400
+    ok, err = genieacs_client.bind_wan_vlan(mapping.device_id, d['conn_key'], d['vlan_id'])
+    log_action('tr069_wan_bind', 'onu', target=str(onu_id),
+               detail=f'{d["conn_key"]} vlan={d["vlan_id"]} ok={ok}')
+    return jsonify({'success': ok, 'message': err})

@@ -16,7 +16,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useTranslation } from 'react-i18next';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
-import { Card, EmptyState, Modal, Button } from '../components/ui';
+import { Card, EmptyState, Modal, Button, Select } from '../components/ui';
 
 interface ModalState { type: string; data?: Record<string, unknown>; }
 
@@ -1885,6 +1885,14 @@ function Tr069Panel({ onuId }: { onuId: number }) {
   const p = data?.params;
   const [showCfg, setShowCfg] = useState(false);
   const [wifiEdit, setWifiEdit] = useState<Record<number, { ssid: string; pass: string }>>({});
+  const [vlanEdit, setVlanEdit] = useState<Record<string, string>>({});
+  const [showWanForm, setShowWanForm] = useState(false);
+  const [wanType, setWanType] = useState('pppoe');
+  const [wanVlan, setWanVlan] = useState('');
+  const [wanService, setWanService] = useState('INTERNET');
+  const [wanNat, setWanNat] = useState(true);
+  const [wanUser, setWanUser] = useState('');
+  const [wanPass, setWanPass] = useState('');
   const [pppoeUser, setPppoeUser] = useState('');
   const [pppoePass, setPppoePass] = useState('');
   const { data: taskData } = useQuery({
@@ -2021,22 +2029,62 @@ function Tr069Panel({ onuId }: { onuId: number }) {
                   <div className="text-xs text-tx3">Belum ada konfigurasi WLAN — klik "+ Tambah SSID".</div>
                 )}
               </div>
-              {/* WAN — list existing + edit PPPoE */}
+              {/* WAN — list existing + bind VLAN + edit PPPoE + tambah WAN */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-tx3 uppercase tracking-wider">WAN / PPPoE</span>
-                  <button className="text-[10px] text-accent hover:underline" onClick={() =>
-                    api.onuTr069AddObject(onuId, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.')
-                      .then(r => { if (r.success) { toast.success(`WAN instance #${r.instance || 'baru'} dibuat`); refetch(); } else toast.error(r.message); })
-                  }>+ Tambah WAN PPPoE</button>
+                  <button className="text-[10px] text-accent hover:underline" onClick={() => setShowWanForm(v => !v)}>
+                    {showWanForm ? 'Tutup Form' : '+ Tambah WAN'}
+                  </button>
                 </div>
-                {(p?.wan_conns || []).map(w => (
-                  <div key={w.key} className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-glass">
-                    <span className="text-[9px] font-mono text-tx3 w-24 shrink-0">{w.key} ({w.type})</span>
-                    <span className="flex-1 truncate">{w.username || w.ip || '-'}</span>
-                    <span className={cn('text-[9px]', w.status.toLowerCase().includes('connected') ? 'text-success' : 'text-tx3')}>{w.status || '-'}</span>
+                {(p?.wan_conns || []).map(w => {
+                  const vlan = vlanEdit[w.key] ?? '';
+                  return (
+                    <div key={w.key} className="flex flex-wrap items-center gap-1.5 text-xs px-2 py-1 rounded bg-glass">
+                      <span className="text-[9px] font-mono text-tx3 w-24 shrink-0">{w.key} ({w.type})</span>
+                      <span className="flex-1 truncate">{w.username || w.ip || '-'}</span>
+                      <span className={cn('text-[9px]', w.status.toLowerCase().includes('connected') ? 'text-success' : 'text-tx3')}>{w.status || '-'}</span>
+                      <input className="w-16 bg-bg2 border border-brd rounded px-1.5 py-0.5 text-[10px]"
+                        placeholder="VLAN" value={vlan}
+                        onChange={e => setVlanEdit({ ...vlanEdit, [w.key]: e.target.value })} />
+                      <button className="text-[9px] text-accent hover:underline disabled:opacity-40"
+                        disabled={!vlan.trim()}
+                        onClick={() => api.onuTr069WanBind(onuId, w.key, vlan.trim())
+                          .then(r => r.success ? toast.success(`VLAN ${vlan} di-bind ke ${w.key}`) : toast.error(r.message))}>
+                        Bind
+                      </button>
+                    </div>
+                  );
+                })}
+                {showWanForm && (
+                  <div className="space-y-1.5 p-2 rounded bg-glass border border-brd">
+                    <div className="flex flex-wrap gap-1.5">
+                      <Select value={wanType} onChange={e => setWanType(e.target.value)}
+                        options={[{ value: 'pppoe', label: 'PPPoE' }, { value: 'ip', label: 'IP/DHCP' }]} />
+                      <input className="w-20 bg-bg2 border border-brd rounded px-2 py-1 text-xs"
+                        placeholder="VLAN ID" value={wanVlan} onChange={e => setWanVlan(e.target.value)} />
+                      <input className="w-24 bg-bg2 border border-brd rounded px-2 py-1 text-xs"
+                        placeholder="Service" value={wanService} onChange={e => setWanService(e.target.value)} />
+                      <label className="flex items-center gap-1 text-[10px] text-tx3">
+                        <input type="checkbox" checked={wanNat} onChange={e => setWanNat(e.target.checked)} /> NAT
+                      </label>
+                    </div>
+                    {wanType === 'pppoe' && (
+                      <div className="flex gap-1.5">
+                        <input className="flex-1 bg-bg2 border border-brd rounded px-2 py-1 text-xs"
+                          placeholder="Username PPPoE" value={wanUser} onChange={e => setWanUser(e.target.value)} />
+                        <input className="flex-1 bg-bg2 border border-brd rounded px-2 py-1 text-xs" type="password"
+                          placeholder="Password" value={wanPass} onChange={e => setWanPass(e.target.value)} />
+                      </div>
+                    )}
+                    <Button variant="primary" onClick={() => {
+                      api.onuTr069AddWan(onuId, {
+                        type: wanType, vlan_id: wanVlan || undefined, username: wanUser || undefined,
+                        password: wanPass || undefined, service: wanService || undefined, nat: wanNat,
+                      }).then(r => { if (r.success) { toast.success(`WAN #${r.instance || 'baru'} dibuat`); setShowWanForm(false); refetch(); } else toast.error(r.message); });
+                    }}>Buat WAN</Button>
                   </div>
-                ))}
+                )}
                 <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded bg-glass">
                   <input className="flex-1 min-w-[110px] bg-bg2 border border-brd rounded px-2 py-1 text-xs"
                     placeholder="Username PPPoE" value={pppoeUser || p?.pppoe_username || ''}
