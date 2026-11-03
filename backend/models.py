@@ -580,6 +580,8 @@ class Notification(db.Model):
     acknowledged_at = db.Column(db.DateTime, nullable=True)
     resolved = db.Column(db.Boolean, default=False)  # auto-resolved when condition clears
     resolved_at = db.Column(db.DateTime, nullable=True)
+    target_type = db.Column(db.String(10), default='')  # 'olt','pon','onu','odp' — deep-link target
+    target_id = db.Column(db.Integer, nullable=True)  # id of target (olt_id, onu_id, odp_id, or pon_key encoded)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('notifications', lazy=True))
 
@@ -626,10 +628,12 @@ class AlertHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     onu_id = db.Column(db.Integer, nullable=True)
     olt_id = db.Column(db.Integer, nullable=True)
-    alert_type = db.Column(db.String(50), nullable=False)  # offline, dyinggasp, los, rx_power, unregistered
+    alert_type = db.Column(db.String(50), nullable=False)  # offline, dyinggasp, los, rx_power, unregistered, olt_offline, odp_outage
     last_value = db.Column(db.String(50), default='')
     last_alert_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     first_seen_at = db.Column(db.DateTime, nullable=True)  # first detection time (for debounce)
+    root_cause_id = db.Column(db.Integer, nullable=True)  # AlertHistory.id of the root cause (OLT/PON) that suppressed this alert
+    suppressed_by = db.Column(db.String(50), default='')  # 'olt_offline' / 'pon_down' / 'odp_outage' — why this was suppressed
 
     __table_args__ = (
         db.Index('ix_alert_history_onu_type', 'onu_id', 'alert_type'),  # composite — lookup per ONU+type

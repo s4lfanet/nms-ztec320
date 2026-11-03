@@ -237,6 +237,8 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
                     'title': title,
                     'message': message,
                     'target_roles': '',
+                    'target_type': 'olt',
+                    'target_id': olt.id,
                 })
 
             if not existing:
@@ -248,6 +250,8 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
                     'olt_name': olt.name,
                     'olt_ip': olt.ip_address,
                     'is_recovery': False,
+                    'target_type': 'olt',
+                    'target_id': olt.id,
                 })
 
             # Update history
@@ -782,6 +786,12 @@ def _check_onus_for_tenant(force_send=False):
             _build_recovery_batch(olt, interface, recovery_onus, total, now,
                                   notifications_to_create, recovery_to_send)
 
+    # ─── ODP outage correlation (Fase 2) ───
+    # If ≥N ONUs in the same ODP are down simultaneously, emit ONE "kemungkinan
+    # gangguan di ODP X" alert instead of individual ONU alerts. N is configurable
+    # via SystemConfig `odp_outage_threshold` (default 3).
+    _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force_send)
+
     # ─── Check unregistered ONUs via Telnet (show pon onu uncfg — ZTE CLI only) ───
     for olt in olts:
         if not olt.cli_enabled:
@@ -914,7 +924,7 @@ def _build_offline_batch(olt, interface, offline_onus, total_onus, now,
         if customer:
             message += f"Pelanggan: {customer}\n"
         message += (
-            f"Status: {onu.status.upper()}\n"
+            f"Status: {_friendly_down_reason(onu.status)}\n"
             f"RX ONU: {f'{onu.onu_rx_power:.2f} dBm' if onu.onu_rx_power is not None else 'N/A'}\n"
             f"Distance: {f'{onu.distance} m' if onu.distance else 'N/A'}\n"
             f"OLT: {olt.name} ({olt.ip_address})\n"
@@ -952,6 +962,8 @@ def _build_offline_batch(olt, interface, offline_onus, total_onus, now,
             'title': title,
             'message': message,
             'target_roles': '',
+            'target_type': 'onu' if affected == 1 else 'pon',
+            'target_id': offline_onus[0].id if affected == 1 else None,
         })
 
     if not existing or force_send:
@@ -1273,6 +1285,147 @@ def _handle_unconfigured_alert(onu, olt, rule, now, notifications, alerts):
         })
 
 
+# ─── ODP outage correlation (Fase 2) ───
+
+def _friendly_down_reason(status):
+    """Friendly label for ONU down reason (id)."""
+    return {
+        'los': 'LOS — hilang sinyal optik',
+        'dyinggasp': 'Dying Gasp — listrik mati',
+        'offline': 'Offline — tidak merespons',
+    }.get(status, status or 'Unknown')
+
+
+def _deep_link_url(target_type, target_id):
+    """Build a clickable deep-link URL to the target page in the NMS frontend."""
+    if not target_type or not target_id:
+        return ''
+    from models import SystemConfig
+    cfg = {c.key: c.value for c in SystemConfig.query.all()}
+    base = (cfg.get('base_url') or 'https://salfanet.id').rstrip('/')
+    routes = {
+        'olt': f'/olt/{target_id}',
+        'onu': f'/onu/{target_id}',
+        'odp': f'/ftth?odp={target_id}',
+        'pon': f'/onus?pon={target_id}',
+    }
+    path = routes.get(target_type)
+    return f'{base}#{path}' if path else ''
+
+
+def _inject_deep_link(alerts):
+    """Append a 'Lihat detail: <url>' line to each alert message that has a target."""
+    for a in alerts:
+        url = _deep_link_url(a.get('target_type'), a.get('target_id'))
+        if url and url not in (a.get('message') or ''):
+            a['message'] = (a.get('message') or '') + f"\n🔗 Lihat detail: {url}"
+
+
+def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force_send=False):
+    """If ≥N ONUs in the same ODP are down, emit one ODP-outage alert and
+    mark the individual ONU AlertHistory rows as suppressed_by='odp_outage'."""
+    from models import db, ONU, AlertHistory, Notification, SystemConfig, FTTHODP
+
+    # Threshold from config (default 3)
+    row = SystemConfig.query.filter_by(key='odp_outage_threshold').first()
+    try:
+        threshold = int(row.value) if row and row.value else 3
+    except (ValueError, TypeError):
+        threshold = 3
+    threshold = max(2, min(20, threshold))
+
+    # Collect down ONUs per ODP
+    odp_down = {}  # odp_id -> {'odp': obj, 'onus': [onu,...]}
+    for olt in olts:
+        down_onus = ONU.query.filter(
+            ONU.olt_id == olt.id,
+            ONU.status.in_(['offline', 'dyinggasp', 'los'])
+        ).all()
+        for onu in down_onus:
+            port = getattr(onu, 'odp_port', None)
+            if not port or not port.odp_id:
+                continue
+            odp_down.setdefault(port.odp_id, {'odp': port.odp, 'onus': []})['onus'].append(onu)
+
+    for odp_id, info in odp_down.items():
+        down = info['onus']
+        if len(down) < threshold:
+            continue
+
+        odp = info['odp']
+        olt = down[0].olt_id
+        # Suppress individual ONU alerts — mark their AlertHistory
+        for onu in down:
+            for atype in ('offline', 'dyinggasp', 'los'):
+                hist = AlertHistory.query.filter_by(
+                    onu_id=onu.id, alert_type=atype
+                ).first()
+                if hist and not hist.suppressed_by:
+                    hist.suppressed_by = 'odp_outage'
+
+        title = f"🔧 Gangguan ODP: {odp.name} ({len(down)} ONU down)"
+        onu_list = "\n".join(
+            f"  • {o.name or o.serial_number or o.onu_id_str} — {_friendly_down_reason(o.status)}"
+            for o in down[:10]
+        )
+        if len(down) > 10:
+            onu_list += f"\n  ... dan {len(down) - 10} lainnya"
+        message = (
+            f"🔧 KEMUNGKINAN GANGGUAN DI ODP\n\n"
+            f"ODP: {odp.name}\n"
+            f"OLT: {next((o.name for o in olts if o.id == olt), '?')}\n"
+            f"ONU Down: {len(down)} dari total port ODP\n\n"
+            f"ONU Terdampak:\n{onu_list}\n\n"
+            f"⚠️ Kemungkinan gangguan pada ODP/splitter/drop cable.\n"
+            f"🕒 {_fmt_time(now)}"
+        )
+
+        existing = Notification.query.filter_by(
+            olt_id=olt, category='odp_outage', is_read=False
+        ).first()
+        if existing:
+            existing.created_at = now
+            existing.message = message
+        else:
+            notifications_to_create.append({
+                'olt_id': olt,
+                'onu_id': None,
+                'severity': 'critical',
+                'category': 'odp_outage',
+                'title': title,
+                'message': message,
+                'target_roles': '',
+                'target_type': 'odp',
+                'target_id': odp_id,
+            })
+
+        if not existing or force_send:
+            alerts_to_send.append({
+                'type': 'odp_outage',
+                'severity': 'critical',
+                'title': title,
+                'message': message,
+                'olt_name': next((o.name for o in olts if o.id == olt), ''),
+                'olt_ip': next((o.ip_address for o in olts if o.id == olt), ''),
+                'is_recovery': False,
+                'target_type': 'odp',
+                'target_id': odp_id,
+            })
+
+        # Record in AlertHistory
+        hist = AlertHistory.query.filter_by(
+            olt_id=olt, alert_type='odp_outage'
+        ).first()
+        if hist:
+            hist.last_alert_at = now
+            hist.last_value = str(len(down))
+        else:
+            db.session.add(AlertHistory(
+                olt_id=olt, alert_type='odp_outage',
+                last_value=str(len(down)), last_alert_at=now
+            ))
+
+
 # ─── Unregistered ONU alert (from Telnet show pon onu uncfg) ───
 
 def _build_unregistered_alert(olt, unregistered, now, notifications, alerts, force_send=False):
@@ -1365,6 +1518,9 @@ def _send_external_alerts(alerts, rule=None):
     """Send batched alerts to Telegram, WhatsApp (third-party), and WhatsApp Native.
     Respects rule.notify_telegram, rule.notify_whatsapp, rule.notify_whatsapp_native flags."""
     from models import BotConfig
+
+    # Inject deep-link URLs before sending (Fase 2)
+    _inject_deep_link(alerts)
 
     def find_config(bot_type):
         c = BotConfig.query.filter_by(bot_type=bot_type, enabled=True).first()

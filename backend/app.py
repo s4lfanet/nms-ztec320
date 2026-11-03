@@ -351,6 +351,12 @@ def migrate_schema():
     add_col('onu_types', 'max_flow', 'INTEGER', '0')
     add_col('onu_types', 'interfaces', 'TEXT', "''")
 
+    # Fase 2 — alert root-cause correlation + deep-link targets
+    add_col('alert_history', 'root_cause_id', 'INTEGER', None)
+    add_col('alert_history', 'suppressed_by', 'VARCHAR(50)', "''")
+    add_col('notifications', 'target_type', 'VARCHAR(10)', "''")
+    add_col('notifications', 'target_id', 'INTEGER', None)
+
     # Fix: update onu_custom_columns to use onu_rx_power instead of tx_power for RX ONU
     try:
         with db.engine.connect() as conn:
