@@ -34,6 +34,7 @@ const SystemUpdate = lazy(() => import('./pages/SystemUpdate').then(m => ({ defa
 const OltLogs = lazy(() => import('./pages/OltLogs').then(m => ({ default: m.OltLogs })));
 const AutoProvision = lazy(() => import('./pages/AutoProvision').then(m => ({ default: m.AutoProvision })));
 const Reports = lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
+const Terminal = lazy(() => import('./pages/Terminal').then(m => ({ default: m.Terminal })));
 
 const routePermissions: Record<string, string> = {
   '/dashboard/onus/add': 'add_onu',
@@ -201,6 +202,7 @@ export default function App() {
         <Route path="traffic" element={<Traffic />} />
         <Route path="logs" element={<ActionLogs />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="terminal" element={<Terminal />} />
         <Route path="guide" element={<GuidePage />} />
         <Route path="settings/update" element={<SystemUpdate />} />
         <Route path="olt-logs" element={<OltLogs />} />

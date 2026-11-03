@@ -114,6 +114,7 @@ AVAILABLE_PERMISSIONS = {
     'manage_tr069': 'TR069 Profile Management',
     'genieacs_manage': 'GenieACS TR-069 Actions',
     'manage_api_tokens': 'API Token Management',
+    'olt_terminal': 'OLT Terminal (Telnet/SSH)',
     'customization': 'Customization',
     'view_dashboard': 'View Dashboard',
     'view_onus': 'View All ONUs',

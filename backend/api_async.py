@@ -564,3 +564,240 @@ async def push_dashboard_event(event: str, data: dict):
 # ---------------------------------------------------------------------------
 from api_docs import register_flask_api_docs
 register_flask_api_docs(fastapi_app)
+
+
+# ---------------------------------------------------------------------------
+# Fase 7 — Browser Telnet/SSH terminal bridge
+# WS endpoint: ws://host:8765/ws/terminal/{olt_id}?token=xxx&proto=telnet|ssh
+# Bridges the WebSocket to a raw telnet (socket) or SSH (paramiko channel).
+# Audit: each submitted command line is logged to ActionLog with passwords masked.
+# Limits: 10 min idle timeout, 60 min max session.
+# ---------------------------------------------------------------------------
+import re as _re
+import threading as _threading
+import queue as _queue
+
+TERM_IDLE_TIMEOUT = 600      # 10 min no input → close
+TERM_MAX_SESSION = 3600      # 60 min hard cap
+TERM_MAX_INPUT = 512         # max bytes per WS message
+
+
+def _audit_terminal_command(user_id, olt, line, password_expected=False):
+    """Log one terminal command line to ActionLog; mask when a password prompt
+    was visible. Runs in the caller's thread — uses its own app context."""
+    try:
+        from app import app as flask_app
+        from models import db, ActionLog
+        shown = '<password hidden>' if password_expected else line
+        if len(shown) > 200:
+            shown = shown[:200] + '…'
+        with flask_app.app_context():
+            db.session.add(ActionLog(
+                user_id=user_id, action='olt_terminal_cmd',
+                category='terminal', target=str(olt.id),
+                detail=f'{olt.name}: {shown}',
+            ))
+            db.session.commit()
+    except Exception as e:
+        logger.debug(f"[TERM] audit log failed: {e}")
+
+
+def _open_terminal_channel(olt, proto):
+    """Open a raw interactive channel to the OLT.
+    Returns (write_fn, read_fn, close_fn, err) — read_fn returns bytes or None."""
+    from telnet_client import SimpleTelnet
+    try:
+        if proto == 'ssh':
+            import paramiko
+            c = paramiko.SSHClient()
+            c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            port = 22
+            if getattr(olt, 'cli_port', None):
+                port = olt.cli_port
+            c.connect(olt.ip_address, port=port,
+                      username=olt.cli_username, password=olt.cli_password,
+                      timeout=15, banner_timeout=15, auth_timeout=15,
+                      look_for_keys=False, allow_agent=False)
+            ch = c.invoke_shell(width=200, height=50)
+            ch.settimeout(0.25)
+            def w(data): ch.send(data)
+            def r():
+                try:
+                    d = ch.recv(4096)
+                    return d if d else (b'' if ch.exit_status_ready() else None)
+                except Exception:
+                    return None
+            def k():
+                try: ch.close(); c.close()
+                except Exception: pass
+            return w, r, k, ''
+        else:
+            port = 23
+            if getattr(olt, 'cli_port', None):
+                port = olt.cli_port
+            tn = SimpleTelnet(olt.ip_address, port=port, timeout=15)
+            if not tn.connect():
+                return None, None, None, 'Telnet connect failed'
+            tn.sock.settimeout(0.25)
+            def w(data): tn.sock.sendall(data)
+            def r():
+                try:
+                    d = tn.sock.recv(4096)
+                    return d if d else b''  # b'' = closed
+                except Exception:
+                    return None
+            def k():
+                try: tn.close()
+                except Exception: pass
+            return w, r, k, ''
+    except Exception as e:
+        return None, None, None, str(e)[:200]
+
+
+def _terminal_reader_loop(read_fn, out_queue, stop_evt, loop):
+    """Blocking-read thread → queue. Runs in a daemon thread;
+    uses loop.call_soon_threadsafe to push items without blocking."""
+    while not stop_evt.is_set():
+        data = read_fn()
+        if data is None:
+            continue  # timeout — no data yet
+        if data == b'':
+            # channel closed
+            loop.call_soon_threadsafe(out_queue.put_nowait, (None,))
+            return
+        loop.call_soon_threadsafe(out_queue.put_nowait, (data,))
+
+
+async def ws_terminal_handler(ws: WebSocket, olt_id: int, proto: str):
+    """Interactive terminal session handler."""
+    from app import app as flask_app
+    from models import OLT, OLTSyncStatus
+
+    out_q = _queue.Queue()
+    stop = _threading.Event()
+    loop = asyncio.get_running_loop()
+    last_input = time.time()
+    start = time.time()
+    line_buf = bytearray()
+    password_expected = False
+    chan_write = chan_close = None
+    reader_thread = None
+
+    try:
+        # Resolve OLT + sync-lock warning under Flask context
+        with flask_app.app_context():
+            from models import db as _db
+            olt = _db.session.get(OLT, olt_id)
+            if not olt:
+                await ws.send_text('\r\n*** OLT tidak ditemukan ***\r\n')
+                return
+            if not olt.cli_enabled or not olt.cli_username:
+                await ws.send_text('\r\n*** CLI access belum dikonfigurasi untuk OLT ini ***\r\n')
+                return
+            running = _db.session.query(OLTSyncStatus).filter_by(olt_id=olt.id, status='running').first()
+            if running:
+                await ws.send_text(f'\r\n\x1b[33m*** PERINGATAN: sync sedang berjalan di OLT {olt.name} — '
+                                   f'hindari perintah write/config sampai selesai ***\x1b[0m\r\n')
+
+        # Open channel (blocking) off the event loop
+        w, r, k, err = await asyncio.to_thread(_open_terminal_channel, olt, proto)
+        if w is None:
+            await ws.send_text(f'\r\n*** Gagal konek {proto}://{olt.ip_address} — {err} ***\r\n')
+            return
+        chan_write, chan_close = w, k
+
+        # Start reader thread
+        reader_thread = _threading.Thread(
+            target=_terminal_reader_loop, args=(r, out_q, stop, loop), daemon=True)
+        reader_thread.start()
+
+        # Main bridge loop: WS→chan via receive, chan→WS via queue drain
+        user_id = getattr(ws, '_term_user_id', 0)
+        while True:
+            now = time.time()
+            if now - last_input > TERM_IDLE_TIMEOUT:
+                await ws.send_text('\r\n*** Session ditutup — idle timeout ***\r\n')
+                break
+            if now - start > TERM_MAX_SESSION:
+                await ws.send_text('\r\n*** Session ditutup — max duration ***\r\n')
+                break
+
+            # Drain output queue (non-blocking)
+            drained = False
+            try:
+                while True:
+                    item = out_q.get_nowait()
+                    if item == (None,):
+                        await ws.send_text('\r\n*** Koneksi OLT ditutup oleh remote ***\r\n')
+                        return
+                    chunk = item[0].decode('utf-8', errors='replace')
+                    # Detect password prompt to mask audit
+                    if _re.search(r'[Pp]assword\s*:', chunk):
+                        password_expected = True
+                    await ws.send_text(chunk)
+                    drained = True
+            except _queue.Empty:
+                pass
+            if not drained:
+                await asyncio.sleep(0.05)
+
+            # Read input with short timeout so we can interleave output
+            try:
+                data = await asyncio.wait_for(ws.receive_text(), timeout=0.05)
+            except asyncio.TimeoutError:
+                continue
+            last_input = time.time()
+            data = data[:TERM_MAX_INPUT]
+            # Track submitted line for audit
+            for ch in data:
+                line_buf.extend(ch.encode())
+                if ch in ('\r', '\n'):
+                    line = line_buf.decode('utf-8', errors='replace').strip('\r\n ')
+                    line_buf.clear()
+                    if line or password_expected:
+                        _audit_terminal_command(user_id, olt, line, password_expected)
+                        password_expected = False
+            chan_write(data.encode())
+            chan_write(data.encode())
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning(f"[TERM] session error olt={olt_id}: {e}")
+    finally:
+        stop.set()
+        if chan_close:
+            try: chan_close()
+            except Exception: pass
+        try:
+            with flask_app.app_context():
+                from models import db as _db, ActionLog
+                uid = getattr(ws, '_term_user_id', 0)
+                _db.session.add(ActionLog(user_id=uid, action='olt_terminal_close',
+                                          category='terminal', target=str(olt_id),
+                                          detail=f'proto={proto} dur={int(time.time()-start)}s'))
+                _db.session.commit()
+        except Exception:
+            pass
+
+
+@fastapi_app.websocket("/ws/terminal/{olt_id}")
+async def ws_terminal(ws: WebSocket, olt_id: int, token: Optional[str] = Query(None),
+                      proto: str = Query('telnet')):
+    """Interactive terminal to an OLT over raw telnet or SSH.
+
+    Frontend connects: ws://host:8765/ws/terminal/{olt_id}?token=xxx&proto=telnet
+    Protocol: raw text in both directions (xterm.js pipe).
+    """
+    valid, user_id = _verify_ws_token(token)
+    if not valid or user_id is None:
+        await ws.close(code=WS_CLOSE_UNAUTHORIZED, reason="Unauthorized")
+        return
+    authorized, reason = _authorize_ws_user(user_id, 'olt_terminal', olt_id=olt_id)
+    if not authorized:
+        await ws.close(code=WS_CLOSE_FORBIDDEN, reason=f"Forbidden: {reason}")
+        return
+    proto = 'ssh' if proto == 'ssh' else 'telnet'
+    await ws.accept()
+    ws._term_user_id = user_id  # type: ignore[attr-defined]
+    logger.info(f"[TERM] session start user={user_id} olt={olt_id} proto={proto}")
+    await ws_terminal_handler(ws, olt_id, proto)
