@@ -78,6 +78,14 @@ export const api = {
   onuDetail: (id: number) => request<OnuDetailData>(`/api/onu/${id}/detail`),
   onuLiveDetail: (id: number) => request<{ success: boolean; live_detail: Record<string, unknown> | null; live_detail_error: string | null; history: Array<{ date: string; event: string }>; wan_services_json: string }>(`/api/onu/${id}/live-detail`),
   onuRxHistory: (id: number, range: '24h' | '7d' | '30d' | '90d') => request<{ success: boolean; range: string; points: RxHistoryPoint[] }>(`/api/onu/${id}/rx-history?range=${range}`),
+  genieacsGetSettings: () => request<{ nbi_url: string; nbi_user: string; has_password: boolean }>('/api/genieacs/settings'),
+  genieacsSaveSettings: (data: { nbi_url: string; nbi_user: string; nbi_password?: string }) => request<{ success: boolean }>('/api/genieacs/settings', { method: 'POST', body: JSON.stringify(data) }),
+  genieacsTest: () => request<{ success: boolean; device_count: number; error: string }>('/api/genieacs/test', { method: 'POST' }),
+  genieacsSync: () => request<{ success: boolean; matched: number; total: number; errors: string[] }>('/api/genieacs/sync', { method: 'POST' }),
+  onuTr069: (id: number) => request<{ success: boolean; connected: boolean; match_method?: string; pinned?: boolean; last_synced?: string; params: Tr069Params | null }>(`/api/onu/${id}/tr069`),
+  onuTr069Reboot: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/reboot`, { method: 'POST' }),
+  onuTr069Refresh: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/refresh`, { method: 'POST' }),
+  onuTr069SetWifi: (id: number, data: { ssid: string; password?: string; band: string }) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/wifi`, { method: 'POST', body: JSON.stringify(data) }),
   onuTraffic: (id: number) => request<{ success: boolean; traffic: { downstream_kbps: string; upstream_kbps: string } }>(`/api/onu/${id}/traffic`),
   onuGetStatus: (id: number) => request<{ success: boolean; status?: Record<string, unknown>; data?: Record<string, unknown>; message?: string }>(`/api/onu/${id}/get-status`, { method: 'POST' }),
   onuLiveInfo: (id: number) => request(`/api/onu/${id}/live-info`),
@@ -321,6 +329,18 @@ export interface RxHistoryPoint {
   tx_avg?: number | null;
   onu_rx_avg?: number | null;
   samples?: number;
+}
+
+export interface Tr069Params {
+  _id: string;
+  last_inform: string;
+  software_version: string;
+  model: string;
+  vendor: string;
+  wan_ip: string;
+  pppoe_username: string;
+  ssid_24g: string;
+  ssid_5g: string;
 }
 
 export interface TrafficPortMeta {

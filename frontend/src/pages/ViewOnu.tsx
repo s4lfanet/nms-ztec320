@@ -678,6 +678,9 @@ export function ViewOnu() {
         {tcontProfiles.length === 0 && gemports.length === 0 && <EmptyState icon={Database} title={isEpon ? 'TCONT/GEM not applicable to EPON ONUs' : 'No TCONT/GEM data. Run Sync to collect.'} />}
       </Card>
 
+      {/* TR-069 via GenieACS (Fase 3) */}
+      <Tr069Panel onuId={onuId} />
+
       {/* VLAN Services */}
       <Card title="VLAN Services" icon={<Layers size={16} />}>
         {services.length > 0 ? (
@@ -1809,5 +1812,61 @@ function RxHistoryChart({ onuId }: { onuId: number }) {
         {range !== '24h' && <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 bg-accent opacity-20"></span> Min–Max band</span>}
       </div>
     </div>
+  );
+}
+
+/* ─── TR-069 via GenieACS (Fase 3) ─── */
+function Tr069Panel({ onuId }: { onuId: number }) {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['onu-tr069', onuId],
+    queryFn: () => api.onuTr069(onuId),
+    enabled: !!onuId,
+    staleTime: 30_000,
+  });
+  const hasPerm = useHasPerm();
+  const canManage = hasPerm('genieacs_manage');
+  const p = data?.params;
+  if (isLoading) return null;
+  if (!data?.connected && !data?.params) {
+    return (
+      <Card title="TR-069 (GenieACS)" icon={<Shield size={16} />}>
+        <div className="text-xs text-tx3 py-2">
+          ONU ini tidak terhubung ke GenieACS. Pastikan GenieACS NBI aktif dan jalankan Sync di Settings → GenieACS.
+        </div>
+      </Card>
+    );
+  }
+  const rows: [string, string][] = [
+    ['Model', p?.model || '-'],
+    ['Vendor', p?.vendor || '-'],
+    ['Software', p?.software_version || '-'],
+    ['WAN IP', p?.wan_ip || '-'],
+    ['PPPoE', p?.pppoe_username || '-'],
+    ['SSID 2.4G', p?.ssid_24g || '-'],
+    ['SSID 5G', p?.ssid_5g || '-'],
+    ['Last Inform', p?.last_inform || '-'],
+    ['Match', data?.match_method || '-'],
+  ];
+  return (
+    <Card title="TR-069 (GenieACS)" icon={<Shield size={16} />}>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+        {rows.map(([k, v]) => (
+          <div key={k} className="p-2 rounded bg-glass">
+            <div className="text-tx3 text-[10px] uppercase font-semibold">{k}</div>
+            <div className="font-medium truncate">{v}</div>
+          </div>
+        ))}
+      </div>
+      {canManage && (
+        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-brd">
+          <Button variant="ghost" onClick={() => api.onuTr069Refresh(onuId).then(() => { toast.success('Refresh task dikirim'); refetch(); })}>
+            Refresh
+          </Button>
+          <Button variant="ghost" onClick={async () => { if (await confirm({ title: 'Reboot via GenieACS', message: 'Reboot ONU via GenieACS?', variant: 'warning' })) api.onuTr069Reboot(onuId).then(r => r.success ? toast.success('Reboot task dikirim') : toast.error(r.message)); }}>
+            Reboot
+          </Button>
+        </div>
+      )}
+    </Card>
   );
 }

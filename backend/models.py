@@ -112,6 +112,7 @@ AVAILABLE_PERMISSIONS = {
     'manage_templates': 'Manage Templates',
     'manage_users': 'User Management',
     'manage_tr069': 'TR069 Profile Management',
+    'genieacs_manage': 'GenieACS TR-069 Actions',
     'customization': 'Customization',
     'view_dashboard': 'View Dashboard',
     'view_onus': 'View All ONUs',
@@ -1175,4 +1176,22 @@ class OnuRxHourly(db.Model):
         db.UniqueConstraint('onu_id', 'hour', name='uq_onu_rx_hourly_onu_hour'),
         db.Index('ix_onu_rx_hourly_onu_time', 'onu_id', 'hour'),
         db.Index('ix_onu_rx_hourly_olt_time', 'olt_id', 'hour'),
+    )
+
+
+class GenieacsDeviceMap(db.Model):
+    """Maps NMS ONU ↔ GenieACS TR-069 device.
+    Match methods: 'serial' (exact SN), 'mac' (MAC PON ±1), 'manual' (UI pin)."""
+    __tablename__ = 'genieacs_device_map'
+    id = db.Column(db.Integer, primary_key=True)
+    onu_id = db.Column(db.Integer, db.ForeignKey('onus.id'), nullable=False)
+    device_id = db.Column(db.String(128), nullable=False)  # GenieACS _id
+    match_method = db.Column(db.String(20), default='serial')  # serial, mac, manual
+    pinned = db.Column(db.Boolean, default=False)  # manual pin — won't be auto-rematched
+    last_synced_at = db.Column(db.DateTime, nullable=True)
+    onu = db.relationship('ONU', backref=db.backref('genieacs_map', uselist=False))
+
+    __table_args__ = (
+        db.UniqueConstraint('onu_id', name='uq_genieacs_map_onu'),
+        db.Index('ix_genieacs_map_device_id', 'device_id'),
     )
