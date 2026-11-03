@@ -2,6 +2,7 @@ import { Bell, LogOut, User, Menu, Zap, Check, Trash2, AlertTriangle, ShieldAler
 import { useAuth } from '../../stores/auth';
 import { useTheme } from '../../stores/theme';
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -339,6 +340,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const navigate = useNavigate();
   const notifRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const userMenuDropRef = useRef<HTMLDivElement>(null);
 
   const { data: notifData } = useQuery<NotifData>({
     queryKey: ['notifications'],
@@ -388,7 +390,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setOpenNotif(null);
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
+      if (menuRef.current && !menuRef.current.contains(e.target as Node) && !(userMenuDropRef.current?.contains(e.target as Node))) setShowMenu(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -481,8 +483,8 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             </div>
           </button>
 
-          {showMenu && (
-            <div className="absolute right-0 top-full mt-1.5 w-52 max-w-[calc(100vw-1rem)] py-1.5 glass-card rounded-xl z-50 animate-fade-in shadow-2xl shadow-black/20">
+          {showMenu && createPortal(
+            <div ref={userMenuDropRef} className="fixed top-14 right-2 w-52 max-w-[calc(100vw-1rem)] py-1.5 glass-card rounded-xl z-[999] animate-fade-in shadow-2xl shadow-black/20">
               <div className="px-4 py-2.5 border-b border-brd">
                 <div className="text-sm font-medium">{user?.full_name || 'Admin'}</div>
                 <div className="text-xs text-tx3">{user?.username || ''}</div>
@@ -500,7 +502,8 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
               >
                 <LogOut size={16} /> {t('topbar.logout')}
               </button>
-            </div>
+            </div>,
+            document.body
           )}
         </div>
       </div>
