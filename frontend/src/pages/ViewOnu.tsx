@@ -542,7 +542,7 @@ export function ViewOnu() {
                 {hasConfig ? (
                   <div className="mt-3 pl-1">
                     <div className="text-sm mb-2"><span className="text-accent font-bold">|</span> Vlan {svc.user_vlan || svc.vlan} - <strong>{svc.service_name || `service${svcIdx}`}</strong></div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
                       <span className="text-tx3">Download</span><strong>{svc.download_profile || 'DOWN-PPPOE'}</strong>
                       <span className="text-tx3">Upload</span><strong>{svc.upload_profile || 'UP-PPPOE'}</strong>
                       <span className="text-tx3">Mode</span><strong>{svc.mode || 'Bridge / ONU Webpage'}</strong>
@@ -1993,20 +1993,20 @@ function Tr069Panel({ onuId }: { onuId: number }) {
                 {(p?.ssids || []).map(s => {
                   const ed = wifiEdit[s.index] || { ssid: s.ssid, pass: '' };
                   return (
-                    <div key={s.index} className="flex flex-wrap items-center gap-1.5 p-1.5 rounded bg-glass">
-                      <span className="text-[9px] font-mono text-tx3 w-14 shrink-0">#{s.index} {s.band}</span>
-                      <input className="flex-1 min-w-[110px] bg-bg2 border border-brd rounded px-2 py-1 text-xs"
+                    <div key={s.index} className="flex flex-col sm:flex-row sm:items-center gap-1.5 p-1.5 rounded bg-glass">
+                      <span className="text-[9px] font-mono text-tx3 sm:w-14 shrink-0">#{s.index} {s.band}</span>
+                      <input className="w-full sm:flex-1 sm:min-w-0 bg-bg2 border border-brd rounded px-2 py-1 text-xs"
                         value={ed.ssid} onChange={e => setWifiEdit({ ...wifiEdit, [s.index]: { ...ed, ssid: e.target.value } })} />
-                      <input className="w-28 bg-bg2 border border-brd rounded px-2 py-1 text-xs" type="password"
+                      <input className="w-full sm:w-28 bg-bg2 border border-brd rounded px-2 py-1 text-xs" type="password"
                         placeholder="password" value={ed.pass}
                         onChange={e => setWifiEdit({ ...wifiEdit, [s.index]: { ...ed, pass: e.target.value } })} />
-                      <Button variant="primary" onClick={() => {
+                      <Button variant="primary" className="w-full sm:w-auto" onClick={() => {
                         if (!ed.ssid.trim()) { toast.error('SSID wajib diisi'); return; }
                         api.onuTr069SetWifi(onuId, { ssid: ed.ssid.trim(), password: ed.pass || undefined, index: s.index })
                           .then(r => r.success ? toast.success(`WiFi #${s.index} dikirim`) : toast.error(r.message));
                       }}>Set</Button>
                       {s.index > 2 && (
-                        <Button variant="ghost" onClick={async () => {
+                        <Button variant="ghost" className="w-full sm:w-auto" onClick={async () => {
                           if (await confirm({ title: `Hapus SSID #${s.index}?`, message: `Instance ${s.ssid} akan dihapus via deleteObject.`, variant: 'warning' }))
                             api.onuTr069DelObject(onuId, `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${s.index}.`)
                               .then(r => { if (r.success) { toast.success('deleteObject dikirim'); refetch(); } else toast.error(r.message); });
