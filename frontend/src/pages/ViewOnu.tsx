@@ -1893,27 +1893,62 @@ function Tr069Panel({ onuId }: { onuId: number }) {
   }
   const upSec = parseInt(p?.uptime || '0');
   const upStr = upSec > 0 ? `${Math.floor(upSec / 86400)}d ${Math.floor((upSec % 86400) / 3600)}h` : '-';
-  const rows: [string, string][] = [
-    ['Model', p?.model || '-'],
-    ['Vendor', p?.vendor || '-'],
-    ['Software', p?.software_version || '-'],
-    ['Hardware', p?.hardware_version || '-'],
-    ['Uptime', upStr],
-    ['WiFi Clients', p?.wifi_clients != null ? String(p.wifi_clients) : '-'],
-    ['WAN IP', p?.wan_ip || '-'],
-    ['PPPoE', p?.pppoe_username || '-'],
-    ['SSID 2.4G', p?.ssid_24g || '-'],
-    ['SSID 5G', p?.ssid_5g || '-'],
-    ['Last Inform', p?.last_inform || '-'],
-    ['Match', data?.match_method || '-'],
+  const groups: { label: string; rows: [string, string][] }[] = [
+    {
+      label: 'Device',
+      rows: [
+        ['Model', p?.model || '-'],
+        ['Vendor', p?.vendor || '-'],
+        ['Software', p?.software_version || '-'],
+        ['Hardware', p?.hardware_version || '-'],
+        ['Uptime', upStr],
+      ],
+    },
+    {
+      label: 'WAN',
+      rows: [
+        ['WAN IP', p?.wan_ip || '-'],
+        ['PPPoE', p?.pppoe_username || '-'],
+        ['WiFi Clients', p?.wifi_clients != null ? String(p.wifi_clients) : '-'],
+      ],
+    },
+    {
+      label: 'Status',
+      rows: [
+        ['Last Inform', p?.last_inform ? new Date(p.last_inform).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'],
+        ['Match', data?.match_method || '-'],
+      ],
+    },
   ];
   return (
     <Card title={t('viewOnu.tr069Acs')} icon={<Shield size={16} />}>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-        {rows.map(([k, v]) => (
-          <div key={k} className="p-2 rounded bg-glass">
-            <div className="text-tx3 text-[10px] uppercase font-semibold">{k}</div>
-            <div className="font-medium truncate">{v}</div>
+      {/* SSID aktif */}
+      {p?.ssids && p.ssids.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {p.ssids.map(s => (
+            <span key={s.index} className={cn(
+              'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono border',
+              s.active
+                ? 'bg-success/10 text-success border-success/30'
+                : 'bg-glass text-tx3 border-brd line-through opacity-60'
+            )}>
+              <Wifi size={11} />
+              {s.ssid}
+              <span className="text-[9px] opacity-70">{s.band}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {groups.map(g => (
+          <div key={g.label} className="space-y-1.5">
+            <div className="text-[10px] font-bold text-tx3 uppercase tracking-wider">{g.label}</div>
+            {g.rows.map(([k, v]) => (
+              <div key={k} className="flex items-baseline justify-between gap-2 text-xs px-2 py-1 rounded bg-glass">
+                <span className="text-tx3 shrink-0">{k}</span>
+                <span className="font-medium truncate text-right">{v}</span>
+              </div>
+            ))}
           </div>
         ))}
       </div>

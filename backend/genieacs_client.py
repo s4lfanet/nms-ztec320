@@ -174,6 +174,17 @@ def _param(tree, path):
     return node
 
 
+def _collect(tree, path=''):
+    """Yield (path, value) untuk semua leaf ber-_value di device doc."""
+    if isinstance(tree, dict):
+        if '_value' in tree:
+            yield path, tree['_value']
+        else:
+            for k, v in tree.items():
+                if not k.startswith('_') and isinstance(v, dict):
+                    yield from _collect(v, f'{path}.{k}' if path else k)
+
+
 def get_device_params(device_id):
     """Fetch full device parameters from GenieACS for ViewOnu panel.
     Returns dict with last_inform, software_version, wan_ip, pppoe_username,
@@ -205,6 +216,32 @@ def get_device_params(device_id):
         hosts = _param(d, 'InternetGatewayDevice.LANDevice.1.Hosts.Host') or {}
         wifi_clients = len(hosts) if isinstance(hosts, dict) else 0
         uptime_s = _param(d, 'InternetGatewayDevice.DeviceInfo.UpTime')
+
+        # Kumpulkan semua leaf sekaligus — PPPoE/WAN IP bisa di index
+        # WANConnectionDevice/WAN*Connection manapun, jangan hardcode .1
+        leaves = dict(_collect(d))
+        def _first(pattern):
+            for p, v in leaves.items():
+                if re.search(pattern, p) and v not in (None, ''):
+                    return str(v)
+            return ''
+        wan_ip = _first(r'WANIPConnection\.\d+\.ExternalIPAddress$') \
+            or _first(r'WANPPPConnection\.\d+\.ExternalIPAddress$')
+        pppoe = _first(r'WANPPPConnection\.\d+\.Username$')
+        # Semua SSID + status aktif (Enable + advertisement)
+        wlan_root = _param(d, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration')
+        ssid_list = []
+        if isinstance(wlan_root, dict):
+            for idx, cfg in sorted(wlan_root.items(), key=lambda kv: kv[0]):
+                if not idx.isdigit() or not isinstance(cfg, dict):
+                    continue
+                ssid = _param(cfg, 'SSID')
+                if not ssid:
+                    continue
+                enabled = bool(_param(cfg, 'Enable')) and bool(
+                    _param(cfg, 'SSIDAdvertisementEnabled'))
+                ssid_list.append({'ssid': str(ssid), 'band': '5g' if int(idx) > 1 else '2.4g',
+                                  'active': enabled, 'index': int(idx)})
         return {
             '_id': device_id,
             'last_inform': str(d.get('_lastInform') or _param(d, 'LastInform') or ''),
@@ -214,10 +251,11 @@ def get_device_params(device_id):
             'model': str(model or ''),
             'vendor': str(vendor or ''),
             'wifi_clients': wifi_clients,
-            'wan_ip': str(_param(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress') or ''),
-            'pppoe_username': str(_param(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username') or ''),
-            'ssid_24g': str(_param(d, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID') or ''),
-            'ssid_5g': str(_param(d, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.SSID') or ''),
+            'wan_ip': wan_ip,
+            'pppoe_username': pppoe,
+            'ssids': ssid_list,
+            'ssid_24g': str(next((s['ssid'] for s in ssid_list if s['band'] == '2.4g'), '')),
+            'ssid_5g': str(next((s['ssid'] for s in ssid_list if s['band'] == '5g'), '')),
         }
     except Exception as e:
         logger.error('genieacs get_device_params failed: %s', e)

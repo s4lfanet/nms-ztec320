@@ -310,6 +310,7 @@ export interface Tr069Params {
   model: string;
   vendor: string;
   wifi_clients?: number;
+  ssids?: { ssid: string; band: string; active: boolean; index: number }[];
   wan_ip: string;
   pppoe_username: string;
   ssid_24g: string;
