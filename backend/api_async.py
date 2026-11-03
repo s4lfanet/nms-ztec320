@@ -604,7 +604,7 @@ def _audit_terminal_command(user_id, olt, line, password_expected=False):
 
 def _open_terminal_channel(olt, proto):
     """Open a raw interactive channel to the OLT.
-    Returns (write_fn, read_fn, close_fn, err) — read_fn returns bytes or None."""
+    Returns (write_fn, read_fn, close_fn, resize_fn, err)."""
     from telnet_client import SimpleTelnet
     try:
         if proto == 'ssh':
@@ -630,14 +630,17 @@ def _open_terminal_channel(olt, proto):
             def k():
                 try: ch.close(); c.close()
                 except Exception: pass
-            return w, r, k, ''
+            def res(cols, rows):
+                try: ch.resize_pty(width=int(cols), height=int(rows))
+                except Exception: pass
+            return w, r, k, res, ''
         else:
             port = 23
             if getattr(olt, 'cli_port', None):
                 port = olt.cli_port
             tn = SimpleTelnet(olt.ip_address, port=port, timeout=15)
             if not tn.connect():
-                return None, None, None, 'Telnet connect failed'
+                return None, None, None, None, 'Telnet connect failed'
             tn.sock.settimeout(0.25)
             def w(data): tn.sock.sendall(data)
             def r():
@@ -649,9 +652,16 @@ def _open_terminal_channel(olt, proto):
             def k():
                 try: tn.close()
                 except Exception: pass
-            return w, r, k, ''
+            def res(cols, rows):
+                try:
+                    cols, rows = int(cols), int(rows)
+                    naws = bytes([0xFF, 0xFA, 0x1B, cols >> 8, cols & 0xFF, rows >> 8, rows & 0xFF, 0xFF, 0xF0])
+                    tn.sock.sendall(naws)
+                except Exception:
+                    pass
+            return w, r, k, res, ''
     except Exception as e:
-        return None, None, None, str(e)[:200]
+        return None, None, None, None, str(e)[:200]
 
 
 def _terminal_reader_loop(read_fn, out_queue, stop_evt, loop):
@@ -700,7 +710,7 @@ async def ws_terminal_handler(ws: WebSocket, olt_id: int, proto: str):
                                    f'hindari perintah write/config sampai selesai ***\x1b[0m\r\n')
 
         # Open channel (blocking) off the event loop
-        w, r, k, err = await asyncio.to_thread(_open_terminal_channel, olt, proto)
+        w, r, k, resz, err = await asyncio.to_thread(_open_terminal_channel, olt, proto)
         if w is None:
             await ws.send_text(f'\r\n*** Gagal konek {proto}://{olt.ip_address} — {err} ***\r\n')
             return
@@ -744,6 +754,14 @@ async def ws_terminal_handler(ws: WebSocket, olt_id: int, proto: str):
             # Read input with short timeout so we can interleave output
             try:
                 data = await asyncio.wait_for(ws.receive_text(), timeout=0.05)
+                if data.startswith(''):
+                    try:
+                        msg = json.loads(data[1:])
+                        if resz:
+                            resz(msg.get('cols', 80), msg.get('rows', 24))
+                    except Exception:
+                        pass
+                    continue
             except asyncio.TimeoutError:
                 continue
             last_input = time.time()

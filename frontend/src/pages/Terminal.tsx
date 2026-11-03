@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -7,6 +7,8 @@ import { Terminal as TermIcon, RefreshCw, Power } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { Terminal as XTerm } from 'xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import 'xterm/css/xterm.css';
 
 export function Terminal() {
@@ -19,6 +21,25 @@ export function Terminal() {
   const termRef = useRef<HTMLDivElement>(null);
   const term = useRef<any>(null);
   const ws = useRef<WebSocket | null>(null);
+  const fit = useRef<FitAddon | null>(null);
+
+  const sendSize = () => {
+    if (ws.current?.readyState === WebSocket.OPEN && term.current) {
+      ws.current.send('' + JSON.stringify({ cols: term.current.cols, rows: term.current.rows }));
+    }
+  };
+
+  // ResizeObserver → fit + kirim ukuran baru ke backend (SSH resize_pty / Telnet NAWS)
+  useEffect(() => {
+    const el = termRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      try { fit.current?.fit(); } catch { /* belum open */ }
+      sendSize();
+    });
+    ro.observe(el);
+    return () => { ro.disconnect(); ws.current?.close(); term.current?.dispose(); };
+  }, []);
 
   const { data: dash } = useQuery({ queryKey: ['olts'], queryFn: api.dashboard });
   const oltList = dash?.olts || [];
@@ -37,7 +58,11 @@ export function Terminal() {
         cursorBlink: true, fontSize: 13, scrollback: 5000,
         theme: { background: '#0d1117', foreground: '#e6edf3', cursor: '#58a6ff' },
       });
+      fit.current = new FitAddon();
+      term.current.loadAddon(fit.current);
+      term.current.loadAddon(new WebLinksAddon());
       term.current.open(termRef.current);
+      fit.current.fit();
       term.current.clear();
       // Connect WS
       const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -45,7 +70,7 @@ export function Terminal() {
       const url = `${wsProto}://${location.host}/ws/terminal/${oltId}?token=${token}&proto=${proto}`;
       ws.current = new WebSocket(url);
       setStatus('connecting');
-      ws.current.onopen = () => setStatus('connected');
+      ws.current.onopen = () => { setStatus('connected'); sendSize(); };
       ws.current.onmessage = (e) => term.current?.write(e.data);
       ws.current.onclose = () => { setStatus('closed'); term.current?.writeln('\r\n\x1b[31m[disconnected]\x1b[0m'); };
       ws.current.onerror = () => { setStatus('closed'); };
