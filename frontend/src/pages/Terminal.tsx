@@ -62,7 +62,8 @@ export function Terminal() {
       term.current.clear();
       // Connect WS
       const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const url = `${wsProto}://${location.hostname}:8765/ws/terminal/${oltId}?token=${token}&proto=${proto}`;
+      // Connect via nginx /ws/ proxy (port 8765 is bound to localhost only)
+      const url = `${wsProto}://${location.host}/ws/terminal/${oltId}?token=${token}&proto=${proto}`;
       ws.current = new WebSocket(url);
       setStatus('connecting');
       ws.current.onopen = () => setStatus('connected');
