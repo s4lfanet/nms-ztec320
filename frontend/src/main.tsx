@@ -10,7 +10,13 @@ import './i18n'     // react-i18next — id/en locales, browser pref + user prof
 import { initTheme } from './stores/theme'
 import App from './App'
 
-// Service Worker registered by vite-plugin-pwa (injectRegister: 'auto', autoUpdate)
+// Service Worker — auto-reload saat versi baru terdeteksi (menghindari
+// bundle lama nyangkut di precache PWA)
+import { registerSW } from 'virtual:pwa-register'
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() { updateSW(true) },
+})
 
 // Init theme (localStorage/system) before first paint; per-user preference
 // is applied later by App once /api/auth/me resolves.
