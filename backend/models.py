@@ -141,6 +141,10 @@ class User(UserMixin, db.Model):
     # default. Never retroactively set True for existing users; False is
     # always safe (falls back to "no forced change").
     must_change_password = db.Column(db.Boolean, default=False)
+    # Per-user UI preferences (Fase 10). 'system' resolves to the OS-level
+    # prefers-color-scheme in the browser; language drives react-i18next.
+    theme = db.Column(db.String(10), default='system')  # 'dark' | 'light' | 'system'
+    language = db.Column(db.String(5), default='id')    # 'id' | 'en'
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def set_password(self, password):

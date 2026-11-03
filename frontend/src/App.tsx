@@ -1,6 +1,8 @@
 import { useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './stores/auth';
+import { useTheme } from './stores/theme';
+import i18n from './i18n';
 import { AppShell } from './components/layout/AppShell';
 import { SearchPalette } from './components/SearchPalette';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -134,7 +136,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { fetchUser } = useAuth();
+  const { fetchUser, user } = useAuth();
+
+  // Hydrate per-user display preferences once the session resolves.
+  // persist:false — the value already lives server-side, don't echo it back.
+  useEffect(() => {
+    if (!user) return;
+    if (user.theme) useTheme.getState().set(user.theme, { persist: false });
+    if (user.language) i18n.changeLanguage(user.language);
+  }, [user]);
 
   useEffect(() => {
     const path = window.location.pathname || '/';

@@ -14,6 +14,19 @@ window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response>
   return _origFetch(input, init);
 };
 
+export class ApiError extends Error {
+  errorCode?: string;
+  status?: number;
+  /** Raw response body — carries extra fields like retry_after. */
+  data?: Record<string, unknown>;
+  constructor(message: string, errorCode?: string, status?: number, data?: Record<string, unknown>) {
+    super(message);
+    this.errorCode = errorCode;
+    this.status = status;
+    this.data = data;
+  }
+}
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     credentials: 'include',
@@ -21,7 +34,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     ...options,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+  if (!res.ok) throw new ApiError(data.message || `HTTP ${res.status}`, data.error_code, res.status, data);
   return data as T;
 }
 
@@ -33,6 +46,8 @@ export const api = {
     }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
   me: () => request<{ user: User }>('/api/auth/me'),
+  updateProfile: (data: { full_name?: string; sidebar_name?: string; password?: string; theme?: 'dark' | 'light' | 'system'; language?: 'id' | 'en' }) =>
+    request<{ success: boolean; must_change_password?: boolean }>('/api/profile', { method: 'POST', body: JSON.stringify(data) }),
 
   // Public (no auth)
   publicPackages: () => request<PublicPackage[]>('/api/public/packages'),
@@ -463,6 +478,8 @@ export interface User {
   logo_url?: string | null;
   is_super_admin?: boolean;
   must_change_password?: boolean;
+  theme?: 'dark' | 'light' | 'system';
+  language?: 'id' | 'en';
   tenant_id?: number | null;
   subscription?: {
     is_active: boolean;

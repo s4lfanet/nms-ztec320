@@ -14,6 +14,7 @@ import { LocationPicker } from '../components/LocationPicker';
 import { useState, useEffect, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useHasPerm } from '../hooks/useHasPerm';
+import { useTranslation } from 'react-i18next';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
 import { Card, EmptyState, Modal, Button } from '../components/ui';
 
@@ -33,6 +34,7 @@ const authTypeLabel = (raw: string | undefined): string => {
 };
 
 export function ViewOnu() {
+  const { t } = useTranslation();
   const { id, oltId, frame, slot, onuNum } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -227,7 +229,7 @@ export function ViewOnu() {
   }, [onuId, refetchLive]);
 
   if (isLoading || (!onuId && !rconfigMode)) return <Skeleton />;
-  if (error || (!data && onuId)) return (<div className="text-center py-20"><p className="text-tx3">Failed to load ONU details</p><button onClick={() => navigate('/dashboard/onus')} className="mt-4 text-accent hover:underline text-sm">&larr; Back to All ONUs</button></div>);
+  if (error || (!data && onuId)) return (<div className="text-center py-20"><p className="text-tx3">{t('viewOnu.loadFailed')}</p><button onClick={() => navigate('/dashboard/onus')} className="mt-4 text-accent hover:underline text-sm">{t('viewOnu.backToAll')}</button></div>);
   if (!data) return <Skeleton />;
 
   const { onu } = data;
@@ -370,32 +372,32 @@ export function ViewOnu() {
   return (
     <div className="space-y-4 md:space-y-5 animate-fade-in">
       <Breadcrumb items={[
-        { label: 'Dashboard', path: '/dashboard' },
-        { label: 'All-ONUs', path: '/dashboard/onus' },
-        { label: 'View / Onu' },
+        { label: t('nav.dashboard'), path: '/dashboard' },
+        { label: t('nav.allOnus'), path: '/dashboard/onus' },
+        { label: t('viewOnu.breadcrumbView') },
       ]} />
 
       {/* ONU Details Card */}
       <Card
-        title="ONU Details"
+        title={t('viewOnu.details')}
         icon={<Radio size={16} />}
         action={
           <div className="flex items-center gap-2">
             <Button variant="secondary" icon={<RefreshCw size={13} />} loading={liveFetching} onClick={() => refetchLive()}>
-              Refresh Live
+              {t('viewOnu.refreshLive')}
             </Button>
             {hasPerm('configure_onu') && <SaveConfigBtn onuId={onuId} />}
           </div>
         }
       >
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
-            <DetailField label="OLT" value={onu.olt_name} />
+            <DetailField label={t('allOnus.colOlt')} value={onu.olt_name} />
             <DetailField label={(onu.card || '').toLowerCase() === 'epon' ? 'Epon Onu' : 'Gpon Onu'} value={onu.onu_id_str} mono onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'moveOnu' }) : undefined} />
-            <EditableField label="Actual Type" field="actual_type" value={onu.actual_type} onEdit={hasPerm('edit_onu_name') ? openFieldEdit : () => {}} />
-            <DetailField label="Onu Type" value={onu.onu_type || (ld.onu_type as string) || '-'} onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'onuType' }) : undefined} />
+            <EditableField label={t('allOnus.actualType')} field="actual_type" value={onu.actual_type} onEdit={hasPerm('edit_onu_name') ? openFieldEdit : () => {}} />
+            <DetailField label={t('viewOnu.onuType')} value={onu.onu_type || (ld.onu_type as string) || '-'} onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'onuType' }) : undefined} />
             <DetailField label="SN/MAC" value={onu.serial_number} mono />
             <div>
-              <div className="label-sm">OLT / Onu RX</div>
+              <div className="label-sm">{t('viewOnu.oltOnuRx')}</div>
               <div className="text-sm font-medium">
                 <span className={sigColor(rxOlt)}>{rxOlt !== null ? `${rxOlt.toFixed(2)} dBm` : 'N/A'}</span>
                 {' / '}
@@ -403,15 +405,15 @@ export function ViewOnu() {
               </div>
             </div>
             <div>
-              <div className="label-sm">Status</div>
+              <div className="label-sm">{t('common.status')}</div>
               <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium', statusColor(onu.status))}>
                 <span className={cn('w-1.5 h-1.5 rounded-full', onu.status === 'online' ? 'bg-success' : onu.status === 'los' ? 'bg-danger' : 'bg-offline')} />{onu.status}
               </span>
             </div>
-            <DetailField label="Online Duration" value={ld.online_duration as string || (onu.status === 'online' ? 'Active' : '-')} />
-            <EditableField label="Name" field="name" value={onu.name} onEdit={hasPerm('edit_onu_name') ? openFieldEdit : () => {}} />
-            <EditableField label="Description" field="description" value={onu.description} onEdit={hasPerm('edit_onu_description') ? openFieldEdit : () => {}} />
-            <DetailField label="Location" mono
+            <DetailField label={t('viewOnu.onlineDuration')} value={ld.online_duration as string || (onu.status === 'online' ? 'Active' : '-')} />
+            <EditableField label={t('common.name')} field="name" value={onu.name} onEdit={hasPerm('edit_onu_name') ? openFieldEdit : () => {}} />
+            <EditableField label={t('common.description')} field="description" value={onu.description} onEdit={hasPerm('edit_onu_description') ? openFieldEdit : () => {}} />
+            <DetailField label={t('viewOnu.location')} mono
               value={onu.latitude != null && onu.longitude != null ? `${onu.latitude}, ${onu.longitude}` : ''}
               onEdit={hasPerm('configure_onu') ? () => setModal({ type: 'location' }) : undefined} />
           </div>
@@ -420,19 +422,19 @@ export function ViewOnu() {
           <div className="flex gap-2 md:gap-4 mt-4">
             <div className="flex-1 flex items-center gap-2 md:gap-3 p-2 md:p-3 rounded-lg bg-glass">
               <ArrowDown size={18} className="text-success flex-shrink-0" />
-              <div className="min-w-0"><div className="text-[10px] md:text-xs text-tx3 uppercase font-semibold">Download</div><div className="text-sm md:text-base font-bold text-success truncate">{trafficData?.traffic?.downstream_kbps || '0 Kbps'}</div></div>
+              <div className="min-w-0"><div className="text-[10px] md:text-xs text-tx3 uppercase font-semibold">{t('viewOnu.download')}</div><div className="text-sm md:text-base font-bold text-success truncate">{trafficData?.traffic?.downstream_kbps || '0 Kbps'}</div></div>
             </div>
             <div className="flex-1 flex items-center gap-2 md:gap-3 p-2 md:p-3 rounded-lg bg-glass">
               <ArrowUp size={18} className="text-accent flex-shrink-0" />
-              <div className="min-w-0"><div className="text-[10px] md:text-xs text-tx3 uppercase font-semibold">Upload</div><div className="text-sm md:text-base font-bold text-accent truncate">{trafficData?.traffic?.upstream_kbps || '0 Kbps'}</div></div>
+              <div className="min-w-0"><div className="text-[10px] md:text-xs text-tx3 uppercase font-semibold">{t('viewOnu.upload')}</div><div className="text-sm md:text-base font-bold text-accent truncate">{trafficData?.traffic?.upstream_kbps || '0 Kbps'}</div></div>
             </div>
           </div>
           {/* Traffic live chart */}
           {trafficHistory.length > 1 && (
             <div className="mt-3">
               <div className="flex items-center gap-4 mb-1 text-xs text-tx3">
-                <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-success"></span> Download</span>
-                <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-accent"></span> Upload</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-success"></span> {t('viewOnu.download')}</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-accent"></span> {t('viewOnu.upload')}</span>
               </div>
               <ResponsiveContainer width="100%" height={120}>
                 <AreaChart data={trafficHistory} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -448,7 +450,7 @@ export function ViewOnu() {
                   </defs>
                   <XAxis dataKey="t" tick={{ fontSize: 9, fill: 'var(--color-tx3)' }} interval="preserveStartEnd" />
                   <YAxis tick={{ fontSize: 9, fill: 'var(--color-tx3)' }} unit=" K" />
-                  <Tooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 11 }} labelStyle={{ color: 'var(--text-2)' }} formatter={(v, name) => [`${v ?? 0} Kbps`, name === 'dl' ? 'Download' : 'Upload']} />
+                  <Tooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 11 }} labelStyle={{ color: 'var(--text-2)' }} formatter={(v, name) => [`${v ?? 0} Kbps`, name === 'dl' ? t('viewOnu.download') : t('viewOnu.upload')]} />
                   <Area type="monotone" dataKey="dl" stroke="var(--color-success)" fill="url(#dlGrad)" strokeWidth={1.5} dot={false} />
                   <Area type="monotone" dataKey="ul" stroke="var(--color-accent)" fill="url(#ulGrad)" strokeWidth={1.5} dot={false} />
                 </AreaChart>
@@ -457,7 +459,7 @@ export function ViewOnu() {
           )}
 
           <div className="mt-4 pt-4 border-t border-brd">
-            <div className="label-sm mb-2 flex items-center gap-1.5"><Clock size={13} /> Events History</div>
+            <div className="label-sm mb-2 flex items-center gap-1.5"><Clock size={13} /> {t('viewOnu.eventsHistory')}</div>
             {history && history.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {(history as Array<Record<string, string>>).filter((h) => !(h.timestamp || '').startsWith('0000-00-00')).slice(0, 10).map((h, i) => {
@@ -472,16 +474,16 @@ export function ViewOnu() {
                   );
                 })}
               </div>
-            ) : (<div className="flex items-center gap-2 p-3 rounded-lg bg-glass text-xs text-tx3"><Clock size={14} /> No event history. Click <strong>Get Status</strong> to refresh.</div>)}
+            ) : (<div className="flex items-center gap-2 p-3 rounded-lg bg-glass text-xs text-tx3"><Clock size={14} /> {t('viewOnu.noEvents')} <strong>{t('viewOnu.getStatus')}</strong> {t('viewOnu.noEventsSuffix')}</div>)}
           </div>
       </Card>
 
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2">
-        {hasPerm('reboot_onu') && <ActBtn icon={<RotateCcw size={14} />} label="Reboot" onClick={() => doAction('reset', 'Reboot')} loading={pendingAction === 'reset'} />}
-        <ActBtn icon={<Activity size={14} />} label="Get Status" onClick={() => getStatusMut.mutate()} loading={pendingAction === 'get-status'} />
-        <ActBtn icon={<FileText size={14} />} label="Show Config" onClick={showConfig} loading={pendingAction === 'show-config'} />
-        {hasPerm('configure_onu') && <ActBtn icon={<RefreshCw size={14} />} label="Resync Config" onClick={async () => {
+        {hasPerm('reboot_onu') && <ActBtn icon={<RotateCcw size={14} />} label={t('viewOnu.reboot')} onClick={() => doAction('reset', t('viewOnu.reboot'))} loading={pendingAction === 'reset'} />}
+        <ActBtn icon={<Activity size={14} />} label={t('viewOnu.getStatus')} onClick={() => getStatusMut.mutate()} loading={pendingAction === 'get-status'} />
+        <ActBtn icon={<FileText size={14} />} label={t('viewOnu.showConfig')} onClick={showConfig} loading={pendingAction === 'show-config'} />
+        {hasPerm('configure_onu') && <ActBtn icon={<RefreshCw size={14} />} label={t('viewOnu.resyncConfig')} onClick={async () => {
           const ok = await confirm({ title: 'Resync Config?', message: `Re-collect ONU config from OLT for "${onu.name}"?`, confirmLabel: 'Resync', variant: 'warning' });
           if (ok) {
             setPendingAction('resync');
@@ -493,10 +495,10 @@ export function ViewOnu() {
             finally { setPendingAction(null); }
           }
         }} loading={pendingAction === 'resync'} />}
-        {hasPerm('clear_config_onu') && <ActBtn icon={<Eraser size={14} />} label="Clear Config" onClick={() => doAction('clear-config', 'Clear Config')} variant="danger" loading={pendingAction === 'clear-config'} />}
-        {hasPerm('configure_onu') && <ActBtn icon={<WifiOff size={14} />} label="Reset WiFi" onClick={() => doAction('restore-wifi', 'Reset WiFi')} variant="warning" loading={pendingAction === 'restore-wifi'} />}
-        {hasPerm('reset_onu') && <ActBtn icon={<Power size={14} />} label="Reset Factory" onClick={() => doAction('restore-factory', 'Factory Reset')} variant="danger" loading={pendingAction === 'restore-factory'} />}
-        {hasPerm('reset_onu') && <ActBtn icon={<RefreshCw size={14} />} label="Reset + Auto-Reconfig" onClick={async () => {
+        {hasPerm('clear_config_onu') && <ActBtn icon={<Eraser size={14} />} label={t('viewOnu.clearConfig')} onClick={() => doAction('clear-config', t('viewOnu.clearConfig'))} variant="danger" loading={pendingAction === 'clear-config'} />}
+        {hasPerm('configure_onu') && <ActBtn icon={<WifiOff size={14} />} label={t('viewOnu.resetWifi')} onClick={() => doAction('restore-wifi', t('viewOnu.resetWifi'))} variant="warning" loading={pendingAction === 'restore-wifi'} />}
+        {hasPerm('reset_onu') && <ActBtn icon={<Power size={14} />} label={t('viewOnu.resetFactory')} onClick={() => doAction('restore-factory', t('viewOnu.resetFactory'))} variant="danger" loading={pendingAction === 'restore-factory'} />}
+        {hasPerm('reset_onu') && <ActBtn icon={<RefreshCw size={14} />} label={t('viewOnu.resetReconfig')} onClick={async () => {
           const ok = await confirm({
             title: 'Factory Reset + Auto-Reconfig?',
             message: `ONU "${onu.name}" akan di-factory-reset (OMCI), tapi config di OLT TETAP tersimpan. Saat ONU online kembali, OLT otomatis mengirim ulang config (WAN, PPPoE, WiFi, TR069) ke ONU ini. Hanya ONU ini yang terpengaruh.\n\nLanjutkan?`,
@@ -506,19 +508,19 @@ export function ViewOnu() {
           if (ok) actionMut.mutate('restore-factory-keep');
         }} variant="warning" loading={pendingAction === 'restore-factory-keep'} />}
         {hasPerm('disable_onu') && (onu.status === 'online' ? (
-          <ActBtn icon={<Ban size={14} />} label="Disable ONU" onClick={() => doAction('disable', 'Disable')} variant="danger" loading={pendingAction === 'disable'} />
+          <ActBtn icon={<Ban size={14} />} label={t('viewOnu.disableOnu')} onClick={() => doAction('disable', t('common.disable'))} variant="danger" loading={pendingAction === 'disable'} />
         ) : (
-          <ActBtn icon={<Activity size={14} />} label="Enable ONU" onClick={() => doAction('enable', 'Enable')} variant="success" loading={pendingAction === 'enable'} />
+          <ActBtn icon={<Activity size={14} />} label={t('viewOnu.enableOnu')} onClick={() => doAction('enable', t('common.enable'))} variant="success" loading={pendingAction === 'enable'} />
         ))}
-        {hasPerm('delete_onu') && <ActBtn icon={<Trash2 size={14} />} label="Delete" onClick={() => doAction('delete', 'Delete')} variant="danger" loading={pendingAction === 'delete'} />}
-        {hasPerm('configure_onu') && <ActBtn icon={<Replace size={14} />} label="Replace ONU" onClick={() => setModal({ type: 'replaceOnu' })} variant="warning" loading={pendingAction === 'replace'} />}
+        {hasPerm('delete_onu') && <ActBtn icon={<Trash2 size={14} />} label={t('common.delete')} onClick={() => doAction('delete', t('common.delete'))} variant="danger" loading={pendingAction === 'delete'} />}
+        {hasPerm('configure_onu') && <ActBtn icon={<Replace size={14} />} label={t('viewOnu.replaceOnu')} onClick={() => setModal({ type: 'replaceOnu' })} variant="warning" loading={pendingAction === 'replace'} />}
       </div>
 
       {/* FTTH cable path — trace this customer back to the OLT */}
       <FtthPathCard onuId={onuId} />
 
       {/* WAN */}
-      <Card title="WAN" icon={<Globe size={16} />}>
+      <Card title={t('viewOnu.wan')} icon={<Globe size={16} />}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1,2,3,4].map(svcIdx => {
             const svc = wanServices[`service${svcIdx}`] || {};
@@ -557,7 +559,7 @@ export function ViewOnu() {
       </Card>
 
       {/* Remote Access */}
-      <Card title="Remote Access" icon={<Shield size={16} />}
+      <Card title={t('viewOnu.remoteAccess')} icon={<Shield size={16} />}
         action={hasPerm('configure_onu') ? <button onClick={() => setModal({ type: 'aclEdit', data: { entry: {}, isNew: true, newIndex: remoteAccess.length + 1 } })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover"><Plus size={13} /> Create</button> : undefined}>
         {remoteAccess.length > 0 ? (
           <DataTable headers={['ID','Mode','Ingress Type','Service List','Start IP','End IP','Action']}>
@@ -567,11 +569,11 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={Shield} title={isEpon ? 'Remote Access not available for EPON ONUs' : 'No remote access rules'} />}
+        ) : <EmptyState icon={Shield} title={isEpon ? t('viewOnu.eponRemoteAccess') : t('viewOnu.noRemoteAccess')} />}
       </Card>
 
       {/* VEIP */}
-      <Card title="VEIP" icon={<Key size={16} />}>
+      <Card title={t('viewOnu.veip')} icon={<Key size={16} />}>
         {veipEntries.length > 0 ? (
           <DataTable headers={['ID','Status','Mode','Access VLAN','Trunk VLANs','Priority','IANA','Action']}>
             {veipEntries.map((v, i) => (
@@ -581,11 +583,11 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={Key} title={isEpon ? 'VEIP not available for EPON ONUs' : 'No VEIP config from OLT'} />}
+        ) : <EmptyState icon={Key} title={isEpon ? t('viewOnu.eponVeip') : t('viewOnu.noVeip')} />}
       </Card>
 
       {/* TR069 */}
-      <Card title="TR069" icon={<Shield size={16} />}>
+      <Card title={t('viewOnu.tr069')} icon={<Shield size={16} />}>
         {tr069Entries.length > 0 ? (
           <DataTable headers={['ID','ACS','Username','Password','VLAN','Priority','Action']}>
             {tr069Entries.map((tr, i) => (
@@ -595,17 +597,17 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={Shield} title={isEpon ? 'TR069 not available for EPON ONUs' : 'No TR069 config from OLT'} />}
+        ) : <EmptyState icon={Shield} title={isEpon ? t('viewOnu.eponTr069') : t('viewOnu.noTr069')} />}
       </Card>
 
       {/* WiFi */}
-      <Card title="WiFi" icon={<Wifi size={16} />}
+      <Card title={t('viewOnu.wifi')} icon={<Wifi size={16} />}
         action={hasPerm('configure_onu') ? (
           <button onClick={() => {
             const usedNums = wifiEntries.map(w => Number(w.wifi_num || 0));
             const next = [1,2,3,4,5,6,7,8].find(n => !usedNums.includes(n)) || 3;
             openSectionEdit('wifi', -1, { wifi_num: String(next), ssid_name: `Wifi ${next}`, status: 'up', mode: 'N/A', vlan: '', priority: '0' });
-          }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover"><Plus size={13} /> Add SSID</button>
+          }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover"><Plus size={13} /> {t('viewOnu.addSsid')}</button>
         ) : undefined}>
         {wifiEntries.length > 0 ? (() => {
           // Group SSIDs by band: 2.4GHz (1-4), 5GHz (5-8)
@@ -634,11 +636,11 @@ export function ViewOnu() {
             </div>
           ) : null;
           return <div>{renderGroup('2.4 GHz', band24)}{renderGroup('5 GHz', band5)}</div>;
-        })() : <EmptyState icon={Wifi} title={isEpon ? 'No WiFi config (EPON — configured via ONU Web UI)' : 'No WiFi config from OLT'} />}
+        })() : <EmptyState icon={Wifi} title={isEpon ? t('viewOnu.eponWifi') : t('viewOnu.noWifi')} />}
       </Card>
 
       {/* Ethernet */}
-      <Card title="Ethernet" icon={<Plug size={16} />}>
+      <Card title={t('viewOnu.ethernet')} icon={<Plug size={16} />}>
         {ethEntries.length > 0 ? (
           <DataTable headers={['Port','Status','Mode','Access VLAN','Trunk VLANs','DHCP','Changes','Action']}>
             {ethEntries.map((e, i) => (
@@ -650,11 +652,11 @@ export function ViewOnu() {
               </tr>
             ))}
           </DataTable>
-        ) : <EmptyState icon={Plug} title={isEpon ? 'Ethernet detail not available for EPON ONUs' : 'No Ethernet config from OLT'} />}
+        ) : <EmptyState icon={Plug} title={isEpon ? t('viewOnu.eponEth') : t('viewOnu.noEth')} />}
       </Card>
 
       {/* Optical Signal */}
-      <Card title="Optical Signal" icon={<Activity size={16} />}>
+      <Card title={t('viewOnu.opticalSignal')} icon={<Activity size={16} />}>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           <SignalBox label="RX Power (OLT)" value={rxOlt} />
           <SignalBox label="RX Power (ONU)" value={rxOnu} />
@@ -666,7 +668,7 @@ export function ViewOnu() {
       </Card>
 
       {/* TCONT & GEM */}
-      <Card title="TCONT & GEM Ports" icon={<Database size={16} />}>
+      <Card title={t('viewOnu.tcontGem')} icon={<Database size={16} />}>
         {tcontProfiles.length > 0 && (<>
           <h6 className="text-xs text-tx3 mb-2 font-semibold">TCONT Profiles</h6>
           <DataTable headers={['#','TCONT ID','Profile']}>{tcontProfiles.map((t, i) => (<tr key={i}><td>{i+1}</td><td><strong>{t.split(" ")[1] || '-'}</strong></td><td>{t.includes("profile ") ? t.split("profile ")[1] : '-'}</td></tr>))}</DataTable>
@@ -675,19 +677,19 @@ export function ViewOnu() {
           <h6 className="text-xs text-tx3 mb-2 mt-4 font-semibold">GEM Ports</h6>
           <DataTable headers={['#','GEM Port','TCONT']}>{gemports.map((g, i) => (<tr key={i}><td>{i+1}</td><td><strong>{g.split(" ")[1] || '-'}</strong></td><td>{g.includes("tcont ") ? g.split("tcont ")[1].split(" ")[0] : '-'}</td></tr>))}</DataTable>
         </>)}
-        {tcontProfiles.length === 0 && gemports.length === 0 && <EmptyState icon={Database} title={isEpon ? 'TCONT/GEM not applicable to EPON ONUs' : 'No TCONT/GEM data. Run Sync to collect.'} />}
+        {tcontProfiles.length === 0 && gemports.length === 0 && <EmptyState icon={Database} title={isEpon ? t('viewOnu.eponTcont') : t('viewOnu.noTcont')} />}
       </Card>
 
       {/* TR-069 via GenieACS (Fase 3) */}
       <Tr069Panel onuId={onuId} />
 
       {/* VLAN Services */}
-      <Card title="VLAN Services" icon={<Layers size={16} />}>
+      <Card title={t('viewOnu.vlanServices')} icon={<Layers size={16} />}>
         {services.length > 0 ? (
           <DataTable headers={['#','Service Port','Vport','User VLAN','VLAN']}>
             {services.map((s, i) => { const parts = s.split(" "); const getVal = (kw: string) => { const idx = parts.indexOf(kw); return idx >= 0 && parts[idx+1] ? parts[idx+1] : '-'; }; return (<tr key={i}><td>{i+1}</td><td>{parts[1]||'-'}</td><td>{getVal('vport')}</td><td>{getVal('user-vlan')}</td><td>{getVal('vlan')}</td></tr>); })}
           </DataTable>
-        ) : <EmptyState icon={Layers} title={isEpon ? 'No service-port data (EPON)' : 'No service-port data.'} />}
+        ) : <EmptyState icon={Layers} title={isEpon ? t('viewOnu.eponServices') : t('viewOnu.noServices')} />}
       </Card>
 
       {/* MODALS */}
@@ -707,7 +709,7 @@ export function ViewOnu() {
       {modal?.type === 'sectionEdit' && <SectionEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); setModal(null); }} />}
       {modal?.type === 'aclEdit' && <AclEditModal data={modal.data!} onuId={onuId} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
       {modal?.type === 'showConfig' && (
-        <Modal open onClose={() => setModal(null)} icon={<FileText size={16} />} title="ONU Running Config" size="xl">
+        <Modal open onClose={() => setModal(null)} icon={<FileText size={16} />} title={t('viewOnu.runningConfig')} size="xl">
           <pre className="code-block !p-4 text-sm whitespace-pre-wrap break-all leading-relaxed">{configContent}</pre>
         </Modal>
       )}
@@ -1613,6 +1615,7 @@ const FTTH_HOP_COLOR: Record<string, string> = {
 };
 
 function FtthPathCard({ onuId }: { onuId: number }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['ftth-trace-onu', onuId], queryFn: () => api.ftthTraceOnu(onuId), enabled: !!onuId,
   });
@@ -1622,14 +1625,14 @@ function FtthPathCard({ onuId }: { onuId: number }) {
 
   if (data.hops.length === 0) {
     return (
-      <Card title="Jalur FTTH" icon={<Cable size={16} />}>
+      <Card title={t('viewOnu.ftthPath')} icon={<Cable size={16} />}>
         <p className="text-xs text-tx3">{data.message || 'ONU ini belum di-assign ke port ODP manapun.'} Assign lewat halaman <strong className="text-tx2">FTTH Infrastructure</strong>.</p>
       </Card>
     );
   }
 
   return (
-    <Card title="Jalur FTTH" icon={<Cable size={16} />}>
+    <Card title={t('viewOnu.ftthPath')} icon={<Cable size={16} />}>
       {!data.complete && (
         <div className="mb-3 flex items-start gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20 text-xs text-warning">
           <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
@@ -1722,6 +1725,7 @@ function LocationEditModal({ latitude, longitude, onSave, onClose, loading, mapL
   onSave: (lat: string, lng: string) => void; onClose: () => void; loading: boolean;
   mapLocked?: boolean; onToggleLock?: () => void;
 }) {
+  const { t } = useTranslation();
   const [coords, setCoords] = useState({
     lat: latitude != null ? String(latitude) : '',
     lng: longitude != null ? String(longitude) : '',
@@ -1744,7 +1748,7 @@ function LocationEditModal({ latitude, longitude, onSave, onClose, loading, mapL
     } catch { setParseError('Gagal parse'); }
   };
   return (
-    <Modal open onClose={onClose} icon={<MapPin size={16} />} title="ONU Location" size="md">
+    <Modal open onClose={onClose} icon={<MapPin size={16} />} title={t('viewOnu.onuLocation')} size="md">
       <LocationPicker
         latitude={coords.lat}
         longitude={coords.lng}
@@ -1794,6 +1798,7 @@ function LocationEditModal({ latitude, longitude, onSave, onClose, loading, mapL
 
 /* ─── RX Power History Chart (Fase 1) ─── */
 function RxHistoryChart({ onuId }: { onuId: number }) {
+  const { t } = useTranslation();
   const [range, setRange] = useState<'24h' | '7d' | '30d' | '90d'>('24h');
   const { data, isLoading } = useQuery({
     queryKey: ['onu-rx-history', onuId, range],
@@ -1816,7 +1821,7 @@ function RxHistoryChart({ onuId }: { onuId: number }) {
   return (
     <div className="mt-4 pt-4 border-t border-brd">
       <div className="flex items-center justify-between mb-2">
-        <div className="label-sm flex items-center gap-1.5"><Activity size={13} /> Riwayat RX Power</div>
+        <div className="label-sm flex items-center gap-1.5"><Activity size={13} /> {t('viewOnu.rxHistory')}</div>
         <div className="flex gap-1">
           {(['24h', '7d', '30d', '90d'] as const).map(r => (
             <button key={r} onClick={() => setRange(r)}
@@ -1828,7 +1833,7 @@ function RxHistoryChart({ onuId }: { onuId: number }) {
         </div>
       </div>
       {isLoading ? (
-        <div className="h-[180px] flex items-center justify-center text-xs text-tx3">Memuat…</div>
+        <div className="h-[180px] flex items-center justify-center text-xs text-tx3">{t('common.loading')}</div>
       ) : (
         <ResponsiveContainer width="100%" height={180}>
           <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
@@ -1866,6 +1871,7 @@ function RxHistoryChart({ onuId }: { onuId: number }) {
 
 /* ─── TR-069 via GenieACS (Fase 3) ─── */
 function Tr069Panel({ onuId }: { onuId: number }) {
+  const { t } = useTranslation();
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['onu-tr069', onuId],
     queryFn: () => api.onuTr069(onuId),
@@ -1878,7 +1884,7 @@ function Tr069Panel({ onuId }: { onuId: number }) {
   if (isLoading) return null;
   if (!data?.connected && !data?.params) {
     return (
-      <Card title="TR-069 (GenieACS)" icon={<Shield size={16} />}>
+      <Card title={t('viewOnu.tr069Acs')} icon={<Shield size={16} />}>
         <div className="text-xs text-tx3 py-2">
           ONU ini tidak terhubung ke GenieACS. Pastikan GenieACS NBI aktif dan jalankan Sync di Settings → GenieACS.
         </div>
@@ -1897,7 +1903,7 @@ function Tr069Panel({ onuId }: { onuId: number }) {
     ['Match', data?.match_method || '-'],
   ];
   return (
-    <Card title="TR-069 (GenieACS)" icon={<Shield size={16} />}>
+    <Card title={t('viewOnu.tr069Acs')} icon={<Shield size={16} />}>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
         {rows.map(([k, v]) => (
           <div key={k} className="p-2 rounded bg-glass">

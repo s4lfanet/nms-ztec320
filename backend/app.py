@@ -401,6 +401,9 @@ def migrate_schema():
     # above) ever sets this True, and only for the brand-new 'admin' row it
     # creates.
     add_col('users', 'must_change_password', 'BOOLEAN', '0')
+    # Fase 10 — per-user theme & language preference
+    add_col('users', 'theme', 'VARCHAR(10)', "'system'")
+    add_col('users', 'language', 'VARCHAR(5)', "'id'")
 
     # Migrate existing admin user to super_admin
     try:

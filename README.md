@@ -91,6 +91,7 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Technician assignment untuk ONU
 - ONU custom columns
 - **Sidebar menu disederhanakan**: Menu ONU dari 8 ke 5 item (All ONUs, Unconfigured, Provision ONU, Pre-config ONT, Register Wizard). Route wizard tetap aktif, diakses dari halaman Unconfigured
+- **Dark/Light/System theme + i18n (id/en)**: Tema per user (kolom `users.theme`) dengan fallback localStorage, quick-toggle di Topbar, CSS variables Tailwind v4 — peta Leaflet & grafik Recharts ikut tema otomatis. Dwibahasa Indonesia/Inggris per user (`users.language`, react-i18next) — login, layout, Dashboard, All ONUs, View ONU, dan pesan error (`error_code`) sudah diterjemahkan
 - **Permission enforcement**: Backend (`@permission_required` decorator + inline `has_permission()` checks) dan frontend (`ProtectedRoute` + `useHasPerm` hook + `Sidebar` filtering) selaras. Admin endpoints (alert rules, bot config, notification management) memerlukan `customization`. ONU field updates menggunakan granular permission per field (`edit_onu_name`, `edit_onu_description`, `configure_onu`)
 
 ### Centralized Guide System

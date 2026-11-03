@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { Eye, EyeOff, KeyRound, ArrowLeft, Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../stores/auth';
 import { toast } from '../components/Toast';
 import { AuthLayout } from '../components/AuthLayout';
@@ -8,6 +9,7 @@ import { Button, Card, Input } from '../components/ui';
 import { cn } from '../lib/utils';
 
 export function Login() {
+  const { t } = useTranslation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -41,7 +43,7 @@ export function Login() {
     if (ok) {
       setLoading(false);
       setSuccess(true);
-      toast.success('Welcome back!');
+      toast.success(t('login.welcome'));
       const u = useAuth.getState().user;
       // Brief success beat before navigating — lets the button's checkmark
       // transition actually be seen instead of the page swapping instantly.
@@ -52,7 +54,11 @@ export function Login() {
         navigate('/dashboard');
       }
     } else {
-      toast.error(useAuth.getState().error || 'Invalid username or password');
+      const st = useAuth.getState();
+      const msg = st.errorCode
+        ? t(`error.${st.errorCode}`, { seconds: st.errorData?.retry_after as number | undefined })
+        : (st.error || t('error.invalid_credentials'));
+      toast.error(msg);
       setLoading(false);
     }
   };
@@ -61,27 +67,27 @@ export function Login() {
     <AuthLayout brandName={brandName} logoUrl={logoUrl}>
       {/* Login Card */}
       <Card bodyClassName="p-6 sm:p-8">
-        <h2 className="text-xl font-semibold mb-1 font-display">Sign In</h2>
-        <p className="text-xs text-tx3 mb-6">Masuk ke dashboard monitoring Anda</p>
+        <h2 className="text-xl font-semibold mb-1 font-display">{t('login.signIn')}</h2>
+        <p className="text-xs text-tx3 mb-6">{t('login.subtitle')}</p>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <Input
-            label="Username"
+            label={t('login.username')}
             type="text"
             value={username}
             onChange={e => setUsername(e.target.value)}
-            placeholder="Enter your username"
+            placeholder={t('login.usernamePh')}
             className="h-11"
             autoFocus
             required
           />
 
           <Input
-            label="Password"
+            label={t('login.password')}
             type={showPass ? 'text' : 'password'}
             value={password}
             onChange={e => setPassword(e.target.value)}
-            placeholder="Enter your password"
+            placeholder={t('login.passwordPh')}
             className="h-11"
             required
             suffix={
@@ -106,9 +112,9 @@ export function Login() {
             {success ? (
               <span className="inline-flex items-center gap-1.5 animate-check-pop">
                 <Check size={18} strokeWidth={3} />
-                Berhasil masuk
+                {t('login.success')}
               </span>
-            ) : loading ? 'Signing in...' : 'Sign In'}
+            ) : loading ? t('login.signingIn') : t('login.signIn')}
           </Button>
         </form>
 
@@ -120,13 +126,13 @@ export function Login() {
               className="text-sm text-accent hover:text-accent-hover transition-colors inline-flex items-center gap-1.5"
             >
               <KeyRound size={14} />
-              Lupa Password?
+              {t('login.forgot')}
             </button>
           </div>
         )}
 
         <p className="text-center text-xs text-tx3 mt-6">
-          Secure connection • Credentials encrypted
+          {t('login.secure')}
         </p>
       </Card>
 
@@ -141,7 +147,7 @@ export function Login() {
             >
               <ArrowLeft size={20} />
             </button>
-            <h2 className="text-xl font-semibold font-display">Reset Password</h2>
+            <h2 className="text-xl font-semibold font-display">{t('login.resetTitle')}</h2>
           </div>
 
           {forgotSuccess ? (
@@ -152,21 +158,21 @@ export function Login() {
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
               </div>
-              <p className="text-sm text-tx2 mb-2">Password baru telah dikirim via WhatsApp!</p>
-              <p className="text-xs text-tx3">Cek WhatsApp nomor terdaftar tenant Anda untuk password baru. Silakan login dengan password tersebut.</p>
+              <p className="text-sm text-tx2 mb-2">{t('login.resetSent')}</p>
+              <p className="text-xs text-tx3">{t('login.resetSentHint')}</p>
               <Button
                 type="button"
                 variant="primary"
                 className="mt-6"
                 onClick={() => { setShowForgot(false); setForgotSuccess(false); setForgotIdentifier(''); }}
               >
-                Kembali ke Login
+                {t('login.backToLogin')}
               </Button>
             </div>
           ) : (
             <>
               <p className="text-sm text-tx3 mb-5">
-                Masukkan username Anda. Password baru akan dikirim langsung via WhatsApp ke nomor terdaftar tenant.
+                {t('login.resetHint')}
               </p>
               <form onSubmit={async (e) => {
                 e.preventDefault();
@@ -180,27 +186,27 @@ export function Login() {
                   const d = await r.json();
                   if (d.success) {
                     setForgotSuccess(true);
-                    toast.success('Reset request sent!');
+                    toast.success(t('login.resetRequestSent'));
                   } else {
-                    toast.error(d.message || 'Failed to send request');
+                    toast.error(d.message || t('error.generic'));
                   }
                 } catch {
-                  toast.error('Network error. Please try again.');
+                  toast.error(t('login.networkError'));
                 }
                 setForgotLoading(false);
               }} className="space-y-5">
                 <Input
-                  label="Username"
+                  label={t('login.username')}
                   type="text"
                   value={forgotIdentifier}
                   onChange={e => setForgotIdentifier(e.target.value)}
-                  placeholder="Masukkan username Anda"
+                  placeholder={t('login.usernamePh')}
                   className="h-11"
                   autoFocus
                   required
                 />
                 <Button type="submit" variant="primary" loading={forgotLoading} className="w-full h-11 glow-accent">
-                  {forgotLoading ? 'Mengirim...' : 'Kirim Permintaan Reset'}
+                  {forgotLoading ? t('login.sending') : t('login.sendReset')}
                 </Button>
               </form>
             </>

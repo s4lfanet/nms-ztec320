@@ -34,6 +34,8 @@ def api_me():
         'logo_url': logo_url,
         'is_super_admin': current_user.is_super_admin,
         'must_change_password': bool(current_user.must_change_password),
+        'theme': current_user.theme or 'system',
+        'language': current_user.language or 'id',
     }})
 
 
@@ -47,7 +49,7 @@ def api_login():
     client_ip = request.remote_addr
     allowed, retry_after = check_rate_limit(client_ip)
     if not allowed:
-        return jsonify({'success': False, 'message': f'Too many login attempts. Please try again in {retry_after} seconds.'}), 429
+        return jsonify({'success': False, 'error_code': 'rate_limited', 'retry_after': retry_after, 'message': f'Too many login attempts. Please try again in {retry_after} seconds.'}), 429
 
     data = request.get_json() or {}
     username = data.get('username', '')
@@ -69,9 +71,11 @@ def api_login():
             'logo_url': sys_cfg.get('nms_logo_url') or None,
             'is_super_admin': user.is_super_admin,
             'must_change_password': bool(user.must_change_password),
+            'theme': user.theme or 'system',
+            'language': user.language or 'id',
         }})
     record_failed_login(client_ip)
-    return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
+    return jsonify({'success': False, 'error_code': 'invalid_credentials', 'message': 'Invalid credentials'}), 401
 
 
 @bp.route('/api/auth/logout', methods=['POST'])

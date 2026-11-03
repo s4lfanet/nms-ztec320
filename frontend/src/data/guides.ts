@@ -638,6 +638,32 @@ export const guides: Guide[] = [
       'Tunnel token dari dashboard Cloudflare Zero Trust (bukan API Token) — dibuat manual di sisi Cloudflare, lalu ditempel ke form Configure Tunnel',
     ],
   },
+  {
+    id: 'display-preferences',
+    category: 'System',
+    page: '/dashboard/profile',
+    title: 'Panduan Tema & Bahasa',
+    description: 'Atur tema gelap/terang dan bahasa antarmuka per user',
+    steps: [
+      {
+        title: 'Ganti Tema',
+        content: 'Buka **My Profile → Display Preferences → Theme**. Pilihannya: **Dark** (gelap), **Light** (terang), atau **System** (mengikuti pengaturan OS/browser dan berubah otomatis).\n\nCara cepat: klik ikon matahari/bulan di Topbar untuk toggle gelap/terang langsung.',
+      },
+      {
+        title: 'Ganti Bahasa',
+        content: 'Di kartu yang sama, pilih **Language: Indonesia / English**. Perubahan langsung terlihat tanpa reload. Halaman yang sudah diterjemahkan: layout, sidebar, Dashboard, All ONUs, View ONU, dan Login — halaman lain menyusul bertahap.',
+      },
+      {
+        title: 'Tersimpan per User',
+        content: 'Preferensi tema & bahasa disimpan di akun Anda (kolom `users.theme` / `users.language`), jadi konsisten di semua perangkat saat login. Sebelum login, preferensi mengikuti localStorage browser.',
+      },
+    ],
+    tips: [
+      'Peta Leaflet, grafik Recharts, dan terminal mengikuti tema secara otomatis',
+      'Mode "System" cocok untuk laptop yang berganti tema siang/malam otomatis',
+      'Pesan error login kini diterjemahkan otomatis sesuai bahasa (error_code dari backend)',
+    ],
+  },
 ];
 
 export function getGuideById(id: string): Guide | undefined {

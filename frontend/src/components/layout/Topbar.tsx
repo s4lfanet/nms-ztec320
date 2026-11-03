@@ -1,8 +1,10 @@
-import { Bell, LogOut, User, Menu, Zap, Check, Trash2, AlertTriangle, ShieldAlert, Plug, ArrowRight, X, CheckCircle2, WifiOff, XCircle } from 'lucide-react';
+import { Bell, LogOut, User, Menu, Zap, Check, Trash2, AlertTriangle, ShieldAlert, Plug, ArrowRight, X, CheckCircle2, WifiOff, XCircle, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../../stores/auth';
+import { useTheme } from '../../stores/theme';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 import { useDashboardWs } from '../../hooks/useDashboardWs';
 
@@ -49,10 +51,10 @@ const SEVERITY_CONFIG: Record<string, { icon: React.ReactNode; color: string }> 
   info: { icon: <Check size={14} className="text-info" />, color: 'text-info' },
 };
 
-const TYPE_CONFIG: Record<NotifType, { icon: typeof ShieldAlert; label: string; badgeClass: string; iconActiveClass: string; headerClass: string }> = {
-  alarm: { icon: ShieldAlert, label: 'Network Alarms', badgeClass: 'bg-danger', iconActiveClass: 'text-danger', headerClass: 'text-danger' },
-  unregister: { icon: Plug, label: 'Unregistered ONUs', badgeClass: 'bg-warning', iconActiveClass: 'text-warning', headerClass: 'text-warning' },
-  general: { icon: Bell, label: 'Notifications', badgeClass: 'bg-accent', iconActiveClass: 'text-accent', headerClass: 'text-accent' },
+const TYPE_CONFIG: Record<NotifType, { icon: typeof ShieldAlert; labelKey: string; badgeClass: string; iconActiveClass: string; headerClass: string }> = {
+  alarm: { icon: ShieldAlert, labelKey: 'topbar.alarms', badgeClass: 'bg-danger', iconActiveClass: 'text-danger', headerClass: 'text-danger' },
+  unregister: { icon: Plug, labelKey: 'topbar.unregOnus', badgeClass: 'bg-warning', iconActiveClass: 'text-warning', headerClass: 'text-warning' },
+  general: { icon: Bell, labelKey: 'topbar.notifications', badgeClass: 'bg-accent', iconActiveClass: 'text-accent', headerClass: 'text-accent' },
 };
 
 function NotifDropdown({
@@ -64,6 +66,7 @@ function NotifDropdown({
   onClose: () => void;
   onNavigate: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const TypeIcon = TYPE_CONFIG[type].icon;
 
@@ -130,26 +133,26 @@ function NotifDropdown({
       <div className="flex items-center justify-between px-4 py-3 border-b border-brd">
         <div className="flex items-center gap-2">
           <TypeIcon size={16} className={TYPE_CONFIG[type].headerClass} />
-          <span className="font-semibold text-sm">{TYPE_CONFIG[type].label}</span>
+          <span className="font-semibold text-sm">{t(TYPE_CONFIG[type].labelKey)}</span>
           {unreadCount > 0 && (
             <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold text-white', TYPE_CONFIG[type].badgeClass)}>{unreadCount}</span>
           )}
         </div>
         <div className="flex gap-1">
           {unreadCount > 0 && (
-            <button onClick={() => ackAllMut.mutate()} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-success transition-colors" title="Acknowledge all">
+            <button onClick={() => ackAllMut.mutate()} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-success transition-colors" title={t('topbar.ackAll')}>
               <CheckCircle2 size={14} />
             </button>
           )}
           {unreadCount > 0 && (
-            <button onClick={() => markAllMut.mutate()} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-accent transition-colors" title="Mark all read">
+            <button onClick={() => markAllMut.mutate()} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-accent transition-colors" title={t('topbar.markAllRead')}>
               <Check size={14} />
             </button>
           )}
-          <button onClick={() => clearReadMut.mutate()} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-danger transition-colors" title="Clear read">
+          <button onClick={() => clearReadMut.mutate()} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-danger transition-colors" title={t('topbar.clearRead')}>
             <Trash2 size={14} />
           </button>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-tx1 transition-colors" title="Close">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-tx1 transition-colors" title={t('common.close')}>
             <X size={14} />
           </button>
         </div>
@@ -166,8 +169,8 @@ function NotifDropdown({
               <Plug size={16} className="text-warning" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-warning">{unregData.unregistered} Unregistered ONU{unregData.unregistered > 1 ? 's' : ''}</div>
-              <div className="text-xs text-tx3 mt-0.5">Tap to register now</div>
+              <div className="text-sm font-medium text-warning">{t('topbar.unregCta', { count: unregData.unregistered })}</div>
+              <div className="text-xs text-tx3 mt-0.5">{t('topbar.tapToRegister')}</div>
             </div>
             <ArrowRight size={16} className="text-warning/50 group-hover:text-warning group-hover:translate-x-1 transition-all" />
           </div>
@@ -190,7 +193,7 @@ function NotifDropdown({
                   <AlertTriangle size={14} className="text-warning" />
                 </div>
                 <div className="flex-1">
-                  <span className="text-xs font-medium text-warning">{unregData.dyinggasp_count} ONU{unregData.dyinggasp_count > 1 ? 's' : ''} DyingGasp</span>
+                  <span className="text-xs font-medium text-warning">{t('topbar.onuDyinggasp', { count: unregData.dyinggasp_count })}</span>
                 </div>
                 <ArrowRight size={14} className="text-warning/50 group-hover:text-warning group-hover:translate-x-1 transition-all" />
               </div>
@@ -206,7 +209,7 @@ function NotifDropdown({
                   <WifiOff size={14} className="text-danger" />
                 </div>
                 <div className="flex-1">
-                  <span className="text-xs font-medium text-danger">{unregData.offline_count} ONU{unregData.offline_count > 1 ? 's' : ''} Offline</span>
+                  <span className="text-xs font-medium text-danger">{t('topbar.onuOffline', { count: unregData.offline_count })}</span>
                 </div>
                 <ArrowRight size={14} className="text-danger/50 group-hover:text-danger group-hover:translate-x-1 transition-all" />
               </div>
@@ -222,7 +225,7 @@ function NotifDropdown({
                   <XCircle size={14} className="text-danger" />
                 </div>
                 <div className="flex-1">
-                  <span className="text-xs font-medium text-danger">{unregData.los_count} ONU{unregData.los_count > 1 ? 's' : ''} LOS</span>
+                  <span className="text-xs font-medium text-danger">{t('topbar.onuLos', { count: unregData.los_count })}</span>
                 </div>
                 <ArrowRight size={14} className="text-danger/50 group-hover:text-danger group-hover:translate-x-1 transition-all" />
               </div>
@@ -236,7 +239,7 @@ function NotifDropdown({
         {activeNotifs.length === 0 && resolvedNotifs.length === 0 ? (
           <div className="py-10 text-center">
             <TypeIcon size={28} className="text-tx3/40 mx-auto mb-2" />
-            <p className="text-tx3 text-sm">No {TYPE_CONFIG[type].label.toLowerCase()}</p>
+            <p className="text-tx3 text-sm">{type === 'alarm' ? t('topbar.noAlarms') : type === 'unregister' ? t('topbar.noUnreg') : t('topbar.noNotif')}</p>
           </div>
         ) : (
           <>
@@ -277,7 +280,7 @@ function NotifDropdown({
                         <button
                           onClick={(e) => { e.stopPropagation(); ackMut.mutate(n.id); }}
                           className="p-1 rounded hover:bg-success/15 text-tx3 hover:text-success transition-colors opacity-0 group-hover:opacity-100"
-                          title="Acknowledge"
+                          title={t('topbar.acknowledge')}
                         >
                           <CheckCircle2 size={14} />
                         </button>
@@ -290,7 +293,7 @@ function NotifDropdown({
             {resolvedNotifs.length > 0 && (
               <>
                 <div className="px-4 py-1.5 bg-glass/30 border-b border-brd/50 text-[10px] font-medium text-tx3 uppercase tracking-wide">
-                  Resolved ({resolvedNotifs.length})
+                  {t('topbar.resolved', { count: resolvedNotifs.length })}
                 </div>
                 {resolvedNotifs.map((n) => (
                   <div
@@ -311,7 +314,7 @@ function NotifDropdown({
                         </div>
                         <div className="text-xs text-tx3 mt-0.5 line-clamp-1">{n.message.split('\n')[0]}</div>
                         <div className="text-[10px] text-tx3/70 mt-1">
-                          {n.resolved_at ? `Resolved: ${new Date(n.resolved_at).toLocaleString()}` : ''}
+                          {n.resolved_at ? t('topbar.resolvedAt', { time: new Date(n.resolved_at).toLocaleString() }) : ''}
                         </div>
                       </div>
                     </div>
@@ -327,7 +330,9 @@ function NotifDropdown({
 }
 
 export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
+  const { resolved, toggle } = useTheme();
   const [showMenu, setShowMenu] = useState(false);
   const [openNotif, setOpenNotif] = useState<NotifType | null>(null);
   const qc = useQueryClient();
@@ -402,7 +407,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         key={type}
         onClick={() => setOpenNotif(isOpen ? null : type)}
         className={cn('relative p-2 rounded-lg hover:bg-glass transition-all active:scale-95', isOpen && 'bg-glass')}
-        title={cfg.label}
+        title={t(cfg.labelKey)}
       >
         <Icon size={18} className={cn('text-tx2 transition-colors', isOpen && cfg.iconActiveClass)} />
         {badge > 0 && (
@@ -435,6 +440,15 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       </div>
 
       <div className="flex items-center gap-1">
+        {/* Theme quick-toggle */}
+        <button
+          onClick={toggle}
+          className="p-2 rounded-lg hover:bg-glass transition-all active:scale-95"
+          title={resolved === 'light' ? t('topbar.themeToDark') : t('topbar.themeToLight')}
+        >
+          {resolved === 'light' ? <Moon size={18} className="text-tx2" /> : <Sun size={18} className="text-tx2" />}
+        </button>
+
         {/* Notification Icons — 3 separate categories */}
         <div className="relative flex items-center gap-0.5" ref={notifRef}>
           {renderNotifIcon('alarm', alarmUnread)}
@@ -473,18 +487,18 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                 <div className="text-sm font-medium">{user?.full_name || 'Admin'}</div>
                 <div className="text-xs text-tx3">{user?.username || ''}</div>
                 {user?.is_super_admin && (
-                  <div className="text-[10px] text-accent font-medium mt-0.5">Super Admin</div>
+                  <div className="text-[10px] text-accent font-medium mt-0.5">{t('topbar.superAdmin')}</div>
                 )}
               </div>
               <button onClick={() => { setShowMenu(false); navigate('/dashboard/profile'); }} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-glass transition-colors">
-                <User size={16} className="text-tx3" /> My Profile
+                <User size={16} className="text-tx3" /> {t('topbar.myProfile')}
               </button>
               <hr className="border-brd my-1" />
               <button
                 onClick={() => logout()}
                 className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-danger hover:bg-danger/10 transition-colors"
               >
-                <LogOut size={16} /> Logout
+                <LogOut size={16} /> {t('topbar.logout')}
               </button>
             </div>
           )}

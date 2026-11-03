@@ -11,6 +11,7 @@ import {
   TrendingUp, Shield, Bell, ArrowRight,
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
+import { useTranslation } from 'react-i18next';
 import { useDashboardWs } from '../hooks/useDashboardWs';
 import { useCountUp } from '../hooks/useCountUp';
 import { PageContainer } from '../components/layout/PageContainer';
@@ -39,6 +40,7 @@ function tempColor(t: number | null | undefined): string {
 }
 
 export function Dashboard() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const hasPerm = useHasPerm();
   const navigate = useNavigate();
@@ -118,9 +120,9 @@ export function Dashboard() {
   const syncMutation = useMutation({
     mutationFn: async (oltId: number) => {
       const ok = await confirm({
-        title: 'Sync OLT',
-        message: 'This will collect all data from the OLT device. Continue?',
-        confirmLabel: 'Sync Now',
+        title: t('dashboard.syncConfirmTitle'),
+        message: t('dashboard.syncConfirmMsg'),
+        confirmLabel: t('dashboard.syncNow'),
         variant: 'warning',
       });
       if (!ok) throw new Error('cancelled');
@@ -129,20 +131,20 @@ export function Dashboard() {
     onSuccess: (_, oltId) => {
       setSyncingOlt(oltId);
       setSyncProgress(0);
-      setSyncMessage('Starting sync...');
-      toast.success('Sync started! Data will update automatically.');
+      setSyncMessage(t('dashboard.startingSync'));
+      toast.success(t('dashboard.syncStarted'));
     },
     onError: (e: Error) => {
-      if (e.message !== 'cancelled') toast.error('Sync failed: ' + e.message);
+      if (e.message !== 'cancelled') toast.error(t('dashboard.syncFailed', { msg: e.message }));
     },
   });
 
   const syncAllMutation = useMutation({
     mutationFn: async () => {
       const ok = await confirm({
-        title: 'Sync All OLTs',
-        message: `This will sync all ${olts?.length || ''} OLT(s) sequentially. Continue?`,
-        confirmLabel: 'Sync All',
+        title: t('dashboard.syncAllTitle'),
+        message: t('dashboard.syncAllMsg', { count: olts?.length || 0 }),
+        confirmLabel: t('dashboard.syncAll'),
         variant: 'warning',
       });
       if (!ok) throw new Error('cancelled');
@@ -150,10 +152,10 @@ export function Dashboard() {
     },
     onSuccess: () => {
       setSyncingAll(true);
-      toast.success('Sync All started! Progress will show per OLT.');
+      toast.success(t('dashboard.syncAllStarted'));
     },
     onError: (e: Error) => {
-      if (e.message !== 'cancelled') toast.error('Sync All failed: ' + e.message);
+      if (e.message !== 'cancelled') toast.error(t('dashboard.syncAllFailed', { msg: e.message }));
     },
   });
 
@@ -169,11 +171,11 @@ export function Dashboard() {
           clearInterval(interval);
           setSyncingOlt(null);
           if (s.status === 'completed') {
-            toast.success('Sync completed!');
+            toast.success(t('dashboard.syncCompleted'));
           } else if (s.status === 'error') {
-            toast.error('Sync failed: ' + (s.message || ''));
+            toast.error(t('dashboard.syncFailed', { msg: s.message || '' }));
           } else {
-            toast.info(s.message || 'Sync skipped — already running for this OLT');
+            toast.info(s.message || t('dashboard.syncSkipped'));
           }
           queryClient.invalidateQueries({ queryKey: ['dashboard'] });
           queryClient.invalidateQueries({ queryKey: ['olts'] });
@@ -197,8 +199,8 @@ export function Dashboard() {
           clearInterval(interval);
           setSyncingAll(false);
           const anyError = allDone.some(s => s.status === 'error');
-          if (anyError) toast.error('Some OLTs failed to sync');
-          else toast.success('All OLTs synced!');
+          if (anyError) toast.error(t('dashboard.someSyncFailed'));
+          else toast.success(t('dashboard.allSynced'));
           queryClient.invalidateQueries({ queryKey: ['dashboard'] });
           queryClient.invalidateQueries({ queryKey: ['olts'] });
           queryClient.invalidateQueries({ queryKey: ['all-onus'] });
@@ -248,7 +250,7 @@ export function Dashboard() {
   }, [olts, stats, onlineCount]);
 
   const healthColor = healthScore >= 80 ? 'text-success' : healthScore >= 50 ? 'text-warning' : 'text-danger';
-  const healthLabel = healthScore >= 80 ? 'Healthy' : healthScore >= 50 ? 'Warning' : 'Critical';
+  const healthLabel = healthScore >= 80 ? t('dashboard.healthy') : healthScore >= 50 ? t('dashboard.warning') : t('dashboard.critical');
   const healthBg = healthScore >= 80 ? 'bg-success/15' : healthScore >= 50 ? 'bg-warning/15' : 'bg-danger/15';
 
   const recentAlerts = useMemo(() => (notifData as NotificationsResponse | undefined)?.notifications || [], [notifData]);
@@ -263,11 +265,11 @@ export function Dashboard() {
     <PageContainer>
       <PageHeader
         icon={<Activity size={20} className="text-accent" />}
-        title="OLT Monitoring"
+        title={t('dashboard.title')}
         description={
           <>
-            {onlineCount}/{olts.length} online &mdash; refresh dalam{' '}
-            <span className={countdown <= 5 ? 'text-warning font-semibold' : 'text-tx2'}>{countdown}d</span>
+            {t('dashboard.refreshIn', { online: onlineCount, total: olts.length })}{' '}
+            <span className={countdown <= 5 ? 'text-warning font-semibold' : 'text-tx2'}>{countdown}{t('dashboard.sec')}</span>
           </>
         }
         action={
@@ -280,7 +282,7 @@ export function Dashboard() {
                 disabled={syncingAll || syncingOlt !== null}
                 className="flex-1 sm:flex-none"
               >
-                Sync All
+                {t('dashboard.syncAll')}
               </Button>
             )}
             <Button
@@ -296,7 +298,7 @@ export function Dashboard() {
                 setTimeout(() => setRefreshing(false), 500);
               }}
             >
-              Refresh
+              {t('common.refresh')}
             </Button>
           </>
         }
@@ -304,20 +306,20 @@ export function Dashboard() {
 
       {/* Summary Stats — 4 cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-        <StatCard icon={<Server size={18} />} label="OLT" value={olts.length}
-          sub={`${onlineCount} online · ${olts.length - onlineCount} offline`} color="accent" delay={0} />
-        <StatCard icon={<Radio size={18} />} label="Total ONU" value={stats.total_onu}
-          sub={`${stats.online_pct}% online`} color="info"
+        <StatCard icon={<Server size={18} />} label={t('dashboard.statOlt')} value={olts.length}
+          sub={t('dashboard.statOltSub', { online: onlineCount, offline: olts.length - onlineCount })} color="accent" delay={0} />
+        <StatCard icon={<Radio size={18} />} label={t('dashboard.statTotalOnu')} value={stats.total_onu}
+          sub={`${stats.online_pct}% ${t('common.online').toLowerCase()}`} color="info"
           progress={stats.total_onu > 0 ? stats.online_pct : 0} delay={60} />
-        <StatCard icon={<Wifi size={18} />} label="ONU Online" value={stats.online}
+        <StatCard icon={<Wifi size={18} />} label={t('dashboard.statOnuOnline')} value={stats.online}
           sub={`${stats.online_pct}%`} color="success" delay={120} />
-        <StatCard icon={<AlertTriangle size={18} />} label="ONU Problem" value={totalProblem}
-          sub={totalProblem > 0 ? `${stats.offline} off · ${stats.dyinggasp} dyg · ${stats.los} LOS` : 'Semua normal'}
+        <StatCard icon={<AlertTriangle size={18} />} label={t('dashboard.statOnuProblem')} value={totalProblem}
+          sub={totalProblem > 0 ? t('dashboard.problemSub', { offline: stats.offline, dg: stats.dyinggasp, los: stats.los }) : t('dashboard.allNormal')}
           color={totalProblem > 0 ? 'danger' : 'muted'} delay={180} />
       </div>
 
       {/* Signal Distribution Bar */}
-      <Card title="Signal Quality Distribution">
+      <Card title={t('dashboard.signalDist')}>
         <div className="flex h-2.5 rounded-full overflow-hidden bg-glass">
           {stats.total_onu > 0 && (
             <>
@@ -329,17 +331,17 @@ export function Dashboard() {
           )}
         </div>
         <div className="flex flex-wrap gap-3 md:gap-6 mt-2.5 text-[11px] text-tx3">
-          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-success" /> Online ({stats.online})</span>
-          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-warning" /> DyingGasp ({stats.dyinggasp})</span>
-          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-danger" /> LOS ({stats.los})</span>
-          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-offline" /> Offline ({stats.offline})</span>
+          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-success" /> {t('common.online')} ({stats.online})</span>
+          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-warning" /> {t('common.dyinggasp')} ({stats.dyinggasp})</span>
+          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-danger" /> {t('common.los')} ({stats.los})</span>
+          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-offline" /> {t('common.offline')} ({stats.offline})</span>
         </div>
       </Card>
 
       {/* ── Network Health + Top Problems + Recent Alerts ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {/* Network Health Score */}
-        <Card title="Network Health" bodyClassName="p-4">
+        <Card title={t('dashboard.netHealth')} bodyClassName="p-4">
           <div className="flex items-center gap-4">
             <div className="relative flex-shrink-0">
               <svg width="72" height="72" viewBox="0 0 72 72" className="transform -rotate-90">
@@ -362,15 +364,15 @@ export function Dashboard() {
               </div>
               <div className="mt-1.5 space-y-0.5">
                 <div className="text-[10px] text-tx3 flex justify-between gap-3">
-                  <span>OLT Up</span>
+                  <span>{t('dashboard.oltUp')}</span>
                   <span className="font-medium text-tx2">{onlineCount}/{olts.length}</span>
                 </div>
                 <div className="text-[10px] text-tx3 flex justify-between gap-3">
-                  <span>ONU Online</span>
+                  <span>{t('dashboard.statOnuOnline')}</span>
                   <span className="font-medium text-tx2">{stats.online_pct}%</span>
                 </div>
                 <div className="text-[10px] text-tx3 flex justify-between gap-3">
-                  <span>Signal OK</span>
+                  <span>{t('dashboard.signalOk')}</span>
                   <span className="font-medium text-tx2">{stats.total_onu > 0 ? Math.round((stats.online - stats.los - stats.dyinggasp) / stats.total_onu * 100) : 0}%</span>
                 </div>
               </div>
@@ -379,11 +381,11 @@ export function Dashboard() {
         </Card>
 
         {/* Top Problem ONUs */}
-        <Card title="Problem ONUs" bodyClassName="p-3">
+        <Card title={t('dashboard.problemOnus')} bodyClassName="p-3">
           {problemList.length === 0 ? (
             <div className="flex items-center gap-2 py-4 text-tx3 text-xs">
               <TrendingUp size={14} className="text-success" />
-              <span>All ONUs healthy — no LOS/DyingGasp detected</span>
+              <span>{t('dashboard.noProblems')}</span>
             </div>
           ) : (
             <div className="space-y-1.5 max-h-40 overflow-y-auto">
@@ -410,17 +412,17 @@ export function Dashboard() {
           )}
           {totalProblem > 5 && (
             <button onClick={() => navigate('/dashboard/onus')} className="mt-2 w-full text-center text-[10px] text-accent hover:underline flex items-center justify-center gap-1">
-              View all {totalProblem} problem ONUs <ArrowRight size={10} />
+              {t('dashboard.viewAllProblems', { count: totalProblem })} <ArrowRight size={10} />
             </button>
           )}
         </Card>
 
         {/* Recent Alerts */}
-        <Card title="Recent Alerts" bodyClassName="p-3">
+        <Card title={t('dashboard.recentAlerts')} bodyClassName="p-3">
           {recentAlerts.length === 0 ? (
             <div className="flex items-center gap-2 py-4 text-tx3 text-xs">
               <Bell size={14} className="text-tx3" />
-              <span>No active alarms</span>
+              <span>{t('dashboard.noAlarms')}</span>
             </div>
           ) : (
             <div className="space-y-1.5 max-h-40 overflow-y-auto">
@@ -433,14 +435,14 @@ export function Dashboard() {
                     <div className="text-[10px] text-tx3 truncate">{n.message}</div>
                     <div className="text-[9px] text-tx3 mt-0.5">{formatDate(n.created_at)}</div>
                   </div>
-                  {n.is_read && <span className="text-[8px] px-1 py-0.5 rounded bg-glass text-tx3 flex-shrink-0">read</span>}
+                  {n.is_read && <span className="text-[8px] px-1 py-0.5 rounded bg-glass text-tx3 flex-shrink-0">{t('dashboard.read')}</span>}
                 </div>
               ))}
             </div>
           )}
           {(notifData?.unread_count || 0) > 0 && (
             <div className="mt-2 text-center">
-              <span className="text-[10px] text-tx3">{notifData?.unread_count} unread alert{notifData!.unread_count !== 1 ? 's' : ''}</span>
+              <span className="text-[10px] text-tx3">{t('dashboard.unreadAlerts', { count: notifData?.unread_count || 0 })}</span>
             </div>
           )}
         </Card>
@@ -452,7 +454,7 @@ export function Dashboard() {
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 text-sm">
               <RefreshCw size={14} className="animate-spin text-accent" />
-              <span className="font-medium">Syncing OLT...</span>
+              <span className="font-medium">{t('dashboard.syncing')}</span>
               <span className="text-tx3 text-xs">{syncMessage}</span>
             </div>
             <span className="text-sm font-bold text-accent">{syncProgress}%</span>
@@ -469,29 +471,29 @@ export function Dashboard() {
           <SearchBar
             value={searchTerm}
             onChange={setSearchTerm}
-            placeholder="Cari nama OLT atau IP..."
+            placeholder={t('dashboard.searchOlt')}
             className="flex-1"
           />
           <div className="flex gap-2">
             <Select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              aria-label="Filter status"
+              aria-label={t('common.status')}
               options={[
-                { value: 'all', label: 'Semua Status' },
-                { value: 'online', label: 'Online Only' },
-                { value: 'offline', label: 'Offline Only' },
+                { value: 'all', label: t('dashboard.allStatus') },
+                { value: 'online', label: t('dashboard.onlineOnly') },
+                { value: 'offline', label: t('dashboard.offlineOnly') },
               ]}
             />
             <Select
               value={sortKey}
               onChange={e => setSortKey(e.target.value as SortKey)}
-              aria-label="Urutkan"
+              aria-label={t('dashboard.sortName')}
               options={[
-                { value: 'status', label: 'Sort: Status' },
-                { value: 'name', label: 'Sort: Nama' },
-                { value: 'problems', label: 'Sort: Problem' },
-                { value: 'offline', label: 'Sort: Offline ONU' },
+                { value: 'status', label: t('dashboard.sortStatus') },
+                { value: 'name', label: t('dashboard.sortName') },
+                { value: 'problems', label: t('dashboard.sortProblems') },
+                { value: 'offline', label: t('dashboard.sortOffline') },
               ]}
             />
           </div>
@@ -502,8 +504,8 @@ export function Dashboard() {
       {sortedOlts.length === 0 ? (
         <EmptyState
           icon={Server}
-          title={searchTerm || statusFilter !== 'all' ? 'Tidak ada OLT yang cocok' : 'Belum ada OLT'}
-          description={searchTerm || statusFilter !== 'all' ? 'Coba ubah filter pencarian' : 'Tambah OLT di Settings → OLT Settings'}
+          title={searchTerm || statusFilter !== 'all' ? t('dashboard.noOltMatch') : t('dashboard.noOlt')}
+          description={searchTerm || statusFilter !== 'all' ? t('dashboard.adjustFilter') : t('dashboard.noOltHint')}
         />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -568,6 +570,7 @@ function OltCard({ olt, onSync, syncing, syncProgress, onConfig }: {
   olt: OltInfo; onSync?: () => void; syncing: boolean;
   syncProgress?: number; onConfig?: () => void;
 }) {
+  const { t } = useTranslation();
   const problemCount = (olt.offline_onu || 0) + (olt.dyinggasp_onu || 0) + (olt.los_onu || 0);
   const onlinePct = olt.total_onu > 0 ? Math.round((olt.online_onu / olt.total_onu) * 100) : 0;
 
@@ -602,12 +605,12 @@ function OltCard({ olt, onSync, syncing, syncProgress, onConfig }: {
         <div className="flex items-center gap-1 ml-2 flex-shrink-0">
           {problemCount > 0 && (
             <span className="px-1.5 py-0.5 text-[10px] bg-warning/15 text-warning rounded font-mono font-semibold tabular-nums">
-              {problemCount} issue
+              {t('dashboard.issues', { count: problemCount })}
             </span>
           )}
           <span className={cn('px-1.5 py-0.5 rounded text-[9px] font-medium',
             olt.is_online ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger')}>
-            {olt.is_online ? 'Online' : 'Offline'}
+            {olt.is_online ? t('common.online') : t('common.offline')}
           </span>
         </div>
       </div>
@@ -632,7 +635,7 @@ function OltCard({ olt, onSync, syncing, syncProgress, onConfig }: {
         </div>
         {problemCount > 0 && (
           <p className="text-[9px] text-danger mt-0.5">
-            {olt.offline_onu > 0 && `${olt.offline_onu} offline`}
+            {olt.offline_onu > 0 && `${olt.offline_onu} ${t('common.offline').toLowerCase()}`}
             {olt.dyinggasp_onu > 0 && ` · ${olt.dyinggasp_onu} dyinggasp`}
             {olt.los_onu > 0 && ` · ${olt.los_onu} LOS`}
           </p>
@@ -643,7 +646,7 @@ function OltCard({ olt, onSync, syncing, syncProgress, onConfig }: {
       {syncing && syncProgress !== undefined && (
         <div className="px-3 py-1.5 border-b border-brd/50">
           <div className="flex items-center justify-between text-[10px] text-tx3 mb-1">
-            <span className="flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> Syncing...</span>
+            <span className="flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> {t('dashboard.syncing')}</span>
             <span className="text-accent font-medium">{syncProgress}%</span>
           </div>
           <div className="h-1 rounded-full bg-glass overflow-hidden">
@@ -660,7 +663,7 @@ function OltCard({ olt, onSync, syncing, syncProgress, onConfig }: {
         </div>
         <div>
           <div className="flex items-center justify-center gap-0.5 text-[9px] text-tx3 uppercase">
-            <Thermometer size={9} />Suhu
+            <Thermometer size={9} />{t('dashboard.temp')}
           </div>
           <div className={cn('text-[10px] font-semibold', tempColor(olt.temperature))}>
             {olt.temperature != null ? `${olt.temperature}°C` : 'N/A'}
@@ -696,7 +699,7 @@ function OltCard({ olt, onSync, syncing, syncProgress, onConfig }: {
           onClick={onConfig}
           className="flex-1 inline-flex items-center justify-center px-2 py-1 text-[10px] bg-accent/10 border border-accent/20 hover:bg-accent/20 rounded text-accent font-medium transition-colors"
         >
-          <ExternalLink size={10} className="mr-1" /> Config
+          <ExternalLink size={10} className="mr-1" /> {t('dashboard.config')}
         </button>
         )}
         {onSync && (

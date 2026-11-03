@@ -27,6 +27,29 @@
   --focus-ring: 0 0 0 2px #090B0E, 0 0 0 3.5px #0EA5E9;
 }
 
+/* ─── Light theme — same optical identity, paper-bright surfaces ───
+   Keeps the carrier-cyan accent but darkens it one step for WCAG
+   contrast on white; shadows drop to near-invisible since light UIs
+   rely on hairline borders instead. */
+html.light {
+  --bg-primary: #EEF1F6;
+  --bg-surface: #FFFFFF;
+  --bg-glass: #F1F4F8;
+  --bg-glass-hover: #E6EBF2;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #F7F9FC;
+  --border-color: #D9E0EA;
+  --border-hover: #B4C2D3;
+  --text-1: #0F172A;
+  --text-2: #475569;
+  --text-3: #8295AB;
+  --scrollbar-thumb: rgba(100, 116, 139, 0.28);
+  --scrollbar-hover: rgba(100, 116, 139, 0.45);
+  --focus-ring: 0 0 0 2px #FFFFFF, 0 0 0 3.5px #0284C7;
+  --color-accent: #0284C7;
+  --color-accent-hover: #0369A1;
+}
+
 /* Tailwind v4 theme directive */
 @theme extend {
   --color-accent: #0EA5E9;
@@ -54,6 +77,9 @@
 
 html {
   color-scheme: dark;
+}
+html.light {
+  color-scheme: light;
 }
 
 /* ─── Typography ─── */
@@ -150,7 +176,7 @@ a.glass-card:hover,
 /* Dark-mode Leaflet basemap: standard OpenStreetMap tiles (no API key) inverted
    to a dark look. Scoped to this tile layer's own pane only — markers, popups
    and lines live in separate Leaflet panes and are unaffected. */
-.map-tiles-dark {
+html:not(.light) .map-tiles-dark {
   filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.3);
 }
 
@@ -613,8 +639,31 @@ select {
 html.light .btn-primary {
   color: #FFFFFF;
 }
+html.light .btn-primary:hover {
+  color: #FFFFFF;
+}
 html.light .glow-accent {
-  box-shadow: 0 0 16px rgba(0, 168, 143, 0.2), 0 0 48px rgba(0, 168, 143, 0.06);
+  box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.22);
+}
+/* Light theme: drop the heavy dark-mode card shadow — hairline borders
+   carry the separation on white surfaces. */
+html.light .glass-card {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+/* Ambient top highlight + auth dot-grid were tuned for a dark canvas —
+   re-tint them so they stay visible (but subtle) on paper. */
+html.light .app-mesh-bg::before {
+  background-image:
+    radial-gradient(960px 340px at 50% -6%, rgba(2, 132, 199, 0.06), transparent 70%);
+}
+html.light .auth-dot-grid {
+  background-image: radial-gradient(rgba(15, 23, 42, 0.08) 1px, transparent 1px);
+}
+/* Light map basemap: plain OSM tiles, no invert filter (see
+   html:not(.light) .map-tiles-dark above). Marker cluster icons keep
+   their default styling. */
+html.light .leaflet-container {
+  background: #E5E9F0;
 }
 
 /* ─── Overlay (modal backdrop) ─── */
@@ -833,6 +882,7 @@ html.light .glow-accent {
 }
 html.light .tab-btn-active {
   color: #0F172A;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 /* ─── Button: ghost (subtle inline action) ─── */

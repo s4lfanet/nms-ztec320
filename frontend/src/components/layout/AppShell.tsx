@@ -5,17 +5,19 @@ import { Topbar } from './Topbar';
 import { cn } from '../../lib/utils';
 import { LayoutDashboard, Radio, Server, Sliders } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { DashboardWsProvider } from '../../hooks/useDashboardWs';
 import { OfflineBanner } from '../OfflineBanner';
 
 const bottomNavItems = [
-  { label: 'Home', icon: LayoutDashboard, path: '/dashboard' },
-  { label: 'ONUs', icon: Radio, path: '/dashboard/onus' },
-  { label: 'OLT', icon: Server, path: '/dashboard/settings/olts' },
-  { label: 'System', icon: Sliders, path: '/dashboard/customization' },
+  { labelKey: 'nav.home', icon: LayoutDashboard, path: '/dashboard' },
+  { labelKey: 'nav.allOnus', icon: Radio, path: '/dashboard/onus' },
+  { labelKey: 'nav.oltSettings', icon: Server, path: '/dashboard/settings/olts' },
+  { labelKey: 'nav.system', icon: Sliders, path: '/dashboard/customization' },
 ];
 
 export function AppShell() {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(() => window.innerWidth < 1024);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
@@ -91,7 +93,7 @@ export function AppShell() {
                           </div>
                         )}
                       </div>
-                      <span>{item.label}</span>
+                      <span>{t(item.labelKey)}</span>
                     </>
                   )}
                 </NavLink>

@@ -4,6 +4,20 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-03 — Fase 10: Tema Gelap/Terang & Dwibahasa (id/en)
+
+#### Ditambahkan
+- **Tema per user** — kolom `users.theme` (`dark`/`light`/`system`, default `system`) disimpan lewat `POST /api/profile`, diekspos di `/api/auth/me` + login response. `system` resolve via `prefers-color-scheme` dan mengikuti perubahan OS secara live; sebelum login, preferensi jatuh ke `localStorage`. Quick-toggle matahari/bulan di Topbar.
+- **Palettes light theme** — blok `html.light` mendefinisikan ulang seluruh CSS variables (`--bg-*`, `--text-*`, `--border-*`, accent digelapkan ke `#0284C7` untuk kontras WCAG). Shadow kartu ditipiskan, dot-grid auth & ambient highlight di-retint, `map-tiles-dark` di-scope `html:not(.light)` (peta kembali normal di mode terang), leaflet container light.
+- **Dwibahasa (id/en)** — react-i18next + `src/i18n/locales/{id,en}.json` (~150 key). Bahasa per user (`users.language`, default `id`), langsung aktif tanpa reload, disimpan ke server. Migrasi string bertahap: layout (AppShell/Sidebar/Topbar), StatusBadge, Login + AuthLayout, MyProfile (kartu Display Preferences baru), Dashboard, All ONUs, View ONU.
+- **`error_code` backend** — `invalid_credentials`, `rate_limited` (dengan `retry_after`), `invalid_theme`, `invalid_language`, `forbidden_sidebar_name`. `ApiError` frontend membawa `errorCode` + body mentah; auth store menyimpannya sehingga Login menerjemahkan pesan sesuai bahasa.
+- Migrasi Alembic `f6a7b8c9d0e1` (merge dua head + kolom baru) dan `migrate_schema()` `add_col` untuk `users.theme`/`users.language`. Test: 7 pytest baru (`test_user_prefs.py`), 7 vitest baru (`i18n.test.ts` — paritas key id/en, resolveTheme, initTheme, toggle), stub `matchMedia` di setup vitest.
+- Panduan baru "Tema & Bahasa" di Guide page. Terinspirasi dari KusumaVision NMS (MIT).
+
+#### Catatan
+- Recharts & Leaflet sudah memakai CSS variables — otomatis ikut tema tanpa perubahan JS.
+- Halaman lain (selain yang disebut di atas) diterjemahkan bertahap di fase berikutnya.
+
 ### 2026-10-02 — Installer VPS kini memasang & mengonfigurasi Redis
 
 #### Ditemukan

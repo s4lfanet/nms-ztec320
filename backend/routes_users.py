@@ -56,7 +56,7 @@ def update_profile():
         current_user.full_name = data['full_name']
     if 'sidebar_name' in data:
         if not current_user.is_super_admin:
-            return jsonify({'success': False, 'message': 'Only super admin can change branding name.'}), 403
+            return jsonify({'success': False, 'error_code': 'forbidden_sidebar_name', 'message': 'Only super admin can change branding name.'}), 403
         current_user.sidebar_name = data['sidebar_name']
         # Also update SystemConfig so all users see consistent branding
         cfg = SystemConfig.query.filter_by(key='nms_name').first()
@@ -64,6 +64,14 @@ def update_profile():
             cfg.value = data['sidebar_name']
         else:
             db.session.add(SystemConfig(key='nms_name', value=data['sidebar_name']))
+    if 'theme' in data:
+        if data['theme'] not in ('dark', 'light', 'system'):
+            return jsonify({'success': False, 'error_code': 'invalid_theme', 'message': 'Invalid theme value'}), 400
+        current_user.theme = data['theme']
+    if 'language' in data:
+        if data['language'] not in ('id', 'en'):
+            return jsonify({'success': False, 'error_code': 'invalid_language', 'message': 'Invalid language value'}), 400
+        current_user.language = data['language']
     if 'password' in data and data['password']:
         current_user.set_password(data['password'])
         # Changing the password satisfies the forced-change requirement

@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faBolt, faTowerBroadcast, faServer, faShieldHalved,
 } from '@fortawesome/free-solid-svg-icons';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/utils';
 
 interface AuthLayoutProps {
@@ -14,13 +15,14 @@ interface AuthLayoutProps {
 }
 
 const features = [
-  { icon: faBolt, title: 'Monitoring Optik Real-time', desc: 'Status ONU, RX/TX power dBm, dan grafik trafik live' },
-  { icon: faTowerBroadcast, title: 'Multi-Vendor OLT Support', desc: 'ZTE C320/C300/C600, HSGQ, Raisecom, EPON/GPON' },
-  { icon: faServer, title: 'Provisioning & Template', desc: 'Registrasi ZTE, FiberHome, Huawei & Nokia VEIP via CLI/SNMP' },
-  { icon: faShieldHalved, title: 'Topologi & Infrastruktur FTTH', desc: 'Pemetaan OTB, ODC, JC, ODP, serta kalkulasi redaman jalur' },
+  { icon: faBolt, titleKey: 'login.feat1Title', descKey: 'login.feat1Desc' },
+  { icon: faTowerBroadcast, titleKey: 'login.feat2Title', descKey: 'login.feat2Desc' },
+  { icon: faServer, titleKey: 'login.feat3Title', descKey: 'login.feat3Desc' },
+  { icon: faShieldHalved, titleKey: 'login.feat4Title', descKey: 'login.feat4Desc' },
 ];
 
 export function AuthLayout({ children, brandName, logoUrl }: AuthLayoutProps) {
+  const { t } = useTranslation();
   return (
     <div className="min-h-screen flex bg-[var(--bg-primary)] text-tx1">
       {/* Left: Visual Panel (hidden on mobile) */}
@@ -46,7 +48,7 @@ export function AuthLayout({ children, brandName, logoUrl }: AuthLayoutProps) {
             </div>
             <div>
               <h1 className="text-lg font-bold font-display tracking-tight">{brandName}</h1>
-              <p className="text-xs text-tx3">FTTH & OLT Operations Console</p>
+              <p className="text-xs text-tx3">{t('login.tagline')}</p>
             </div>
           </div>
         </div>
@@ -54,22 +56,22 @@ export function AuthLayout({ children, brandName, logoUrl }: AuthLayoutProps) {
         {/* Middle: Hero content */}
         <div className="relative z-10 flex-1 flex flex-col justify-center max-w-md">
           <h2 className="text-3xl font-bold font-display leading-tight mb-3 text-tx1">
-            Manajemen Infrastruktur FTTH &amp; OLT Terpusat
+            {t('login.hero')}
           </h2>
           <p className="text-sm text-tx2 leading-relaxed mb-8">
-            Pantau redaman optik ONU secara real-time, eksekusi provisioning GPON/EPON, dan petakan distribusi jalur fiber dari satu konsol operasi.
+            {t('login.heroSub')}
           </p>
 
           {/* Feature highlights */}
           <div className="space-y-3">
             {features.map((f) => (
-              <div key={f.title} className="flex items-start gap-3 p-3 rounded-lg bg-glass/60 border border-brd">
+              <div key={f.titleKey} className="flex items-start gap-3 p-3 rounded-lg bg-glass/60 border border-brd">
                 <div className="icon-badge w-9 h-9 flex-shrink-0 mt-0.5">
                   <FontAwesomeIcon icon={f.icon} style={{ fontSize: 14 }} />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-tx1">{f.title}</p>
-                  <p className="text-xs text-tx3 mt-0.5">{f.desc}</p>
+                  <p className="text-sm font-medium text-tx1">{t(f.titleKey)}</p>
+                  <p className="text-xs text-tx3 mt-0.5">{t(f.descKey)}</p>
                 </div>
               </div>
             ))}
@@ -80,7 +82,7 @@ export function AuthLayout({ children, brandName, logoUrl }: AuthLayoutProps) {
         <div className="relative z-10 pt-4 border-t border-brd flex items-center justify-between text-xs text-tx3">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-success" />
-            <span>SNMP &amp; Telnet Collector Ready</span>
+            <span>{t('login.footerReady')}</span>
           </div>
           <div className="flex items-center gap-2 font-mono">
             <Wifi size={13} className="text-accent" />

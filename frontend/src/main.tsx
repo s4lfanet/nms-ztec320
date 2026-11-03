@@ -6,13 +6,15 @@ import { Toaster } from './components/Toast'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import './index.css'
 import './lib/api'  // Global fetch interceptor for CSRF protection
+import './i18n'     // react-i18next — id/en locales, browser pref + user profile
+import { initTheme } from './stores/theme'
 import App from './App'
 
 // Service Worker registered by vite-plugin-pwa (injectRegister: 'auto', autoUpdate)
 
-// Init theme
-const theme = localStorage.getItem('theme') || 'dark';
-if (theme === 'light') document.documentElement.classList.add('light');
+// Init theme (localStorage/system) before first paint; per-user preference
+// is applied later by App once /api/auth/me resolves.
+initTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {

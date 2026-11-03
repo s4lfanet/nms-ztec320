@@ -4,67 +4,68 @@ import {
   LayoutDashboard, Server, Radio,
   Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../stores/auth';
 
 interface NavItem {
-  label: string;
+  labelKey: string;
   icon: React.ReactNode;
   path?: string;
   permission?: string;
-  children?: { label: string; path: string; permission?: string }[];
+  children?: { labelKey: string; path: string; permission?: string }[];
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/dashboard', permission: 'view_dashboard' },
+  { labelKey: 'nav.dashboard', icon: <LayoutDashboard size={20} />, path: '/dashboard', permission: 'view_dashboard' },
   {
-    label: 'ONU', icon: <Radio size={20} />, permission: 'view_dashboard',
+    labelKey: 'nav.onu', icon: <Radio size={20} />, permission: 'view_dashboard',
     children: [
-      { label: 'All ONUs', path: '/dashboard/onus' },
-      { label: 'Unconfigured', path: '/dashboard/onus/unconfigured', permission: 'add_onu' },
-      { label: 'Provision ONU', path: '/dashboard/onus/provision', permission: 'add_onu' },
-      { label: 'Pre-config ONT', path: '/dashboard/onus/pre-config', permission: 'add_onu' },
-      { label: 'Register Wizard', path: '/dashboard/onus/register', permission: 'add_onu' },
+      { labelKey: 'nav.allOnus', path: '/dashboard/onus' },
+      { labelKey: 'nav.unconfigured', path: '/dashboard/onus/unconfigured', permission: 'add_onu' },
+      { labelKey: 'nav.provision', path: '/dashboard/onus/provision', permission: 'add_onu' },
+      { labelKey: 'nav.preconfig', path: '/dashboard/onus/pre-config', permission: 'add_onu' },
+      { labelKey: 'nav.registerWizard', path: '/dashboard/onus/register', permission: 'add_onu' },
     ],
   },
   {
-    label: 'Templates', icon: <FileText size={20} />, permission: 'manage_templates',
+    labelKey: 'nav.templates', icon: <FileText size={20} />, permission: 'manage_templates',
     children: [
-      { label: 'Templates', path: '/dashboard/templates', permission: 'manage_templates' },
-      { label: 'TR069 Profile', path: '/dashboard/templates/tr069-profile', permission: 'manage_tr069' },
+      { labelKey: 'nav.templates', path: '/dashboard/templates', permission: 'manage_templates' },
+      { labelKey: 'nav.tr069Profile', path: '/dashboard/templates/tr069-profile', permission: 'manage_tr069' },
     ],
   },
-  { label: 'Traffic', icon: <Activity size={20} />, path: '/dashboard/traffic', permission: 'view_dashboard' },
+  { labelKey: 'nav.traffic', icon: <Activity size={20} />, path: '/dashboard/traffic', permission: 'view_dashboard' },
   {
-    label: 'Infrastructure', icon: <Server size={20} />, permission: 'view_dashboard',
+    labelKey: 'nav.infrastructure', icon: <Server size={20} />, permission: 'view_dashboard',
     children: [
-      { label: 'OLT Settings', path: '/dashboard/settings/olts', permission: 'settings_ip_olts' },
-      { label: 'Mikrotik', path: '/dashboard/settings/mikrotik', permission: 'settings_ip_olts' },
-      { label: 'Auto Provision', path: '/dashboard/settings/auto-provision', permission: 'settings_ip_olts' },
-      { label: 'FTTH Overview', path: '/dashboard/ftth', permission: 'view_dashboard' },
-      { label: 'PON Ports', path: '/dashboard/ftth?tab=pon', permission: 'view_dashboard' },
-      { label: 'OTB/ODF', path: '/dashboard/ftth?tab=otb', permission: 'view_dashboard' },
-      { label: 'ODC', path: '/dashboard/ftth?tab=odc', permission: 'view_dashboard' },
-      { label: 'ODP', path: '/dashboard/ftth?tab=odp', permission: 'view_dashboard' },
-      { label: 'FTTH Map', path: '/dashboard/ftth?tab=map', permission: 'view_dashboard' },
+      { labelKey: 'nav.oltSettings', path: '/dashboard/settings/olts', permission: 'settings_ip_olts' },
+      { labelKey: 'nav.mikrotik', path: '/dashboard/settings/mikrotik', permission: 'settings_ip_olts' },
+      { labelKey: 'nav.autoProvision', path: '/dashboard/settings/auto-provision', permission: 'settings_ip_olts' },
+      { labelKey: 'nav.ftthOverview', path: '/dashboard/ftth', permission: 'view_dashboard' },
+      { labelKey: 'nav.ponPorts', path: '/dashboard/ftth?tab=pon', permission: 'view_dashboard' },
+      { labelKey: 'nav.otb', path: '/dashboard/ftth?tab=otb', permission: 'view_dashboard' },
+      { labelKey: 'nav.odc', path: '/dashboard/ftth?tab=odc', permission: 'view_dashboard' },
+      { labelKey: 'nav.odp', path: '/dashboard/ftth?tab=odp', permission: 'view_dashboard' },
+      { labelKey: 'nav.ftthMap', path: '/dashboard/ftth?tab=map', permission: 'view_dashboard' },
     ],
   },
   {
-    label: 'System', icon: <Sliders size={20} />, permission: undefined,
+    labelKey: 'nav.system', icon: <Sliders size={20} />, permission: undefined,
     children: [
-      { label: 'Customization', path: '/dashboard/customization', permission: 'customization' },
-      { label: 'User Management', path: '/dashboard/users', permission: 'manage_users' },
-      { label: 'Alert Settings', path: '/dashboard/settings/alerts', permission: 'customization' },
-      { label: 'Cloudflare Tunnel', path: '/dashboard/settings/cloudflare', permission: 'super_admin' },
-      { label: 'System Update', path: '/dashboard/settings/update', permission: 'super_admin' },
-      { label: 'Alert History', path: '/dashboard/alerts/history', permission: 'view_dashboard' },
+      { labelKey: 'nav.customization', path: '/dashboard/customization', permission: 'customization' },
+      { labelKey: 'nav.users', path: '/dashboard/users', permission: 'manage_users' },
+      { labelKey: 'nav.alertSettings', path: '/dashboard/settings/alerts', permission: 'customization' },
+      { labelKey: 'nav.cloudflare', path: '/dashboard/settings/cloudflare', permission: 'super_admin' },
+      { labelKey: 'nav.systemUpdate', path: '/dashboard/settings/update', permission: 'super_admin' },
+      { labelKey: 'nav.alertHistory', path: '/dashboard/alerts/history', permission: 'view_dashboard' },
     ],
   },
-  { label: 'Panduan', icon: <BookOpen size={20} />, path: '/dashboard/guide' },
-  { label: 'Activity Log', icon: <ScrollText size={20} />, path: '/dashboard/logs', permission: 'manage_users' },
-  { label: 'OLT Logs', icon: <MonitorSmartphone size={20} />, path: '/dashboard/olt-logs', permission: 'view_dashboard' },
-  { label: 'Laporan', icon: <FileText size={20} />, path: '/dashboard/reports', permission: 'view_onus' },
-  { label: 'Terminal OLT', icon: <TerminalIcon size={20} />, path: '/dashboard/terminal', permission: 'olt_terminal' },
+  { labelKey: 'nav.guide', icon: <BookOpen size={20} />, path: '/dashboard/guide' },
+  { labelKey: 'nav.activityLog', icon: <ScrollText size={20} />, path: '/dashboard/logs', permission: 'manage_users' },
+  { labelKey: 'nav.oltLogs', icon: <MonitorSmartphone size={20} />, path: '/dashboard/olt-logs', permission: 'view_dashboard' },
+  { labelKey: 'nav.reports', icon: <FileText size={20} />, path: '/dashboard/reports', permission: 'view_onus' },
+  { labelKey: 'nav.terminal', icon: <TerminalIcon size={20} />, path: '/dashboard/terminal', permission: 'olt_terminal' },
 ];
 
 function buildVisibleItems(user: { is_super_admin?: boolean; permissions?: string[] } | null): NavItem[] {
@@ -93,6 +94,7 @@ function buildVisibleItems(user: { is_super_admin?: boolean; permissions?: strin
 }
 
 export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { collapsed: boolean; mobileOpen: boolean; onToggle: () => void; onMobileClose: () => void }) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   const brandName = user?.sidebar_name || 'Salfanet NMS';
@@ -111,7 +113,7 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
     const path = window.location.pathname;
     for (const item of visibleItems) {
       if (item.children?.some(c => path.startsWith(c.path.split('?')[0]))) {
-        initial[item.label] = true;
+        initial[item.labelKey] = true;
       }
     }
     return initial;
@@ -181,12 +183,12 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3">
           {visibleItems.map(item => (
-            <div key={item.label} className="mb-1">
+            <div key={item.labelKey} className="mb-1">
               {item.path ? (
                 <NavLink
                   to={item.path}
                   onClick={onMobileClose}
-                  title={!isExpanded ? item.label : undefined}
+                  title={!isExpanded ? t(item.labelKey) : undefined}
                   className={({ isActive }) => cn(
                     'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
                     isActive
@@ -196,7 +198,7 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
                   )}
                 >
                   {item.icon}
-                  {isExpanded && <span>{item.label}</span>}
+                  {isExpanded && <span>{t(item.labelKey)}</span>}
                 </NavLink>
               ) : (
                 <>
@@ -207,10 +209,10 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
                         navigate(visibleChildren[0].path);
                         onMobileClose();
                       } else {
-                        toggleMenu(item.label);
+                        toggleMenu(item.labelKey);
                       }
                     }}
-                    title={!isExpanded ? item.label : undefined}
+                    title={!isExpanded ? t(item.labelKey) : undefined}
                     className={cn(
                       'flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
                       'text-tx2 hover:text-tx1 hover:bg-glass',
@@ -220,12 +222,12 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
                     {item.icon}
                     {isExpanded && (
                       <>
-                        <span className="flex-1 text-left">{item.label}</span>
-                        {openMenus[item.label] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        <span className="flex-1 text-left">{t(item.labelKey)}</span>
+                        {openMenus[item.labelKey] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       </>
                     )}
                   </button>
-                  {isExpanded && openMenus[item.label] && item.children && (
+                  {isExpanded && openMenus[item.labelKey] && item.children && (
                     <div className="ml-4 mt-1 space-y-0.5 animate-fade-in">
                       {item.children.filter(c => hasPerm(c.permission)).map(child => (
                         <NavLink
@@ -240,7 +242,7 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
                           )}
                         >
                           <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
-                          <span>{child.label}</span>
+                          <span>{t(child.labelKey)}</span>
                         </NavLink>
                       ))}
                     </div>
