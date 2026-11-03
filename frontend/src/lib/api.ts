@@ -305,8 +305,11 @@ export interface Tr069Params {
   _id: string;
   last_inform: string;
   software_version: string;
+  hardware_version?: string;
+  uptime?: string;
   model: string;
   vendor: string;
+  wifi_clients?: number;
   wan_ip: string;
   pppoe_username: string;
   ssid_24g: string;
