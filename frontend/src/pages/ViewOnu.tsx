@@ -16,7 +16,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useTranslation } from 'react-i18next';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
-import { Card, EmptyState, Modal, Button, Select } from '../components/ui';
+import { Card, EmptyState, Modal, Button } from '../components/ui';
 
 interface ModalState { type: string; data?: Record<string, unknown>; }
 
@@ -1989,7 +1989,7 @@ function Tr069Panel({ onuId }: { onuId: number }) {
                   <span className="text-[10px] font-bold text-tx3 uppercase tracking-wider">WiFi SSID</span>
                   <button className="text-[10px] text-accent hover:underline" onClick={() =>
                     api.onuTr069AddObject(onuId, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.')
-                      .then(r => r.success ? (toast.success(`Instance WiFi #${r.instance || 'baru'} dibuat`), refetch()) : toast.error(r.message))
+                      .then(r => { if (r.success) { toast.success(`Instance WiFi #${r.instance || 'baru'} dibuat`); refetch(); } else toast.error(r.message); })
                   }>+ Tambah SSID</button>
                 </div>
                 {(p?.ssids || []).map(s => {
@@ -2011,7 +2011,7 @@ function Tr069Panel({ onuId }: { onuId: number }) {
                         <Button variant="ghost" onClick={async () => {
                           if (await confirm({ title: `Hapus SSID #${s.index}?`, message: `Instance ${s.ssid} akan dihapus via deleteObject.`, variant: 'warning' }))
                             api.onuTr069DelObject(onuId, `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${s.index}.`)
-                              .then(r => r.success ? (toast.success('deleteObject dikirim'), refetch()) : toast.error(r.message));
+                              .then(r => { if (r.success) { toast.success('deleteObject dikirim'); refetch(); } else toast.error(r.message); });
                         }}>Hapus</Button>
                       )}
                     </div>
@@ -2027,7 +2027,7 @@ function Tr069Panel({ onuId }: { onuId: number }) {
                   <span className="text-[10px] font-bold text-tx3 uppercase tracking-wider">WAN / PPPoE</span>
                   <button className="text-[10px] text-accent hover:underline" onClick={() =>
                     api.onuTr069AddObject(onuId, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.')
-                      .then(r => r.success ? (toast.success(`WAN instance #${r.instance || 'baru'} dibuat`), refetch()) : toast.error(r.message))
+                      .then(r => { if (r.success) { toast.success(`WAN instance #${r.instance || 'baru'} dibuat`); refetch(); } else toast.error(r.message); })
                   }>+ Tambah WAN PPPoE</button>
                 </div>
                 {(p?.wan_conns || []).map(w => (
