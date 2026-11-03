@@ -16,7 +16,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useTranslation } from 'react-i18next';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
-import { Card, EmptyState, Modal, Button } from '../components/ui';
+import { Card, EmptyState, Modal, Button, Select } from '../components/ui';
 
 interface ModalState { type: string; data?: Record<string, unknown>; }
 
@@ -1883,6 +1883,19 @@ function Tr069Panel({ onuId }: { onuId: number }) {
   const hasPerm = useHasPerm();
   const canManage = hasPerm('genieacs_manage');
   const p = data?.params;
+  const [showCfg, setShowCfg] = useState(false);
+  const [wifiSsid, setWifiSsid] = useState('');
+  const [wifiPass, setWifiPass] = useState('');
+  const [wifiBand, setWifiBand] = useState('2.4g');
+  const [pppoeUser, setPppoeUser] = useState('');
+  const [pppoePass, setPppoePass] = useState('');
+  const { data: taskData } = useQuery({
+    queryKey: ['onu-tr069-tasks', onuId],
+    queryFn: () => api.onuTr069Tasks(onuId),
+    enabled: !!onuId && !!data?.connected,
+    refetchInterval: 15_000,
+  });
+  const tasks = taskData?.tasks || [];
   if (isLoading) return null;
   if (!data?.connected && !data?.params) {
     return (
@@ -1955,13 +1968,68 @@ function Tr069Panel({ onuId }: { onuId: number }) {
         ))}
       </div>
       {canManage && (
-        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-brd">
-          <Button variant="ghost" onClick={() => api.onuTr069Refresh(onuId).then(() => { toast.success('Refresh task dikirim'); refetch(); })}>
-            Refresh
-          </Button>
-          <Button variant="ghost" onClick={async () => { if (await confirm({ title: 'Reboot via GenieACS', message: 'Reboot ONU via GenieACS?', variant: 'warning' })) api.onuTr069Reboot(onuId).then(r => r.success ? toast.success('Reboot task dikirim') : toast.error(r.message)); }}>
-            Reboot
-          </Button>
+        <div className="mt-3 pt-3 border-t border-brd space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ghost" onClick={() => api.onuTr069Refresh(onuId).then(() => { toast.success('Refresh task dikirim'); refetch(); })}>
+              Refresh
+            </Button>
+            <Button variant="ghost" onClick={async () => { if (await confirm({ title: 'Reboot via GenieACS', message: 'Reboot ONU via GenieACS?', variant: 'warning' })) api.onuTr069Reboot(onuId).then(r => r.success ? toast.success('Reboot task dikirim') : toast.error(r.message)); }}>
+              Reboot
+            </Button>
+            <Button variant="ghost" onClick={async () => { if (await confirm({ title: 'Factory Reset via GenieACS', message: 'Kembalikan ONU ke pengaturan pabrik? Semua konfigurasi pelanggan hilang.', variant: 'warning' })) api.onuTr069FactoryReset(onuId).then(r => r.success ? toast.success('Factory reset task dikirim') : toast.error(r.message)); }}>
+              Factory Reset
+            </Button>
+            <Button variant="ghost" onClick={() => setShowCfg(v => !v)}>
+              {showCfg ? 'Sembunyikan Konfig' : 'Konfigurasi'}
+            </Button>
+          </div>
+          {showCfg && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* WiFi */}
+              <div className="space-y-2 p-2 rounded bg-glass">
+                <div className="text-[10px] font-bold text-tx3 uppercase tracking-wider">WiFi</div>
+                <div className="flex gap-2">
+                  <Select value={wifiBand} onChange={e => setWifiBand(e.target.value)}
+                    options={[{ value: '2.4g', label: '2.4G' }, { value: '5g', label: '5G' }]} />
+                  <input className="flex-1 bg-bg2 border border-brd rounded px-2 py-1 text-xs" placeholder="SSID baru"
+                    value={wifiSsid} onChange={e => setWifiSsid(e.target.value)} />
+                </div>
+                <input className="w-full bg-bg2 border border-brd rounded px-2 py-1 text-xs" type="password"
+                  placeholder="Password WiFi (kosongkan jika tidak diubah)"
+                  value={wifiPass} onChange={e => setWifiPass(e.target.value)} />
+                <Button variant="primary" onClick={() => {
+                  if (!wifiSsid.trim()) { toast.error('SSID wajib diisi'); return; }
+                  api.onuTr069SetWifi(onuId, { ssid: wifiSsid.trim(), password: wifiPass || undefined, band: wifiBand })
+                    .then(r => r.success ? (toast.success('WiFi task dikirim'), setWifiSsid(''), setWifiPass('')) : toast.error(r.message));
+                }}>Terapkan WiFi</Button>
+              </div>
+              {/* PPPoE */}
+              <div className="space-y-2 p-2 rounded bg-glass">
+                <div className="text-[10px] font-bold text-tx3 uppercase tracking-wider">PPPoE</div>
+                <input className="w-full bg-bg2 border border-brd rounded px-2 py-1 text-xs" placeholder="Username PPPoE"
+                  value={pppoeUser} onChange={e => setPppoeUser(e.target.value)} />
+                <input className="w-full bg-bg2 border border-brd rounded px-2 py-1 text-xs" type="password"
+                  placeholder="Password PPPoE (kosongkan jika tidak diubah)"
+                  value={pppoePass} onChange={e => setPppoePass(e.target.value)} />
+                <Button variant="primary" onClick={() => {
+                  if (!pppoeUser.trim()) { toast.error('Username wajib diisi'); return; }
+                  api.onuTr069SetPppoe(onuId, { username: pppoeUser.trim(), password: pppoePass || undefined })
+                    .then(r => r.success ? (toast.success('PPPoE task dikirim'), setPppoeUser(''), setPppoePass('')) : toast.error(r.message));
+                }}>Terapkan PPPoE</Button>
+              </div>
+            </div>
+          )}
+          {/* Task history */}
+          {tasks.length > 0 && (
+            <div className="text-[10px] text-tx3 space-y-0.5">
+              <span className="font-bold uppercase tracking-wider">ACS Tasks</span>
+              {tasks.map(t => (
+                <div key={t._id} className="flex justify-between font-mono">
+                  <span>{t.name}</span><span>{t.timestamp.slice(0, 16).replace('T', ' ')}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </Card>

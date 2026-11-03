@@ -318,3 +318,89 @@ def set_wifi_ssid(device_id, ssid, password=None, band='2.4g'):
         return False, f'HTTP {r.status_code}'
     except Exception as e:
         return False, str(e)[:200]
+
+
+def set_params(device_id, pairs):
+    """Generic setParameterValues task. pairs = {tr069_path: value}."""
+    url, user, pwd = _nbi_config()
+    if not url or not device_id:
+        return False, 'NBI not configured'
+    pv = [[k, v, 'xsd:string'] for k, v in pairs.items()]
+    try:
+        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
+                       json={'name': 'setParameterValues', 'parameterValues': pv},
+                       auth=_auth(user, pwd), timeout=_TIMEOUT)
+        if r.status_code in (200, 202, 204):
+            return True, ''
+        return False, f'HTTP {r.status_code}'
+    except Exception as e:
+        return False, str(e)[:200]
+
+
+def set_pppoe(device_id, username, password):
+    """Set PPPoE credentials — temukan prefix WANPPPConnection dari device doc."""
+    url, user, pwd = _nbi_config()
+    if not url or not device_id:
+        return False, 'NBI not configured'
+    try:
+        r = httpx.get(f'{url}/devices',
+                      params={'query': json.dumps({'_id': device_id})},
+                      auth=_auth(user, pwd), timeout=_TIMEOUT)
+        arr = r.json()
+        if not arr:
+            return False, 'device not found'
+        # cari path Username aktif di WANPPPConnection index manapun
+        prefix = None
+        for p, _ in _collect(arr[0]):
+            m = re.search(r'(WANPPPConnection\.\d+)\.Username$', p)
+            if m:
+                prefix = m.group(1)
+                break
+        if not prefix:
+            return False, 'no WANPPPConnection on device'
+        pairs = {f'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.{prefix}.Username': username}
+        if password:
+            pairs[f'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.{prefix}.Password'] = password
+        return set_params(device_id, pairs)
+    except Exception as e:
+        return False, str(e)[:200]
+
+
+def factory_reset(device_id):
+    """Factory reset via GenieACS task."""
+    url, user, pwd = _nbi_config()
+    if not url or not device_id:
+        return False, 'NBI not configured'
+    try:
+        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
+                       json={'name': 'factoryReset'},
+                       auth=_auth(user, pwd), timeout=_TIMEOUT)
+        if r.status_code in (200, 202, 204):
+            return True, ''
+        return False, f'HTTP {r.status_code}'
+    except Exception as e:
+        return False, str(e)[:200]
+
+
+def fetch_tasks(device_id, limit=10):
+    """Recent GenieACS tasks untuk device (status pending/running di _expiry)."""
+    url, user, pwd = _nbi_config()
+    if not url or not device_id:
+        return []
+    try:
+        r = httpx.get(f'{url}/tasks',
+                      params={'query': json.dumps({'device': device_id})},
+                      auth=_auth(user, pwd), timeout=_TIMEOUT)
+        if r.status_code != 200 or not isinstance(r.json(), list):
+            return []
+        out = []
+        for t in r.json()[-limit:]:
+            out.append({
+                '_id': t.get('_id', ''),
+                'name': t.get('name', ''),
+                'timestamp': str(t.get('_timestamp', '')),
+                'retries': t.get('retries', 0),
+            })
+        return out
+    except Exception:
+        return []

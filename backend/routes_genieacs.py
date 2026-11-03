@@ -151,3 +151,60 @@ def tr069_unpin(onu_id):
         mapping.pinned = False
         db.session.commit()
     return jsonify({'success': True})
+
+
+def _mapped(onu_id):
+    return GenieacsDeviceMap.query.filter_by(onu_id=onu_id).first()
+
+
+@bp.route('/api/onu/<int:onu_id>/tr069/params', methods=['POST'])
+@login_required
+@permission_required(_PERM)
+def tr069_set_params(onu_id):
+    """Set arbitrary TR-069 parameters: {params: {path: value}}."""
+    mapping = _mapped(onu_id)
+    if not mapping:
+        return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
+    pairs = (request.get_json() or {}).get('params') or {}
+    if not isinstance(pairs, dict) or not pairs:
+        return jsonify({'success': False, 'message': 'params required'}), 400
+    ok, err = genieacs_client.set_params(mapping.device_id, pairs)
+    log_action('tr069_set_params', 'onu', target=str(onu_id),
+               detail=f'{len(pairs)} params ok={ok}')
+    return jsonify({'success': ok, 'message': err})
+
+
+@bp.route('/api/onu/<int:onu_id>/tr069/pppoe', methods=['POST'])
+@login_required
+@permission_required(_PERM)
+def tr069_set_pppoe(onu_id):
+    mapping = _mapped(onu_id)
+    if not mapping:
+        return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
+    data = request.get_json() or {}
+    ok, err = genieacs_client.set_pppoe(
+        mapping.device_id, data.get('username', ''), data.get('password'))
+    log_action('tr069_set_pppoe', 'onu', target=str(onu_id),
+               detail=f'user={data.get("username","")} ok={ok} {err}')
+    return jsonify({'success': ok, 'message': err})
+
+
+@bp.route('/api/onu/<int:onu_id>/tr069/factory-reset', methods=['POST'])
+@login_required
+@permission_required(_PERM)
+def tr069_factory_reset(onu_id):
+    mapping = _mapped(onu_id)
+    if not mapping:
+        return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
+    ok, err = genieacs_client.factory_reset(mapping.device_id)
+    log_action('tr069_factory_reset', 'onu', target=str(onu_id), detail=f'ok={ok}')
+    return jsonify({'success': ok, 'message': err})
+
+
+@bp.route('/api/onu/<int:onu_id>/tr069/tasks', methods=['GET'])
+@login_required
+def tr069_tasks(onu_id):
+    mapping = _mapped(onu_id)
+    if not mapping:
+        return jsonify({'success': True, 'tasks': []})
+    return jsonify({'success': True, 'tasks': genieacs_client.fetch_tasks(mapping.device_id)})

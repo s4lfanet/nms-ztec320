@@ -88,6 +88,10 @@ export const api = {
   onuTr069Reboot: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/reboot`, { method: 'POST' }),
   onuTr069Refresh: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/refresh`, { method: 'POST' }),
   onuTr069SetWifi: (id: number, data: { ssid: string; password?: string; band: string }) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/wifi`, { method: 'POST', body: JSON.stringify(data) }),
+  onuTr069SetParams: (id: number, params: Record<string, string>) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/params`, { method: 'POST', body: JSON.stringify({ params }) }),
+  onuTr069SetPppoe: (id: number, data: { username: string; password?: string }) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/pppoe`, { method: 'POST', body: JSON.stringify(data) }),
+  onuTr069FactoryReset: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/factory-reset`, { method: 'POST' }),
+  onuTr069Tasks: (id: number) => request<{ success: boolean; tasks: { _id: string; name: string; timestamp: string; retries: number }[] }>(`/api/onu/${id}/tr069/tasks`),
   onuMapLock: (id: number, locked: boolean) => request<{ success: boolean; map_locked: boolean }>(`/api/onu/${id}/map-lock`, { method: 'POST', body: JSON.stringify({ locked }) }),
   parseMapsLink: (text: string) => request<{ success: boolean; lat?: number; lng?: number; message?: string }>('/api/ftth/parse-maps-link', { method: 'POST', body: JSON.stringify({ text }) }),
   onuPinsLightweight: () => request<{ success: boolean; pins: OnuPin[] }>('/api/ftth/map/onu-pins'),
@@ -1033,3 +1037,5 @@ export interface OnuStatusHistoryRecord {
   source: string;
   created_at: string | null;
 }
+
+// (methods appended below inside api object)
