@@ -10,7 +10,7 @@ import { confirm } from '../components/ConfirmDialog';
 import {
   Server, Plus, RefreshCw, Settings, Trash2, Edit3,
   Thermometer, Clock, CheckCircle, XCircle, Loader2,
-  Activity, Network, Terminal, X, Save, Download, ArrowRightLeft, CheckSquare, Square, Package,
+  Activity, Network, Terminal, X, Save, Download, ArrowRightLeft, CheckSquare, Square, Package, Power,
   History, ToggleLeft, ToggleRight, HardDriveDownload, Globe, Minus,
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
@@ -30,6 +30,7 @@ export function OltSettings() {
   const [syncMessage, setSyncMessage] = useState('');
   const [syncingAll, setSyncingAll] = useState(false);
   const [migrateOlt, setMigrateOlt] = useState<{ oltId: number; oltName: string } | null>(null);
+  const [ponCtlOlt, setPonCtlOlt] = useState<{ oltId: number; oltName: string } | null>(null);
   const [crossMigrateOlt, setCrossMigrateOlt] = useState<{ oltId: number; oltName: string } | null>(null);
   const [writingId, setWritingId] = useState<number | null>(null);
   const [discoveringId, setDiscoveringId] = useState<number | null>(null);
@@ -369,6 +370,7 @@ export function OltSettings() {
                       {canManage && <ActionBtn icon={<History size={14} />} title="Backup" onClick={() => setBackupOlt({ id: olt.id, name: olt.name })} />}
                       {canManage && <ActionBtn icon={<Server size={14} />} title="Discover" onClick={() => discoverSlotsMutation.mutate(olt.id)} loading={discoveringId === olt.id} />}
                       {canManage && <ActionBtn icon={<ArrowRightLeft size={14} />} title="Migrate PON" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
+                      {canManage && <ActionBtn icon={<Power size={14} />} title="PON Ports" onClick={() => setPonCtlOlt({ oltId: olt.id, oltName: olt.name })} />}
                       {canManage && <ActionBtn icon={<Globe size={14} />} title="Cross-OLT Migrate" onClick={() => setCrossMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
                       {canManage && <ActionBtn icon={<Trash2 size={14} />} title="Delete" danger onClick={() => deleteMutation.mutate(olt.id)} />}
                       {!canManage && <span className="text-xs text-tx3 px-2">View only</span>}
@@ -431,6 +433,7 @@ export function OltSettings() {
                 {canManage && <ActionBtn icon={<History size={16} />} title="Backup" onClick={() => setBackupOlt({ id: olt.id, name: olt.name })} />}
                 {canManage && <ActionBtn icon={<Server size={16} />} title="Discover" onClick={() => discoverSlotsMutation.mutate(olt.id)} loading={discoveringId === olt.id} />}
                 {canManage && <ActionBtn icon={<ArrowRightLeft size={16} />} title="Migrate PON" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
+                {canManage && <ActionBtn icon={<Power size={16} />} title="PON Ports" onClick={() => setPonCtlOlt({ oltId: olt.id, oltName: olt.name })} />}
                 {canManage && <ActionBtn icon={<Globe size={16} />} title="Cross-OLT Migrate" onClick={() => setCrossMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
                 {canManage && <ActionBtn icon={<Trash2 size={16} />} title="Delete" danger onClick={() => deleteMutation.mutate(olt.id)} />}
                 {!canManage && <span className="text-xs text-tx3 px-2">View only</span>}
@@ -452,6 +455,7 @@ export function OltSettings() {
         onSuccess={() => { setModal(null); qc.invalidateQueries({ queryKey: ['olts'] }); refetch(); toast.success(modal.mode === 'add' ? 'OLT added!' : 'OLT updated!'); }} />}
 
       {/* Migrate ONU Modal */}
+      {ponCtlOlt && <PonPortControlModal oltId={ponCtlOlt.oltId} oltName={ponCtlOlt.oltName} onClose={() => setPonCtlOlt(null)} />}
       {migrateOlt && <MigrateOnuModal oltId={migrateOlt.oltId} oltName={migrateOlt.oltName} onClose={() => setMigrateOlt(null)}
         onSuccess={() => { setMigrateOlt(null); qc.invalidateQueries({ queryKey: ['olts'] }); toast.success('ONU migrated successfully!'); }} />}
 
@@ -1580,3 +1584,79 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
   );
 }
 
+
+/* ─── PON Port Control Modal (Fase 8) ─── */
+function PonPortControlModal({ oltId, oltName, onClose }: { oltId: number; oltName: string; onClose: () => void }) {
+  const [ports, setPorts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<number | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    fetch(`/api/olt/${oltId}/pon-ports`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setPorts(Array.isArray(d) ? d : (d.ports || [])))
+      .catch(() => setPorts([]))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, [oltId]);
+
+  const toggle = async (port: any) => {
+    const isUp = (port.admin_status || 'up') === 'up';
+    const action = isUp ? 'disable' : 'enable';
+    if (isUp) {
+      const n = port.onu_count ?? 0;
+      const ok = await confirm({
+        title: `Disable PON ${port.port_name}?`,
+        message: `Semua ${n} ONU di PON ini akan offline. Alert akan ditandai sebagai gangguan disengaja (pon_disabled). Lanjutkan?`,
+        confirmLabel: `Disable (${n} ONU)`, variant: 'danger',
+      });
+      if (!ok) return;
+    }
+    setBusy(port.id);
+    try {
+      const r = await fetch(`/api/olt/${oltId}/pon-port/${port.id}/toggle`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ action }),
+      }).then(r => r.json());
+      if (r.success) {
+        toast.success(`${port.port_name} ${action}d`);
+        load();
+      } else toast.error(r.message || 'Gagal');
+    } finally { setBusy(null); }
+  };
+
+  return (
+    <Modal open onClose={onClose} icon={<Power size={16} />} title={`PON Ports — ${oltName}`} size="lg">
+      <div className="text-[10px] text-tx3 mb-3">
+        Enable/disable PON via CLI (interface → shutdown/no shutdown). Perintah write dikirim langsung ke OLT — semua aksi diaudit.
+      </div>
+      {loading ? <div className="text-xs text-tx3 py-6 text-center">Memuat…</div> : (
+        <div className="max-h-[60vh] overflow-y-auto space-y-1">
+          {ports.length === 0 && <div className="text-xs text-tx3 py-6 text-center">Tidak ada PON port — sync dulu.</div>}
+          {ports.map(p => {
+            const up = (p.admin_status || 'up') === 'up';
+            return (
+              <div key={p.id} className="flex items-center gap-3 p-2 rounded bg-glass">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${up ? 'bg-success' : 'bg-danger'}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold font-mono truncate">{p.port_name}</div>
+                  <div className="text-[10px] text-tx3">{p.name || p.description || ''} • {p.onu_count ?? 0} ONU</div>
+                </div>
+                <span className={`text-[10px] px-2 py-0.5 rounded ${up ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'}`}>
+                  {up ? 'UP' : 'DOWN'}
+                </span>
+                <button onClick={() => toggle(p)} disabled={busy === p.id}
+                  className={`px-2.5 py-1 text-[11px] rounded font-medium disabled:opacity-50 ${
+                    up ? 'bg-danger/15 text-danger hover:bg-danger/25' : 'bg-success/15 text-success hover:bg-success/25'}`}>
+                  {busy === p.id ? '…' : up ? 'Disable' : 'Enable'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
+  );
+}

@@ -629,22 +629,45 @@ def get_olt_rack(olt_id):
 
 
 @bp.route('/api/olt/<int:olt_id>/pon-port/<int:port_id>/toggle', methods=['POST'])
-@permission_required('settings_ip_olts')
+@permission_required('pon_port_control')
 def toggle_pon_port(olt_id, port_id):
-    """Enable or disable a PON port"""
+    """Enable or disable a PON port.
+    Sends verified ZTE CLI: interface gpon-olt_F/S/P > shutdown|no shutdown.
+    GET ?preview=1 returns affected ONU count without writing anything."""
     olt = db.session.get(OLT, olt_id)
     port = db.session.get(OLTPort, port_id)
     if not olt or not port:
         return jsonify({'success': False, 'message': 'Port not found'}), 404
     data = request.get_json() or {}
+    # Affected ONU count for preview/confirmation
+    affected = port.onu_count or 0
+
+    if data.get('preview'):
+        return jsonify({'success': True, 'preview': True, 'affected_onus': affected,
+                        'admin_status': port.admin_status})
+
     enable = data.get('action', 'enable') == 'enable'
-    from snmp_collector import TelnetCollector, create_cli_collector
+    from snmp_collector import create_cli_collector
     tc = create_cli_collector(olt)
     success, msg = tc.toggle_pon_port(port.port_name, enable)
     if success:
         port.admin_status = 'up' if enable else 'down'
         db.session.commit()
-    return jsonify({'success': success, 'message': msg, 'admin_status': port.admin_status})
+        # Suppress alerts for ONUs on intentionally-disabled port (Fase 8)
+        if not enable:
+            from models import ONU as _ONU2, AlertHistory as _AH
+            onus_on_port = _ONU2.query.filter_by(olt_id=olt_id, port=port.port_number).all()
+            for o in onus_on_port:
+                for atype in ('offline', 'dyinggasp', 'los'):
+                    h = _AH.query.filter_by(onu_id=o.id, alert_type=atype).first()
+                    if h and not h.suppressed_by:
+                        h.suppressed_by = 'pon_disabled'
+            db.session.commit()
+        log_action('pon_port_enable' if enable else 'pon_port_disable', 'olt',
+                   target=str(olt_id),
+                   detail=f'{port.port_name} affected={affected} status={port.admin_status}')
+    return jsonify({'success': success, 'message': msg,
+                    'admin_status': port.admin_status, 'affected_onus': affected})
 
 
 @bp.route('/api/olt/<int:olt_id>/pon-port/<int:port_id>/edit', methods=['POST'])

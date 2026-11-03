@@ -115,6 +115,7 @@ AVAILABLE_PERMISSIONS = {
     'genieacs_manage': 'GenieACS TR-069 Actions',
     'manage_api_tokens': 'API Token Management',
     'olt_terminal': 'OLT Terminal (Telnet/SSH)',
+    'pon_port_control': 'Enable/Disable PON Port',
     'customization': 'Customization',
     'view_dashboard': 'View Dashboard',
     'view_onus': 'View All ONUs',
