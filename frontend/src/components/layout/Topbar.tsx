@@ -482,7 +482,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           </button>
 
           {showMenu && (
-            <div className="absolute right-0 top-12 w-52 py-1.5 glass-card rounded-xl z-50 animate-fade-in shadow-2xl shadow-black/20">
+            <div className="fixed left-2 right-2 top-14 w-auto md:absolute md:left-auto md:right-0 md:top-12 md:w-52 py-1.5 glass-card rounded-xl z-50 animate-fade-in shadow-2xl shadow-black/20">
               <div className="px-4 py-2.5 border-b border-brd">
                 <div className="text-sm font-medium">{user?.full_name || 'Admin'}</div>
                 <div className="text-xs text-tx3">{user?.username || ''}</div>
