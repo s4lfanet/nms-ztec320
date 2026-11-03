@@ -32,17 +32,17 @@
    contrast on white; shadows drop to near-invisible since light UIs
    rely on hairline borders instead. */
 html.light {
-  --bg-primary: #EEF1F6;
-  --bg-surface: #FFFFFF;
-  --bg-glass: #F1F4F8;
-  --bg-glass-hover: #E6EBF2;
-  --bg-card: #FFFFFF;
-  --bg-card-hover: #F7F9FC;
-  --border-color: #D9E0EA;
-  --border-hover: #B4C2D3;
-  --text-1: #0F172A;
-  --text-2: #475569;
-  --text-3: #8295AB;
+  --bg-primary: #E7EBF2;
+  --bg-surface: #F9FAFC;
+  --bg-glass: #EDF1F6;
+  --bg-glass-hover: #E2E8F0;
+  --bg-card: #F9FAFC;
+  --bg-card-hover: #F1F4F9;
+  --border-color: #E0E6EE;
+  --border-hover: #BFCBDA;
+  --text-1: #26334A;
+  --text-2: #51617C;
+  --text-3: #8A9BB0;
   --scrollbar-thumb: rgba(100, 116, 139, 0.28);
   --scrollbar-hover: rgba(100, 116, 139, 0.45);
   --focus-ring: 0 0 0 2px #FFFFFF, 0 0 0 3.5px #0284C7;
