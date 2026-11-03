@@ -29,7 +29,7 @@ export function SearchPalette() {
   const [selected, setSelected] = useState(0);
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Ctrl+K / Cmd+K to open
   useEffect(() => {
