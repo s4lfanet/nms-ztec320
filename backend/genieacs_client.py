@@ -228,8 +228,11 @@ def get_device_params(device_id):
         wan_ip = _first(r'WANIPConnection\.\d+\.ExternalIPAddress$') \
             or _first(r'WANPPPConnection\.\d+\.ExternalIPAddress$')
         pppoe = _first(r'WANPPPConnection\.\d+\.Username$')
-        # Semua SSID + status aktif (Enable + advertisement)
-        wlan_root = _param(d, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration')
+        # Semua SSID + status aktif (Enable + advertisement).
+        # _param() baca _value; root WLAN adalah object node → walk mentah.
+        wlan_root = d
+        for part in 'InternetGatewayDevice.LANDevice.1.WLANConfiguration'.split('.'):
+            wlan_root = wlan_root.get(part) if isinstance(wlan_root, dict) else None
         ssid_list = []
         if isinstance(wlan_root, dict):
             for idx, cfg in sorted(wlan_root.items(), key=lambda kv: kv[0]):
