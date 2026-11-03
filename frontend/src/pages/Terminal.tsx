@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -6,25 +6,8 @@ import { toast } from '../components/Toast';
 import { Terminal as TermIcon, RefreshCw, Power } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { useHasPerm } from '../hooks/useHasPerm';
-
-let xtermLoaded: Promise<void> | null = null;
-function loadXterm(): Promise<void> {
-  if (xtermLoaded) return xtermLoaded;
-  xtermLoaded = new Promise((resolve, reject) => {
-    const w = window as any;
-    if (w.Terminal) { resolve(); return; }
-    const css = document.createElement('link');
-    css.rel = 'stylesheet';
-    css.href = 'https://unpkg.com/xterm@5.3.0/css/xterm.css';
-    document.head.appendChild(css);
-    const s = document.createElement('script');
-    s.src = 'https://unpkg.com/xterm@5.3.0/lib/xterm.min.js';
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error('Failed to load xterm.js'));
-    document.head.appendChild(s);
-  });
-  return xtermLoaded;
-}
+import { Terminal as XTerm } from 'xterm';
+import 'xterm/css/xterm.css';
 
 export function Terminal() {
   const hasPerm = useHasPerm();
@@ -41,20 +24,16 @@ export function Terminal() {
   const oltList = dash?.olts || [];
   const currentOlt = Array.isArray(oltList) ? oltList.find((o: any) => o.id === oltId) : null;
 
-  useEffect(() => { loadXterm().catch(e => toast.error(e.message)); }, []);
-
   const connect = async () => {
     if (!oltId || !termRef.current) return;
     try {
-      await loadXterm();
       // Get WS token
       const tokResp = await fetch('/api/ws-token', { credentials: 'include' });
       const { token } = await tokResp.json();
       if (!token) { toast.error('Gagal ambil WS token'); return; }
       // Init terminal
       if (term.current) { term.current.dispose(); }
-      const w = window as any;
-      term.current = new w.Terminal({
+      term.current = new XTerm({
         cursorBlink: true, fontSize: 13, scrollback: 5000,
         theme: { background: '#0d1117', foreground: '#e6edf3', cursor: '#58a6ff' },
       });
