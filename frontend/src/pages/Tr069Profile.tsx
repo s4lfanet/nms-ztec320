@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Server, Lock, Unlock, FileText } from 'lucide-react';
+import { Plus, Pencil, Trash2, Server, Lock, Unlock, FileText, Globe, RefreshCw, Link2, CheckCircle2, XCircle } from 'lucide-react';
 import { api } from '../lib/api';
 import { toast } from '../components/Toast';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, EmptyState, Modal, Select } from '../components/ui';
+import { Button, Card, EmptyState, Input, Modal, Select } from '../components/ui';
 
 interface Tr069Profile {
   id: number;
@@ -70,6 +70,8 @@ export default function Tr069Profile() {
           </Button>
         )}
       />
+
+      <GenieAcsSettings />
 
       {/* Table */}
       <Card bodyClassName="p-0">
@@ -319,5 +321,116 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
         />
       </div>
     </Modal>
+  );
+}
+
+function GenieAcsSettings() {
+  const hasPerm = useHasPerm();
+  const canManage = hasPerm('genieacs_manage');
+  const [nbiUrl, setNbiUrl] = useState('');
+  const [nbiUser, setNbiUser] = useState('');
+  const [nbiPassword, setNbiPassword] = useState('');
+  const [hasPassword, setHasPassword] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const { data: cfg, isLoading } = useQuery({
+    queryKey: ['genieacs-settings'],
+    queryFn: api.genieacsGetSettings,
+    enabled: canManage,
+  });
+
+  useEffect(() => {
+    if (cfg) {
+      setNbiUrl(cfg.nbi_url || '');
+      setNbiUser(cfg.nbi_user || '');
+      setHasPassword(!!cfg.has_password);
+    }
+  }, [cfg]);
+
+  if (!canManage) return null;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.genieacsSaveSettings({
+        nbi_url: nbiUrl.trim(),
+        nbi_user: nbiUser.trim(),
+        ...(nbiPassword ? { nbi_password: nbiPassword } : {}),
+      });
+      setHasPassword(hasPassword || !!nbiPassword);
+      setNbiPassword('');
+      toast.success('Pengaturan GenieACS disimpan');
+    } catch (e) {
+      toast.error((e as Error).message || 'Gagal menyimpan');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const test = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await api.genieacsTest();
+      setTestResult(r.success
+        ? { ok: true, text: `Terhubung — ${r.device_count} device terdeteksi` }
+        : { ok: false, text: r.error || 'Koneksi gagal' });
+    } catch (e) {
+      setTestResult({ ok: false, text: (e as Error).message || 'Koneksi gagal' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const sync = async () => {
+    setSyncing(true);
+    try {
+      const r = await api.genieacsSync();
+      toast.success(`Sync selesai: ${r.matched}/${r.total} ONU tertaut ke device GenieACS`);
+      if (r.errors?.length) toast.error(`${r.errors.length} error — lihat log`);
+    } catch (e) {
+      toast.error((e as Error).message || 'Sync gagal');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <Card
+      icon={<Globe size={16} />}
+      title="GenieACS Server (NBI)"
+      action={testResult && (
+        <span className={`text-xs inline-flex items-center gap-1 ${testResult.ok ? 'text-success' : 'text-danger'}`}>
+          {testResult.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />} {testResult.text}
+        </span>
+      )}
+    >
+      <p className="text-xs text-tx3 mb-3">
+        Hubungkan ke server GenieACS untuk panel TR-069 per ONU di View ONU (reboot, refresh params, set WiFi).
+      </p>
+      {isLoading ? (
+        <div className="text-xs text-tx3">Loading…</div>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Input label="NBI URL" value={nbiUrl} onChange={e => setNbiUrl(e.target.value)}
+              placeholder="http://genieacs:7557" />
+            <Input label="Username (opsional)" value={nbiUser} onChange={e => setNbiUser(e.target.value)}
+              placeholder="admin" />
+            <Input label={hasPassword ? 'Password (tersimpan — isi untuk ganti)' : 'Password (opsional)'}
+              type="password" value={nbiPassword} onChange={e => setNbiPassword(e.target.value)}
+              placeholder={hasPassword ? '••••••••' : ''} />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" icon={<Server size={14} />} onClick={save} loading={saving}>Simpan</Button>
+            <Button variant="secondary" icon={<RefreshCw size={14} />} onClick={test} loading={testing}>Test Koneksi</Button>
+            <Button variant="secondary" icon={<Link2 size={14} />} onClick={sync} loading={syncing}>Sync Devices</Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
