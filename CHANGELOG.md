@@ -4,6 +4,17 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-03 — Fase 11: Audit Log Immutable (tamper-evident)
+
+#### Ditambahkan
+- **Hash chain** — `action_logs.prev_hash` + `action_logs.hash` (SHA-256 dari payload baris + prev_hash). Setiap `log_action` men-stamp hash setelah flush; baris lama di-backfill saat startup oleh `audit_chain.backfill_missing_hashes()`. `created_at` dinormalisasi ke naive-UTC agar hash konsisten antara write (tz-aware) dan read-back SQLite.
+- **Modul `audit_chain.py`** — `compute_log_hash`, `verify_chain` (cek linkage + recompute per baris), `archive_action_logs` (ekspor JSONL.gz ke `instance/backups/audit-log/` lalu hapus, chain tip dicatat di SystemConfig agar verifikasi tetap anchor), `create_immutable_trigger` (PostgreSQL: trigger BEFORE UPDATE/DELETE menolak mutasi; di-drop & recreate saat archive).
+- **Endpoint** `GET /api/action-logs/verify` dan `POST /api/action-logs/archive {days}` (permission `manage_users`). UI ActionLogs: tombol Verify (badge Chain verified/broken) + Archive (konfirmasi, 90 hari).
+- Migrasi Alembic `g7a8b9c0d1e2`; `migrate_schema` add_col + backfill + trigger PG. 8 test baru (`test_audit_chain.py`): stamping, verifikasi bersih, deteksi edit & delete, determinisme hash, endpoint, archive.
+
+#### Catatan
+- Tidak ada endpoint hapus/update action_logs — retensi hanya lewat archive (ekspor dulu, bukan delete polos). Terinspirasi KusumaVision NMS (MIT).
+
 ### 2026-11-03 — Fase 10: Tema Gelap/Terang & Dwibahasa (id/en)
 
 #### Ditambahkan

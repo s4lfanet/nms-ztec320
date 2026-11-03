@@ -56,6 +56,20 @@ def log_action(action, category='general', target='', detail=''):
             ip_address=ip or '',
         )
         db.session.add(entry)
+        # Flush first so the created_at default is assigned, then stamp the
+        # tamper-evident chain hash (Fase 11). The previous row's hash becomes
+        # this row's prev_hash — any later edit breaks the chain.
+        db.session.flush()
+        from audit_chain import compute_log_hash, GENESIS
+        prev = ActionLog.query.filter(ActionLog.id < entry.id).order_by(ActionLog.id.desc()).first()
+        prev_hash = prev.hash if prev and prev.hash else GENESIS
+        entry.prev_hash = prev_hash
+        entry.hash = compute_log_hash({
+            'id': entry.id, 'user_id': entry.user_id, 'username': entry.username,
+            'action': entry.action, 'category': entry.category, 'target': entry.target,
+            'detail': entry.detail, 'ip_address': entry.ip_address,
+            'created_at': entry.created_at,
+        }, prev_hash)
         db.session.commit()
     except Exception:
         db.session.rollback()

@@ -105,6 +105,34 @@ def api_action_logs():
     })
 
 
+@bp.route('/api/action-logs/verify')
+@permission_required('manage_users')
+def api_action_logs_verify():
+    """Verify integrity of the tamper-evident audit chain (Fase 11)."""
+    from audit_chain import verify_chain
+    return jsonify(verify_chain())
+
+
+@bp.route('/api/action-logs/archive', methods=['POST'])
+@permission_required('manage_users')
+def api_action_logs_archive():
+    """Retention: export old logs to a compressed file, then remove them.
+
+    Never a plain delete — rows are written to instance/backups/audit-log/
+    first, and the chain tip is recorded so verification still anchors.
+    """
+    from audit_chain import archive_action_logs
+    days = (request.get_json(silent=True) or {}).get('days', 90)
+    try:
+        days = max(1, int(days))
+    except (TypeError, ValueError):
+        days = 90
+    result = archive_action_logs(days)
+    log_action('audit_archive', 'user', target='action_logs',
+               detail=f'Archived {result["archived"]} log(s) older than {days}d -> {result.get("file")}')
+    return jsonify({'success': True, **result})
+
+
 @bp.route('/api/customization/reset', methods=['POST'])
 @permission_required('customization')
 def reset_customization_columns():

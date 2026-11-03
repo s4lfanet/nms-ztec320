@@ -405,6 +405,16 @@ def migrate_schema():
     add_col('users', 'theme', 'VARCHAR(10)', "'system'")
     add_col('users', 'language', 'VARCHAR(5)', "'id'")
 
+    # Fase 11 — tamper-evident audit chain
+    add_col('action_logs', 'prev_hash', 'VARCHAR(64)', "''")
+    add_col('action_logs', 'hash', 'VARCHAR(64)', "''")
+    try:
+        from audit_chain import backfill_missing_hashes, create_immutable_trigger
+        backfill_missing_hashes()
+        create_immutable_trigger()  # PostgreSQL only; no-op on SQLite
+    except Exception as e:
+        logger.warning(f'  Audit chain init skipped: {e}')
+
     # Migrate existing admin user to super_admin
     try:
         with db.engine.connect() as conn:

@@ -1053,6 +1053,9 @@ class ActionLog(db.Model):
     detail = db.Column(db.Text, default='')
     ip_address = db.Column(db.String(50), default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    # Fase 11 — tamper-evident chain: hash = sha256(row payload + prev_hash)
+    prev_hash = db.Column(db.String(64), default='')
+    hash = db.Column(db.String(64), default='')
 
     __table_args__ = (
         db.Index('ix_action_logs_created_at', 'created_at'),

@@ -2,7 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, useCallback } from 'react';
 import { cn } from '../lib/utils';
 import { api } from '../lib/api';
-import { ChevronLeft, ChevronRight, ChevronFirst, ChevronLast, User, Server, Radio, Shield, KeyRound, Activity } from 'lucide-react';
+import { toast } from '../components/Toast';
+import { confirm } from '../components/ConfirmDialog';
+import { ChevronLeft, ChevronRight, ChevronFirst, ChevronLast, User, Server, Radio, Shield, ShieldCheck, ShieldAlert, KeyRound, Activity, Archive } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, EmptyState, Select } from '../components/ui';
@@ -37,7 +39,42 @@ export function ActionLogs() {
   const [category, setCategory] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [verifyState, setVerifyState] = useState<'idle' | 'checking' | 'ok' | 'bad'>('idle');
+  const [verifyDetail, setVerifyDetail] = useState('');
+  const [archiving, setArchiving] = useState(false);
   const perPage = 20;
+
+  const runVerify = useCallback(async () => {
+    setVerifyState('checking');
+    try {
+      const r = await api.actionLogsVerify();
+      setVerifyState(r.verified ? 'ok' : 'bad');
+      setVerifyDetail(r.detail + (r.archived ? ' (dari arsip)' : ''));
+    } catch (e) {
+      setVerifyState('bad');
+      setVerifyDetail((e as Error).message || 'Verify failed');
+    }
+  }, []);
+
+  const runArchive = useCallback(async () => {
+    const ok = await confirm({
+      title: 'Arsipkan log lama?',
+      message: 'Log lebih tua dari 90 hari akan diekspor ke file terkompresi (instance/backups/audit-log/) lalu dihapus dari tabel. Integritas chain tetap terverifikasi dari arsip.',
+      confirmLabel: 'Arsipkan',
+      variant: 'warning',
+    });
+    if (!ok) return;
+    setArchiving(true);
+    try {
+      const r = await api.actionLogsArchive(90);
+      toast.success(r.detail);
+      setVerifyState('idle');
+    } catch (e) {
+      toast.error((e as Error).message || 'Archive failed');
+    } finally {
+      setArchiving(false);
+    }
+  }, []);
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['action-logs', page, category, search],
@@ -57,7 +94,36 @@ export function ActionLogs() {
 
   return (
     <PageContainer className="animate-fade-in">
-      <PageHeader title="Action Logs" description="Audit trail of all user activities" />
+      <PageHeader
+        title="Action Logs"
+        description="Audit trail of all user activities"
+        action={
+          <>
+            {verifyState !== 'idle' && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border',
+                  verifyState === 'checking' && 'bg-glass text-tx3 border-brd',
+                  verifyState === 'ok' && 'bg-success/10 text-success border-success/25',
+                  verifyState === 'bad' && 'bg-danger/10 text-danger border-danger/25',
+                )}
+                title={verifyDetail}
+              >
+                {verifyState === 'checking' && <Activity size={13} className="animate-spin" />}
+                {verifyState === 'ok' && <ShieldCheck size={13} />}
+                {verifyState === 'bad' && <ShieldAlert size={13} />}
+                {verifyState === 'checking' ? 'Verifying…' : verifyState === 'ok' ? 'Chain verified' : 'Chain broken'}
+              </span>
+            )}
+            <Button variant="secondary" icon={<ShieldCheck size={15} />} onClick={runVerify} disabled={verifyState === 'checking'}>
+              Verify
+            </Button>
+            <Button variant="secondary" icon={<Archive size={15} />} onClick={runArchive} loading={archiving}>
+              Archive
+            </Button>
+          </>
+        }
+      />
 
       {/* Filters */}
       <Card bodyClassName="p-3 md:p-4">

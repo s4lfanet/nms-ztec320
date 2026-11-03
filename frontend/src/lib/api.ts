@@ -261,6 +261,8 @@ export const api = {
     if (params.username) qs.set('username', params.username);
     return request<ActionLogsResponse>(`/api/action-logs?${qs}`);
   },
+  actionLogsVerify: () => request<{ verified: boolean; checked: number; first_bad_id: number | null; archived: boolean; detail: string }>('/api/action-logs/verify'),
+  actionLogsArchive: (days: number) => request<{ success: boolean; archived: number; file: string | null; detail: string }>('/api/action-logs/archive', { method: 'POST', body: JSON.stringify({ days }) }),
 
   // Notifications (bell alerts)
   notifications: (params?: { limit?: number; type?: 'alarm' | 'unregister' | 'general' }) => {
