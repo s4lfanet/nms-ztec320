@@ -49,19 +49,6 @@ export const api = {
   updateProfile: (data: { full_name?: string; sidebar_name?: string; password?: string; theme?: 'dark' | 'light' | 'system'; language?: 'id' | 'en' }) =>
     request<{ success: boolean; must_change_password?: boolean }>('/api/profile', { method: 'POST', body: JSON.stringify(data) }),
 
-  // Public (no auth)
-  publicPackages: () => request<PublicPackage[]>('/api/public/packages'),
-  publicRegister: (data: RegisterData) =>
-    request<{ success: boolean; tenant_id: number; subscription_id: number; invoice_id: number; package: PublicPackage }>('/api/public/register', {
-      method: 'POST', body: JSON.stringify(data),
-    }),
-  publicRegisterPay: (data: { tenant_id: number; subscription_id: number; package_id: number; payment_method: string }) =>
-    request<{ success: boolean; payment_url: string; merchant_order_id: string }>('/api/public/register/pay', {
-      method: 'POST', body: JSON.stringify(data),
-    }),
-  publicRegistrationStatus: (orderId: string) =>
-    request<{ success: boolean; status: string; tenant_status: string; tenant_name: string; subdomain: string; amount: number }>(`/api/public/registration-status/${orderId}`),
-
   // Dashboard
   dashboard: (opts?: { nocache?: boolean } | unknown) => request<DashboardData>(`/api/dashboard${opts && typeof opts === 'object' && 'nocache' in opts && opts.nocache ? '?nocache=1' : ''}`),
 
@@ -280,59 +267,11 @@ export const api = {
     return request<NotificationsResponse>(`/api/notifications?${qs}`);
   },
 
-  // Subscription status
-  subscriptionStatus: () => request<SubscriptionStatus>('/api/subscription/status'),
-
-  // Admin — Dashboard
-  adminDashboard: () => request<AdminDashboardData>('/api/admin/dashboard'),
-
-  // Admin — Packages
-  adminPackages: () => request<SubscriptionPackage[]>('/api/admin/packages'),
-  adminCreatePackage: (data: Partial<SubscriptionPackage>) =>
-    request<{ success: boolean; id: number }>('/api/admin/package', { method: 'POST', body: JSON.stringify(data) }),
-  adminUpdatePackage: (id: number, data: Partial<SubscriptionPackage>) =>
-    request<{ success: boolean }>(`/api/admin/package/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  adminDeletePackage: (id: number) =>
-    request<{ success: boolean }>(`/api/admin/package/${id}`, { method: 'DELETE' }),
-
-  // Admin — Tenants
-  adminTenants: () => request<Tenant[]>('/api/admin/tenants'),
-  adminCreateTenant: (data: { name: string; subdomain: string; contact_name?: string; contact_email?: string; contact_phone?: string; admin_name?: string; admin_username?: string; admin_password?: string }) =>
-    request<{ success: boolean; id: number }>('/api/admin/tenant', { method: 'POST', body: JSON.stringify(data) }),
-  adminUpdateTenant: (id: number, data: Partial<Tenant>) =>
-    request<{ success: boolean }>(`/api/admin/tenant/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  adminDeleteTenant: (id: number) =>
-    request<{ success: boolean }>(`/api/admin/tenant/${id}`, { method: 'DELETE' }),
-
-  // Admin — Subscriptions
-  adminSubscriptions: () => request<Subscription[]>('/api/admin/subscriptions'),
-  adminCreateSubscription: (data: { tenant_id: number; package_id: number; auto_renew?: boolean }) =>
-    request<{ success: boolean; id: number; end_date: string }>('/api/admin/subscription', { method: 'POST', body: JSON.stringify(data) }),
-  adminUpdateSubscription: (id: number, data: { status?: string; auto_renew?: boolean; end_date?: string }) =>
-    request<{ success: boolean }>(`/api/admin/subscription/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  adminDeleteSubscription: (id: number) =>
-    request<{ success: boolean }>(`/api/admin/subscription/${id}`, { method: 'DELETE' }),
-  adminExtendSubscription: (id: number, days: number) =>
-    request<{ success: boolean; end_date: string }>(`/api/admin/subscription/${id}/extend`, { method: 'POST', body: JSON.stringify({ days }) }),
-  adminTransactions: () => request<TransactionRecord[]>('/api/admin/transactions'),
-  adminInvoices: () => request<InvoiceRecord[]>('/api/admin/invoices'),
-
   // System Config
   getSystemConfig: () => request<{ success: boolean; config: Record<string, string> }>('/api/system-config'),
   updateSystemConfig: (data: Record<string, string>) =>
     request<{ success: boolean }>('/api/system-config', { method: 'PUT', body: JSON.stringify(data) }),
 
-  // Renewal & Payment
-  getRenewalInfo: (ref: string) => request<RenewalData>(`/api/renewal/${ref}`),
-  getPaymentMethods: (amount: number) =>
-    request<{ success: boolean; payment_methods: PaymentMethod[] }>(`/api/payment/methods?amount=${amount}`),
-  createRenewalPayment: (ref: string, packageId?: number, paymentMethod?: string) =>
-    request<{ success: boolean; payment_url: string; merchant_order_id: string }>(`/api/renewal/${ref}/pay`, {
-      method: 'POST', body: JSON.stringify({ package_id: packageId, payment_method: paymentMethod }),
-    }),
-  checkPaymentStatus: (orderId: string) =>
-    request<{ success: boolean; status: string; amount: number; payment_method: string; created_at: string; paid_at: string | null }>(`/api/payment/status/${orderId}`),
-  tenantInvoices: () => request<InvoiceRecord[]>('/api/subscription/invoices'),
 };
 
 export interface UserData {
@@ -500,140 +439,11 @@ export interface User {
   } | null;
 }
 
-export interface SubscriptionPackage {
-  id: number;
-  name: string;
-  description: string;
-  price: number;
-  max_olts: number;
-  duration_days: number;
-  features: string;
-  is_active: boolean;
-  created_at: string | null;
-}
-
-export interface Tenant {
-  id: number;
-  name: string;
-  subdomain: string;
-  contact_name: string;
-  contact_email: string;
-  contact_phone: string;
-  status: string;
-  created_at: string | null;
-  user_count: number;
-  olt_count: number;
-  subscription?: {
-    package_name: string;
-    end_date: string | null;
-    days_remaining: number;
-    is_active: boolean;
-  } | null;
-}
-
-export interface Subscription {
-  id: number;
-  tenant_id: number;
-  tenant_name: string;
-  package_id: number;
-  package_name: string;
-  start_date: string | null;
-  end_date: string | null;
-  status: string;
-  auto_renew: boolean;
-  is_active: boolean;
-  days_remaining: number;
-}
-
-export interface SubscriptionStatus {
-  is_super_admin?: boolean;
-  is_active?: boolean;
-  days_remaining?: number;
-  max_olts?: number;
-  package_name?: string;
-  end_date?: string | null;
-  start_date?: string | null;
-  message?: string;
-  renewal_ref?: string;
-}
-
-export interface PaymentMethod {
-  paymentMethod: string;
-  paymentName: string;
-  paymentImage: string;
-  totalFee: string;
-}
-
-export interface RenewalData {
-  success: boolean;
-  tenant: {
-    name: string;
-    subdomain: string;
-    contact_name: string;
-    contact_phone: string;
-    contact_email: string;
-  };
-  subscription: {
-    id: number;
-    status: string;
-    start_date: string;
-    end_date: string;
-    days_remaining: number;
-    is_active: boolean;
-  };
-  package: {
-    id: number;
-    name: string;
-    description: string;
-    price: number;
-    max_olts: number;
-    duration_days: number;
-  };
-  packages: Array<{
-    id: number;
-    name: string;
-    description: string;
-    price: number;
-    max_olts: number;
-    duration_days: number;
-  }>;
-}
-
 export interface FanInfo {
   number: number;
   status: string;
   rpm: number;
   speed_level: string;
-}
-
-export interface TransactionRecord {
-  id: number;
-  merchant_order_id: string;
-  tenant_name: string;
-  tenant_id: number;
-  package_name: string;
-  amount: number;
-  status: string;
-  payment_method: string;
-  reference: string;
-  created_at: string;
-  paid_at: string | null;
-}
-
-export interface InvoiceRecord {
-  id: number;
-  invoice_number: string;
-  tenant_name: string;
-  tenant_id: number;
-  package_id: number;
-  package_name: string;
-  amount: number;
-  status: string;
-  invoice_type: string;
-  description: string;
-  due_date: string | null;
-  created_at: string;
-  paid_at: string | null;
 }
 
 export interface CardInfo {
@@ -697,63 +507,6 @@ export interface DashboardData {
     end_date: string | null;
     renewal_ref?: string;
   } | null;
-}
-
-export interface AdminDashboardData {
-  stats: {
-    total_tenants: number;
-    active_subscriptions: number;
-    expired_subscriptions: number;
-    expiring_soon: number;
-    total_olts: number;
-    total_onus: number;
-    total_users: number;
-  };
-  tenants: Array<{
-    id: number;
-    name: string;
-    subdomain: string;
-    olt_count: number;
-    onu_count: number;
-    subscription: {
-      package_name: string;
-      max_olts: number;
-      days_remaining: number;
-      is_active: boolean;
-      start_date: string | null;
-      end_date: string | null;
-    } | null;
-  }>;
-  expiring_soon: Array<{
-    id: number;
-    name: string;
-    subdomain: string;
-    olt_count: number;
-    onu_count: number;
-    subscription: {
-      package_name: string;
-      max_olts: number;
-      days_remaining: number;
-      is_active: boolean;
-      start_date: string | null;
-      end_date: string | null;
-    } | null;
-  }>;
-  expired: Array<{
-    id: number;
-    name: string;
-    subdomain: string;
-    olt_count: number;
-    onu_count: number;
-    subscription: {
-      package_name: string;
-      max_olts: number;
-      days_remaining: number;
-      is_active: boolean;
-      start_date: string | null;
-      end_date: string | null;
-    } | null;
-  }>;
 }
 
 export interface ONUData {
@@ -1260,27 +1013,6 @@ export interface FTTHRealPonPort {
   onu_count: number;
   onu_online: number;
   already_mapped: boolean;
-}
-
-export interface PublicPackage {
-  id: number;
-  name: string;
-  description: string;
-  price: number;
-  max_olts: number;
-  duration_days: number;
-}
-
-export interface RegisterData {
-  name: string;
-  subdomain: string;
-  contact_name: string;
-  contact_email?: string;
-  contact_phone: string;
-  admin_name?: string;
-  admin_username: string;
-  admin_password: string;
-  package_id: number;
 }
 
 export interface OnuStatusHistoryRecord {
