@@ -484,7 +484,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           </button>
 
           {showMenu && createPortal(
-            <div ref={userMenuDropRef} className="fixed top-14 right-2 w-52 max-w-[calc(100vw-1rem)] py-1.5 glass-card rounded-xl z-[999] animate-fade-in shadow-2xl shadow-black/20">
+            <div ref={userMenuDropRef} style={{ position: 'fixed' }} className="top-14 right-2 w-52 max-w-[calc(100vw-1rem)] py-1.5 glass-card rounded-xl z-[999] animate-fade-in shadow-2xl shadow-black/20">
               <div className="px-4 py-2.5 border-b border-brd">
                 <div className="text-sm font-medium">{user?.full_name || 'Admin'}</div>
                 <div className="text-xs text-tx3">{user?.username || ''}</div>
