@@ -90,6 +90,9 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   letter-spacing: -0.01em;
+  /* Smooth dark↔light transition — kartu/surface sudah transisi sendiri,
+     body adalah layer terakhir yang snap instan. */
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 h1, h2, h3, h4, h5, h6,
@@ -176,8 +179,19 @@ a.glass-card:hover,
 /* Dark-mode Leaflet basemap: standard OpenStreetMap tiles (no API key) inverted
    to a dark look. Scoped to this tile layer's own pane only — markers, popups
    and lines live in separate Leaflet panes and are unaffected. */
+.map-tiles-dark { transition: filter 0.4s ease; }
 html:not(.light) .map-tiles-dark {
   filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.3);
+}
+
+/* ─── Theme Transition (global) ───
+   Catch-all untuk elemen tanpa transition sendiri saat dark↔light.
+   Specificity terendah → transition yang sudah didefinisikan komponen
+   tetap menang; hanya properti warna (bukan layout/animasi). */
+*, ::before, ::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+  transition-duration: 0.25s;
+  transition-timing-function: ease;
 }
 
 /* ─── Accessibility: Focus Ring ─── */
