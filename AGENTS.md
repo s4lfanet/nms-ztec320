@@ -519,3 +519,12 @@ ViewOnu, UserManagement, Tr069Profile, RegisterWizard, OltSettings, OltConfigura
 - Cron (root): `auto_sync.py` */5, `traffic_poller.py` 2-59/5, `auto_backup.py` :00, `db_backup.py` :15 → logs in `/var/log/salfanet-*.log`
 - Deploy: `cd /opt/salfanet-nms && git pull && (cd frontend && pnpm build) && systemctl restart salfanet-nms`
   - `frontend/dist` is committed; on the VPS run `git checkout -- frontend/dist && git clean -fd frontend/dist` before `git pull` if the pull conflicts.
+
+## Production Deployment (NMS ini)
+
+- **Host: 192.168.54.131** (root/seven7890, port 22) — `plink -ssh -batch -pw seven7890 root@192.168.54.131 "..."`
+- Path: `/opt/salfanet-nms` (git repo + deployment sekaligus)
+- Service: `systemctl restart salfanet-nms` — backend Flask+FastAPI di port 5000/8765
+- Frontend: `frontend/dist` ter-commit — `git pull` sudah cukup, tidak perlu build di server
+- ⚠️ 192.168.54.129 / `/var/www/salfanet-radius` adalah aplikasi LAIN (salfanet-radius billing, Next.js) — jangan deploy NMS ke sana
+- Browser perlu hard refresh setelah deploy (PWA service worker cache agresif)
