@@ -1891,10 +1891,15 @@ function Tr069Panel({ onuId }: { onuId: number }) {
       </Card>
     );
   }
+  const upSec = parseInt(p?.uptime || '0');
+  const upStr = upSec > 0 ? `${Math.floor(upSec / 86400)}d ${Math.floor((upSec % 86400) / 3600)}h` : '-';
   const rows: [string, string][] = [
     ['Model', p?.model || '-'],
     ['Vendor', p?.vendor || '-'],
     ['Software', p?.software_version || '-'],
+    ['Hardware', p?.hardware_version || '-'],
+    ['Uptime', upStr],
+    ['WiFi Clients', p?.wifi_clients != null ? String(p.wifi_clients) : '-'],
     ['WAN IP', p?.wan_ip || '-'],
     ['PPPoE', p?.pppoe_username || '-'],
     ['SSID 2.4G', p?.ssid_24g || '-'],

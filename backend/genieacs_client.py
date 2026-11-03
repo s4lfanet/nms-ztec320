@@ -192,12 +192,28 @@ def get_device_params(device_id):
         if not isinstance(arr, list) or not arr:
             return None
         d = arr[0]
+        # Fallback model/vendor dari _id (OUI-ProductClass-...) bila param
+        # TR-069 belum ada nilainya (umum di device yang belum full refresh).
+        model = _param(d, 'InternetGatewayDevice.DeviceInfo.ModelName')
+        vendor = _param(d, 'InternetGatewayDevice.DeviceInfo.Manufacturer')
+        id_parts = (device_id or '').split('-')
+        if not model and len(id_parts) >= 2:
+            model = id_parts[1]
+        if not vendor and id_parts:
+            vendor = id_parts[0]
+        # Jumlah klien WiFi dari Hosts table
+        hosts = _param(d, 'InternetGatewayDevice.LANDevice.1.Hosts.Host') or {}
+        wifi_clients = len(hosts) if isinstance(hosts, dict) else 0
+        uptime_s = _param(d, 'InternetGatewayDevice.DeviceInfo.UpTime')
         return {
             '_id': device_id,
             'last_inform': str(d.get('_lastInform') or _param(d, 'LastInform') or ''),
             'software_version': str(_param(d, 'InternetGatewayDevice.DeviceInfo.SoftwareVersion') or ''),
-            'model': str(_param(d, 'InternetGatewayDevice.DeviceInfo.ModelName') or ''),
-            'vendor': str(_param(d, 'InternetGatewayDevice.DeviceInfo.Manufacturer') or ''),
+            'hardware_version': str(_param(d, 'InternetGatewayDevice.DeviceInfo.HardwareVersion') or ''),
+            'uptime': str(uptime_s or ''),
+            'model': str(model or ''),
+            'vendor': str(vendor or ''),
+            'wifi_clients': wifi_clients,
             'wan_ip': str(_param(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress') or ''),
             'pppoe_username': str(_param(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username') or ''),
             'ssid_24g': str(_param(d, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID') or ''),
