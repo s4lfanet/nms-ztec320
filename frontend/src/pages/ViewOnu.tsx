@@ -1884,9 +1884,7 @@ function Tr069Panel({ onuId }: { onuId: number }) {
   const canManage = hasPerm('genieacs_manage');
   const p = data?.params;
   const [showCfg, setShowCfg] = useState(false);
-  const [wifiSsid, setWifiSsid] = useState('');
-  const [wifiPass, setWifiPass] = useState('');
-  const [wifiBand, setWifiBand] = useState('2.4g');
+  const [wifiEdit, setWifiEdit] = useState<Record<number, { ssid: string; pass: string }>>({});
   const [pppoeUser, setPppoeUser] = useState('');
   const [pppoePass, setPppoePass] = useState('');
   const { data: taskData } = useQuery({
@@ -1984,38 +1982,74 @@ function Tr069Panel({ onuId }: { onuId: number }) {
             </Button>
           </div>
           {showCfg && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* WiFi */}
-              <div className="space-y-2 p-2 rounded bg-glass">
-                <div className="text-[10px] font-bold text-tx3 uppercase tracking-wider">WiFi</div>
-                <div className="flex gap-2">
-                  <Select value={wifiBand} onChange={e => setWifiBand(e.target.value)}
-                    options={[{ value: '2.4g', label: '2.4G' }, { value: '5g', label: '5G' }]} />
-                  <input className="flex-1 bg-bg2 border border-brd rounded px-2 py-1 text-xs" placeholder="SSID baru"
-                    value={wifiSsid} onChange={e => setWifiSsid(e.target.value)} />
+            <div className="space-y-3">
+              {/* WiFi — edit per instance, prefilled existing */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-tx3 uppercase tracking-wider">WiFi SSID</span>
+                  <button className="text-[10px] text-accent hover:underline" onClick={() =>
+                    api.onuTr069AddObject(onuId, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.')
+                      .then(r => r.success ? (toast.success(`Instance WiFi #${r.instance || 'baru'} dibuat`), refetch()) : toast.error(r.message))
+                  }>+ Tambah SSID</button>
                 </div>
-                <input className="w-full bg-bg2 border border-brd rounded px-2 py-1 text-xs" type="password"
-                  placeholder="Password WiFi (kosongkan jika tidak diubah)"
-                  value={wifiPass} onChange={e => setWifiPass(e.target.value)} />
-                <Button variant="primary" onClick={() => {
-                  if (!wifiSsid.trim()) { toast.error('SSID wajib diisi'); return; }
-                  api.onuTr069SetWifi(onuId, { ssid: wifiSsid.trim(), password: wifiPass || undefined, band: wifiBand })
-                    .then(r => r.success ? (toast.success('WiFi task dikirim'), setWifiSsid(''), setWifiPass('')) : toast.error(r.message));
-                }}>Terapkan WiFi</Button>
+                {(p?.ssids || []).map(s => {
+                  const ed = wifiEdit[s.index] || { ssid: s.ssid, pass: '' };
+                  return (
+                    <div key={s.index} className="flex flex-wrap items-center gap-1.5 p-1.5 rounded bg-glass">
+                      <span className="text-[9px] font-mono text-tx3 w-14 shrink-0">#{s.index} {s.band}</span>
+                      <input className="flex-1 min-w-[110px] bg-bg2 border border-brd rounded px-2 py-1 text-xs"
+                        value={ed.ssid} onChange={e => setWifiEdit({ ...wifiEdit, [s.index]: { ...ed, ssid: e.target.value } })} />
+                      <input className="w-28 bg-bg2 border border-brd rounded px-2 py-1 text-xs" type="password"
+                        placeholder="password" value={ed.pass}
+                        onChange={e => setWifiEdit({ ...wifiEdit, [s.index]: { ...ed, pass: e.target.value } })} />
+                      <Button variant="primary" onClick={() => {
+                        if (!ed.ssid.trim()) { toast.error('SSID wajib diisi'); return; }
+                        api.onuTr069SetWifi(onuId, { ssid: ed.ssid.trim(), password: ed.pass || undefined, index: s.index })
+                          .then(r => r.success ? toast.success(`WiFi #${s.index} dikirim`) : toast.error(r.message));
+                      }}>Set</Button>
+                      {s.index > 2 && (
+                        <Button variant="ghost" onClick={async () => {
+                          if (await confirm({ title: `Hapus SSID #${s.index}?`, message: `Instance ${s.ssid} akan dihapus via deleteObject.`, variant: 'warning' }))
+                            api.onuTr069DelObject(onuId, `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${s.index}.`)
+                              .then(r => r.success ? (toast.success('deleteObject dikirim'), refetch()) : toast.error(r.message));
+                        }}>Hapus</Button>
+                      )}
+                    </div>
+                  );
+                })}
+                {(!p?.ssids || p.ssids.length === 0) && (
+                  <div className="text-xs text-tx3">Belum ada konfigurasi WLAN — klik "+ Tambah SSID".</div>
+                )}
               </div>
-              {/* PPPoE */}
-              <div className="space-y-2 p-2 rounded bg-glass">
-                <div className="text-[10px] font-bold text-tx3 uppercase tracking-wider">PPPoE</div>
-                <input className="w-full bg-bg2 border border-brd rounded px-2 py-1 text-xs" placeholder="Username PPPoE"
-                  value={pppoeUser} onChange={e => setPppoeUser(e.target.value)} />
-                <input className="w-full bg-bg2 border border-brd rounded px-2 py-1 text-xs" type="password"
-                  placeholder="Password PPPoE (kosongkan jika tidak diubah)"
-                  value={pppoePass} onChange={e => setPppoePass(e.target.value)} />
-                <Button variant="primary" onClick={() => {
-                  if (!pppoeUser.trim()) { toast.error('Username wajib diisi'); return; }
-                  api.onuTr069SetPppoe(onuId, { username: pppoeUser.trim(), password: pppoePass || undefined })
-                    .then(r => r.success ? (toast.success('PPPoE task dikirim'), setPppoeUser(''), setPppoePass('')) : toast.error(r.message));
-                }}>Terapkan PPPoE</Button>
+              {/* WAN — list existing + edit PPPoE */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-tx3 uppercase tracking-wider">WAN / PPPoE</span>
+                  <button className="text-[10px] text-accent hover:underline" onClick={() =>
+                    api.onuTr069AddObject(onuId, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.')
+                      .then(r => r.success ? (toast.success(`WAN instance #${r.instance || 'baru'} dibuat`), refetch()) : toast.error(r.message))
+                  }>+ Tambah WAN PPPoE</button>
+                </div>
+                {(p?.wan_conns || []).map(w => (
+                  <div key={w.key} className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-glass">
+                    <span className="text-[9px] font-mono text-tx3 w-24 shrink-0">{w.key} ({w.type})</span>
+                    <span className="flex-1 truncate">{w.username || w.ip || '-'}</span>
+                    <span className={cn('text-[9px]', w.status.toLowerCase().includes('connected') ? 'text-success' : 'text-tx3')}>{w.status || '-'}</span>
+                  </div>
+                ))}
+                <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded bg-glass">
+                  <input className="flex-1 min-w-[110px] bg-bg2 border border-brd rounded px-2 py-1 text-xs"
+                    placeholder="Username PPPoE" value={pppoeUser || p?.pppoe_username || ''}
+                    onChange={e => setPppoeUser(e.target.value)} />
+                  <input className="w-28 bg-bg2 border border-brd rounded px-2 py-1 text-xs" type="password"
+                    placeholder="password" value={pppoePass} onChange={e => setPppoePass(e.target.value)} />
+                  <Button variant="primary" onClick={() => {
+                    const u = (pppoeUser || p?.pppoe_username || '').trim();
+                    if (!u) { toast.error('Username wajib diisi'); return; }
+                    api.onuTr069SetPppoe(onuId, { username: u, password: pppoePass || undefined })
+                      .then(r => r.success ? (toast.success('PPPoE task dikirim'), setPppoeUser(''), setPppoePass('')) : toast.error(r.message));
+                  }}>Set</Button>
+                </div>
               </div>
             </div>
           )}

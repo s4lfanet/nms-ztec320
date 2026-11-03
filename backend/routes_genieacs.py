@@ -113,7 +113,8 @@ def tr069_set_wifi(onu_id):
         return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
     data = request.get_json() or {}
     ok, err = genieacs_client.set_wifi_ssid(
-        mapping.device_id, data.get('ssid', ''), data.get('password'), data.get('band', '2.4g'))
+        mapping.device_id, data.get('ssid', ''), data.get('password'),
+        data.get('band', '2.4g'), data.get('index'))
     log_action('tr069_set_wifi', 'onu', target=str(onu_id),
                detail=f'ssid={data.get("ssid","")} band={data.get("band","")} ok={ok}')
     return jsonify({'success': ok, 'message': err})
@@ -208,3 +209,36 @@ def tr069_tasks(onu_id):
     if not mapping:
         return jsonify({'success': True, 'tasks': []})
     return jsonify({'success': True, 'tasks': genieacs_client.fetch_tasks(mapping.device_id)})
+
+
+@bp.route('/api/onu/<int:onu_id>/tr069/add-object', methods=['POST'])
+@login_required
+@permission_required(_PERM)
+def tr069_add_object(onu_id):
+    """AddObject task: {object_name} — instance baru (trailing '.')."""
+    mapping = _mapped(onu_id)
+    if not mapping:
+        return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
+    obj = (request.get_json() or {}).get('object_name', '')
+    if not obj:
+        return jsonify({'success': False, 'message': 'object_name required'}), 400
+    ok, info = genieacs_client.add_object(mapping.device_id, obj)
+    log_action('tr069_add_object', 'onu', target=str(onu_id),
+               detail=f'{obj} ok={ok} inst={info}')
+    return jsonify({'success': ok, 'instance': info if ok else '', 'message': '' if ok else info})
+
+
+@bp.route('/api/onu/<int:onu_id>/tr069/del-object', methods=['POST'])
+@login_required
+@permission_required(_PERM)
+def tr069_del_object(onu_id):
+    """DeleteObject task: {object_name} — instance path (trailing '.')."""
+    mapping = _mapped(onu_id)
+    if not mapping:
+        return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
+    obj = (request.get_json() or {}).get('object_name', '')
+    if not obj:
+        return jsonify({'success': False, 'message': 'object_name required'}), 400
+    ok, err = genieacs_client.delete_object(mapping.device_id, obj)
+    log_action('tr069_del_object', 'onu', target=str(onu_id), detail=f'{obj} ok={ok}')
+    return jsonify({'success': ok, 'message': err})

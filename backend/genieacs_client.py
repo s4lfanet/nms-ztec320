@@ -228,6 +228,28 @@ def get_device_params(device_id):
         wan_ip = _first(r'WANIPConnection\.\d+\.ExternalIPAddress$') \
             or _first(r'WANPPPConnection\.\d+\.ExternalIPAddress$')
         pppoe = _first(r'WANPPPConnection\.\d+\.Username$')
+        # Semua WAN connection instances (PPPoE & IP) per index
+        wan_conns = {}
+        for p, v in leaves.items():
+            m = re.search(r'(WAN(?:PPP|IP)Connection)\.(\d+)\.(\w+)$', p)
+            if not m:
+                continue
+            kind, idx, leaf = m.groups()
+            c = wan_conns.setdefault(f'{kind}.{idx}', {'index': int(idx),
+                                                       'type': 'pppoe' if 'PPP' in kind else 'ip'})
+            c[leaf.lower()] = v
+        wan_list = []
+        for key, c in sorted(wan_conns.items()):
+            wan_list.append({
+                'key': key,
+                'index': c['index'],
+                'type': c['type'],
+                'username': str(c.get('username') or ''),
+                'ip': str(c.get('externalipaddress') or ''),
+                'status': str(c.get('connectionstatus') or ''),
+                'enabled': bool(c.get('enable')) if 'enable' in c else None,
+                'service': str(c.get('serviceList') or c.get('servicelist') or ''),
+            })
         # Semua SSID + status aktif (Enable + advertisement).
         # _param() baca _value; root WLAN adalah object node → walk mentah.
         wlan_root = d
@@ -257,6 +279,7 @@ def get_device_params(device_id):
             'wan_ip': wan_ip,
             'pppoe_username': pppoe,
             'ssids': ssid_list,
+            'wan_conns': wan_list,
             'ssid_24g': str(next((s['ssid'] for s in ssid_list if s['band'] == '2.4g'), '')),
             'ssid_5g': str(next((s['ssid'] for s in ssid_list if s['band'] == '5g'), '')),
         }
@@ -298,15 +321,18 @@ def refresh_params(device_id):
         return False, str(e)[:200]
 
 
-def set_wifi_ssid(device_id, ssid, password=None, band='2.4g'):
-    """Set WiFi SSID (and optionally password) via GenieACS NBI task."""
+def set_wifi_ssid(device_id, ssid, password=None, band='2.4g', index=None):
+    """Set WiFi SSID (and optionally password) via GenieACS NBI task.
+    index = nomor instance WLANConfiguration (prioritas atas band)."""
     url, user, pwd = _nbi_config()
     if not url or not device_id:
         return False, 'NBI not configured'
-    idx = '1' if band == '2.4g' else '2'
-    params = {f'InternetGatewayDevice.LANDevice.1.WLANConfiguration.{idx}.SSID': ssid}
+    idx = str(index) if index else ('1' if band == '2.4g' else '2')
+    base = f'InternetGatewayDevice.LANDevice.1.WLANConfiguration.{idx}'
+    params = {f'{base}.SSID': ssid, f'{base}.Enable': True,
+              f'{base}.SSIDAdvertisementEnabled': True}
     if password:
-        params[f'InternetGatewayDevice.LANDevice.1.WLANConfiguration.{idx}.KeyPassphrase'] = password
+        params[f'{base}.KeyPassphrase'] = password
     try:
         # parameterValues harus list [path, value, type] per GenieACS NBI
         pv = [[k, v, 'xsd:string'] for k, v in params.items()]
@@ -404,3 +430,38 @@ def fetch_tasks(device_id, limit=10):
         return out
     except Exception:
         return []
+
+
+def add_object(device_id, object_name):
+    """AddObject task (trailing '.' = instance baru). Return (ok, instance_or_err)."""
+    url, user, pwd = _nbi_config()
+    if not url or not device_id:
+        return False, 'NBI not configured'
+    try:
+        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
+                       json={'name': 'addObject', 'objectName': object_name},
+                       auth=_auth(user, pwd), timeout=_TIMEOUT)
+        if r.status_code in (200, 202, 204):
+            try:
+                return True, str(r.json().get('instance', ''))
+            except Exception:
+                return True, ''
+        return False, f'HTTP {r.status_code}'
+    except Exception as e:
+        return False, str(e)[:200]
+
+
+def delete_object(device_id, object_name):
+    """DeleteObject task (object_name = instance path, mis. '...WLANConfiguration.3.')."""
+    url, user, pwd = _nbi_config()
+    if not url or not device_id:
+        return False, 'NBI not configured'
+    try:
+        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
+                       json={'name': 'deleteObject', 'objectName': object_name},
+                       auth=_auth(user, pwd), timeout=_TIMEOUT)
+        if r.status_code in (200, 202, 204):
+            return True, ''
+        return False, f'HTTP {r.status_code}'
+    except Exception as e:
+        return False, str(e)[:200]

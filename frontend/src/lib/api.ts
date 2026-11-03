@@ -87,7 +87,9 @@ export const api = {
   onuTr069: (id: number) => request<{ success: boolean; connected: boolean; match_method?: string; pinned?: boolean; last_synced?: string; params: Tr069Params | null }>(`/api/onu/${id}/tr069`),
   onuTr069Reboot: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/reboot`, { method: 'POST' }),
   onuTr069Refresh: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/refresh`, { method: 'POST' }),
-  onuTr069SetWifi: (id: number, data: { ssid: string; password?: string; band: string }) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/wifi`, { method: 'POST', body: JSON.stringify(data) }),
+  onuTr069SetWifi: (id: number, data: { ssid: string; password?: string; band?: string; index?: number }) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/wifi`, { method: 'POST', body: JSON.stringify(data) }),
+  onuTr069AddObject: (id: number, object_name: string) => request<{ success: boolean; instance: string; message: string }>(`/api/onu/${id}/tr069/add-object`, { method: 'POST', body: JSON.stringify({ object_name }) }),
+  onuTr069DelObject: (id: number, object_name: string) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/del-object`, { method: 'POST', body: JSON.stringify({ object_name }) }),
   onuTr069SetParams: (id: number, params: Record<string, string>) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/params`, { method: 'POST', body: JSON.stringify({ params }) }),
   onuTr069SetPppoe: (id: number, data: { username: string; password?: string }) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/pppoe`, { method: 'POST', body: JSON.stringify(data) }),
   onuTr069FactoryReset: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/factory-reset`, { method: 'POST' }),
@@ -315,6 +317,7 @@ export interface Tr069Params {
   vendor: string;
   wifi_clients?: number;
   ssids?: { ssid: string; band: string; active: boolean; index: number }[];
+  wan_conns?: { key: string; index: number; type: string; username: string; ip: string; status: string; enabled: boolean | null; service: string }[];
   wan_ip: string;
   pppoe_username: string;
   ssid_24g: string;
