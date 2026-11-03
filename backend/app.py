@@ -348,6 +348,7 @@ def migrate_schema():
     add_col('onus', 'card', 'VARCHAR(20)', "''")
     add_col('onus', 'pon', 'VARCHAR(20)', "''")
     add_col('onus', 'onu_rx_power', 'FLOAT', None)
+    add_col('onus', 'map_locked', 'BOOLEAN', 0)
 
     # ONU Types table - add new columns
     add_col('onu_types', 'max_flow', 'INTEGER', '0')

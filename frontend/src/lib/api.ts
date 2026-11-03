@@ -86,6 +86,9 @@ export const api = {
   onuTr069Reboot: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/reboot`, { method: 'POST' }),
   onuTr069Refresh: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/refresh`, { method: 'POST' }),
   onuTr069SetWifi: (id: number, data: { ssid: string; password?: string; band: string }) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/wifi`, { method: 'POST', body: JSON.stringify(data) }),
+  onuMapLock: (id: number, locked: boolean) => request<{ success: boolean; map_locked: boolean }>(`/api/onu/${id}/map-lock`, { method: 'POST', body: JSON.stringify({ locked }) }),
+  parseMapsLink: (text: string) => request<{ success: boolean; lat?: number; lng?: number; message?: string }>('/api/ftth/parse-maps-link', { method: 'POST', body: JSON.stringify({ text }) }),
+  onuPinsLightweight: () => request<{ success: boolean; pins: OnuPin[] }>('/api/ftth/map/onu-pins'),
   onuTraffic: (id: number) => request<{ success: boolean; traffic: { downstream_kbps: string; upstream_kbps: string } }>(`/api/onu/${id}/traffic`),
   onuGetStatus: (id: number) => request<{ success: boolean; status?: Record<string, unknown>; data?: Record<string, unknown>; message?: string }>(`/api/onu/${id}/get-status`, { method: 'POST' }),
   onuLiveInfo: (id: number) => request(`/api/onu/${id}/live-info`),
@@ -341,6 +344,15 @@ export interface Tr069Params {
   pppoe_username: string;
   ssid_24g: string;
   ssid_5g: string;
+}
+
+export interface OnuPin {
+  id: number;
+  lat: number;
+  lng: number;
+  status: string;
+  name: string;
+  map_locked: boolean;
 }
 
 export interface TrafficPortMeta {
@@ -733,6 +745,7 @@ export interface ONUData {
   customer_phone: string;
   latitude: number | null;
   longitude: number | null;
+  map_locked?: boolean;
   last_seen: string | null;
   last_online: string | null;
   last_offline: string | null;

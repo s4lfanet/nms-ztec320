@@ -84,6 +84,7 @@ def api_onu_detail(onu_id):
             'distance': onu.distance,
             'latitude': onu.latitude,
             'longitude': onu.longitude,
+            'map_locked': bool(onu.map_locked),
             'last_seen': utc_iso(onu.last_seen),
             'last_online': utc_iso(onu.last_online),
             'last_offline': utc_iso(onu.last_offline),
@@ -340,6 +341,10 @@ def update_onu(onu_id):
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
         onu.longitude = float(data['longitude']) if data['longitude'] else None
+    if 'map_locked' in data:
+        if not current_user.has_permission('configure_onu'):
+            return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
+        onu.map_locked = bool(data['map_locked'])
     if 'odp_port_id' in data:
         if not current_user.has_permission('configure_onu'):
             return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403

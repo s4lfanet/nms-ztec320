@@ -1453,6 +1453,7 @@ def ftth_map():
                             'technician': tech_map.get(o.technician_id, '') if o.technician_id else '',
                             'odp_name': odp_name, 'odp_port': odp_port,
                             'customer_name': cust_name, 'customer_phone': cust_phone,
+                            'map_locked': bool(o.map_locked),
                             **_onu_link_fields(o.id)})
     # Build connections (lines) with from_id/to_id for path highlighting
     def _node_latlng(ntype, nid):
@@ -1867,3 +1868,67 @@ def ftth_import():
         i += 1
     db.session.commit()
     return jsonify({'success': True, 'imported': imported})
+
+
+# ─── Fase 4: ONU map pin lock/unlock + Google Maps link parser ───
+
+@bp.route('/api/onu/<int:onu_id>/map-lock', methods=['POST'])
+@login_required
+def onu_map_lock(onu_id):
+    """Lock/unlock an ONU's map pin position."""
+    if not current_user.has_permission('configure_onu'):
+        return jsonify({'success': False, 'message': 'Permission denied: configure_onu'}), 403
+    onu = db.session.get(ONU, onu_id)
+    if not onu:
+        return jsonify({'success': False, 'message': 'ONU not found'}), 404
+    data = request.get_json() or {}
+    onu.map_locked = bool(data.get('locked', True))
+    db.session.commit()
+    log_action('map_lock' if onu.map_locked else 'map_unlock', 'onu',
+               target=str(onu_id), detail=f'locked={onu.map_locked}')
+    return jsonify({'success': True, 'map_locked': onu.map_locked})
+
+
+@bp.route('/api/ftth/parse-maps-link', methods=['POST'])
+@login_required
+def parse_maps_link():
+    """Parse a Google Maps URL or paste-text to extract lat/lng.
+    Accepts: 'https://maps.google.com/?q=-6.2,106.8', 'https://maps.app.goo.gl/...'
+    (server-side can't resolve short links without HTTP follow — client should
+    expand them first), or raw '@-6.2,106.8,15z' coords, or 'lat,lng' text."""
+    import re
+    data = request.get_json() or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'success': False, 'message': 'No text provided'}), 400
+    # Try multiple patterns
+    patterns = [
+        r'@(-?\d+\.?\d*),(-?\d+\.?\d*)',          # @lat,lng
+        r'q=(-?\d+\.?\d*),(-?\d+\.?\d*)',          # ?q=lat,lng
+        r'll=(-?\d+\.?\d*),(-?\d+\.?\d*)',         # ?ll=lat,lng
+        r'center=(-?\d+\.?\d*),(-?\d+\.?\d*)',     # ?center=lat,lng
+        r'(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)',  # raw lat,lng (allow space)
+    ]
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            lat = float(m.group(1))
+            lng = float(m.group(2))
+            if -90 <= lat <= 90 and -180 <= lng <= 180:
+                return jsonify({'success': True, 'lat': lat, 'lng': lng})
+    return jsonify({'success': False, 'message': 'Tidak dapat menemukan koordinat. Format: lat,lng atau URL Google Maps.'})
+
+
+@bp.route('/api/ftth/map/onu-pins', methods=['GET'])
+@login_required
+def onu_pins_lightweight():
+    """Lightweight payload — only ONU pins for map rendering (no OLT/ODP/ODC).
+    Used when map needs to re-render pins frequently without full /api/ftth/map."""
+    pins = []
+    for o in ONU.query.filter(ONU.latitude.isnot(None), ONU.longitude.isnot(None)).all():
+        pins.append({
+            'id': o.id, 'lat': o.latitude, 'lng': o.longitude,
+            'status': o.status, 'name': o.name or o.serial_number or o.onu_id_str,
+            'map_locked': bool(o.map_locked),
+        })
+    return jsonify({'success': True, 'pins': pins})

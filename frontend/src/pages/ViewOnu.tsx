@@ -8,7 +8,7 @@ import {
   Wifi, Clock, RefreshCw, RotateCcw, Trash2, Ban, Eraser,
   FileText, Radio, Globe, Shield, Key, Plug, Database, Layers,
   Edit3, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff, ChevronDown, Replace,
-  Cable, Cpu, Server, GitMerge, Box, Split, Home, AlertTriangle, ChevronRight, MapPin,
+  Cable, Cpu, Server, GitMerge, Box, Split, Home, AlertTriangle, ChevronRight, MapPin, Lock, Unlock,
 } from 'lucide-react';
 import { LocationPicker } from '../components/LocationPicker';
 import { useState, useEffect, useRef } from 'react';
@@ -696,6 +696,8 @@ export function ViewOnu() {
         <LocationEditModal
           latitude={onu.latitude} longitude={onu.longitude}
           loading={updateFieldMut.isPending}
+          mapLocked={onu.map_locked}
+          onToggleLock={async () => { const r = await api.onuMapLock(onuId, !onu.map_locked); if (r.success) { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); toast.success(r.map_locked ? 'Pin dikunci' : 'Pin dibuka'); } }}
           onSave={(lat, lng) => updateFieldMut.mutate({ field: 'location', value: `${lat},${lng}` })}
           onClose={() => setModal(null)}
         />
@@ -1715,16 +1717,32 @@ function Skeleton() {
   return (<div className="space-y-5 animate-pulse"><div className="h-5 w-48 bg-glass rounded-lg" /><div className="glass-card h-64" /><div className="flex gap-2">{[...Array(5)].map((_, i) => <div key={i} className="h-9 w-24 bg-glass rounded-xl" />)}</div><div className="glass-card h-48" /><div className="glass-card h-48" /></div>);
 }
 
-function LocationEditModal({ latitude, longitude, onSave, onClose, loading }: {
+function LocationEditModal({ latitude, longitude, onSave, onClose, loading, mapLocked, onToggleLock }: {
   latitude: number | null; longitude: number | null;
   onSave: (lat: string, lng: string) => void; onClose: () => void; loading: boolean;
+  mapLocked?: boolean; onToggleLock?: () => void;
 }) {
   const [coords, setCoords] = useState({
     lat: latitude != null ? String(latitude) : '',
     lng: longitude != null ? String(longitude) : '',
   });
+  const [pasteText, setPasteText] = useState('');
+  const [parseError, setParseError] = useState('');
   const valid = coords.lat !== '' && coords.lng !== ''
     && !isNaN(parseFloat(coords.lat)) && !isNaN(parseFloat(coords.lng));
+  const handleParseLink = async () => {
+    if (!pasteText.trim()) return;
+    setParseError('');
+    try {
+      const r = await api.parseMapsLink(pasteText);
+      if (r.success && r.lat != null && r.lng != null) {
+        setCoords({ lat: r.lat.toFixed(6), lng: r.lng.toFixed(6) });
+        setPasteText('');
+      } else {
+        setParseError(r.message || 'Gagal parse');
+      }
+    } catch { setParseError('Gagal parse'); }
+  };
   return (
     <Modal open onClose={onClose} icon={<MapPin size={16} />} title="ONU Location" size="md">
       <LocationPicker
@@ -1732,6 +1750,37 @@ function LocationEditModal({ latitude, longitude, onSave, onClose, loading }: {
         longitude={coords.lng}
         onChange={(lat, lng) => setCoords({ lat, lng })}
       />
+      {/* Google Maps link paste (Fase 4) */}
+      <div className="mt-3 pt-3 border-t border-brd">
+        <div className="label-sm mb-1.5">Tempel link Google Maps</div>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={pasteText}
+            onChange={e => setPasteText(e.target.value)}
+            placeholder="https://maps.app.goo.gl/... atau -6.2,106.8"
+            className="flex-1 px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none"
+          />
+          <Button variant="ghost" onClick={handleParseLink} disabled={!pasteText.trim()}>Parse</Button>
+        </div>
+        {parseError && <div className="text-xs text-danger mt-1">{parseError}</div>}
+      </div>
+      {/* Lock toggle (Fase 4) */}
+      {onToggleLock && (
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            onClick={onToggleLock}
+            className={cn('px-3 py-1.5 text-xs rounded font-medium transition-colors flex items-center gap-1.5',
+              mapLocked ? 'bg-warning/20 text-warning' : 'bg-glass text-tx3 hover:text-tx1')}
+          >
+            {mapLocked ? <Lock size={12} /> : <Unlock size={12} />}
+            {mapLocked ? 'Pin Terkunci' : 'Pin Terbuka'}
+          </button>
+          <span className="text-[10px] text-tx3">
+            {mapLocked ? 'Koordinat tidak akan ditimpa oleh sync/jitter' : 'Koordinat bisa ditimpa oleh sync/jitter ODP'}
+          </span>
+        </div>
+      )}
       <p className="text-xs text-tx3 mt-3">Koordinat ini menentukan posisi marker pelanggan di peta FTTH.</p>
       <div className="flex justify-end gap-2 mt-4">
         <Button variant="ghost" onClick={onClose}>Batal</Button>

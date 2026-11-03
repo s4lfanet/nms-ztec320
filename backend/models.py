@@ -265,6 +265,7 @@ class ONU(db.Model):
     technician_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
+    map_locked = db.Column(db.Boolean, default=False)  # Fase 4 — locked pin, won't be auto-jittered/overwritten
     wifi_config = db.Column(db.Text, default='')  # JSON: {ssids: [{ssid_num, ssid_name, ssid_auth_type, ssid_password, wifi_mode, wifi_status, vlan}]}
     olt = db.relationship('OLT', backref=db.backref('onus', lazy=True))
     technician = db.relationship('User', foreign_keys=[technician_id], backref='assigned_onus')
