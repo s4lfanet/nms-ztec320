@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-03 — Fase 12: Deploy Docker
+
+#### Ditambahkan
+- **`docker-compose.yml`** — stack lengkap: `app` (Flask+FastAPI via `run_server.py`, python:3.12-slim), `postgres` 16, `redis` 7, `wa_gateway` (node:20-slim, Baileys), `nginx` 1.27 (serve `frontend/dist` + proxy `/api`→:5000, `/ws`→:8765 dengan Upgrade headers).
+- **`Dockerfile`** (app) + **`wa_gateway/Dockerfile`** — healthcheck per service (`/api/public/branding`, `pg_isready`, `/health`).
+- **`deploy/docker/nginx.conf`** — SPA fallback, immutable `/assets` cache, WS proxy tanpa buffering.
+- **`.env.docker.example`** (di-whitelist di .gitignore), **`start.sh`/`start.bat`** (auto-generate secrets), **`docs/DOCKER.md`** — volume persisten: `nms_pgdata`, `nms_instance` (SQLite fallback + backup + arsip audit), `wa_session`. Terinspirasi KusumaVision NMS (MIT).
+
 ### 2026-11-03 — Fase 11: Audit Log Immutable (tamper-evident)
 
 #### Ditambahkan

@@ -55,6 +55,7 @@ instance/
 .env
 .env.*
 !.env.example
+!.env.docker.example
 
 # OS files
 .DS_Store
