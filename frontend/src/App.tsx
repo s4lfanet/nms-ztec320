@@ -33,6 +33,7 @@ const OnuWizard = lazy(() => import('./pages/OnuWizard').then(m => ({ default: m
 const SystemUpdate = lazy(() => import('./pages/SystemUpdate').then(m => ({ default: m.SystemUpdate })));
 const OltLogs = lazy(() => import('./pages/OltLogs').then(m => ({ default: m.OltLogs })));
 const AutoProvision = lazy(() => import('./pages/AutoProvision').then(m => ({ default: m.AutoProvision })));
+const Reports = lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
 
 const routePermissions: Record<string, string> = {
   '/dashboard/onus/add': 'add_onu',
@@ -199,6 +200,7 @@ export default function App() {
         <Route path="templates/tr069-profile" element={<Tr069Profile />} />
         <Route path="traffic" element={<Traffic />} />
         <Route path="logs" element={<ActionLogs />} />
+        <Route path="reports" element={<Reports />} />
         <Route path="guide" element={<GuidePage />} />
         <Route path="settings/update" element={<SystemUpdate />} />
         <Route path="olt-logs" element={<OltLogs />} />

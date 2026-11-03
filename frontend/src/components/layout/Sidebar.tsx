@@ -63,6 +63,7 @@ const navItems: NavItem[] = [
   { label: 'Panduan', icon: <BookOpen size={20} />, path: '/dashboard/guide' },
   { label: 'Activity Log', icon: <ScrollText size={20} />, path: '/dashboard/logs', permission: 'manage_users' },
   { label: 'OLT Logs', icon: <MonitorSmartphone size={20} />, path: '/dashboard/olt-logs', permission: 'view_dashboard' },
+  { label: 'Laporan', icon: <FileText size={20} />, path: '/dashboard/reports', permission: 'view_onus' },
 ];
 
 function buildVisibleItems(user: { is_super_admin?: boolean; permissions?: string[] } | null): NavItem[] {

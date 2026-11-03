@@ -52,6 +52,7 @@ from routes_auto_provision import bp as auto_provision_bp
 from routes_mikrotik import bp as mikrotik_bp
 from routes_genieacs import bp as genieacs_bp
 from routes_api_v1 import bp as api_v1_bp
+from routes_reports import bp as reports_bp
 from metrics_service import (
     metrics_response, track_http_request, track_snmp_poll, track_sync,
     update_olt_gauge, update_onu_gauge, track_cache_hit, track_cache_miss,
@@ -91,6 +92,7 @@ app.register_blueprint(auto_provision_bp)
 app.register_blueprint(mikrotik_bp)
 app.register_blueprint(genieacs_bp)
 app.register_blueprint(api_v1_bp)
+app.register_blueprint(reports_bp)
 
 
 @app.before_request
