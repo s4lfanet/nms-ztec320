@@ -91,6 +91,8 @@ export function ViewOnu() {
       }
       qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
       qc.invalidateQueries({ queryKey: ['all-onus'] });
+      qc.invalidateQueries({ queryKey: ['onu-tr069', onuId] });
+      qc.invalidateQueries({ queryKey: ['onu-rx-history', onuId] });
     }
   }, [liveData, onuId, qc]);
 
