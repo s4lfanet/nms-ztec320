@@ -408,6 +408,9 @@ def migrate_schema():
     # Fase 11 — tamper-evident audit chain
     add_col('action_logs', 'prev_hash', 'VARCHAR(64)', "''")
     add_col('action_logs', 'hash', 'VARCHAR(64)', "''")
+
+    # Fase 14 — Web Push channel toggle on alert rules
+    add_col('alert_rules', 'notify_push', 'BOOLEAN', '0')
     try:
         from audit_chain import backfill_missing_hashes, create_immutable_trigger
         backfill_missing_hashes()

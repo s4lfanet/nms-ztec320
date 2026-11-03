@@ -12,6 +12,8 @@ import {
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, Input, Select, Tabs, EmptyState } from '../components/ui';
+import { api } from '../lib/api';
+import { getPushState, enablePush, disablePush } from '../lib/push';
 
 type SectionKey = 'whatsapp' | 'rules' | 'telegram' | 'whatsapp_native' | 'cronjob';
 
@@ -218,6 +220,7 @@ function AlertRulesSection() {
 
   return (
     <div className="space-y-4">
+      <PushDeviceCard />
       {rules.length === 0 && (
         <EmptyState
           icon={Bell}
@@ -229,6 +232,80 @@ function AlertRulesSection() {
         <RuleCard key={String(rule.id)} rule={rule} onSave={(r) => updateMut.mutate(r)} saving={updateMut.isPending} />
       ))}
     </div>
+  );
+}
+
+function PushDeviceCard() {
+  const [state, setState] = useState<string>('unsubscribed');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { getPushState().then(setState); }, []);
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      if (state === 'subscribed') {
+        await disablePush();
+        setState('unsubscribed');
+        toast.success('Web Push dinonaktifkan di perangkat ini');
+      } else {
+        const ok = await enablePush();
+        setState(ok ? 'subscribed' : 'unsubscribed');
+        if (ok) toast.success('Web Push aktif — perangkat ini akan menerima alert');
+        else toast.error('Izin notifikasi ditolak browser');
+      }
+    } catch (e) {
+      toast.error((e as Error).message || 'Gagal mengatur Web Push');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendTest = async () => {
+    setBusy(true);
+    try {
+      await api.pushTest();
+      toast.success('Test push terkirim — cek notifikasi di perangkat ini');
+    } catch (e) {
+      toast.error((e as Error).message || 'Test push gagal');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card
+      icon={<Smartphone size={16} />}
+      title="Web Push (Browser ini)"
+      action={
+        state === 'subscribed' ? (
+          <span className="badge badge-success inline-flex items-center gap-1"><CheckCircle2 size={12} /> Aktif</span>
+        ) : state === 'unsupported' ? (
+          <span className="badge badge-neutral">Tidak didukung</span>
+        ) : state === 'denied' ? (
+          <span className="badge badge-danger">Diblokir browser</span>
+        ) : (
+          <span className="badge badge-neutral">Nonaktif</span>
+        )
+      }
+    >
+      <p className="text-xs text-tx3 mb-3">Terima alert sebagai notifikasi sistem di perangkat ini — walau aplikasi sedang tidak dibuka. Nyalakan juga toggle 'Web Push' di aturan alert.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        {state !== 'unsupported' && (
+          <Button variant="primary" icon={<Bell size={14} />} onClick={toggle} loading={busy}>
+            {state === 'subscribed' ? 'Nonaktifkan' : 'Aktifkan Web Push'}
+          </Button>
+        )}
+        {state === 'subscribed' && (
+          <Button variant="secondary" icon={<Send size={14} />} onClick={sendTest} loading={busy}>
+            Kirim Test
+          </Button>
+        )}
+        {state === 'denied' && (
+          <p className="text-xs text-tx3">Buka pengaturan situs di browser (ikon gembok di address bar) → izinkan Notifications → refresh halaman.</p>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -306,6 +383,7 @@ function RuleCard({
             {Boolean(form.notify_whatsapp) && <span className="badge badge-success">WA Gateway</span>}
             {Boolean(form.notify_telegram) && <span className="badge badge-accent">Telegram</span>}
             {Boolean(form.notify_whatsapp_native) && <span className="badge badge-neutral">WA Native</span>}
+            {Boolean(form.notify_push) && <span className="badge badge-warning">Web Push</span>}
           </div>
         </div>
       ) : (
@@ -428,6 +506,7 @@ function RuleCard({
                   { key: 'notify_whatsapp', label: 'WA Gateway' },
                   { key: 'notify_telegram', label: 'Telegram' },
                   { key: 'notify_whatsapp_native', label: 'WA Native' },
+                  { key: 'notify_push', label: 'Web Push' },
                 ].map(ch => (
                   <button
                     key={ch.key}

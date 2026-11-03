@@ -482,6 +482,7 @@ def get_alert_rules():
         'olt_temp_threshold': r.olt_temp_threshold,
         'notify_bell': r.notify_bell, 'notify_telegram': r.notify_telegram,
         'notify_whatsapp': r.notify_whatsapp, 'notify_whatsapp_native': r.notify_whatsapp_native,
+        'notify_push': getattr(r, 'notify_push', False),
         'target_roles': r.target_roles or '',
     } for r in rules]})
 
@@ -500,7 +501,7 @@ def update_alert_rule(rule_id):
                   'check_olt_temperature', 'olt_cpu_threshold', 'olt_memory_threshold',
                   'olt_temp_threshold',
                   'notify_bell', 'notify_telegram', 'notify_whatsapp',
-                  'notify_whatsapp_native', 'target_roles']:
+                  'notify_whatsapp_native', 'notify_push', 'target_roles']:
         if field in data:
             setattr(rule, field, data[field])
     db.session.commit()
@@ -657,3 +658,67 @@ def test_whatsapp():
     if ok:
         return jsonify({'success': True, 'message': f'Pesan test berhasil dikirim! ({detail})'})
     return jsonify({'success': False, 'message': f'Gagal mengirim pesan test: {detail}'})
+
+
+# ─── Web Push (VAPID) — Fase 14 ───
+
+@bp.route('/api/push/vapid-key', methods=['GET'])
+@login_required
+def get_push_vapid_key():
+    """Return the VAPID public key (applicationServerKey) for pushManager.subscribe."""
+    from push_service import get_vapid_public_key
+    key = get_vapid_public_key()
+    if not key:
+        return jsonify({'success': False, 'message': 'VAPID key unavailable'}), 500
+    return jsonify({'success': True, 'public_key': key})
+
+
+@bp.route('/api/push/subscribe', methods=['POST'])
+@login_required
+def push_subscribe():
+    """Register/refresh a browser push subscription for the current user."""
+    from models import PushSubscription
+    data = request.get_json(silent=True) or {}
+    endpoint = (data.get('endpoint') or '').strip()
+    keys = data.get('keys') or {}
+    if not endpoint.startswith('https://') or not keys.get('p256dh') or not keys.get('auth'):
+        return jsonify({'success': False, 'message': 'Invalid subscription payload'}), 400
+    sub = PushSubscription.query.filter_by(endpoint=endpoint).first()
+    if not sub:
+        sub = PushSubscription(endpoint=endpoint)
+        db.session.add(sub)
+    sub.user_id = current_user.id
+    sub.p256dh = str(keys['p256dh'])[:200]
+    sub.auth = str(keys['auth'])[:100]
+    sub.user_agent = (request.user_agent.string or '')[:300]
+    sub.last_seen_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@bp.route('/api/push/unsubscribe', methods=['POST'])
+@login_required
+def push_unsubscribe():
+    """Remove a browser push subscription."""
+    from models import PushSubscription
+    endpoint = ((request.get_json(silent=True) or {}).get('endpoint') or '').strip()
+    if endpoint:
+        PushSubscription.query.filter_by(endpoint=endpoint, user_id=current_user.id).delete()
+        db.session.commit()
+    return jsonify({'success': True})
+
+
+@bp.route('/api/push/test', methods=['POST'])
+@login_required
+def push_test():
+    """Send a test push notification to the current user's subscriptions."""
+    from push_service import send_push_to_all
+    result = send_push_to_all({
+        'title': 'Salfanet NMS — Test Push',
+        'body': 'Notifikasi Web Push berhasil! Anda akan menerima alert lewat channel ini.',
+        'url': '/dashboard',
+        'tag': 'push-test',
+    }, user_id=current_user.id)
+    if result['sent'] > 0:
+        return jsonify({'success': True, **result})
+    return jsonify({'success': False, 'message': 'No subscription or send failed', **result}), 400

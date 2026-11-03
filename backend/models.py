@@ -626,6 +626,7 @@ class AlertRule(db.Model):
     notify_telegram = db.Column(db.Boolean, default=False)
     notify_whatsapp = db.Column(db.Boolean, default=False)
     notify_whatsapp_native = db.Column(db.Boolean, default=False)
+    notify_push = db.Column(db.Boolean, default=False)  # Fase 14 — Web Push (VAPID)
     # Target roles (empty = all)
     target_roles = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
@@ -1062,6 +1063,19 @@ class ActionLog(db.Model):
         db.Index('ix_action_logs_user_id', 'user_id'),
         db.Index('ix_action_logs_category', 'category'),
     )
+
+
+class PushSubscription(db.Model):
+    """Web Push (VAPID) subscription per user/browser — Fase 14."""
+    __tablename__ = 'push_subscriptions'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=True)
+    endpoint = db.Column(db.Text, nullable=False, unique=True)
+    p256dh = db.Column(db.String(200), default='')
+    auth = db.Column(db.String(100), default='')
+    user_agent = db.Column(db.String(300), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    last_seen_at = db.Column(db.DateTime, nullable=True)
 
 
 class MikrotikDevice(db.Model):

@@ -65,7 +65,7 @@ def backfill_missing_hashes(batch: int = 2000) -> int:
     Idempotent — already-hashed rows are skipped. Runs inside the caller's
     app context. Returns number of rows stamped.
     """
-    from extensions import db
+    from models import db
     from models import ActionLog
 
     stamped = 0
@@ -140,7 +140,7 @@ def archive_action_logs(older_than_days: int = 90) -> dict:
     surviving chain still verifies from the archive tip. PostgreSQL's
     append-only trigger is dropped for the delete and recreated after.
     """
-    from extensions import db
+    from models import db
     from models import ActionLog, SystemConfig
     from sqlalchemy import text as sqla_text
 
@@ -193,7 +193,7 @@ def create_immutable_trigger() -> bool:
     Returns True when the trigger now exists (already present or just
     created), False on non-PostgreSQL dialects (enforcement stays app-level).
     """
-    from extensions import db
+    from models import db
     from sqlalchemy import text as sqla_text
 
     if db.engine.dialect.name != 'postgresql':

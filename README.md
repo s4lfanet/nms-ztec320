@@ -45,6 +45,7 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - **Per-channel notification toggles** — setiap alert rule memiliki toggle independen untuk In-App Bell, Telegram, WhatsApp, dan WA Native. Alert engine hanya mengirim ke channel yang di-enable di rule
 - Technician alert sending (per-user phone number)
 - In-app bell notifications dengan dedup via AlertHistory
+- **Web Push (PWA/VAPID)** — notifikasi native browser/HP tanpa app store: subscribe per user dari Alert Settings, toggle `notify_push` per rule, deep-link ke ONU/OLT saat notifikasi diklik, subscription expired otomatis dibersihkan
 - **Debounce 120 detik** — alert hanya fires setelah 2x konfirmasi deteksi (mencegah false alert dari transient flap)
 - **Auto-resolve** — notifikasi lama (offline/dyinggasp/los) otomatis ditandai RESOLVED saat ONU/OLT kembali online
 - **Notification lifecycle** — Active → Resolved → Auto-cleanup (>7 hari read notifs dihapus otomatis)

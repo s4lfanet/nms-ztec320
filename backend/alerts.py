@@ -1560,6 +1560,16 @@ def _send_external_alerts(alerts, rule=None):
         else:
             logger.info("[ALERT] WA Native: skipped (no valid config)")
 
+    if rule and not rule.notify_push:
+        logger.info("[ALERT] WebPush: skipped (disabled in rule)")
+    else:
+        try:
+            from push_service import send_push_alerts
+            r = send_push_alerts(alerts)
+            logger.info(f"[ALERT] WebPush: sent={r['sent']} failed={r['failed']} removed={r['removed']}")
+        except Exception as e:
+            logger.warning(f"[ALERT] WebPush failed: {e}")
+
     # Send to technicians with receive_alerts permission and phone number
     _send_technician_alerts(alerts)
 

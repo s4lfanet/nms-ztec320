@@ -264,6 +264,14 @@ export const api = {
   actionLogsVerify: () => request<{ verified: boolean; checked: number; first_bad_id: number | null; archived: boolean; detail: string }>('/api/action-logs/verify'),
   actionLogsArchive: (days: number) => request<{ success: boolean; archived: number; file: string | null; detail: string }>('/api/action-logs/archive', { method: 'POST', body: JSON.stringify({ days }) }),
 
+  // Web Push (VAPID) — Fase 14
+  pushVapidKey: () => request<{ success: boolean; public_key: string }>('/api/push/vapid-key'),
+  pushSubscribe: (sub: { endpoint: string; keys: Record<string, string> }) =>
+    request<{ success: boolean }>('/api/push/subscribe', { method: 'POST', body: JSON.stringify(sub) }),
+  pushUnsubscribe: (endpoint: string) =>
+    request<{ success: boolean }>('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+  pushTest: () => request<{ success: boolean; sent: number }>('/api/push/test', { method: 'POST' }),
+
   // Notifications (bell alerts)
   notifications: (params?: { limit?: number; type?: 'alarm' | 'unregister' | 'general' }) => {
     const qs = new URLSearchParams();

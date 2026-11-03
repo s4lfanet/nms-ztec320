@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-03 — Fase 14: Web Push PWA (channel notifikasi VAPID)
+
+#### Ditambahkan
+- **`push_service.py`** — VAPID keypair digenerate sekali via `cryptography` (P-256), disimpan di SystemConfig (`vapid_public_key` plain, `vapid_private_key` terenkripsi `encrypt_field`). `send_push_to_all` membersihkan subscription expired (HTTP 404/410 → hapus row). `send_push_alerts` memakai deep-link `_deep_link_url` (Fase 2).
+- **`push_subscriptions`** — tabel baru: subscription per user/browser (endpoint unik, p256dh, auth, user_agent). **`alert_rules.notify_push`** — toggle channel ke-5 mengikuti pola per-channel yang ada.
+- **Endpoint** `/api/push/vapid-key` `subscribe` `unsubscribe` `test` (login_required); `notify_push` masuk serializer + whitelist PUT alert-rules; dipanggil dari `alerts._send_external_alerts` sesuai flag rule.
+- **Frontend** — `public/push-sw.js` (push + notificationclick → focus/deep-link navigate) di-inject ke SW via `workbox.importScripts`; `lib/push.ts` helper subscribe; kartu "Web Push (Browser ini)" + toggle `Web Push` + badge di AlertSettings. 6 test baru (`test_push.py`).
+- **Fix** — `push_service`/`audit_chain` sempat pakai `extensions.db`; db canonical adalah `models.db` (`app.py` → `db.init_app`). Migrasi `h8a9b0c1d2e3`; dep `pywebpush`. Terinspirasi KusumaVision NMS (MIT).
+
 ### 2026-11-03 — Fase 12: Deploy Docker
 
 #### Ditambahkan
