@@ -76,8 +76,27 @@ def fetch_devices():
             vendor = str(props.get('InternetGatewayDevice.DeviceInfo.Manufacturer') or
                          props.get('Manufacturer') or '')
             last_inform = props.get('LastInform') or props.get('_lastInform')
+            # Fallback: parse identity dari _id "OUI-ProductClass-SerialHex".
+            # Segmen serial 16-hex: 4 byte ASCII + 4 byte hex → '4857544390D5ADAA' = 'HWTC90D5ADAA'.
+            did = d.get('_id', '')
+            if not serial and did:
+                seg = did.rsplit('-', 1)[-1]
+                if re.fullmatch(r'[0-9A-Fa-f]{16}', seg):
+                    raw = bytes.fromhex(seg)
+                    if all(32 <= b < 127 for b in raw[:4]):
+                        serial = raw[:4].decode('ascii') + raw[4:].hex().upper()
+                    else:
+                        serial = seg
+                else:
+                    serial = seg
+            if not model and did:
+                parts = did.split('-')
+                if len(parts) >= 2:
+                    model = parts[1]
+            if not vendor and did:
+                vendor = did.split('-', 1)[0]
             devices.append({
-                '_id': d.get('_id', ''),
+                '_id': did,
                 'serial': serial,
                 'mac': mac,
                 'model': model,
