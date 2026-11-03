@@ -21,6 +21,7 @@ class StandaloneEponAdapter(BaseOLTAdapter):
     vendor = 'standalone_epon'
     supported_models = []
     cli_protocol = 'telnet'
+    pon_port_prefix = 'epon-olt_1/1/'
 
     def _default_pon_count(self) -> int:
         model = (self.olt.model or '').upper()
@@ -280,7 +281,7 @@ class StandaloneEponAdapter(BaseOLTAdapter):
                 for pnum in discovered_ports:
                     pon_ports.append({
                         'port_number': pnum,
-                        'port_name': f'epon-olt_1/1/{pnum}',
+                        'port_name': f'{self.pon_port_prefix}{pnum}',
                         'admin_status': 'up',
                         'name': f'PON 0/{pnum}',
                         'description': '',

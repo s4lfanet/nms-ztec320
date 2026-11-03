@@ -15,6 +15,7 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Aksi CLI: reboot, reset, delete, clear config, enable/disable, restore factory, restore WiFi, **replace ONU (swap SN/MAC)**
 - **SSH support**: Koneksi SSH ke ZTE C320 (paramiko dengan legacy algorithm patch untuk ssh-rsa). Pilih SSH (secure) atau Telnet (faster) per OLT
 - **SNMP-only mode**: OLT tanpa CLI credentials tetap berfungsi untuk sync dasar (SNMP-based ONU collection, profile/VLAN collection, seed default ONU types)
+- **C-Data GPON support (monitoring)**: Adapter khusus FD1601S/1602S/1608S/1216S/1616GS — ONU name/SN/status/RX/jarak via tabel NSCRTV `17409.2.8.4` (jalur terverifikasi; `sysObjectID` tidak dipakai karena GPON ikut melapor `17409`). Dispatch otomatis dari string model; C-Data EPON tetap lewat adapter generik. Provisioning C-Data belum tersedia
 - **SNMP ONU registration**: Registrasi ONU via SNMP SET (createAndGo) ke onuMgmtTable, dengan SNMP+Telnet hybrid untuk service config
 - Auto-sync setelah aksi ONU (reboot/delete/clear-config)
 - **Non-ZTE ONU reboot**: FiberHome/Huawei ONUs menggunakan `shutdown`/`no shutdown` fallback (OMCI reboot tidak direspons). Deteksi vendor via SN prefix

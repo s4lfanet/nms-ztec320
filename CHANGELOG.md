@@ -4,6 +4,17 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-03 — Fase 13 (Tahap 1): Adapter C-Data GPON — monitoring SNMP read-only
+
+#### Ditambahkan
+- **`olt_adapters/cdata_gpon_adapter.py`** — `CDataGponAdapter` membaca ONU lewat tabel NSCRTV `17409.2.8.4` (satu-satunya jalur terverifikasi konsisten di FD1608S V3.3.86 & FD1601S V3.2.5): nama `gpon F/S/P onu N <label>` (Hex-STRING ber-NUL di-decode), serial 8-byte `4 ASCII + 4 hex` → `ZTEG1A2B3C4D`, vendor/equipment ID → `actual_type`, status (`1` up; down → map `.103` LOS/dying-gasp ke status Salfanet), jarak, Rx centi-dBm (`-1` dibuang), MAC sebagai fallback serial.
+- **`CDataAdapter`** — dispatch vendor `cdata`/`c-data` berdasar string model (GPON: `fd16*`/`gpon`/`fd1216`/`fd1616` → adapter baru; selain itu → `StandaloneEponAdapter` EPON). `sysObjectID` sengaja tidak dipakai — FD1608S GPON melapor `17409` sama seperti EPON (dokumentasi lapangan KusumaVision).
+- Registry: `cdata-gpon`/`cdata_gpon`/`cdata-epon` ikut terdaftar; `pon_port_prefix` direfactor jadi class attr (`gpon-olt_1/1/` untuk GPON).
+- 13 test baru (`test_cdata.py`): parser name/serial/centi-dBm, merge tabel dengan walk mock, dispatch model→adapter.
+
+#### Catatan
+- **Provisioning/CLI write C-Data sengaja TIDAK dikerjakan** — menunggu output CLI asli dari perangkat user (sesuai aturan roadmap). Referensi OID: `docs/SMARTOLT_CDATA_GUIDE.md` + `docs/handbook/17-cdata-gpon-snmp-walk.md` di KusumaVision NMS (MIT).
+
 ### 2026-11-03 — Fase 14: Web Push PWA (channel notifikasi VAPID)
 
 #### Ditambahkan
