@@ -14,7 +14,7 @@ import 'xterm/css/xterm.css';
 export function Terminal() {
   const hasPerm = useHasPerm();
   const canUse = hasPerm('olt_terminal');
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const oltId = parseInt(params.get('olt') || '0');
   const [proto, setProto] = useState<'telnet' | 'ssh'>('telnet');
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'closed'>('idle');
@@ -92,10 +92,8 @@ export function Terminal() {
     <PageContainer>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold flex items-center gap-2"><TermIcon size={20} className="text-accent" /> Terminal OLT</h1>
-        <select value={oltId} onChange={e => {
-          const id = parseInt(e.target.value);
-          window.history.replaceState(null, '', `?olt=${id}`);
-        }} className="px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none">
+        <select value={oltId} onChange={e => setParams({ olt: e.target.value }, { replace: true })}
+          className="px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none">
           <option value={0}>— pilih OLT —</option>
           {Array.isArray(oltList) && oltList.map((o: any) => (
             <option key={o.id} value={o.id}>{o.name} ({o.ip_address})</option>
