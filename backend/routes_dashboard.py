@@ -524,3 +524,82 @@ def all_onus_export():
     resp = Response(si.getvalue(), mimetype='text/csv')
     resp.headers['Content-Disposition'] = 'attachment; filename=all_onus.csv'
     return resp
+
+
+# ─── Fase 9: Global search (Ctrl+K) ───
+
+@bp.route('/api/search', methods=['GET'])
+@login_required
+def global_search():
+    """Global search across ONU, OLT, ODP, ODC, OTB, users.
+    ?q=<term> → grouped results, max 5 per type. Access-controlled:
+    non-super-admin sees only their assigned OLTs' resources."""
+    from sqlalchemy import or_
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return jsonify({'success': True, 'results': {}})
+    like = f'%{q}%'
+    per = 5
+
+    # OLT access control
+    if current_user.is_super_admin:
+        olt_ids = None
+    else:
+        olt_ids = [o.id for o in OLT.query.filter_by(technician_id=current_user.id).all()]
+
+    def _olt_filter(query):
+        if olt_ids is not None:
+            return query.filter(OLT.id.in_(olt_ids))
+        return query
+
+    results = {}
+
+    # OLTs
+    olts = _olt_filter(OLT.query).filter(
+        or_(OLT.name.ilike(like), OLT.ip_address.ilike(like), OLT.vendor.ilike(like))
+    ).limit(per).all()
+    if olts:
+        results['olts'] = [{'id': o.id, 'name': o.name, 'ip': o.ip_address,
+                            'vendor': o.vendor or '', 'type': 'olt'} for o in olts]
+
+    # ONUs (name, serial, pppoe, onu_id_str)
+    q_onu = ONU.query
+    if olt_ids is not None:
+        q_onu = q_onu.filter(ONU.olt_id.in_(olt_ids))
+    onus = q_onu.filter(or_(
+        ONU.name.ilike(like), ONU.serial_number.ilike(like),
+        ONU.pppoe.ilike(like), ONU.onu_id_str.ilike(like),
+        ONU.description.ilike(like),
+    )).limit(per).all()
+    if onus:
+        olt_map = {o.id: o.name for o in OLT.query.all()}
+        results['onus'] = [{'id': o.id, 'name': o.name or o.serial_number or o.onu_id_str,
+                            'serial': o.serial_number or '', 'status': o.status,
+                            'olt': olt_map.get(o.olt_id, ''), 'type': 'onu'} for o in onus]
+
+    # ODPs
+    odps = FTTHODP.query.filter(or_(FTTHODP.name.ilike(like), FTTHODP.location.ilike(like))).limit(per).all()
+    if odps:
+        results['odps'] = [{'id': o.id, 'name': o.name, 'location': o.location or '',
+                            'type': 'odp'} for o in odps]
+    # ODCs
+    odcs = FTTHODC.query.filter(or_(FTTHODC.name.ilike(like), FTTHODC.location.ilike(like))).limit(per).all()
+    if odcs:
+        results['odcs'] = [{'id': o.id, 'name': o.name, 'location': o.location or '',
+                            'type': 'odc'} for o in odcs]
+    # OTBs
+    otbs = FTTHOTB.query.filter(or_(FTTHOTB.name.ilike(like), FTTHOTB.location.ilike(like))).limit(per).all()
+    if otbs:
+        results['otbs'] = [{'id': o.id, 'name': o.name, 'location': o.location or '',
+                            'type': 'otb'} for o in otbs]
+
+    # Users (super admin only)
+    if current_user.is_super_admin:
+        users = User.query.filter(
+            or_(User.username.ilike(like), User.full_name.ilike(like))
+        ).limit(per).all()
+        if users:
+            results['users'] = [{'id': u.id, 'name': u.full_name or u.username,
+                                 'username': u.username, 'type': 'user'} for u in users]
+
+    return jsonify({'success': True, 'results': results})

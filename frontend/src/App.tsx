@@ -2,6 +2,7 @@ import { useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './stores/auth';
 import { AppShell } from './components/layout/AppShell';
+import { SearchPalette } from './components/SearchPalette';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Login } from './pages/Login';
 import { setSystemTimezone } from './lib/utils';
@@ -171,6 +172,7 @@ export default function App() {
         element={
           <ProtectedRoute>
             <AppShell />
+            <SearchPalette />
           </ProtectedRoute>
         }
       >
