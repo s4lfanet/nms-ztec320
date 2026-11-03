@@ -5,9 +5,10 @@ import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import {
   Eye, EyeOff, Monitor, Smartphone, Save, ArrowUp, ArrowDown,
-  RotateCcw, Signal, AlertTriangle, CheckCircle, AlertCircle, Palette, Plus, Trash2, Globe, Clock
+  RotateCcw, Signal, AlertTriangle, CheckCircle, AlertCircle, Palette, Plus, Trash2, Globe, Clock, Key
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
+import { useHasPerm } from '../hooks/useHasPerm';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, Select } from '../components/ui';
 
@@ -38,7 +39,7 @@ function getCellValue(key: string, row: typeof PREVIEW_DATA[0]) {
 
 export function Customization() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'desktop' | 'mobile' | 'signal' | 'rxcolors' | 'timezone'>('desktop');
+  const [activeTab, setActiveTab] = useState<'desktop' | 'mobile' | 'signal' | 'rxcolors' | 'timezone' | 'tokens'>('desktop');
   const [localColumns, setLocalColumns] = useState<Column[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -139,6 +140,11 @@ export function Customization() {
             className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
               activeTab === 'timezone' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
             <Clock size={16} /> Timezone
+          </button>
+          <button onClick={() => setActiveTab('tokens')}
+            className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
+              activeTab === 'tokens' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
+            <Key size={16} /> API Tokens
           </button>
         </div>
 
@@ -318,6 +324,9 @@ export function Customization() {
         {/* Timezone Tab */}
         {activeTab === 'timezone' && (
           <TimezoneTab />
+        )}
+        {activeTab === 'tokens' && (
+          <ApiTokensTab />
         )}
       </Card>
     </PageContainer>
@@ -740,6 +749,132 @@ function TimezoneTab() {
           <li><strong>VPS Time</strong>: The VPS server runs in UTC. NTP should be enabled to keep server time accurate.</li>
         </ul>
       </Card>
+    </div>
+  );
+}
+
+/* ─── API Tokens Tab (Fase 5) ─── */
+function ApiTokensTab() {
+  const qc = useQueryClient();
+  const hasPerm = useHasPerm();
+  const canManage = hasPerm('manage_api_tokens');
+  const [newName, setNewName] = useState('');
+  const [newAbilities, setNewAbilities] = useState('*');
+  const [newExpiry, setNewExpiry] = useState('');
+  const [createdToken, setCreatedToken] = useState('');
+
+  const { data: tokens, isLoading } = useQuery({
+    queryKey: ['api-tokens'],
+    queryFn: () => api.apiTokensList(),
+    enabled: canManage,
+  });
+
+  const createMut = useMutation({
+    mutationFn: () => api.apiTokenCreate({
+      name: newName, abilities: newAbilities,
+      expires_days: newExpiry ? parseInt(newExpiry) : undefined,
+    }),
+    onSuccess: (r) => {
+      setCreatedToken(r.data.token);
+      setNewName(''); setNewExpiry('');
+      qc.invalidateQueries({ queryKey: ['api-tokens'] });
+      toast.success('Token dibuat — salin sekarang, tidak akan tampil lagi');
+    },
+    onError: () => toast.error('Gagal membuat token'),
+  });
+
+  const revokeMut = useMutation({
+    mutationFn: (id: number) => api.apiTokenRevoke(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['api-tokens'] }); toast.success('Token dicabut'); },
+  });
+
+  if (!canManage) return <div className="p-4 text-xs text-tx3">Anda tidak punya izin manage_api_tokens.</div>;
+
+  return (
+    <div className="p-4 md:p-6 space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold flex items-center gap-2 mb-1"><Key size={16} className="text-accent" /> API Tokens (REST v1)</h3>
+        <p className="text-xs text-tx3 mb-3">Token untuk integrasi eksternal (billing, bot, dashboard). Format: <code className="text-accent">Bearer snms_...</code></p>
+      </div>
+
+      {/* Create form */}
+      <div className="p-3 rounded-lg bg-glass space-y-2">
+        <div className="text-xs font-semibold">Buat Token Baru</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nama (mis: billing-bot)"
+            className="px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none" />
+          <input value={newAbilities} onChange={e => setNewAbilities(e.target.value)} placeholder="Abilities (* = semua)"
+            className="px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none" />
+          <input value={newExpiry} onChange={e => setNewExpiry(e.target.value)} placeholder="Expire (hari, kosong=permanent)"
+            type="number" className="px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none" />
+        </div>
+        <Button variant="primary" icon={<Plus size={14} />} onClick={() => createMut.mutate()} disabled={!newName || createMut.isPending}>
+          {createMut.isPending ? 'Membuat…' : 'Buat Token'}
+        </Button>
+        {createdToken && (
+          <div className="p-2 rounded bg-success/10 border border-success/30">
+            <div className="text-xs text-success font-semibold mb-1">Token dibuat — salin SEKARANG:</div>
+            <code className="text-xs text-tx1 break-all font-mono">{createdToken}</code>
+            <button onClick={() => { navigator.clipboard.writeText(createdToken); toast.success('Disalin'); }} className="ml-2 text-xs text-accent">Salin</button>
+          </div>
+        )}
+      </div>
+
+      {/* Token list */}
+      {isLoading ? <div className="text-xs text-tx3">Memuat…</div> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-tx3 border-b border-brd">
+                <th className="text-left py-2 px-2">Nama</th>
+                <th className="text-left py-2 px-2">Prefix</th>
+                <th className="text-left py-2 px-2">Abilities</th>
+                <th className="text-left py-2 px-2">User</th>
+                <th className="text-left py-2 px-2">Last Used</th>
+                <th className="text-left py-2 px-2">Expires</th>
+                <th className="text-left py-2 px-2">Status</th>
+                <th className="text-right py-2 px-2">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(tokens?.data || []).map(t => (
+                <tr key={t.id} className="border-b border-brd/50 hover:bg-glass/50">
+                  <td className="py-2 px-2 font-medium">{t.name}</td>
+                  <td className="py-2 px-2 font-mono text-tx3">{t.prefix}…</td>
+                  <td className="py-2 px-2"><code className="text-tx3">{t.abilities}</code></td>
+                  <td className="py-2 px-2">{t.user}</td>
+                  <td className="py-2 px-2 text-tx3">{t.last_used_at ? new Date(t.last_used_at).toLocaleString('id-ID') : '—'}</td>
+                  <td className="py-2 px-2 text-tx3">{t.expires_at ? new Date(t.expires_at).toLocaleString('id-ID') : 'permanent'}</td>
+                  <td className="py-2 px-2">
+                    {t.revoked ? <span className="text-danger">Dicabut</span> : <span className="text-success">Aktif</span>}
+                  </td>
+                  <td className="py-2 px-2 text-right">
+                    {!t.revoked && (
+                      <button onClick={() => { if (confirm(`Cabut token "${t.name}"?`)) revokeMut.mutate(t.id); }}
+                        className="text-danger hover:underline text-xs">Cabut</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {(tokens?.data || []).length === 0 && (
+                <tr><td colSpan={8} className="py-4 text-center text-tx3">Belum ada token</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* API docs hint */}
+      <div className="p-3 rounded-lg bg-glass text-xs text-tx3">
+        <div className="font-semibold mb-1">Endpoint tersedia:</div>
+        <code className="block text-tx2">GET /api/v1/onus?olt_id=&status=&search=&page=&per_page=</code>
+        <code className="block text-tx2">GET /api/v1/onus/{`<id>`}</code>
+        <code className="block text-tx2">GET /api/v1/olts</code>
+        <code className="block text-tx2">GET /api/v1/olts/{`<id>`}</code>
+        <code className="block text-tx2">GET /api/v1/alerts?limit=</code>
+        <code className="block text-tx2">GET /api/v1/link-states?olt_id=</code>
+        <div className="mt-1">Abilities: <code>onus:read</code>, <code>olts:read</code>, <code>alerts:read</code>, atau <code>*</code></div>
+      </div>
     </div>
   );
 }

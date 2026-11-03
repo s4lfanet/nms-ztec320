@@ -113,6 +113,7 @@ AVAILABLE_PERMISSIONS = {
     'manage_users': 'User Management',
     'manage_tr069': 'TR069 Profile Management',
     'genieacs_manage': 'GenieACS TR-069 Actions',
+    'manage_api_tokens': 'API Token Management',
     'customization': 'Customization',
     'view_dashboard': 'View Dashboard',
     'view_onus': 'View All ONUs',
@@ -1196,3 +1197,47 @@ class GenieacsDeviceMap(db.Model):
         db.UniqueConstraint('onu_id', name='uq_genieacs_map_onu'),
         db.Index('ix_genieacs_map_device_id', 'device_id'),
     )
+
+
+class ApiToken(db.Model):
+    """Bearer token for REST API v1 — hashed storage, abilities, expiry.
+    Abilities: comma-separated scope keys (e.g. 'onus:read,olts:read,onus:write').
+    Special '*' = all abilities."""
+    __tablename__ = 'api_tokens'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    token_hash = db.Column(db.String(128), nullable=False, unique=True, index=True)
+    prefix = db.Column(db.String(12), default='')  # first 8 chars for identification
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    abilities = db.Column(db.String(200), default='*')  # comma-separated or '*'
+    expires_at = db.Column(db.DateTime, nullable=True)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+    last_used_ip = db.Column(db.String(45), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    revoked = db.Column(db.Boolean, default=False)
+    user = db.relationship('User', backref=db.backref('api_tokens', lazy=True))
+
+    @staticmethod
+    def hash_token(token: str) -> str:
+        import hashlib
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    @staticmethod
+    def generate_token() -> str:
+        import secrets
+        return 'snms_' + secrets.token_urlsafe(32)
+
+    def has_ability(self, ability: str) -> bool:
+        if self.abilities == '*':
+            return True
+        return ability in (self.abilities or '').split(',')
+
+    def is_valid(self) -> bool:
+        if self.revoked:
+            return False
+        if self.expires_at:
+            now = datetime.now(timezone.utc)
+            if now.tzinfo:
+                now = now.replace(tzinfo=None)
+            return self.expires_at > now
+        return True

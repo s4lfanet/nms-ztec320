@@ -89,6 +89,9 @@ export const api = {
   onuMapLock: (id: number, locked: boolean) => request<{ success: boolean; map_locked: boolean }>(`/api/onu/${id}/map-lock`, { method: 'POST', body: JSON.stringify({ locked }) }),
   parseMapsLink: (text: string) => request<{ success: boolean; lat?: number; lng?: number; message?: string }>('/api/ftth/parse-maps-link', { method: 'POST', body: JSON.stringify({ text }) }),
   onuPinsLightweight: () => request<{ success: boolean; pins: OnuPin[] }>('/api/ftth/map/onu-pins'),
+  apiTokensList: () => request<{ success: boolean; data: ApiTokenInfo[] }>('/api/v1/tokens'),
+  apiTokenCreate: (data: { name: string; abilities?: string; expires_days?: number }) => request<{ success: boolean; data: { token: string; id: number; name: string } }>('/api/v1/tokens', { method: 'POST', body: JSON.stringify(data) }),
+  apiTokenRevoke: (id: number) => request<{ success: boolean; data: { id: number; revoked: boolean } }>(`/api/v1/tokens/${id}/revoke`, { method: 'POST' }),
   onuTraffic: (id: number) => request<{ success: boolean; traffic: { downstream_kbps: string; upstream_kbps: string } }>(`/api/onu/${id}/traffic`),
   onuGetStatus: (id: number) => request<{ success: boolean; status?: Record<string, unknown>; data?: Record<string, unknown>; message?: string }>(`/api/onu/${id}/get-status`, { method: 'POST' }),
   onuLiveInfo: (id: number) => request(`/api/onu/${id}/live-info`),
@@ -353,6 +356,19 @@ export interface OnuPin {
   status: string;
   name: string;
   map_locked: boolean;
+}
+
+export interface ApiTokenInfo {
+  id: number;
+  name: string;
+  prefix: string;
+  user: string;
+  abilities: string;
+  revoked: boolean;
+  expires_at: string | null;
+  last_used_at: string | null;
+  last_used_ip: string;
+  created_at: string | null;
 }
 
 export interface TrafficPortMeta {
