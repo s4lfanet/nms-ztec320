@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timezone
 
 import httpx
+import json
 
 from models import db, SystemConfig, ONU, GenieacsDeviceMap
 
@@ -161,6 +162,18 @@ def sync_device_maps():
     return matched, len(onus), []
 
 
+def _param(tree, path):
+    """Walk nested GenieACS device doc (InternetGatewayDevice.*) and return _value."""
+    node = tree
+    for part in path.split('.'):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(part)
+    if isinstance(node, dict):
+        return node.get('_value')
+    return node
+
+
 def get_device_params(device_id):
     """Fetch full device parameters from GenieACS for ViewOnu panel.
     Returns dict with last_inform, software_version, wan_ip, pppoe_username,
@@ -169,22 +182,26 @@ def get_device_params(device_id):
     if not url or not device_id:
         return None
     try:
-        r = httpx.get(f'{url}/devices/{device_id}',
+        # NBI tidak punya GET /devices/{id} (405) — filter via query param.
+        r = httpx.get(f'{url}/devices',
+                      params={'query': json.dumps({'_id': device_id})},
                       auth=_auth(user, pwd), timeout=_TIMEOUT)
         if r.status_code != 200:
             return None
-        d = r.json()
-        props = d.get('_props', d)
+        arr = r.json()
+        if not isinstance(arr, list) or not arr:
+            return None
+        d = arr[0]
         return {
             '_id': device_id,
-            'last_inform': str(props.get('LastInform') or props.get('_lastInform') or ''),
-            'software_version': str(props.get('InternetGatewayDevice.DeviceInfo.SoftwareVersion') or ''),
-            'model': str(props.get('InternetGatewayDevice.DeviceInfo.ModelName') or ''),
-            'vendor': str(props.get('InternetGatewayDevice.DeviceInfo.Manufacturer') or ''),
-            'wan_ip': str(props.get('InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress') or ''),
-            'pppoe_username': str(props.get('InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username') or ''),
-            'ssid_24g': str(props.get('InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID') or ''),
-            'ssid_5g': str(props.get('InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.SSID') or ''),
+            'last_inform': str(d.get('_lastInform') or _param(d, 'LastInform') or ''),
+            'software_version': str(_param(d, 'InternetGatewayDevice.DeviceInfo.SoftwareVersion') or ''),
+            'model': str(_param(d, 'InternetGatewayDevice.DeviceInfo.ModelName') or ''),
+            'vendor': str(_param(d, 'InternetGatewayDevice.DeviceInfo.Manufacturer') or ''),
+            'wan_ip': str(_param(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress') or ''),
+            'pppoe_username': str(_param(d, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username') or ''),
+            'ssid_24g': str(_param(d, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID') or ''),
+            'ssid_5g': str(_param(d, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.SSID') or ''),
         }
     except Exception as e:
         logger.error('genieacs get_device_params failed: %s', e)
@@ -197,7 +214,7 @@ def reboot_device(device_id):
     if not url or not device_id:
         return False, 'NBI not configured'
     try:
-        r = httpx.post(f'{url}/tasks/{device_id}',
+        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
                        json={'name': 'reboot'},
                        auth=_auth(user, pwd), timeout=_TIMEOUT)
         if r.status_code in (200, 202, 204):
@@ -213,8 +230,9 @@ def refresh_params(device_id):
     if not url or not device_id:
         return False, 'NBI not configured'
     try:
-        r = httpx.post(f'{url}/tasks/{device_id}',
-                       json={'name': 'refresh'},
+        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
+                       json={'name': 'refreshObject',
+                             'objectName': 'InternetGatewayDevice.'},
                        auth=_auth(user, pwd), timeout=_TIMEOUT)
         if r.status_code in (200, 202, 204):
             return True, ''
@@ -233,8 +251,10 @@ def set_wifi_ssid(device_id, ssid, password=None, band='2.4g'):
     if password:
         params[f'InternetGatewayDevice.LANDevice.1.WLANConfiguration.{idx}.KeyPassphrase'] = password
     try:
-        r = httpx.post(f'{url}/tasks/{device_id}',
-                       json={'name': 'setParameterValues', 'parameterValues': params},
+        # parameterValues harus list [path, value, type] per GenieACS NBI
+        pv = [[k, v, 'xsd:string'] for k, v in params.items()]
+        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
+                       json={'name': 'setParameterValues', 'parameterValues': pv},
                        auth=_auth(user, pwd), timeout=_TIMEOUT)
         if r.status_code in (200, 202, 204):
             return True, ''
