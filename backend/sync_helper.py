@@ -475,6 +475,21 @@ def save_sync_result(olt, result, sync, light=False):
             _onu_rx = onu_data.get('onu_rx_power')
             if _onu_rx is not None:
                 onu.onu_rx_power = _onu_rx
+            # Record a raw RX sample for history charts (Fase 1).
+            # Only online ONUs with a valid rx_power — invalid sentinels
+            # (-40, 0, None) are already filtered out by the clear above.
+            _rx = onu_data.get('rx_power')
+            if _rx is not None and _rx != 0 and _rx > -40:
+                try:
+                    from models import OnuRxSample
+                    db.session.add(OnuRxSample(
+                        onu_id=onu.id, olt_id=olt.id,
+                        rx_dbm=_rx,
+                        tx_dbm=_tx if _tx is not None and _tx != 0 else None,
+                        onu_rx_dbm=_onu_rx if _onu_rx is not None and _onu_rx != 0 else None,
+                    ))
+                except Exception as e:
+                    logger.debug(f"[sync_helper:{olt.id}] OnuRxSample insert failed: {e}")
         _distance = onu_data.get('distance')
         if _distance is not None:
             onu.distance = _distance

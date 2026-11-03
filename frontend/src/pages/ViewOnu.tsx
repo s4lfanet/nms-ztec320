@@ -662,6 +662,7 @@ export function ViewOnu() {
           <div className="p-3 rounded-lg bg-glass text-center"><div className="text-xs text-tx3 mb-1">Distance</div><div className="text-lg font-bold font-mono">{String(ld.distance_m || onu.distance || '-')}</div><div className="text-xs text-tx3">m</div></div>
           <div className="p-3 rounded-lg bg-glass text-center"><div className="text-xs text-tx3 mb-1">Online Duration</div><div className="text-lg font-bold">{onlineDuration || String(ld.online_duration || '-')}</div></div>
         </div>
+        <RxHistoryChart onuId={onuId} />
       </Card>
 
       {/* TCONT & GEM */}
@@ -1736,5 +1737,77 @@ function LocationEditModal({ latitude, longitude, onSave, onClose, loading }: {
         </Button>
       </div>
     </Modal>
+  );
+}
+
+/* ─── RX Power History Chart (Fase 1) ─── */
+function RxHistoryChart({ onuId }: { onuId: number }) {
+  const [range, setRange] = useState<'24h' | '7d' | '30d' | '90d'>('24h');
+  const { data, isLoading } = useQuery({
+    queryKey: ['onu-rx-history', onuId, range],
+    queryFn: () => api.onuRxHistory(onuId, range),
+    enabled: !!onuId,
+    staleTime: 60_000,
+  });
+  const points = data?.points || [];
+  if (!points.length && !isLoading) return null;
+
+  // Normalize: 24h uses rx; ranges use rx_avg with min/max band
+  const chartData = points.map(p => ({
+    t: new Date(p.t).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', day: range === '24h' ? undefined : '2-digit' }),
+    rx: range === '24h' ? p.rx : p.rx_avg,
+    rx_min: range === '24h' ? undefined : p.rx_min,
+    rx_max: range === '24h' ? undefined : p.rx_max,
+    onu_rx: range === '24h' ? p.onu_rx : p.onu_rx_avg,
+  }));
+
+  return (
+    <div className="mt-4 pt-4 border-t border-brd">
+      <div className="flex items-center justify-between mb-2">
+        <div className="label-sm flex items-center gap-1.5"><Activity size={13} /> Riwayat RX Power</div>
+        <div className="flex gap-1">
+          {(['24h', '7d', '30d', '90d'] as const).map(r => (
+            <button key={r} onClick={() => setRange(r)}
+              className={cn('px-2 py-0.5 text-[11px] rounded font-medium transition-colors',
+                range === r ? 'bg-accent text-white' : 'bg-glass text-tx3 hover:text-tx1')}>
+              {r}
+            </button>
+          ))}
+        </div>
+      </div>
+      {isLoading ? (
+        <div className="h-[180px] flex items-center justify-center text-xs text-tx3">Memuat…</div>
+      ) : (
+        <ResponsiveContainer width="100%" height={180}>
+          <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+            <defs>
+              <linearGradient id="rxGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="t" tick={{ fontSize: 9, fill: 'var(--color-tx3)' }} interval="preserveStartEnd" minTickGap={20} />
+            <YAxis tick={{ fontSize: 9, fill: 'var(--color-tx3)' }} unit=" dBm" domain={['dataMin - 2', 'dataMax + 2']} />
+            <Tooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 11 }} labelStyle={{ color: 'var(--text-2)' }}
+              formatter={((v: unknown, name: string) => v == null ? ['—', name] : [`${Number(v).toFixed(2)} dBm`, name === 'rx' ? 'RX (OLT)' : name === 'rx_min' ? 'Min' : name === 'rx_max' ? 'Max' : 'RX (ONU)']) as never} />
+            {range !== '24h' && (
+              <Area type="monotone" dataKey="rx_max" stroke="none" fill="var(--color-accent)" fillOpacity={0.08} />
+            )}
+            {range !== '24h' && (
+              <Area type="monotone" dataKey="rx_min" stroke="none" fill="var(--bg-surface)" fillOpacity={1} />
+            )}
+            <Area type="monotone" dataKey="rx" stroke="var(--color-accent)" fill="url(#rxGrad)" strokeWidth={1.5} dot={false} />
+            {range === '24h' && (
+              <Area type="monotone" dataKey="onu_rx" stroke="var(--color-success)" fill="none" strokeWidth={1.5} dot={false} />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
+      <div className="flex items-center gap-4 mt-1 text-[10px] text-tx3">
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-accent"></span> RX Power (OLT)</span>
+        {range === '24h' && <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-success"></span> RX Power (ONU)</span>}
+        {range !== '24h' && <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 bg-accent opacity-20"></span> Min–Max band</span>}
+      </div>
+    </div>
   );
 }

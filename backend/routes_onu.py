@@ -17,6 +17,7 @@ from models import (
     AlertHistory, BotConfig, FTTHOTB, FTTHODC, FTTHODP, FTTHODPPort,
     FTTHPonPort, FTTHFiberPath, SystemConfig, ActionLog, MetricHistory,
     TrafficLog, TrafficLogHourly, OLTConfigBackup,
+    OnuRxSample, OnuRxHourly,
 )
 from extensions import logger
 from helpers import (
@@ -92,6 +93,43 @@ def api_onu_detail(onu_id):
         'history': [],
         'wan_services_json': '{}',
     })
+
+
+@bp.route('/api/onu/<int:onu_id>/rx-history')
+@login_required
+def api_onu_rx_history(onu_id):
+    """RX power history for charts. range=24h|7d|30d|90d.
+    24h → raw samples; others → hourly aggregates."""
+    onu = db.session.get(ONU, onu_id)
+    if not onu:
+        return jsonify({'success': False, 'message': 'ONU not found'}), 404
+    rng = (request.args.get('range') or '24h').lower()
+    now = datetime.now(timezone.utc)
+    points = []
+    if rng == '24h':
+        cutoff = now - timedelta(hours=24)
+        rows = OnuRxSample.query.filter(
+            OnuRxSample.onu_id == onu_id, OnuRxSample.polled_at >= cutoff
+        ).order_by(OnuRxSample.polled_at).all()
+        for r in rows:
+            points.append({
+                't': utc_iso(r.polled_at),
+                'rx': r.rx_dbm, 'tx': r.tx_dbm, 'onu_rx': r.onu_rx_dbm,
+            })
+    else:
+        days = {'7d': 7, '30d': 30, '90d': 90}.get(rng, 90)
+        cutoff = now - timedelta(days=days)
+        rows = OnuRxHourly.query.filter(
+            OnuRxHourly.onu_id == onu_id, OnuRxHourly.hour >= cutoff
+        ).order_by(OnuRxHourly.hour).all()
+        for r in rows:
+            points.append({
+                't': utc_iso(r.hour),
+                'rx_min': r.rx_min, 'rx_avg': r.rx_avg, 'rx_max': r.rx_max,
+                'tx_avg': r.tx_avg, 'onu_rx_avg': r.onu_rx_avg,
+                'samples': r.samples,
+            })
+    return jsonify({'success': True, 'range': rng, 'points': points})
 
 
 @bp.route('/api/onu/<int:onu_id>/live-detail')

@@ -1130,3 +1130,45 @@ class OnuStatusHistory(db.Model):
         db.Index('ix_onu_status_history_created_at', 'created_at'),
         db.Index('ix_onu_status_history_new_status', 'new_status'),
     )
+
+
+class OnuRxSample(db.Model):
+    """Raw RX/TX power sample per ONU — one row per sync poll.
+    Retention 24–48h (configurable via SystemConfig `rx_sample_retention_hours`).
+    Used for the 24h detailed chart in ViewOnu."""
+    __tablename__ = 'onu_rx_samples'
+    id = db.Column(db.Integer, primary_key=True)
+    onu_id = db.Column(db.Integer, db.ForeignKey('onus.id'), nullable=False)
+    olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=False)
+    rx_dbm = db.Column(db.Float, nullable=True)   # OLT RX (OID .18) — primary metric
+    tx_dbm = db.Column(db.Float, nullable=True)  # ONU TX (OID .11)
+    onu_rx_dbm = db.Column(db.Float, nullable=True)  # ONU RX (OID .10) — downstream
+    polled_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        db.Index('ix_onu_rx_samples_onu_time', 'onu_id', 'polled_at'),
+        db.Index('ix_onu_rx_samples_olt_time', 'olt_id', 'polled_at'),
+    )
+
+
+class OnuRxHourly(db.Model):
+    """Hourly aggregate of ONU RX power — min/avg/max per hour.
+    Retention 90 days (configurable via SystemConfig `rx_hourly_retention_days`).
+    Used for 7d/30d/90d charts."""
+    __tablename__ = 'onu_rx_hourly'
+    id = db.Column(db.Integer, primary_key=True)
+    onu_id = db.Column(db.Integer, db.ForeignKey('onus.id'), nullable=False)
+    olt_id = db.Column(db.Integer, db.ForeignKey('olts.id'), nullable=False)
+    hour = db.Column(db.DateTime, nullable=False)  # truncated to hour
+    rx_min = db.Column(db.Float, nullable=True)
+    rx_avg = db.Column(db.Float, nullable=True)
+    rx_max = db.Column(db.Float, nullable=True)
+    tx_avg = db.Column(db.Float, nullable=True)
+    onu_rx_avg = db.Column(db.Float, nullable=True)
+    samples = db.Column(db.Integer, default=0)
+
+    __table_args__ = (
+        db.UniqueConstraint('onu_id', 'hour', name='uq_onu_rx_hourly_onu_hour'),
+        db.Index('ix_onu_rx_hourly_onu_time', 'onu_id', 'hour'),
+        db.Index('ix_onu_rx_hourly_olt_time', 'olt_id', 'hour'),
+    )

@@ -77,6 +77,7 @@ export const api = {
     request<{ success: boolean; message?: string }>(`/api/onu/${id}/replace`, { method: 'POST', body: JSON.stringify({ new_serial: newSerial }) }),
   onuDetail: (id: number) => request<OnuDetailData>(`/api/onu/${id}/detail`),
   onuLiveDetail: (id: number) => request<{ success: boolean; live_detail: Record<string, unknown> | null; live_detail_error: string | null; history: Array<{ date: string; event: string }>; wan_services_json: string }>(`/api/onu/${id}/live-detail`),
+  onuRxHistory: (id: number, range: '24h' | '7d' | '30d' | '90d') => request<{ success: boolean; range: string; points: RxHistoryPoint[] }>(`/api/onu/${id}/rx-history?range=${range}`),
   onuTraffic: (id: number) => request<{ success: boolean; traffic: { downstream_kbps: string; upstream_kbps: string } }>(`/api/onu/${id}/traffic`),
   onuGetStatus: (id: number) => request<{ success: boolean; status?: Record<string, unknown>; data?: Record<string, unknown>; message?: string }>(`/api/onu/${id}/get-status`, { method: 'POST' }),
   onuLiveInfo: (id: number) => request(`/api/onu/${id}/live-info`),
@@ -307,6 +308,19 @@ export interface TechnicianData {
 
 export interface RxColorRange {
   min: number; max: number; color: string; label?: string;
+}
+
+export interface RxHistoryPoint {
+  t: string;
+  rx?: number | null;
+  tx?: number | null;
+  onu_rx?: number | null;
+  rx_min?: number | null;
+  rx_avg?: number | null;
+  rx_max?: number | null;
+  tx_avg?: number | null;
+  onu_rx_avg?: number | null;
+  samples?: number;
 }
 
 export interface TrafficPortMeta {
