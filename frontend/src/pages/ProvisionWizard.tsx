@@ -70,6 +70,7 @@ interface Tr069Config {
   acs_pass: string;
   tr069_vlan: number;
   tr069_vlan_mode: 'tag' | 'untag';
+  separate_wan: boolean;   // WAN TR-069 dedicated (iphost terpisah)
   profile_id: string;
 }
 
@@ -343,7 +344,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
     portMap: [],
     services: [newService({ vlan: 100 })],
     wifi: { ssids: [], ssid1_name: '', ssid1_pass: '', ssid1_auth: 'wpa2', ssid2_name: '', ssid2_pass: '', ssid2_auth: 'wpa2' },
-    tr069: { enabled: false, acs_url: '', acs_user: '', acs_pass: '', tr069_vlan: 0, tr069_vlan_mode: 'tag', profile_id: '' },
+    tr069: { enabled: false, acs_url: '', acs_user: '', acs_pass: '', tr069_vlan: 0, tr069_vlan_mode: 'tag', separate_wan: false, profile_id: '' },
     technicianId: null,
     registerMode: 'cli',
   });
@@ -521,7 +522,8 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             sla_profile: data.slaProfile,
             name: data.namePrefix || '',
             description: data.description,
-            services: data.services.map(s => ({
+            services: [
+              ...data.services.map(s => ({
               service_type: s.wan_mode === 'bridge' ? 'bridge' : 'internet',
               vlan: s.vlan,
               cvlan: s.cvlan,
@@ -536,6 +538,15 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               mvlan: 0,
               traffic_profile: s.traffic_profile,
             })),
+              // WAN TR-069 terpisah: service bertipe 'tr069' di VLAN-nya sendiri
+              // (backend → iphost N dhcp + wan N service tr069 host N)
+              ...(data.tr069.enabled && data.tr069.separate_wan && data.tr069.tr069_vlan ? [{
+                service_type: 'tr069' as const, vlan: data.tr069.tr069_vlan, cvlan: 0,
+                vlan_mode: 'tag' as const, name: 'TR069', cos: '0', wan_mode: 'dhcp',
+                wan_ip_mode: 'DHCP', pppoe_user: '', pppoe_pass: '', vlan_profile: '',
+                mvlan: 0, traffic_profile: '',
+              }] : []),
+            ],
             use_veip: data.useVeip,
             extra: {
               ont_style: data.ontStyle,
@@ -1222,6 +1233,14 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                     </div>
                   </div>
                 </div>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={data.tr069.separate_wan}
+                    onChange={e => update('tr069', { ...data.tr069, separate_wan: e.target.checked })}
+                    className="mt-0.5" />
+                  <span className="text-xs text-tx2">
+                    WAN TR-069 terpisah <span className="text-tx3">— ONU dapat iphost khusus (DHCP) di VLAN TR069 di atas; internet PPPoE tetap WAN sendiri. Kosongkan jika TR-069 numpang di WAN internet.</span>
+                  </span>
+                </label>
               </div>
             )}
           </div>

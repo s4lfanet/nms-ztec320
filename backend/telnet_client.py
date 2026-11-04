@@ -2641,7 +2641,7 @@ class TelnetCollector:
                 vlan_suffix = f' vlan {svc_vlan_for_service}'
 
             # Service definition — services with WAN-IP/PPPoE need iphost, bridge/iptv don't
-            needs_iphost = (not use_veip) and (svc_type in ('internet', 'tr069') and wan_mode in ('nat', 'wan'))
+            needs_iphost = (not use_veip) and (svc_type == 'tr069' or (svc_type == 'internet' and wan_mode in ('nat', 'wan')))
             if needs_iphost:
                 sc(f'service {svc_name} gemport {n} iphost {n}{vlan_suffix}')
             elif not use_veip and n == 1:
@@ -2655,10 +2655,14 @@ class TelnetCollector:
                 if not use_veip:
                     for eth_port in (1, 2, 3, 4):
                         sc_warn(f'vlan port eth_0/{eth_port} mode hybrid def-vlan {svc_vlan_for_service}')
-            elif svc_type == 'tr069' and vlan_profile:
-                # TR069: force DHCP via WAN-IP with VLAN profile
-                sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
-                sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+            elif svc_type == 'tr069':
+                if not use_veip:
+                    # Separated TR-069 WAN: dedicated iphost + DHCP mgmt (VLAN 1010 dsb.)
+                    sc(f'iphost {n} dhcp')
+                    sc(f'wan {n} service tr069 host {n}')
+                elif vlan_profile:
+                    sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
+                    sc(f'wan-ip {n} ping-response enable traceroute-response enable')
             elif svc_type == 'internet' and wan_mode == 'nat':
                 # PPPoE NAT
                 if username:
@@ -2729,6 +2733,10 @@ class TelnetCollector:
             acs_pass = extra.get('acs_pass', '') or 'acs'
             sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
             tr069_vlan = extra.get('tr069_vlan', '') or extra.get('acs_vlan', '')
+            if not tr069_vlan:
+                _t69 = next((sv for sv in services if sv.get('service_type') == 'tr069'), None)
+                if _t69 and _t69.get('vlans'):
+                    tr069_vlan = str(_t69['vlans'][0])
             tr069_vlan_mode = extra.get('tr069_vlan_mode', 'tag')
             if tr069_vlan and tr069_vlan_mode == 'tag':
                 sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
@@ -3072,7 +3080,7 @@ class TelnetCollector:
                     nokia_cos = svc.get('cos', '0') or '0'
                     sc(f'service {nokia_name} gemport 1 cos {nokia_cos}{vlan_suffix}')
                 else:
-                    needs_iphost = (not use_veip) and svc_type in ('internet', 'tr069') and wan_mode in ('nat', 'wan')
+                    needs_iphost = (not use_veip) and (svc_type == 'tr069' or (svc_type == 'internet' and wan_mode in ('nat', 'wan')))
                     if needs_iphost:
                         sc(f'service {svc_name} gemport {n} iphost {n}{vlan_suffix}')
                     elif not use_veip and n == 1:
@@ -3086,9 +3094,13 @@ class TelnetCollector:
                 wan_host = '1' if use_veip else str(n)
                 if svc_type == 'bridge':
                     pass
-                elif svc_type == 'tr069' and vlan_profile:
-                    sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {wan_host}')
-                    sc(f'wan-ip {n} ping-response enable traceroute-response enable')
+                elif svc_type == 'tr069':
+                    if not use_veip:
+                        sc(f'iphost {n} dhcp')
+                        sc(f'wan {n} service tr069 host {wan_host}')
+                    elif vlan_profile:
+                        sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {wan_host}')
+                        sc(f'wan-ip {n} ping-response enable traceroute-response enable')
                     has_non_bridge = True
                 elif svc_type == 'iptv':
                     pass  # bridge-like
@@ -3189,6 +3201,12 @@ class TelnetCollector:
                 acs_pass = tr069_config.get('acs_pass', '') or 'acs'
                 sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
                 tr069_vlan = tr069_config.get('tr069_vlan', '')
+                if not tr069_vlan:
+                    _t69 = next((sv for sv in services if sv.get('service_type') == 'tr069'), None)
+                    if _t69 and _t69.get('vlan'):
+                        tr069_vlan = str(_t69['vlan'])
+                    elif _t69 and _t69.get('vlans'):
+                        tr069_vlan = str(_t69['vlans'][0])
                 tr069_vlan_mode = tr069_config.get('tr069_vlan_mode', 'tag')
                 if tr069_vlan and tr069_vlan_mode == 'tag':
                     sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
