@@ -289,7 +289,7 @@ function generateScript(d: WizardState): string {
 
   // TR069 — index mengikuti index WAN tr069 (separate_wan → service terakhir)
   if (d.tr069.enabled) {
-    const tmIdx = d.tr069.separate_wan && d.tr069.tr069_vlan ? previewServices.length : 1;
+    const tmIdx = 1;
     lines.push(`  tr069-mgmt ${tmIdx} state unlock`);
     lines.push(`  tr069-mgmt ${tmIdx} acs ${d.tr069.acs_url || 'http://...'} validate basic username ${d.tr069.acs_user || 'acs'} password ${d.tr069.acs_pass || 'acs'}`);
     if (d.tr069.tr069_vlan && d.tr069.tr069_vlan_mode === 'tag') {

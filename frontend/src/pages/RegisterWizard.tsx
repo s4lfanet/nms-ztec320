@@ -132,7 +132,7 @@ function generateRegisterScript(d: WizardData): string {
     if (e.ssid_name) lines.push(`  vlan port wifi_0/1 mode tag vlan ${vlan}`);
     if (e.enable_firewall === 'true') lines.push(`  firewall enable level ${e.firewall_level || 'low'} anti-hack disable`);
     if (enableTr069) {
-      const tm = t69sep ? 2 : 1;
+      const tm = 1;
       lines.push(`  tr069-mgmt ${tm} state unlock`);
       lines.push(`  tr069-mgmt ${tm} acs ${e.acs_url || 'http://192.168.54.254:7547'} validate basic username ${e.acs_user || 'acs'} password ${e.acs_pass || 'acs'}`);
       if ((t69sep || e.tr069_vlan_mode === 'tag') && e.tr069_vlan) lines.push(`  tr069-mgmt ${tm} tag pri 0 vlan ${e.tr069_vlan}`);
@@ -204,7 +204,7 @@ function generateRegisterScript(d: WizardData): string {
     }
     if (e.enable_firewall === 'true') lines.push(`  firewall enable level ${e.firewall_level || 'low'} anti-hack disable`);
     if (enableTr069) {
-      const tm = t69n || 1;
+      const tm = 1;
       lines.push(`  tr069-mgmt ${tm} state unlock`);
       lines.push(`  tr069-mgmt ${tm} acs ${e.acs_url || 'http://192.168.54.254:7547'} validate basic username ${e.acs_user || 'acs'} password ${e.acs_pass || 'acs'}`);
       if ((t69sep || e.tr069_vlan_mode === 'tag') && e.tr069_vlan) lines.push(`  tr069-mgmt ${tm} tag pri 0 vlan ${e.tr069_vlan}`);
@@ -310,7 +310,7 @@ function generateRegisterScript(d: WizardData): string {
       lines.push('  security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069');
     }
     if (e.enable_tr069 === 'true') {
-      const tmIdx = enabledSvcs.findIndex((s: Record<string, unknown>) => String(s.service_type) === 'tr069') + 1 || 1;
+      const tmIdx = 1;
       lines.push(`  tr069-mgmt ${tmIdx} state unlock`);
       lines.push(`  tr069-mgmt ${tmIdx} acs ${e.acs_url || 'http://192.168.54.254:7547'} validate basic username ${e.acs_user || 'acs'} password ${e.acs_pass || 'acs'}`);
       if (e.tr069_vlan_mode === 'tag' && e.tr069_vlan) lines.push(`  tr069-mgmt ${tmIdx} tag pri 0 vlan ${e.tr069_vlan}`);

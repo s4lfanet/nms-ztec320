@@ -2477,7 +2477,7 @@ class TelnetCollector:
         # TR069 — index tr069-mgmt mengikuti index WAN yang membawa tr069:
         # separate → tr069_idx (iphost dedicated), gabungan → 1 (numpang PPPoE)
         if enable_tr069:
-            tm = tr069_idx or 1
+            tm = 1
             sc(f'tr069-mgmt {tm} state unlock')
             sc(f'tr069-mgmt {tm} acs {acs_url} validate basic username {acs_user} password {acs_pass}')
             tr069_vlan_mode = extra.get('tr069_vlan_mode', 'untag')
@@ -2575,7 +2575,7 @@ class TelnetCollector:
 
         # TR069 — index tr069-mgmt mengikuti index WAN tr069 (2 saat separate)
         if enable_tr069:
-            tm = 2 if tr069_sep else 1
+            tm = 1
             sc(f'tr069-mgmt {tm} state unlock')
             sc(f'tr069-mgmt {tm} acs {acs_url} validate basic username {acs_user} password {acs_pass}')
             tr069_vlan_mode = extra.get('tr069_vlan_mode', 'untag')
@@ -2796,7 +2796,7 @@ class TelnetCollector:
         # TR069 management (if TR069 profile enabled globally)
         # Index tr069-mgmt mengikuti index WAN tr069 (service bertipe 'tr069')
         if tr069_enabled:
-            tm_idx = next((i + 1 for i, sv in enumerate(services) if sv.get('service_type') == 'tr069'), 1)
+            tm_idx = 1
             sc(f'tr069-mgmt {tm_idx} state unlock')
             acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
             acs_user = extra.get('acs_user', '') or 'acs'
@@ -3267,7 +3267,7 @@ class TelnetCollector:
 
             # TR069 global — index mengikuti index WAN tr069
             if tr069_config and tr069_config.get('enabled'):
-                tm_idx = next((i + 1 for i, sv in enumerate(services) if sv.get('service_type') == 'tr069'), 1)
+                tm_idx = 1
                 sc(f'tr069-mgmt {tm_idx} state unlock')
                 acs_url = tr069_config.get('acs_url', '') or 'http://192.168.54.254:7547'
                 acs_user = tr069_config.get('acs_user', '') or 'acs'
