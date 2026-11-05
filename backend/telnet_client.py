@@ -2383,8 +2383,7 @@ class TelnetCollector:
         # TR-069 WAN terpisah: service 'TR069' di iphost dedicated pada tr069_vlan,
         # bukan 'wan 1 service tr069 internet host 1' yang numpang di WAN PPPoE.
         # Hanya mode iphost (ZTE ONU) — VEIP tetap bridge + tr069-mgmt tag.
-        tr069_sep = enable_tr069 and tr069_vlan and not use_veip and \
-            extra.get('tr069_separate_wan', '') == 'true'
+        tr069_sep = False  # TR-069 dedicated WAN dinonaktifkan — gabung PPPoE (revert)
         # Saat TR-069 terpisah: TR069 di index 1 — konvensi ZTE/Telkom
         # (tr069-mgmt 1 ↔ wan 1), internet geser ke index 2, sisanya bridge.
         svc_items = []
@@ -2505,8 +2504,7 @@ class TelnetCollector:
         use_veip = extra.get('use_veip', '') == 'true'
         # TR-069 WAN terpisah: service 'TR069' di iphost 2 pada tr069_vlan,
         # bukan 'wan 1 service tr069 internet host 1' yang numpang di WAN PPPoE.
-        tr069_sep = enable_tr069 and tr069_vlan and not use_veip and \
-            extra.get('tr069_separate_wan', '') == 'true'
+        tr069_sep = False  # TR-069 dedicated WAN dinonaktifkan — gabung PPPoE (revert)
 
         # Saat TR-069 terpisah: TR069 di index 1 (tr069-mgmt 1 ↔ wan 1),
         # INTERNET geser ke index 2.

@@ -98,7 +98,7 @@ function generateRegisterScript(d: WizardData): string {
   } else if (d.template === 'zte_single') {
     const useVeip = eWithVeip.use_veip === 'true';
     const enableTr069 = e.enable_tr069 === 'true';
-    const t69sep = enableTr069 && !!e.tr069_vlan && e.tr069_separate_wan === 'true' && !useVeip;
+    const t69sep = false; // TR-069 dedicated WAN dinonaktifkan — gabung PPPoE (revert)
     if (t69sep) {
       lines.push(`  tcont 1 name TR069 profile ${d.tcontProfile}`);
       lines.push('  gemport 1 tcont 1');
@@ -153,7 +153,7 @@ function generateRegisterScript(d: WizardData): string {
     ];
     const useVeipF = eWithVeip.use_veip === 'true';
     const enableTr069 = e.enable_tr069 === 'true';
-    const t69sep = enableTr069 && !!e.tr069_vlan && e.tr069_separate_wan === 'true' && !useVeipF;
+    const t69sep = false; // TR-069 dedicated WAN dinonaktifkan — gabung PPPoE (revert)
     const svcName = (vid: string, i: number) => i === 0 ? `VLAN${vid.padStart(4, '0')}` : `VLAN${vid}`;
     // Saat TR-069 terpisah: TR069 di index 1 (tr069-mgmt 1 ↔ wan 1)
     const svcItems: { name: string; vlan: string; kind: string }[] = [];
