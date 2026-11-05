@@ -287,14 +287,15 @@ function generateScript(d: WizardState): string {
     lines.push('  security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069');
   }
 
-  // TR069
+  // TR069 — index mengikuti index WAN tr069 (separate_wan → service terakhir)
   if (d.tr069.enabled) {
-    lines.push('  tr069-mgmt 1 state unlock');
-    lines.push(`  tr069-mgmt 1 acs ${d.tr069.acs_url || 'http://...'} validate basic username ${d.tr069.acs_user || 'acs'} password ${d.tr069.acs_pass || 'acs'}`);
+    const tmIdx = d.tr069.separate_wan && d.tr069.tr069_vlan ? previewServices.length : 1;
+    lines.push(`  tr069-mgmt ${tmIdx} state unlock`);
+    lines.push(`  tr069-mgmt ${tmIdx} acs ${d.tr069.acs_url || 'http://...'} validate basic username ${d.tr069.acs_user || 'acs'} password ${d.tr069.acs_pass || 'acs'}`);
     if (d.tr069.tr069_vlan && d.tr069.tr069_vlan_mode === 'tag') {
-      lines.push(`  tr069-mgmt 1 tag pri 0 vlan ${d.tr069.tr069_vlan}`);
+      lines.push(`  tr069-mgmt ${tmIdx} tag pri 0 vlan ${d.tr069.tr069_vlan}`);
     } else {
-      lines.push('  tr069-mgmt 1 untag');
+      lines.push(`  tr069-mgmt ${tmIdx} untag`);
     }
   }
 

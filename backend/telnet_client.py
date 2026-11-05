@@ -2417,6 +2417,7 @@ class TelnetCollector:
             self._send_command(tn, f'no wan {nw} service', timeout=10)
             self._send_command(tn, f'no wan-ip {nw}', timeout=10)
             self._send_command(tn, f'no pppoe {nw}', timeout=10)
+            self._send_command(tn, f'no tr069-mgmt {nw}', timeout=10)
         import time as _t; _t.sleep(1)
         for i, v in enumerate(vlans, 1):
             svc_name = f'VLAN{v["vlan"]:04d}' if i == 1 else f'VLAN{v["vlan"]}'
@@ -2473,15 +2474,17 @@ class TelnetCollector:
         if enable_firewall:
             sc(f'firewall enable level {firewall_level} anti-hack disable')
 
-        # TR069
+        # TR069 — index tr069-mgmt mengikuti index WAN yang membawa tr069:
+        # separate → tr069_idx (iphost dedicated), gabungan → 1 (numpang PPPoE)
         if enable_tr069:
-            sc('tr069-mgmt 1 state unlock')
-            sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
+            tm = tr069_idx or 1
+            sc(f'tr069-mgmt {tm} state unlock')
+            sc(f'tr069-mgmt {tm} acs {acs_url} validate basic username {acs_user} password {acs_pass}')
             tr069_vlan_mode = extra.get('tr069_vlan_mode', 'untag')
             if (tr069_idx or (tr069_vlan_mode == 'tag' and tr069_vlan)) and tr069_vlan:
-                sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+                sc(f'tr069-mgmt {tm} tag pri 0 vlan {tr069_vlan}')
             else:
-                sc('tr069-mgmt 1 untag')
+                sc(f'tr069-mgmt {tm} untag')
 
         # Security management (enable remote access: web ftp telnet ssh https snmp tr069)
         sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
@@ -2530,6 +2533,7 @@ class TelnetCollector:
             self._send_command(tn, f'no wan {nw} service', timeout=10)
             self._send_command(tn, f'no wan-ip {nw}', timeout=10)
             self._send_command(tn, f'no pppoe {nw}', timeout=10)
+            self._send_command(tn, f'no tr069-mgmt {nw}', timeout=10)
         import time as _t; _t.sleep(1)
         if use_veip:
             sc(f'service INTERNET gemport 1 vlan {vlan}')
@@ -2569,15 +2573,16 @@ class TelnetCollector:
         if enable_firewall:
             sc(f'firewall enable level {firewall_level} anti-hack disable')
 
-        # TR069
+        # TR069 — index tr069-mgmt mengikuti index WAN tr069 (2 saat separate)
         if enable_tr069:
-            sc('tr069-mgmt 1 state unlock')
-            sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
+            tm = 2 if tr069_sep else 1
+            sc(f'tr069-mgmt {tm} state unlock')
+            sc(f'tr069-mgmt {tm} acs {acs_url} validate basic username {acs_user} password {acs_pass}')
             tr069_vlan_mode = extra.get('tr069_vlan_mode', 'untag')
             if (tr069_sep or (tr069_vlan_mode == 'tag' and tr069_vlan)) and tr069_vlan:
-                sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+                sc(f'tr069-mgmt {tm} tag pri 0 vlan {tr069_vlan}')
             else:
-                sc('tr069-mgmt 1 untag')
+                sc(f'tr069-mgmt {tm} untag')
 
         # Security management (enable remote access: web ftp telnet ssh https snmp tr069)
         sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
@@ -2789,12 +2794,14 @@ class TelnetCollector:
             sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
 
         # TR069 management (if TR069 profile enabled globally)
+        # Index tr069-mgmt mengikuti index WAN tr069 (service bertipe 'tr069')
         if tr069_enabled:
-            sc('tr069-mgmt 1 state unlock')
+            tm_idx = next((i + 1 for i, sv in enumerate(services) if sv.get('service_type') == 'tr069'), 1)
+            sc(f'tr069-mgmt {tm_idx} state unlock')
             acs_url = extra.get('acs_url', '') or 'http://192.168.54.254:7547'
             acs_user = extra.get('acs_user', '') or 'acs'
             acs_pass = extra.get('acs_pass', '') or 'acs'
-            sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
+            sc(f'tr069-mgmt {tm_idx} acs {acs_url} validate basic username {acs_user} password {acs_pass}')
             tr069_vlan = extra.get('tr069_vlan', '') or extra.get('acs_vlan', '')
             if not tr069_vlan:
                 _t69 = next((sv for sv in services if sv.get('service_type') == 'tr069'), None)
@@ -2802,9 +2809,9 @@ class TelnetCollector:
                     tr069_vlan = str(_t69['vlans'][0])
             tr069_vlan_mode = extra.get('tr069_vlan_mode', 'tag')
             if tr069_vlan and tr069_vlan_mode == 'tag':
-                sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+                sc(f'tr069-mgmt {tm_idx} tag pri 0 vlan {tr069_vlan}')
             else:
-                sc('tr069-mgmt 1 untag')
+                sc(f'tr069-mgmt {tm_idx} untag')
 
 
     def _emit_port_map(self, sc_warn, extra):
@@ -3258,13 +3265,14 @@ class TelnetCollector:
                 sc('firewall enable level low')
                 sc('security-mgmt 1 state enable mode forward protocol web ftp telnet ssh https snmp tr069')
 
-            # TR069 global
+            # TR069 global — index mengikuti index WAN tr069
             if tr069_config and tr069_config.get('enabled'):
-                sc('tr069-mgmt 1 state unlock')
+                tm_idx = next((i + 1 for i, sv in enumerate(services) if sv.get('service_type') == 'tr069'), 1)
+                sc(f'tr069-mgmt {tm_idx} state unlock')
                 acs_url = tr069_config.get('acs_url', '') or 'http://192.168.54.254:7547'
                 acs_user = tr069_config.get('acs_user', '') or 'acs'
                 acs_pass = tr069_config.get('acs_pass', '') or 'acs'
-                sc(f'tr069-mgmt 1 acs {acs_url} validate basic username {acs_user} password {acs_pass}')
+                sc(f'tr069-mgmt {tm_idx} acs {acs_url} validate basic username {acs_user} password {acs_pass}')
                 tr069_vlan = tr069_config.get('tr069_vlan', '')
                 if not tr069_vlan:
                     _t69 = next((sv for sv in services if sv.get('service_type') == 'tr069'), None)
@@ -3274,9 +3282,9 @@ class TelnetCollector:
                         tr069_vlan = str(_t69['vlans'][0])
                 tr069_vlan_mode = tr069_config.get('tr069_vlan_mode', 'tag')
                 if tr069_vlan and tr069_vlan_mode == 'tag':
-                    sc(f'tr069-mgmt 1 tag pri 0 vlan {tr069_vlan}')
+                    sc(f'tr069-mgmt {tm_idx} tag pri 0 vlan {tr069_vlan}')
                 else:
-                    sc('tr069-mgmt 1 untag')
+                    sc(f'tr069-mgmt {tm_idx} untag')
 
             # WiFi config (ZTE only — separate session after delay for ONU config state "success")
             # OMCI SSID commands require ONU to have processed initial config first
