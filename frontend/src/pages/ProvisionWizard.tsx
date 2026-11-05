@@ -154,9 +154,20 @@ function generateScript(d: WizardState): string {
   if (d.namePrefix) lines.push(`  name ${d.namePrefix}`);
   if (d.description) lines.push(`  description ${d.description}`);
 
+  // Mirror the submit payload: TR-069 separate WAN appends a 'tr069' service
+  // at the end (backend → service/gemport/iphost N + wan N service tr069 host N)
+  const previewServices = [
+    ...d.services,
+    ...(d.tr069.enabled && d.tr069.separate_wan && d.tr069.tr069_vlan
+      ? [{ id: 'svc-tr069', vlan: d.tr069.tr069_vlan, cvlan: 0, vlan_mode: 'tag' as const,
+           name: '', label: '', cos: '0', wan_mode: 'dhcp' as const, pppoe_user: '', pppoe_pass: '',
+           vlan_profile: '', traffic_profile: '', service_type: 'tr069' }]
+      : []),
+  ];
+
   // TCONT + GEM + service-port per VLAN
   // Nokia: all services share gemport 1/tcont 1 — only n=1 creates them.
-  d.services.forEach((svc, i) => {
+  previewServices.forEach((svc, i) => {
     const n = i + 1;
     const v = svc.vlan || 100;
     const cv = svc.cvlan || 0;
@@ -183,7 +194,7 @@ function generateScript(d: WizardState): string {
   lines.push(`pon-onu-mng ${onuIf}`);
 
   // Service definitions per VLAN
-  d.services.forEach((svc, i) => {
+  previewServices.forEach((svc, i) => {
     const n = i + 1;
     const v = svc.vlan || 100;
     const cv = svc.cvlan || 0;
@@ -203,7 +214,15 @@ function generateScript(d: WizardState): string {
 
     // WAN config — VEIP (incl. Nokia) always uses host 1
     const wanHost = useVeip ? 1 : n;
-    if (svc.wan_mode === 'pppoe-nat' && svc.pppoe_user) {
+    if ((svc as { service_type?: string }).service_type === 'tr069') {
+      if (!useVeip) {
+        lines.push(`  iphost ${n} dhcp`);
+        lines.push(`  wan ${n} service tr069 host ${wanHost}`);
+      } else if (svc.vlan_profile) {
+        lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile} host ${wanHost}`);
+        lines.push(`  wan-ip ${n} ping-response enable traceroute-response enable`);
+      }
+    } else if (svc.wan_mode === 'pppoe-nat' && svc.pppoe_user) {
       lines.push(`  pppoe ${n} nat enable user ${svc.pppoe_user} password ${svc.pppoe_pass}`);
       lines.push(`  wan ${n} service internet host ${wanHost}`);
     } else if (svc.wan_mode === 'pppoe' && svc.pppoe_user) {
@@ -260,7 +279,7 @@ function generateScript(d: WizardState): string {
   }
 
   // Firewall + security — Nokia uses 'security-mgmt <port> ... protocol web'
-  const hasWan = d.services.some(s => s.wan_mode !== 'bridge');
+  const hasWan = previewServices.some(s => s.wan_mode !== 'bridge');
   if (isNokia) {
     if (hasWan) lines.push('  firewall enable level low');
     lines.push(`  security-mgmt ${d.securityWebPort || '212'} state enable mode forward protocol web`);
