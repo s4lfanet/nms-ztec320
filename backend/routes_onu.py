@@ -584,8 +584,13 @@ def delete_onu(onu_id):
         tc.deregister_onu(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
     target, detail = onu.onu_id_str or str(onu.id), f'Deleted {onu.name} ({onu.serial_number}) from {olt.name if olt else "unknown"}'
     from helpers import delete_onu_row
-    delete_onu_row(onu)
-    db.session.commit()
+    try:
+        delete_onu_row(onu)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"[onu-delete] ONU {onu_id} delete failed: {e}")
+        return jsonify({'success': False, 'message': f'Delete failed: {e}'}), 500
     # Auto-sync OLT after delete — full sync with delay to clean stale ONUs
     _auto_sync_olt(olt_id, light=False, delay=3)
     log_action('onu_delete', 'onu', target=target, detail=detail)
@@ -742,8 +747,13 @@ def onu_action(onu_id):
         collector.close()
         if success:
             from helpers import delete_onu_row
-            delete_onu_row(onu)
-            db.session.commit()
+            try:
+                delete_onu_row(onu)
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"[onu-action] snmp delete ONU {onu_id} DB commit failed: {e}")
+                return jsonify({'success': False, 'message': f'Delete failed: {e}'}), 500
             _auto_sync_olt(olt_id_for_sync, light=False, delay=3)
         return jsonify({'success': success, 'message': msg})
 
@@ -779,8 +789,13 @@ def onu_action(onu_id):
             # capture before delete: log_action below must not touch a deleted object
             onu_label, onu_desc = onu.onu_id_str or str(onu.id), f'{onu.name} ({onu.serial_number})'
             from helpers import delete_onu_row
-            delete_onu_row(onu)
-            db.session.commit()
+            try:
+                delete_onu_row(onu)
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"[onu-action] delete ONU {onu_id} DB commit failed: {e}")
+                return jsonify({'success': False, 'message': f'Delete failed: {e}'}), 500
             # Auto-trigger FULL sync after delete with 3s delay — gives OLT time
             # to process deregistration so SNMP won't re-create the ONU in DB
             _auto_sync_olt(olt_id_for_sync, light=False, delay=3)

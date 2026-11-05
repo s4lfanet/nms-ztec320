@@ -217,16 +217,29 @@ def clear_failed_logins(ip):
     _login_attempts.pop(ip, None)
 
 
-def delete_onu_row(onu):
-    """Delete an ONU row together with its dependent rows.
+def delete_onu_dependents(onu_ids):
+    """Remove/release every row keyed to the given ONU ids.
 
-    onu_link_states.onu_id is NOT NULL, so a plain session.delete(onu) makes
-    SQLAlchemy try to NULL it (backref) and the commit dies with IntegrityError.
-    ODP ports are released, history/link-state rows are removed. Caller commits.
+    genieacs_device_map.onu_id is NOT NULL with an ORM backref, so a plain
+    session.delete(onu) makes SQLAlchemy try to NULL it and the commit dies
+    with IntegrityError — same for onu_link_states. ODP ports are released,
+    history/link-state/RX-sample/genieacs-map rows are removed. Caller commits.
     """
-    from models import OnuLinkState, OnuStatusHistory, FTTHODPPort
-    FTTHODPPort.query.filter_by(onu_id=onu.id).update(
+    from models import (OnuLinkState, OnuStatusHistory, FTTHODPPort,
+                        GenieacsDeviceMap, OnuRxSample, OnuRxHourly)
+    ids = list(onu_ids)
+    if not ids:
+        return
+    FTTHODPPort.query.filter(FTTHODPPort.onu_id.in_(ids)).update(
         {'onu_id': None, 'status': 'available'}, synchronize_session=False)
-    OnuLinkState.query.filter_by(onu_id=onu.id).delete(synchronize_session=False)
-    OnuStatusHistory.query.filter_by(onu_id=onu.id).delete(synchronize_session=False)
+    OnuLinkState.query.filter(OnuLinkState.onu_id.in_(ids)).delete(synchronize_session=False)
+    OnuStatusHistory.query.filter(OnuStatusHistory.onu_id.in_(ids)).delete(synchronize_session=False)
+    OnuRxSample.query.filter(OnuRxSample.onu_id.in_(ids)).delete(synchronize_session=False)
+    OnuRxHourly.query.filter(OnuRxHourly.onu_id.in_(ids)).delete(synchronize_session=False)
+    GenieacsDeviceMap.query.filter(GenieacsDeviceMap.onu_id.in_(ids)).delete(synchronize_session=False)
+
+
+def delete_onu_row(onu):
+    """Delete an ONU row together with its dependent rows. Caller commits."""
+    delete_onu_dependents([onu.id])
     db.session.delete(onu)

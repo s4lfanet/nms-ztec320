@@ -336,6 +336,8 @@ def save_sync_result(olt, result, sync, light=False):
             seen_idx_map[o.onu_index] = o
     if dup_ids:
         logger.info(f"  Removing {len(dup_ids)} duplicate ONU record(s) for OLT {olt.id}: ids={dup_ids}")
+        from helpers import delete_onu_dependents
+        delete_onu_dependents(dup_ids)
         ONU.query.filter(ONU.id.in_(dup_ids)).delete(synchronize_session='fetch')
         db.session.commit()
 

@@ -1323,14 +1323,12 @@ def delete_olt(olt_id):
     from models import MaintenanceWindow
     name, ip = olt.name, olt.ip_address  # captured before delete — the object is expired after commit
     try:
-        # Clean ONU-keyed rows first (ftth_odp_port.onu_id is a nullable ref —
-        # null it; link-state/history rows are deleted with their ONU)
+        # Clean ONU-keyed rows first (link-state/history/RX/genieacs-map rows
+        # are deleted with their ONU; ODP ports are released)
         onu_ids = [r[0] for r in db.session.query(ONU.id).filter_by(olt_id=olt_id).all()]
         if onu_ids:
-            OnuLinkState.query.filter(OnuLinkState.onu_id.in_(onu_ids)).delete(synchronize_session=False)
-            OnuStatusHistory.query.filter(OnuStatusHistory.onu_id.in_(onu_ids)).delete(synchronize_session=False)
-            FTTHODPPort.query.filter(FTTHODPPort.onu_id.in_(onu_ids)).update(
-                {'onu_id': None}, synchronize_session=False)
+            from helpers import delete_onu_dependents
+            delete_onu_dependents(onu_ids)
         # Delete all child records explicitly to avoid FK constraint errors
         ONU.query.filter_by(olt_id=olt_id).delete()
         SyncJob.query.filter_by(olt_id=olt_id).delete()
