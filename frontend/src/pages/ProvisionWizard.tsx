@@ -217,7 +217,7 @@ function generateScript(d: WizardState): string {
     if ((svc as { service_type?: string }).service_type === 'tr069') {
       if (!useVeip) {
         lines.push(`  ip-host ${n} dhcp-enable enable`);
-        lines.push(`  wan ${n} service tr069 internet host ${wanHost}`);
+        lines.push(`  wan ${n} service tr069`);
       } else if (svc.vlan_profile) {
         lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile} host ${wanHost}`);
         lines.push(`  wan-ip ${n} ping-response enable traceroute-response enable`);

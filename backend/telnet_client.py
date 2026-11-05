@@ -2121,7 +2121,7 @@ class TelnetCollector:
             if i >= 2:
                 self._send_command(tn, f'no service {i}', timeout=10)
         for nw in range(1, max(3, n) + 1):
-            self._send_command(tn, f'no wan {nw} service', timeout=10)
+            self._send_command(tn, f'no wan {nw}', timeout=10)
             self._send_command(tn, f'no wan-ip {nw}', timeout=10)
             self._send_command(tn, f'no pppoe {nw}', timeout=10)
         import time as _t; _t.sleep(1)
@@ -2275,7 +2275,7 @@ class TelnetCollector:
             self._send_command(tn, f'no service service{i}', timeout=10)
             self._send_command(tn, f'no service {i}', timeout=10)
         for nw in range(1, max(3, n) + 1):
-            self._send_command(tn, f'no wan {nw} service', timeout=10)
+            self._send_command(tn, f'no wan {nw}', timeout=10)
             self._send_command(tn, f'no wan-ip {nw}', timeout=10)
             self._send_command(tn, f'no pppoe {nw}', timeout=10)
         import time as _t; _t.sleep(1)
@@ -2413,7 +2413,7 @@ class TelnetCollector:
         for sn in svc_names + [f'service{i}' for i in range(1, max(3, n_all) + 1)]:
             self._send_command(tn, f'no service {sn}', timeout=10)
         for nw in range(1, max(3, n_all) + 1):
-            self._send_command(tn, f'no wan {nw} service', timeout=10)
+            self._send_command(tn, f'no wan {nw}', timeout=10)
             self._send_command(tn, f'no wan-ip {nw}', timeout=10)
             self._send_command(tn, f'no pppoe {nw}', timeout=10)
             self._send_command(tn, f'no tr069-mgmt {nw}', timeout=10)
@@ -2437,7 +2437,7 @@ class TelnetCollector:
         # ('iphost' standalone tidak ada di firmware ini).
         if tr069_sep:
             sc('ip-host 1 dhcp-enable enable ping-response disable traceroute-response disable')
-            sc('wan 1 service tr069 internet host 1')
+            sc('wan 1 service tr069')
             sc(f'wan {inet_idx} service internet host {inet_idx}')
         elif enable_tr069:
             sc('wan 1 service tr069 internet host 1')
@@ -2535,7 +2535,7 @@ class TelnetCollector:
         self._send_command(tn, 'no service service1', timeout=10)
         self._send_command(tn, 'no service service2', timeout=10)
         for nw in (1, 2):
-            self._send_command(tn, f'no wan {nw} service', timeout=10)
+            self._send_command(tn, f'no wan {nw}', timeout=10)
             self._send_command(tn, f'no wan-ip {nw}', timeout=10)
             self._send_command(tn, f'no pppoe {nw}', timeout=10)
             self._send_command(tn, f'no tr069-mgmt {nw}', timeout=10)
@@ -2558,7 +2558,7 @@ class TelnetCollector:
         # wan-ip mode dhcp = satu-satunya cara enable DHCP di iphost.
         if tr069_sep:
             sc('ip-host 1 dhcp-enable enable ping-response disable traceroute-response disable')
-            sc('wan 1 service tr069 internet host 1')
+            sc('wan 1 service tr069')
             sc('wan 2 service internet host 2')
         elif enable_tr069:
             sc('wan 1 service tr069 internet host 1')
@@ -2735,7 +2735,7 @@ class TelnetCollector:
                 if not use_veip:
                     # Separated TR-069 WAN: dedicated iphost + DHCP via ip-host
                     sc(f'ip-host {n} dhcp-enable enable ping-response disable traceroute-response disable')
-                    sc(f'wan {n} service tr069 internet host {n}')
+                    sc(f'wan {n} service tr069')
                 elif vlan_profile:
                     sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
                     sc(f'wan-ip {n} ping-response enable traceroute-response enable')
@@ -3128,7 +3128,7 @@ class TelnetCollector:
                 # about to create too, so re-provisioning can't hit "already exists".
                 if is_nokia and svc.get('name'):
                     self._send_command(tn, f'no service {svc["name"]}', timeout=10)
-                self._send_command(tn, f'no wan {n} service', timeout=10)
+                self._send_command(tn, f'no wan {n}', timeout=10)
                 self._send_command(tn, f'no wan-ip {n}', timeout=10)
                 self._send_command(tn, f'no pppoe {n}', timeout=10)
             time.sleep(1)  # Brief pause for OLT to process OMCI deletions
@@ -3179,7 +3179,7 @@ class TelnetCollector:
                 elif svc_type == 'tr069':
                     if not use_veip:
                         sc(f'ip-host {n} dhcp-enable enable ping-response disable traceroute-response disable')
-                        sc(f'wan {n} service tr069 internet host {wan_host}')
+                        sc(f'wan {n} service tr069')
                     elif vlan_profile:
                         sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {wan_host}')
                         sc(f'wan-ip {n} ping-response enable traceroute-response enable')

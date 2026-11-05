@@ -129,7 +129,7 @@ function generateRegisterScript(d: WizardData): string {
     if (e.enable_pppoe === 'true' && e.pppoe_user) lines.push(`  pppoe ${t69sep ? 2 : 1} nat enable user ${e.pppoe_user} password ${e.pppoe_pass}`);
     if (t69sep) {
       lines.push('  ip-host 1 dhcp-enable enable ping-response disable traceroute-response disable');
-      lines.push('  wan 1 service tr069 internet host 1');
+      lines.push('  wan 1 service tr069');
       lines.push('  wan 2 service internet host 2');
     } else if (enableTr069) lines.push('  wan 1 service tr069 internet host 1');
     else lines.push('  wan 1 service internet host 1');
@@ -185,7 +185,7 @@ function generateRegisterScript(d: WizardData): string {
     if (e.enable_pppoe === 'true' && e.pppoe_user) lines.push(`  pppoe ${inetIdx} nat enable user ${e.pppoe_user} password ${e.pppoe_pass}`);
     if (t69sep) {
       lines.push('  ip-host 1 dhcp-enable enable ping-response disable traceroute-response disable');
-      lines.push('  wan 1 service tr069 internet host 1');
+      lines.push('  wan 1 service tr069');
       lines.push(`  wan ${inetIdx} service internet host ${inetIdx}`);
     } else if (enableTr069) lines.push('  wan 1 service tr069 internet host 1');
     else lines.push('  wan 1 service internet host 1');
@@ -267,7 +267,7 @@ function generateRegisterScript(d: WizardData): string {
       else if (svcType === 'tr069') {
         if (!useVeipM) {
           lines.push(`  ip-host ${n} dhcp-enable enable`);
-          lines.push(`  wan ${n} service tr069 internet host ${n}`);
+          lines.push(`  wan ${n} service tr069`);
         } else if (vlanProfile) {
           lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${vlanProfile} host ${n}`);
           lines.push(`  wan-ip ${n} ping-response enable traceroute-response enable`);
