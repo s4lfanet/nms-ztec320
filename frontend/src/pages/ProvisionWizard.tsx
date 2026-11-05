@@ -216,8 +216,7 @@ function generateScript(d: WizardState): string {
     const wanHost = useVeip ? 1 : n;
     if ((svc as { service_type?: string }).service_type === 'tr069') {
       if (!useVeip) {
-        lines.push(`  iphost ${n} dhcp`);
-        lines.push(`  wan ${n} service tr069 host ${wanHost}`);
+        lines.push(`  wan ${n} service tr069 internet host ${wanHost}`);
       } else if (svc.vlan_profile) {
         lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile} host ${wanHost}`);
         lines.push(`  wan-ip ${n} ping-response enable traceroute-response enable`);
@@ -558,7 +557,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               traffic_profile: s.traffic_profile,
             })),
               // WAN TR-069 terpisah: service bertipe 'tr069' di VLAN-nya sendiri
-              // (backend → iphost N dhcp + wan N service tr069 host N)
+              // (backend → service iphost N + wan N service tr069 internet host N)
               ...(data.tr069.enabled && data.tr069.separate_wan && data.tr069.tr069_vlan ? [{
                 service_type: 'tr069' as const, vlan: data.tr069.tr069_vlan, cvlan: 0,
                 vlan_mode: 'tag' as const, name: 'TR069', cos: '0', wan_mode: 'dhcp',

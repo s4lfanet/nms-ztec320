@@ -121,8 +121,7 @@ function generateRegisterScript(d: WizardData): string {
     if (t69sep) lines.push(`  service TR069 gemport 2 iphost 2 vlan ${e.tr069_vlan}`);
     if (e.enable_pppoe === 'true' && e.pppoe_user) lines.push(`  pppoe 1 nat enable user ${e.pppoe_user} password ${e.pppoe_pass}`);
     if (t69sep) {
-      lines.push('  iphost 2 dhcp');
-      lines.push('  wan 2 service tr069 host 2');
+      lines.push('  wan 2 service tr069 internet host 2');
       lines.push('  wan 1 service internet host 1');
     } else if (enableTr069) lines.push('  wan 1 service tr069 internet host 1');
     else lines.push('  wan 1 service internet host 1');
@@ -181,8 +180,7 @@ function generateRegisterScript(d: WizardData): string {
     const pv = String(vlans[0]?.vlan || '30');
     if (e.enable_pppoe === 'true' && e.pppoe_user) lines.push(`  pppoe 1 nat enable user ${e.pppoe_user} password ${e.pppoe_pass}`);
     if (t69n) {
-      lines.push(`  iphost ${t69n} dhcp`);
-      lines.push(`  wan ${t69n} service tr069 host ${t69n}`);
+      lines.push(`  wan ${t69n} service tr069 internet host ${t69n}`);
       lines.push('  wan 1 service internet host 1');
     } else if (enableTr069) lines.push('  wan 1 service tr069 internet host 1');
     else lines.push('  wan 1 service internet host 1');
@@ -259,8 +257,7 @@ function generateRegisterScript(d: WizardData): string {
       if (svcType === 'bridge') { /* no wan-ip */ }
       else if (svcType === 'tr069') {
         if (!useVeipM) {
-          lines.push(`  iphost ${n} dhcp`);
-          lines.push(`  wan ${n} service tr069 host ${n}`);
+          lines.push(`  wan ${n} service tr069 internet host ${n}`);
         } else if (vlanProfile) {
           lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${vlanProfile} host ${n}`);
           lines.push(`  wan-ip ${n} ping-response enable traceroute-response enable`);

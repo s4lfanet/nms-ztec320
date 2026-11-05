@@ -2352,6 +2352,9 @@ class TelnetCollector:
                 vid = int(str(v.get('vlan', '') or '').strip())
             except (ValueError, TypeError):
                 continue
+            # Skip VLAN duplikat — nama service VLANxxxx akan bentrok (63869)
+            if any(x['vlan'] == vid for x in vlans):
+                continue
             vlans.append({'vlan': vid, 'label': str(v.get('label', '') or '')})
         if not vlans:
             vlans = [{'vlan': primary_vlan, 'label': 'Internet'},
@@ -2414,7 +2417,6 @@ class TelnetCollector:
             self._send_command(tn, f'no wan {nw} service', timeout=10)
             self._send_command(tn, f'no wan-ip {nw}', timeout=10)
             self._send_command(tn, f'no pppoe {nw}', timeout=10)
-            self._send_command(tn, f'no iphost {nw}', timeout=10)
         import time as _t; _t.sleep(1)
         for i, v in enumerate(vlans, 1):
             svc_name = f'VLAN{v["vlan"]:04d}' if i == 1 else f'VLAN{v["vlan"]}'
@@ -2433,11 +2435,11 @@ class TelnetCollector:
             sc(f'pppoe 1 nat enable user {pppoe_user} password {pppoe_pass}')
 
         # WAN service AFTER pppoe so service type is not overridden
-        # TR-069 terpisah: wan N service tr069 host N di iphost dedicated;
-        # gabungan (default): tr069 numpang host 1 bersama internet.
+        # TR-069 terpisah: 'wan N service tr069 internet host N' di iphost
+        # dedicated (firmware: 'host' hanya valid setelah 'tr069 internet',
+        # dan 'iphost' standalone tidak ada — dibuat via service binding).
         if tr069_idx:
-            sc(f'iphost {tr069_idx} dhcp')
-            sc(f'wan {tr069_idx} service tr069 host {tr069_idx}')
+            sc(f'wan {tr069_idx} service tr069 internet host {tr069_idx}')
             sc('wan 1 service internet host 1')
         elif enable_tr069:
             sc('wan 1 service tr069 internet host 1')
@@ -2528,7 +2530,6 @@ class TelnetCollector:
             self._send_command(tn, f'no wan {nw} service', timeout=10)
             self._send_command(tn, f'no wan-ip {nw}', timeout=10)
             self._send_command(tn, f'no pppoe {nw}', timeout=10)
-            self._send_command(tn, f'no iphost {nw}', timeout=10)
         import time as _t; _t.sleep(1)
         if use_veip:
             sc(f'service INTERNET gemport 1 vlan {vlan}')
@@ -2544,11 +2545,10 @@ class TelnetCollector:
             sc(f'pppoe 1 nat enable user {pppoe_user} password {pppoe_pass}')
 
         # WAN service AFTER pppoe so service type is not overridden
-        # TR-069 terpisah: wan 2 service tr069 host 2 di iphost dedicated;
-        # gabungan (default): tr069 numpang host 1 bersama internet.
+        # TR-069 terpisah: 'wan 2 service tr069 internet host 2' di iphost
+        # dedicated; gabungan (default): tr069 numpang host 1 bersama internet.
         if tr069_sep:
-            sc('iphost 2 dhcp')
-            sc('wan 2 service tr069 host 2')
+            sc('wan 2 service tr069 internet host 2')
             sc('wan 1 service internet host 1')
         elif enable_tr069:
             sc('wan 1 service tr069 internet host 1')
@@ -2720,9 +2720,9 @@ class TelnetCollector:
                         sc_warn(f'vlan port eth_0/{eth_port} mode hybrid def-vlan {svc_vlan_for_service}')
             elif svc_type == 'tr069':
                 if not use_veip:
-                    # Separated TR-069 WAN: dedicated iphost + DHCP mgmt (VLAN 1010 dsb.)
-                    sc(f'iphost {n} dhcp')
-                    sc(f'wan {n} service tr069 host {n}')
+                    # Separated TR-069 WAN: dedicated iphost (via service binding)
+                    # + wan tr069 internet — 'host' hanya valid setelah 'tr069 internet'
+                    sc(f'wan {n} service tr069 internet host {n}')
                 elif vlan_profile:
                     sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
                     sc(f'wan-ip {n} ping-response enable traceroute-response enable')
@@ -3159,8 +3159,7 @@ class TelnetCollector:
                     pass
                 elif svc_type == 'tr069':
                     if not use_veip:
-                        sc(f'iphost {n} dhcp')
-                        sc(f'wan {n} service tr069 host {wan_host}')
+                        sc(f'wan {n} service tr069 internet host {wan_host}')
                     elif vlan_profile:
                         sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {wan_host}')
                         sc(f'wan-ip {n} ping-response enable traceroute-response enable')
