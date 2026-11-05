@@ -2436,7 +2436,7 @@ class TelnetCollector:
         # wan-ip mode dhcp = satu-satunya cara enable DHCP di iphost
         # ('iphost' standalone tidak ada di firmware ini).
         if tr069_sep:
-            sc('ip-host 1 dhcp-enable enable')
+            sc('ip-host 1 dhcp-enable enable ping-response disable traceroute-response disable')
             sc('wan 1 service tr069 internet host 1')
             sc(f'wan {inet_idx} service internet host {inet_idx}')
         elif enable_tr069:
@@ -2557,7 +2557,7 @@ class TelnetCollector:
         # WAN service AFTER pppoe so service type is not overridden
         # wan-ip mode dhcp = satu-satunya cara enable DHCP di iphost.
         if tr069_sep:
-            sc('ip-host 1 dhcp-enable enable')
+            sc('ip-host 1 dhcp-enable enable ping-response disable traceroute-response disable')
             sc('wan 1 service tr069 internet host 1')
             sc('wan 2 service internet host 2')
         elif enable_tr069:
@@ -2734,7 +2734,7 @@ class TelnetCollector:
             elif svc_type == 'tr069':
                 if not use_veip:
                     # Separated TR-069 WAN: dedicated iphost + DHCP via ip-host
-                    sc(f'ip-host {n} dhcp-enable enable')
+                    sc(f'ip-host {n} dhcp-enable enable ping-response disable traceroute-response disable')
                     sc(f'wan {n} service tr069 internet host {n}')
                 elif vlan_profile:
                     sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
@@ -3178,7 +3178,7 @@ class TelnetCollector:
                     pass
                 elif svc_type == 'tr069':
                     if not use_veip:
-                        sc(f'ip-host {n} dhcp-enable enable')
+                        sc(f'ip-host {n} dhcp-enable enable ping-response disable traceroute-response disable')
                         sc(f'wan {n} service tr069 internet host {wan_host}')
                     elif vlan_profile:
                         sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {wan_host}')
