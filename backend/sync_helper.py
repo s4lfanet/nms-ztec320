@@ -393,6 +393,10 @@ def save_sync_result(olt, result, sync, light=False):
             else:
                 onu = ONU(olt_id=olt.id, onu_index=idx)
                 db.session.add(onu)
+                # Flush supaya onu.id ter-assign — OnuRxSample/history di bawah
+                # membutuhkan PK. Tanpa ini fresh install selalu gagal dengan
+                # IntegrityError: NOT NULL constraint failed (sync mentok 98%).
+                db.session.flush()
             # Register under the new index — a second entry with the same
             # onu_index later in this same result must UPDATE this row, not
             # create a duplicate that only next sync's dedup would clean.
