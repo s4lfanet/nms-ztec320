@@ -2433,7 +2433,11 @@ class TelnetCollector:
 
         # WAN service AFTER pppoe so service type is not overridden
         # 'host' hanya valid setelah 'tr069 internet' (hasil probe '?' di OLT).
+        # wan-ip mode dhcp = satu-satunya cara enable DHCP di iphost
+        # ('iphost' standalone tidak ada di firmware ini).
         if tr069_sep:
+            t69_profile = extra.get('tr069_vlan_profile') or extra.get('vlan_profile') or 'genieacs'
+            sc(f'wan-ip 1 mode dhcp vlan-profile {t69_profile} host 1')
             sc('wan 1 service tr069 internet host 1')
             sc(f'wan {inet_idx} service internet host {inet_idx}')
         elif enable_tr069:
@@ -2552,7 +2556,10 @@ class TelnetCollector:
             sc(f'pppoe {2 if tr069_sep else 1} nat enable user {pppoe_user} password {pppoe_pass}')
 
         # WAN service AFTER pppoe so service type is not overridden
+        # wan-ip mode dhcp = satu-satunya cara enable DHCP di iphost.
         if tr069_sep:
+            t69_profile = extra.get('tr069_vlan_profile') or extra.get('vlan_profile') or 'genieacs'
+            sc(f'wan-ip 1 mode dhcp vlan-profile {t69_profile} host 1')
             sc('wan 1 service tr069 internet host 1')
             sc('wan 2 service internet host 2')
         elif enable_tr069:
@@ -2728,8 +2735,9 @@ class TelnetCollector:
                         sc_warn(f'vlan port eth_0/{eth_port} mode hybrid def-vlan {svc_vlan_for_service}')
             elif svc_type == 'tr069':
                 if not use_veip:
-                    # Separated TR-069 WAN: dedicated iphost (via service binding)
-                    # + wan tr069 internet — 'host' hanya valid setelah 'tr069 internet'
+                    # Separated TR-069 WAN: dedicated iphost + DHCP via wan-ip
+                    vlan_profile = svc.get('vlan_profile') or 'genieacs'
+                    sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
                     sc(f'wan {n} service tr069 internet host {n}')
                 elif vlan_profile:
                     sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {n}')
@@ -3173,6 +3181,8 @@ class TelnetCollector:
                     pass
                 elif svc_type == 'tr069':
                     if not use_veip:
+                        vlan_profile = svc.get('vlan_profile') or 'genieacs'
+                        sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {wan_host}')
                         sc(f'wan {n} service tr069 internet host {wan_host}')
                     elif vlan_profile:
                         sc(f'wan-ip {n} mode dhcp vlan-profile {vlan_profile} host {wan_host}')

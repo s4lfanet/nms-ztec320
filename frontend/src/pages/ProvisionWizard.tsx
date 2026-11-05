@@ -216,6 +216,7 @@ function generateScript(d: WizardState): string {
     const wanHost = useVeip ? 1 : n;
     if ((svc as { service_type?: string }).service_type === 'tr069') {
       if (!useVeip) {
+        lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile || 'genieacs'} host ${wanHost}`);
         lines.push(`  wan ${n} service tr069 internet host ${wanHost}`);
       } else if (svc.vlan_profile) {
         lines.push(`  wan-ip ${n} mode dhcp vlan-profile ${svc.vlan_profile} host ${wanHost}`);
