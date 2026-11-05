@@ -154,15 +154,15 @@ function generateScript(d: WizardState): string {
   if (d.namePrefix) lines.push(`  name ${d.namePrefix}`);
   if (d.description) lines.push(`  description ${d.description}`);
 
-  // Mirror the submit payload: TR-069 separate WAN appends a 'tr069' service
-  // at the end (backend → service/gemport/iphost N + wan N service tr069 host N)
+  // Mirror the submit payload: TR-069 separate WAN prepends a 'tr069' service
+  // di index 1 (tr069-mgmt 1 ↔ wan 1 konvensi ZTE)
   const previewServices = [
-    ...d.services,
     ...(d.tr069.enabled && d.tr069.separate_wan && d.tr069.tr069_vlan
       ? [{ id: 'svc-tr069', vlan: d.tr069.tr069_vlan, cvlan: 0, vlan_mode: 'tag' as const,
            name: '', label: '', cos: '0', wan_mode: 'dhcp' as const, pppoe_user: '', pppoe_pass: '',
            vlan_profile: '', traffic_profile: '', service_type: 'tr069' }]
       : []),
+    ...d.services,
   ];
 
   // TCONT + GEM + service-port per VLAN
@@ -542,6 +542,13 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             name: data.namePrefix || '',
             description: data.description,
             services: [
+              // WAN TR-069 terpisah: index 1 (tr069-mgmt 1 ↔ wan 1 konvensi ZTE)
+              ...(data.tr069.enabled && data.tr069.separate_wan && data.tr069.tr069_vlan ? [{
+                service_type: 'tr069' as const, vlan: data.tr069.tr069_vlan, cvlan: 0,
+                vlan_mode: 'tag' as const, name: 'TR069', cos: '0', wan_mode: 'dhcp',
+                wan_ip_mode: 'DHCP', pppoe_user: '', pppoe_pass: '', vlan_profile: '',
+                mvlan: 0, traffic_profile: '',
+              }] : []),
               ...data.services.map(s => ({
               service_type: s.wan_mode === 'bridge' ? 'bridge' : 'internet',
               vlan: s.vlan,
@@ -557,14 +564,6 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               mvlan: 0,
               traffic_profile: s.traffic_profile,
             })),
-              // WAN TR-069 terpisah: service bertipe 'tr069' di VLAN-nya sendiri
-              // (backend → service iphost N + wan N service tr069 internet host N)
-              ...(data.tr069.enabled && data.tr069.separate_wan && data.tr069.tr069_vlan ? [{
-                service_type: 'tr069' as const, vlan: data.tr069.tr069_vlan, cvlan: 0,
-                vlan_mode: 'tag' as const, name: 'TR069', cos: '0', wan_mode: 'dhcp',
-                wan_ip_mode: 'DHCP', pppoe_user: '', pppoe_pass: '', vlan_profile: '',
-                mvlan: 0, traffic_profile: '',
-              }] : []),
             ],
             use_veip: data.useVeip,
             extra: {

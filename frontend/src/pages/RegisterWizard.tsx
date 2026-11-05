@@ -99,30 +99,37 @@ function generateRegisterScript(d: WizardData): string {
     const useVeip = eWithVeip.use_veip === 'true';
     const enableTr069 = e.enable_tr069 === 'true';
     const t69sep = enableTr069 && !!e.tr069_vlan && e.tr069_separate_wan === 'true' && !useVeip;
-    lines.push(`  tcont 1 name ${svcName} profile ${d.tcontProfile}`);
-    lines.push('  gemport 1 tcont 1');
-    if (d.trafficProfile) lines.push(`  gemport 1 traffic-limit downstream ${d.trafficProfile}`);
-    lines.push(`  service-port 1 vport 1 user-vlan ${vlan} vlan ${vlan}`);
     if (t69sep) {
-      lines.push(`  tcont 2 name TR069 profile ${d.tcontProfile}`);
+      lines.push(`  tcont 1 name TR069 profile ${d.tcontProfile}`);
+      lines.push('  gemport 1 tcont 1');
+      if (d.trafficProfile) lines.push(`  gemport 1 traffic-limit downstream ${d.trafficProfile}`);
+      lines.push(`  service-port 1 vport 1 user-vlan ${e.tr069_vlan} vlan ${e.tr069_vlan}`);
+      lines.push(`  tcont 2 name ${svcName} profile ${d.tcontProfile}`);
       lines.push('  gemport 2 tcont 2');
       if (d.trafficProfile) lines.push(`  gemport 2 traffic-limit downstream ${d.trafficProfile}`);
-      lines.push(`  service-port 2 vport 2 user-vlan ${e.tr069_vlan} vlan ${e.tr069_vlan}`);
+      lines.push(`  service-port 2 vport 2 user-vlan ${vlan} vlan ${vlan}`);
+    } else {
+      lines.push(`  tcont 1 name ${svcName} profile ${d.tcontProfile}`);
+      lines.push('  gemport 1 tcont 1');
+      if (d.trafficProfile) lines.push(`  gemport 1 traffic-limit downstream ${d.trafficProfile}`);
+      lines.push(`  service-port 1 vport 1 user-vlan ${vlan} vlan ${vlan}`);
     }
     lines.push('!');
     lines.push(`pon-onu-mng ${onuIf}`);
-    if (useVeip) {
+    if (t69sep) {
+      lines.push(`  service TR069 gemport 1 iphost 1 vlan ${e.tr069_vlan}`);
+      lines.push(`  service INTERNET gemport 2 iphost 2 vlan ${vlan}`);
+    } else if (useVeip) {
       lines.push(`  service INTERNET gemport 1 vlan ${vlan}`);
       lines.push('  vlan port veip_1 mode hybrid');
       lines.push('  vlan port veip_1 vlan 1');
     } else {
       lines.push(`  service INTERNET gemport 1 iphost 1 vlan ${vlan}`);
     }
-    if (t69sep) lines.push(`  service TR069 gemport 2 iphost 2 vlan ${e.tr069_vlan}`);
-    if (e.enable_pppoe === 'true' && e.pppoe_user) lines.push(`  pppoe 1 nat enable user ${e.pppoe_user} password ${e.pppoe_pass}`);
+    if (e.enable_pppoe === 'true' && e.pppoe_user) lines.push(`  pppoe ${t69sep ? 2 : 1} nat enable user ${e.pppoe_user} password ${e.pppoe_pass}`);
     if (t69sep) {
-      lines.push('  wan 2 service tr069 internet host 2');
-      lines.push('  wan 1 service internet host 1');
+      lines.push('  wan 1 service tr069 internet host 1');
+      lines.push('  wan 2 service internet host 2');
     } else if (enableTr069) lines.push('  wan 1 service tr069 internet host 1');
     else lines.push('  wan 1 service internet host 1');
     lines.push(`  vlan port eth_0/1 mode hybrid def-vlan ${vlan}`);
@@ -146,43 +153,38 @@ function generateRegisterScript(d: WizardData): string {
     const useVeipF = eWithVeip.use_veip === 'true';
     const enableTr069 = e.enable_tr069 === 'true';
     const t69sep = enableTr069 && !!e.tr069_vlan && e.tr069_separate_wan === 'true' && !useVeipF;
-    const t69n = t69sep ? vlans.length + 1 : 0;
     const svcName = (vid: string, i: number) => i === 0 ? `VLAN${vid.padStart(4, '0')}` : `VLAN${vid}`;
-    vlans.forEach((v, i) => {
+    // Saat TR-069 terpisah: TR069 di index 1 (tr069-mgmt 1 ↔ wan 1)
+    const svcItems: { name: string; vlan: string; kind: string }[] = [];
+    if (t69sep) svcItems.push({ name: 'TR069', vlan: String(e.tr069_vlan), kind: 'tr069' });
+    vlans.forEach((v, i) => svcItems.push({ name: svcName(String(v.vlan || ''), i), vlan: String(v.vlan || ''), kind: i === 0 ? 'internet' : 'bridge' }));
+    const inetIdx = t69sep ? 2 : 1;
+    svcItems.forEach((it, i) => {
       const n = i + 1;
-      const vid = String(v.vlan || '');
-      lines.push(`  tcont ${n} name ${svcName(vid, i)} profile ${d.tcontProfile}`);
+      lines.push(`  tcont ${n} name ${it.name} profile ${d.tcontProfile}`);
       lines.push(`  gemport ${n} tcont ${n}`);
       if (d.trafficProfile) lines.push(`  gemport ${n} traffic-limit downstream ${d.trafficProfile}`);
-      lines.push(`  service-port ${n} vport ${n} user-vlan ${vid} vlan ${vid}`);
+      lines.push(`  service-port ${n} vport ${n} user-vlan ${it.vlan} vlan ${it.vlan}`);
     });
-    if (t69n) {
-      lines.push(`  tcont ${t69n} name TR069 profile ${d.tcontProfile}`);
-      lines.push(`  gemport ${t69n} tcont ${t69n}`);
-      if (d.trafficProfile) lines.push(`  gemport ${t69n} traffic-limit downstream ${d.trafficProfile}`);
-      lines.push(`  service-port ${t69n} vport ${t69n} user-vlan ${e.tr069_vlan} vlan ${e.tr069_vlan}`);
-    }
     lines.push('!');
     lines.push(`pon-onu-mng ${onuIf}`);
-    vlans.forEach((v, i) => {
+    svcItems.forEach((it, i) => {
       const n = i + 1;
-      const vid = String(v.vlan || '');
-      if (n === 1 && !useVeipF) {
-        lines.push(`  service ${svcName(vid, i)} gemport ${n} iphost 1 vlan ${vid}`);
+      if (it.kind !== 'bridge' && !useVeipF) {
+        lines.push(`  service ${it.name} gemport ${n} iphost ${n} vlan ${it.vlan}`);
       } else {
-        lines.push(`  service ${svcName(vid, i)} gemport ${n} vlan ${vid}`);
+        lines.push(`  service ${it.name} gemport ${n} vlan ${it.vlan}`);
       }
     });
-    if (t69n) lines.push(`  service TR069 gemport ${t69n} iphost ${t69n} vlan ${e.tr069_vlan}`);
     if (useVeipF) {
       lines.push('  vlan port veip_1 mode hybrid');
       lines.push('  vlan port veip_1 vlan 1');
     }
     const pv = String(vlans[0]?.vlan || '30');
-    if (e.enable_pppoe === 'true' && e.pppoe_user) lines.push(`  pppoe 1 nat enable user ${e.pppoe_user} password ${e.pppoe_pass}`);
-    if (t69n) {
-      lines.push(`  wan ${t69n} service tr069 internet host ${t69n}`);
-      lines.push('  wan 1 service internet host 1');
+    if (e.enable_pppoe === 'true' && e.pppoe_user) lines.push(`  pppoe ${inetIdx} nat enable user ${e.pppoe_user} password ${e.pppoe_pass}`);
+    if (t69sep) {
+      lines.push('  wan 1 service tr069 internet host 1');
+      lines.push(`  wan ${inetIdx} service internet host ${inetIdx}`);
     } else if (enableTr069) lines.push('  wan 1 service tr069 internet host 1');
     else lines.push('  wan 1 service internet host 1');
     // LAN port VLAN tagging
@@ -213,6 +215,9 @@ function generateRegisterScript(d: WizardData): string {
   } else if (d.template === 'zte_multi') {
     const svcs = JSON.parse(e.services || '[]');
     const enabledSvcs = svcs.filter((s: Record<string, unknown>) => s.enabled);
+    // TR069 di index 1 (tr069-mgmt 1 ↔ wan 1)
+    enabledSvcs.sort((a: Record<string, unknown>, b: Record<string, unknown>) =>
+      (a.service_type === 'tr069' ? 0 : 1) - (b.service_type === 'tr069' ? 0 : 1));
     // Phase 1: Interface config
     enabledSvcs.forEach((svc: Record<string, unknown>, idx: number) => {
       const n = idx + 1;
