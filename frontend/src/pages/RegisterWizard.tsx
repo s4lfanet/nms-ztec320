@@ -1173,13 +1173,6 @@ export function RegisterWizard() {
                         <div>VLAN: <span className="text-tx1 font-mono">{data.extra.tr069_vlan}</span> <span className="text-tx3">({data.extra.tr069_vlan_mode || 'tag'})</span></div>
                       </div>
                     )}
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={data.extra.tr069_separate_wan === 'true'} onChange={e => update('extra', { ...data.extra, tr069_separate_wan: e.target.checked ? 'true' : '' })} />
-                      <span className="text-xs font-medium">WAN TR-069 terpisah (iphost dedicated — tidak numpang PPPoE)</span>
-                    </label>
-                    {data.extra.tr069_separate_wan === 'true' && !data.extra.tr069_vlan && (
-                      <p className="text-[10px] text-warning">VLAN TR069 belum diisi — tanpa VLAN, TR-069 tetap digabung ke WAN internet.</p>
-                    )}
                   </div>
                 )}
               </div>
@@ -1421,13 +1414,6 @@ export function RegisterWizard() {
                         <div>Password: <span className="text-tx1 font-mono">{data.extra._show_acs_pass === 'true' ? data.extra.acs_pass : '••••••••'}</span> <button type="button" onClick={() => update('extra', { ...data.extra, _show_acs_pass: data.extra._show_acs_pass === 'true' ? '' : 'true' })} className="text-tx3 hover:text-accent ml-1">{data.extra._show_acs_pass === 'true' ? '🙈' : '👁'}</button></div>
                         <div>VLAN: <span className="text-tx1 font-mono">{data.extra.tr069_vlan}</span> <span className="text-tx3">({data.extra.tr069_vlan_mode || 'tag'})</span></div>
                       </div>
-                    )}
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={data.extra.tr069_separate_wan === 'true'} onChange={e => update('extra', { ...data.extra, tr069_separate_wan: e.target.checked ? 'true' : '' })} />
-                      <span className="text-xs font-medium">WAN TR-069 terpisah (iphost dedicated — tidak numpang PPPoE)</span>
-                    </label>
-                    {data.extra.tr069_separate_wan === 'true' && !data.extra.tr069_vlan && (
-                      <p className="text-[10px] text-warning">VLAN TR069 belum diisi — tanpa VLAN, TR-069 tetap digabung ke WAN internet.</p>
                     )}
                   </div>
                 )}

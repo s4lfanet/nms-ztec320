@@ -1252,14 +1252,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                     </div>
                   </div>
                 </div>
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input type="checkbox" checked={data.tr069.separate_wan}
-                    onChange={e => update('tr069', { ...data.tr069, separate_wan: e.target.checked })}
-                    className="mt-0.5" />
-                  <span className="text-xs text-tx2">
-                    WAN TR-069 terpisah <span className="text-tx3">— ONU dapat iphost khusus (DHCP) di VLAN TR069 di atas; internet PPPoE tetap WAN sendiri. Kosongkan jika TR-069 numpang di WAN internet.</span>
-                  </span>
-                </label>
+                {/* WAN TR-069 terpisah dinonaktifkan — revert ke gabung PPPoE */}
               </div>
             )}
           </div>
