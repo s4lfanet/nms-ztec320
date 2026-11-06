@@ -464,6 +464,12 @@ export interface CardInfo {
   card_type: string;
   status: string;
   total_ports: number;
+  ports_up?: number;
+  ports_down?: number;
+  cpu_usage?: number;
+  memory_usage?: number;
+  memory_total?: number;
+  temperature?: number | null;
 }
 
 export interface OltInfo {

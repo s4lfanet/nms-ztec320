@@ -6,7 +6,7 @@ import { formatDate, cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
-  Server, Wifi, WifiOff, AlertTriangle, Thermometer,
+  Server, Wifi, WifiOff, AlertTriangle, Thermometer, Cpu, MemoryStick,
   RefreshCw, Radio, Clock, Fan, Zap, Activity, ExternalLink,
   TrendingUp, Shield, Bell, ArrowRight,
 } from 'lucide-react';
@@ -655,11 +655,23 @@ function OltCard({ olt, onSync, syncing, syncProgress, onConfig }: {
         </div>
       )}
 
-      {/* Device Info — 3 col */}
-      <div className="px-3 py-2 grid grid-cols-3 gap-2 border-b border-brd/50 text-center">
+      {/* Device Info — 5 col */}
+      <div className="px-3 py-2 grid grid-cols-5 gap-2 border-b border-brd/50 text-center">
         <div>
           <div className="text-[9px] text-tx3 uppercase">Model</div>
           <div className="text-[10px] font-medium text-tx2 truncate" title={olt.model ?? ''}>{olt.model || '-'}</div>
+        </div>
+        <div>
+          <div className="flex items-center justify-center gap-0.5 text-[9px] text-tx3 uppercase">
+            <Cpu size={9} />CPU
+          </div>
+          <div className="text-[10px] font-semibold text-tx2">{(() => { const v = Math.max(0, ...(olt.cards || []).map(x => x.cpu_usage || 0)); return v ? `${v}%` : 'N/A'; })()}</div>
+        </div>
+        <div>
+          <div className="flex items-center justify-center gap-0.5 text-[9px] text-tx3 uppercase">
+            <MemoryStick size={9} />Mem
+          </div>
+          <div className="text-[10px] font-semibold text-tx2">{(() => { const v = Math.max(0, ...(olt.cards || []).map(x => x.memory_usage || 0)); return v ? `${v}%` : 'N/A'; })()}</div>
         </div>
         <div>
           <div className="flex items-center justify-center gap-0.5 text-[9px] text-tx3 uppercase">
