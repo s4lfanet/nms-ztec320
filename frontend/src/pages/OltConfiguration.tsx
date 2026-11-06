@@ -92,6 +92,25 @@ export function OltConfiguration() {
         );
       })()}
 
+      {/* Hardware health — CPU/Mem/Temp/Uptime dari card data (SMXA = max) */}
+      {(() => {
+        const cards = (olt as Record<string, unknown>).cards as Array<Record<string, unknown>> || [];
+        const cpu = Math.max(0, ...cards.map(c => Number(c.cpu_usage) || 0));
+        const mem = Math.max(0, ...cards.map(c => Number(c.memory_usage) || 0));
+        const memMb = Math.max(0, ...cards.map(c => Number(c.memory_total) || 0));
+        const temp = olt.temperature != null ? `${olt.temperature}°C` : 'N/A';
+        const up = Number(olt.uptime || 0);
+        const upStr = up > 0 ? `${Math.floor(up / 86400)}d ${Math.floor((up % 86400) / 3600)}h ${Math.floor((up % 3600) / 60)}m` : 'N/A';
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
+            <MiniStat label="CPU" value={cpu ? `${cpu}%` : 'N/A'} color={cpu >= 80 ? 'text-danger' : cpu >= 60 ? 'text-warning' : 'text-success'} />
+            <MiniStat label="Memory" value={mem ? `${mem}%${memMb ? ` / ${memMb}MB` : ''}` : 'N/A'} color={mem >= 80 ? 'text-danger' : mem >= 60 ? 'text-warning' : 'text-success'} />
+            <MiniStat label="Temp" value={temp} color={Number(olt.temperature) >= 60 ? 'text-danger' : Number(olt.temperature) >= 50 ? 'text-warning' : 'text-success'} />
+            <MiniStat label="Uptime" value={upStr} />
+          </div>
+        );
+      })()}
+
       {/* Port Map — standalone section above tabs */}
       <RackDiagramRouter oltId={String(id)} oltVendor={olt.vendor} oltModel={olt.model} oltName={olt.name} oltIp={olt.ip_address} isOnline={olt.is_online} lastSync={olt.last_sync} />
 
