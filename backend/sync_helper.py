@@ -68,6 +68,7 @@ def save_sync_result(olt, result, sync, light=False):
                                total_ports=cd.get('port_count', 0),
                                cpu_usage=cd.get('cpu') or cd.get('cpu_usage') or 0,
                                memory_usage=cd.get('memory') or cd.get('memory_usage') or 0,
+                               memory_total=cd.get('memory_total') or cd.get('mem_mb') or 0,
                                temperature=cd.get('temperature'))
                 db.session.add(card)
 

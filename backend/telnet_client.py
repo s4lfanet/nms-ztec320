@@ -566,6 +566,16 @@ class TelnetCollector:
             if not info['temperature']:
                 temp_match2 = re.search(r'(\d+)\s*\u00b0?C', output)
                 if temp_match2: info['temperature'] = int(temp_match2.group(1))
+            # Per-slot CPU%/Mem% — 'show process' is the only C320 command
+            # that exposes them (no 'show performance cpu' on this firmware).
+            proc_stats = self._parse_show_process(
+                self._send_command(tn, 'show process', timeout=15))
+            for card in info['cards']:
+                p = proc_stats.get(card['slot'])
+                if p:
+                    card['cpu'] = p['cpu']
+                    card['memory'] = p['mem']
+                    card['memory_total'] = p['mem_mb']
             tn.write('exit\n'); tn.close()
         except Exception as e:
             logger.error(f"Chassis info failed: {e}")
@@ -7085,6 +7095,26 @@ class TelnetCollector:
                                   'status': status, 'port_count': port_count})
                 except (ValueError, IndexError): continue
         return cards
+
+    def _parse_show_process(self, output):
+        """Parse 'show process' — per-slot CPU% and memory usage.
+        Row: rack shelf slot CPU(5s) CPU(1m) CPU(5m) PhyMem(MB) Memory"""
+        stats = {}
+        for line in output.split('\n'):
+            parts = line.strip().split()
+            if len(parts) < 8 or not parts[0].isdigit():
+                continue
+            try:
+                stats[int(parts[2])] = {
+                    'cpu': int(parts[4].rstrip('%')),   # CPU(1m) — stabil untuk display
+                    'cpu5s': int(parts[3].rstrip('%')),
+                    'cpu5m': int(parts[5].rstrip('%')),
+                    'mem_mb': int(parts[6]),
+                    'mem': int(parts[7].rstrip('%')),
+                }
+            except (ValueError, IndexError):
+                continue
+        return stats
 
     def _parse_show_fan(self, output):
         fans = []
