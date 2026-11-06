@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Radio,
-  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon
+  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
@@ -255,7 +255,16 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
 
         {/* Footer */}
         {isExpanded && (
-          <div className="px-4 py-3 border-t border-brd">
+          <div className="px-4 py-3 border-t border-brd space-y-2">
+            <a
+              href="https://saweria.co/salfanetradius"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-xs font-medium text-rose-400 hover:text-rose-300 transition-colors"
+            >
+              <Heart size={13} className="fill-current" />
+              <span>Dukung Project — Saweria</span>
+            </a>
             <div className="text-xs text-tx3">{brandName} v2.0</div>
           </div>
         )}
