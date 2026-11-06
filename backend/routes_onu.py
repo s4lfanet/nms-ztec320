@@ -171,9 +171,15 @@ def api_onu_live_detail(onu_id):
             lock_token = acquire_sync_lock(olt.id, timeout=5)
             if lock_token is None:
                 logger.warning(f"[live-detail] OLT {olt.id}: proceeding without sync lock (still held after 5s) — a concurrent sync may interfere with this fetch")
+            watchdog = None
+            if lock_token:
+                from sync_lock import start_sync_watchdog
+                watchdog = start_sync_watchdog(olt.id, lock_token)
             try:
                 collected = tc.collect_onu_detail(onu.frame, onu.slot, onu.port, onu.onu_id, is_epon=is_epon)
             finally:
+                if watchdog:
+                    watchdog.cancel()
                 if lock_token:
                     release_sync_lock(olt.id, lock_token)
             if not collected:
@@ -619,6 +625,20 @@ def _auto_sync_olt(olt_id, light=True, delay=0):
                 logger.info(f"Auto-sync skipped for OLT {olt_id} — already syncing")
                 return
 
+            def _mark_interrupted():
+                try:
+                    with app.app_context():
+                        s = OLTSyncStatus.query.filter_by(olt_id=olt_id).first()
+                        if s and s.status == 'running':
+                            s.status = 'interrupted'
+                            s.message = 'Auto-sync timed out — lock auto-released'
+                            s.completed_at = datetime.now(timezone.utc)
+                            db.session.commit()
+                except Exception as e:
+                    logger.error(f"[auto-sync:{olt_id}] watchdog mark-interrupted failed: {e}")
+
+            from sync_lock import start_sync_watchdog
+            watchdog = start_sync_watchdog(olt_id, lock_token, on_timeout=_mark_interrupted)
             try:
                 olt = db.session.get(OLT, olt_id)
                 if not olt:
@@ -675,6 +695,7 @@ def _auto_sync_olt(olt_id, light=True, delay=0):
                 except:
                     pass
             finally:
+                watchdog.cancel()
                 release_sync_lock(olt_id, lock_token)
 
     thread = threading.Thread(target=_do_sync, daemon=True)

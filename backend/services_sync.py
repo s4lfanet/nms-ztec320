@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from models import db, OLT, OLTSyncStatus
 from extensions import logger
-from sync_lock import acquire_sync_lock, release_sync_lock
+from sync_lock import acquire_sync_lock, release_sync_lock, start_sync_watchdog
 
 MAX_SYNC_WORKERS = 5
 
@@ -36,6 +36,19 @@ def run_single_sync(app, olt_id, sync_id, light=False):
             logger.info(f"Sync skipped for OLT {olt_id} \u2014 already locked")
             return
 
+        def _mark_interrupted():
+            try:
+                with app.app_context():
+                    s = OLTSyncStatus.query.filter_by(olt_id=olt_id).first()
+                    if s and s.status == 'running':
+                        s.status = 'interrupted'
+                        s.message = 'Sync timed out \u2014 lock auto-released'
+                        s.completed_at = datetime.now(timezone.utc)
+                        db.session.commit()
+            except Exception as e:
+                logger.error(f"[sync:{olt_id}] watchdog mark-interrupted failed: {e}")
+
+        watchdog = start_sync_watchdog(olt_id, lock_token, on_timeout=_mark_interrupted)
         try:
             def update_progress(pct, msg):
                 sync.progress = pct
@@ -104,6 +117,7 @@ def run_single_sync(app, olt_id, sync_id, light=False):
             sync.completed_at = datetime.now(timezone.utc)
             db.session.commit()
         finally:
+            watchdog.cancel()
             release_sync_lock(olt_id, lock_token)
 
 
@@ -126,6 +140,19 @@ def _sync_one_olt(app, olt_id):
             logger.info(f"Sync-all skipped OLT {olt_id} \u2014 already locked")
             return olt_id, False, "Skipped \u2014 already syncing"
 
+        def _mark_interrupted():
+            try:
+                with app.app_context():
+                    s = OLTSyncStatus.query.filter_by(olt_id=olt_id).first()
+                    if s and s.status == 'running':
+                        s.status = 'interrupted'
+                        s.message = 'Sync timed out \u2014 lock auto-released'
+                        s.completed_at = datetime.now(timezone.utc)
+                        db.session.commit()
+            except Exception as e:
+                logger.error(f"[sync-all:{olt_id}] watchdog mark-interrupted failed: {e}")
+
+        watchdog = start_sync_watchdog(olt_id, lock_token, on_timeout=_mark_interrupted)
         try:
             olt = db.session.get(OLT, olt_id)
             if not olt:
@@ -201,6 +228,7 @@ def _sync_one_olt(app, olt_id):
                 logger.error(f"[sync-all:{olt_id}] Failed to update sync status after error: {inner_e}")
             return olt_id, False, str(e)[:200]
         finally:
+            watchdog.cancel()
             release_sync_lock(olt_id, lock_token)
             db.session.remove()
 

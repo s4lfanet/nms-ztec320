@@ -14,10 +14,16 @@ All three sync entry points use this:
 2. auto_sync.py — cron-based auto-sync
 3. app.py — _auto_sync_olt() after ONU actions
 
-Lock TTL: 10 minutes (safety net for crashed processes)
+Lock TTL: 10 minutes (safety net for crashed processes).
+For flock() locks (no kernel TTL) staleness is enforced by timestamp:
+acquire reaps holders whose recorded timestamp is older than the TTL —
+same-process fd is force-closed, dead pids are skipped, live stale
+processes are SIGTERMed. A per-sync watchdog timer additionally bounds
+lock-hold time when the sync thread itself hangs (e.g. dead telnet).
 """
 import logging
 import os
+import signal
 import threading
 import time
 import uuid
@@ -137,6 +143,7 @@ def acquire_sync_lock(olt_id: int, timeout: float = 0.1) -> Optional[str]:
                     fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except OSError:
                     fh.close()
+                    _reap_stale_flock(olt_id, path)
                     if time.time() >= deadline:
                         logger.debug(f"Sync lock NOT acquired for OLT {olt_id} (already locked)")
                         return None
@@ -147,7 +154,7 @@ def acquire_sync_lock(olt_id: int, timeout: float = 0.1) -> Optional[str]:
                 fh.write(f'{token}\n{os.getpid()}\n{time.time()}\n')
                 fh.flush()
                 with _local_meta_lock:
-                    _file_locks[olt_id] = (fh, token)
+                    _file_locks[olt_id] = (fh, token, time.time())
                 logger.debug(f"Sync lock acquired for OLT {olt_id} (file lock, token={token[:8]})")
                 return token
         except OSError as e:
@@ -220,7 +227,7 @@ def release_sync_lock(olt_id: int, token: str) -> bool:
         if not entry or entry[1] != token:
             logger.warning(f"Sync lock release failed for OLT {olt_id} (token mismatch)")
             return False
-        fh, _ = entry
+        fh = entry[0]
         try:
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
         except OSError:
@@ -248,6 +255,118 @@ def release_sync_lock(olt_id: int, token: str) -> bool:
             pass  # Already released
     logger.debug(f"Sync lock released for OLT {olt_id} (in-memory)")
     return True
+
+
+def _reap_stale_flock(olt_id: int, path: str) -> None:
+    """Release a flock held longer than _LOCK_TTL or by a dead process.
+
+    flock() has no kernel TTL — a hung sync thread would hold it forever,
+    permanently blocking every later sync. Called on each failed acquire
+    attempt; only acts on locks provably stale (recorded ts > _LOCK_TTL).
+    """
+    now = time.time()
+    # Our own held lock (hung thread in THIS process) — close its fd,
+    # which releases the kernel flock. Token check in release_sync_lock
+    # protects the stale holder from ever releasing a newer lock.
+    with _local_meta_lock:
+        own = _file_locks.get(olt_id)
+    if own:
+        if (now - own[2]) <= _LOCK_TTL:
+            return
+        logger.warning(f"Sync lock for OLT {olt_id} held {int(now - own[2])}s "
+                       f"(> {_LOCK_TTL}s) by this process — force-releasing")
+        try:
+            fcntl.flock(own[0].fileno(), fcntl.LOCK_UN)
+            own[0].close()
+        except OSError:
+            pass
+        with _local_meta_lock:
+            _file_locks.pop(olt_id, None)
+        return
+    # Another process holds it — read holder pid/timestamp from the file.
+    try:
+        with open(path) as f:
+            parts = f.read().strip().split('\n')
+        if len(parts) < 3:
+            return
+        pid, ts = int(parts[1]), float(parts[2])
+    except (OSError, ValueError):
+        return
+    if (now - ts) <= _LOCK_TTL or pid == os.getpid():
+        return
+    try:
+        os.kill(pid, 0)  # liveness probe — no signal sent
+    except ProcessLookupError:
+        return  # holder dead — OS already released its flock, retry succeeds
+    except PermissionError:
+        pass  # alive but not ours
+    logger.warning(f"Sync lock for OLT {olt_id} stale ({int(now - ts)}s) — "
+                   f"terminating holder pid {pid}")
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError as e:
+        logger.warning(f"Failed to terminate stale sync-lock holder pid {pid}: {e}")
+
+
+def force_release_sync_lock(olt_id: int) -> None:
+    """Force-release a lock held by THIS process regardless of token.
+
+    Used by the sync watchdog when the holder thread has hung. Cannot
+    release locks owned by other processes (their stale flock is handled
+    by _reap_stale_flock instead).
+    """
+    if _HAS_FCNTL:
+        with _local_meta_lock:
+            entry = _file_locks.pop(olt_id, None)
+        if entry:
+            try:
+                fcntl.flock(entry[0].fileno(), fcntl.LOCK_UN)
+                entry[0].close()
+            except OSError:
+                pass
+            logger.warning(f"Sync lock for OLT {olt_id} force-released (watchdog)")
+            return
+    with _local_meta_lock:
+        had = _local_lock_holders.pop(olt_id, None) is not None
+        _local_lock_timestamps.pop(olt_id, None)
+        lock = _local_locks.get(olt_id)
+    if lock and had:
+        try:
+            lock.release()
+        except RuntimeError:
+            pass
+        logger.warning(f"Sync lock for OLT {olt_id} force-released (watchdog, in-memory)")
+    # Redis path needs the token for atomic delete — its TTL already bounds
+    # hold time, so nothing to do here.
+
+
+def start_sync_watchdog(olt_id: int, token: str, max_seconds: float = None,
+                        on_timeout=None) -> threading.Timer:
+    """Daemon timer that force-releases a held lock after max_seconds.
+
+    Bounds worst-case lock-hold when the sync thread itself hangs (e.g.
+    dead telnet to the OLT). The caller MUST cancel() the returned timer
+    before its own release_sync_lock in the finally block — otherwise a
+    fast sync's lock would be released from under a still-running sync.
+    on_timeout (optional) runs before the release — e.g. mark the sync
+    row 'interrupted'.
+    """
+    limit = max_seconds or (_LOCK_TTL * 1.5)
+
+    def _fire():
+        logger.error(f"Sync lock watchdog fired for OLT {olt_id} after {limit}s — "
+                     f"sync thread likely hung; force-releasing lock")
+        if on_timeout:
+            try:
+                on_timeout()
+            except Exception as e:
+                logger.error(f"Sync watchdog on_timeout failed for OLT {olt_id}: {e}")
+        force_release_sync_lock(olt_id)
+
+    t = threading.Timer(limit, _fire)
+    t.daemon = True
+    t.start()
+    return t
 
 
 def is_sync_locked(olt_id: int) -> bool:

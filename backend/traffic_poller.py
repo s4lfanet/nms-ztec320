@@ -16,7 +16,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import func
 from app import app, db
 from models import OLT, OLTUplink, OLTPort, TrafficLog, TrafficLogHourly
-from sync_lock import acquire_sync_lock, release_sync_lock
+from sync_lock import acquire_sync_lock, release_sync_lock, start_sync_watchdog
 
 RAW_RETENTION_DAYS = 7
 HOURLY_RETENTION_DAYS = 90
@@ -147,6 +147,7 @@ with app.app_context():
         if lock_token is None:
             print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] {olt.name}: skipped — OLT is being synced')
             continue
+        watchdog = start_sync_watchdog(olt.id, lock_token)
 
         now = datetime.now(timezone.utc)
         rows = 0
@@ -160,6 +161,7 @@ with app.app_context():
             except Exception as e:
                 print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] {olt.name}: CLI ERROR: {e}')
         else:
+            watchdog.cancel()
             release_sync_lock(olt.id, lock_token)
             continue
 
@@ -189,6 +191,7 @@ with app.app_context():
             db.session.rollback()
             print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] {olt.name}: ERROR {e}')
         finally:
+            watchdog.cancel()
             release_sync_lock(olt.id, lock_token)
 
 print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Traffic poll complete')

@@ -31,7 +31,7 @@ from models import (OLT, ONU, OLTSyncStatus, OLTCard, OLTPort, OLTUplink,
                     ONUVlan, ONUType, SpeedProfile, WanIpProfile, Fan,
                     Notification)
 from sync_helper import save_sync_result, check_unregistered_onus
-from sync_lock import acquire_sync_lock, release_sync_lock
+from sync_lock import acquire_sync_lock, release_sync_lock, start_sync_watchdog
 
 FULL_SYNC_INTERVAL = timedelta(hours=6)
 MAX_SYNC_WORKERS = 5
@@ -101,6 +101,19 @@ def _sync_one_olt(olt_id, use_light):
             print(f'  OLT {olt_id}: Skipped — already syncing')
             return olt_id, False, "Skipped — already syncing", 0
 
+        def _mark_interrupted():
+            try:
+                with app.app_context():
+                    s = OLTSyncStatus.query.filter_by(olt_id=olt_id).first()
+                    if s and s.status == 'running':
+                        s.status = 'interrupted'
+                        s.message = 'Auto-sync timed out — lock auto-released'
+                        s.completed_at = datetime.now(timezone.utc)
+                        db.session.commit()
+            except Exception as e:
+                print(f'  [{olt_id}] watchdog mark-interrupted failed: {e}')
+
+        watchdog = start_sync_watchdog(olt_id, lock_token, on_timeout=_mark_interrupted)
         try:
             olt = db.session.get(OLT, olt_id)
             if not olt:
@@ -183,6 +196,7 @@ def _sync_one_olt(olt_id, use_light):
             print(f'  EXCEPTION: {e}')
             return olt_id, False, str(e)[:200], 0
         finally:
+            watchdog.cancel()
             release_sync_lock(olt_id, lock_token)
             db.session.remove()
 

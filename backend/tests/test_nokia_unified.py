@@ -63,8 +63,8 @@ class TestNokiaUnified:
         assert not any(c.startswith('tcont 2') for c in commands)
         # But each service still gets its own service-port — every vport
         # must point at shared gemport 1 so the OMCI binding matches.
-        assert 'service-port 1 vport 1 user-vlan 300 vlan 300' in commands
-        assert 'service-port 2 vport 1 user-vlan 100 vlan 100' in commands
+        assert 'service-port 1 vport 1 user-vlan 100 vlan 100' in commands
+        assert 'service-port 2 vport 1 user-vlan 300 vlan 300' in commands
         # Nokia ONTs are VEIP-based
         assert 'vlan port veip_1 mode hybrid' in commands
         # No iphost service lines
@@ -72,8 +72,8 @@ class TestNokiaUnified:
         # Nokia security-mgmt: port 212, web only — never the generic line
         assert not any(c.startswith('security-mgmt 1 ') for c in commands)
         assert 'security-mgmt 212 state enable mode forward protocol web' in commands
-        # All-bridge services → no firewall line
-        assert not any(c.startswith('firewall enable') for c in commands)
+        # tr069 is a routed service (dedicated iphost WAN) → firewall emitted
+        assert 'firewall enable level low' in commands
 
     def test_nokia_default_names_and_cos(self):
         """Missing svc.name falls back to service{n}; svc.cos overrides '0'."""
