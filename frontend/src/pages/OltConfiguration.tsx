@@ -1860,7 +1860,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-brd text-tx3 text-xs uppercase">
-                <th className="text-left py-2 px-3">Slot</th><th className="text-left py-2 px-3">Card Type</th><th className="text-left py-2 px-3">Status</th><th className="text-left py-2 px-3">Ports</th><th className="text-left py-2 px-3">Ports Up</th><th className="text-left py-2 px-3">Ports Down</th>
+                <th className="text-left py-2 px-3">Slot</th><th className="text-left py-2 px-3">Card Type</th><th className="text-left py-2 px-3">Status</th><th className="text-left py-2 px-3">CPU</th><th className="text-left py-2 px-3">Memory</th><th className="text-left py-2 px-3">Temp</th><th className="text-left py-2 px-3">Ports</th><th className="text-left py-2 px-3">Ports Up</th><th className="text-left py-2 px-3">Ports Down</th>
               </tr></thead>
               <tbody>
                 {cards.map((c: Record<string, unknown>, i: number) => (
@@ -1868,6 +1868,9 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
                     <td className="py-2 px-3 font-bold">{String(c.slot)}</td>
                     <td className="py-2 px-3">{String(c.card_type)}</td>
                     <td className="py-2 px-3"><span className={cn('px-2 py-0.5 rounded-full text-xs', String(c.status || '').toUpperCase() === 'INSERVICE' ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{String(c.status || '-')}</span></td>
+                    <td className="py-2 px-3">{c.cpu_usage ? `${Number(c.cpu_usage)}%` : '-'}</td>
+                    <td className="py-2 px-3">{c.memory_usage ? `${Number(c.memory_usage)}%${c.memory_total ? ` (${Number(c.memory_total)}MB)` : ''}` : '-'}</td>
+                    <td className="py-2 px-3">{c.temperature ? `${Number(c.temperature)}°C` : '-'}</td>
                     <td className="py-2 px-3">{String(c.total_ports || '-')}</td>
                     <td className="py-2 px-3 text-success">{String(c.ports_up || '0')}</td>
                     <td className="py-2 px-3 text-danger">{String(c.ports_down || '0')}</td>
@@ -1884,9 +1887,18 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
                   <span className="font-bold text-sm">Slot {String(c.slot)}</span>
                   <span className="text-xs text-tx3">{String(c.card_type)}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={cn('px-1.5 py-0.5 rounded-full text-[10px]', String(c.status || '').toUpperCase() === 'INSERVICE' ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{String(c.status || '-')}</span>
-                  <span className="text-[10px] text-tx3">{String(c.ports_up || '0')}↑ / {String(c.ports_down || '0')}↓</span>
+                <div className="flex flex-col items-end gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className={cn('px-1.5 py-0.5 rounded-full text-[10px]', String(c.status || '').toUpperCase() === 'INSERVICE' ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{String(c.status || '-')}</span>
+                    <span className="text-[10px] text-tx3">{String(c.ports_up || '0')}↑ / {String(c.ports_down || '0')}↓</span>
+                  </div>
+                  {Boolean(c.cpu_usage || c.memory_usage || c.temperature) && (
+                    <span className="text-[10px] text-tx3">
+                      {c.cpu_usage ? `CPU ${Number(c.cpu_usage)}%` : ''}{c.cpu_usage && (c.memory_usage || c.temperature) ? ' · ' : ''}
+                      {c.memory_usage ? `MEM ${Number(c.memory_usage)}%` : ''}{c.memory_usage && c.temperature ? ' · ' : ''}
+                      {c.temperature ? `${Number(c.temperature)}°C` : ''}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

@@ -255,7 +255,9 @@ def poll_now():
     auto-naming + ping batch + no_session reconcile). The result mirrors what
     the background poller does every link_check_interval seconds."""
     from link_state_poller import poll_device, reconcile_no_session, _poll_lock
-    if not _poll_lock.acquire(blocking=False):
+    # Tunggu sampai 15s: cycle background poller biasanya selesai dalam
+    # beberapa detik — jangan langsung 409 saat bentrok dengan jadwal cycle.
+    if not _poll_lock.acquire(timeout=15):
         return jsonify({'success': False,
                         'message': 'Poller sedang berjalan — coba lagi beberapa detik'}), 409
     try:
