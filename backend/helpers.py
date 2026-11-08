@@ -75,6 +75,20 @@ def log_action(action, category='general', target='', detail=''):
         db.session.rollback()
 
 
+PASSWORD_MIN_LENGTH = 8
+_WEAK_PASSWORDS = {'admin123', 'password', 'password1', '12345678', '123456789',
+                   'qwerty123', 'admin1234', 'salfanet'}
+
+
+def validate_password(password):
+    """Return an error message if the password is too weak, else None."""
+    if not isinstance(password, str) or len(password) < PASSWORD_MIN_LENGTH:
+        return f'Password must be at least {PASSWORD_MIN_LENGTH} characters.'
+    if password.lower() in _WEAK_PASSWORDS:
+        return 'Password is too common. Choose a different one.'
+    return None
+
+
 def permission_required(perm):
     """Decorator that checks if current user has the given permission.
     Returns JSON 403 for API calls, redirects for HTML pages.

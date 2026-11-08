@@ -20,7 +20,7 @@ from models import (
 )
 from extensions import logger
 from helpers import (
-    utc_iso, log_action, permission_required, super_admin_required,
+    utc_iso, log_action, permission_required, super_admin_required, validate_password,
     check_rate_limit as _check_rate_limit,
     record_failed_login as _record_failed_login,
     clear_failed_logins as _clear_failed_logins,
@@ -73,6 +73,10 @@ def update_profile():
             return jsonify({'success': False, 'error_code': 'invalid_language', 'message': 'Invalid language value'}), 400
         current_user.language = data['language']
     if 'password' in data and data['password']:
+        _pw_err = validate_password(data['password'])
+        if _pw_err:
+            db.session.rollback()
+            return jsonify({'success': False, 'error_code': 'weak_password', 'message': _pw_err}), 400
         current_user.set_password(data['password'])
         # Changing the password satisfies the forced-change requirement
         # seeded for the default admin/admin123 account (see app.py).
@@ -197,6 +201,9 @@ def create_user():
         is_super_admin=False,
         phone=data.get('phone', ''),
     )
+    _pw_err = validate_password(data.get('password', ''))
+    if _pw_err:
+        return jsonify({'success': False, 'error_code': 'weak_password', 'message': _pw_err}), 400
     user.set_password(data.get('password', ''))
     db.session.add(user)
     db.session.commit()
@@ -236,6 +243,10 @@ def update_user(uid):
     if 'phone' in data:
         user.phone = data['phone']
     if 'password' in data and data['password']:
+        _pw_err = validate_password(data['password'])
+        if _pw_err:
+            db.session.rollback()
+            return jsonify({'success': False, 'error_code': 'weak_password', 'message': _pw_err}), 400
         user.set_password(data['password'])
     db.session.commit()
     log_action('user_update', 'user', target=user.username, detail=f'Updated user {user.username} — fields: {list(data.keys())}')

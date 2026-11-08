@@ -120,6 +120,25 @@ def _csrf_protection():
                 return jsonify({'error': 'Missing X-Requested-With header'}), 403
 
 
+@app.before_request
+def _enforce_password_change():
+    """Block the API for accounts still on the installer default password.
+
+    The SPA already redirects to the profile page, but that is client-side
+    only. Allow just what is needed to log out and set a new password.
+    """
+    path = request.path
+    if not path.startswith('/api/'):
+        return None
+    if path.startswith(('/api/auth/', '/api/public/')) or path == '/api/profile':
+        return None
+    from flask_login import current_user
+    if current_user.is_authenticated and getattr(current_user, 'must_change_password', False):
+        return jsonify({'success': False, 'error_code': 'password_change_required',
+                        'message': 'You must change your default password first.'}), 403
+    return None
+
+
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses."""

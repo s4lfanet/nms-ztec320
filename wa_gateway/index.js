@@ -186,7 +186,10 @@ app.post('/reconnect', (req, res) => {
 
 // ─── Start ───
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[WA] FiberNMS WhatsApp Gateway running on port ${PORT}`);
+// Loopback by default: /send and /logout have no auth. Docker Compose sets
+// WA_GATEWAY_HOST=0.0.0.0 so the app container can reach it on the private network.
+const HOST = process.env.WA_GATEWAY_HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => {
+  console.log(`[WA] FiberNMS WhatsApp Gateway running on ${HOST}:${PORT}`);
   connectWA();
 });

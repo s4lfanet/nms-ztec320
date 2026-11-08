@@ -54,6 +54,7 @@ services:
       dockerfile: Dockerfile
     environment:
       WA_GATEWAY_PORT: 3001
+      WA_GATEWAY_HOST: 0.0.0.0  # private compose network only; port is not published
     volumes:
       - wa_session:/app/session
     restart: unless-stopped
