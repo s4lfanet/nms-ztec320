@@ -72,9 +72,15 @@ OID_DOT1Q_VLAN_CURRENT_EGRESS = '1.3.6.1.2.1.17.7.1.4.2.1.1'   # Current egress 
 OID_DOT1Q_FDB_ID = '1.3.6.1.2.1.17.7.1.4.3.1.3'                # FDB ID
 
 
-def encode_pon_index(slot, port):
+def encode_pon_index(slot, port, layout='legacy'):
     """Encode ZTE C320 PON index from slot and port (both 1-indexed CLI values).
-    Reverse of parse_pon_index."""
+    Reverse of parse_pon_index.
+
+    layout='legacy' (default, unchanged): BOARD1/BOARD2_BASE + port * 256.
+    layout='slot_port': 0x10{slot}{port}00, as used by 16-port GTGH cards
+    (e.g. slot 2 port 1 -> 0x10020100). Opt-in only; no caller uses it yet."""
+    if layout == 'slot_port':
+        return 0x10000000 | ((slot & 0xFF) << 16) | ((port & 0xFF) << 8)
     if slot >= 2:
         return BOARD2_BASE + port * PON_INCREMENT
     return BOARD1_BASE + port * PON_INCREMENT
@@ -349,6 +355,17 @@ def detect_model_from_sn(sn, vendor):
 
 
 def parse_pon_index(pon_index):
+    """Decode a ZTE C320 ponIndex to (board/slot, port).
+
+    Two layouts exist:
+    - Legacy: BOARD1_BASE / BOARD2_BASE + port * 256 (both live in 0x1001xxxx).
+    - 0x10{slot}{port}00 (e.g. 16-port GTGH card in slot 2 -> 0x10020100 for
+      port 1). Slot >= 2 here falls outside 0x1001xxxx, and the legacy math
+      would turn it into port 225..240 (offset 224 = 0xE0), producing ghost
+      PON ports and onu_index collisions. Decode those explicitly.
+    """
+    if (pon_index >> 24) == 0x10 and ((pon_index >> 16) & 0xFF) >= 0x02:
+        return (pon_index >> 16) & 0xFF, (pon_index >> 8) & 0xFF
     if pon_index >= BOARD2_BASE:
         return 2, (pon_index - BOARD2_BASE) // PON_INCREMENT
     return 1, (pon_index - BOARD1_BASE) // PON_INCREMENT
