@@ -4,6 +4,95 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### Pending — Sync manual antre + `is_sync_locked` ikut bersihkan lock basi
+
+#### Diperbaiki
+- **Manual sync tidak lagi ditolak mentah saat sync lain jalan** — `POST /api/olt/<id>/sync` dulu mengembalikan `409` berdasar `is_sync_locked()`, yang tidak pernah me-reap lock basi (reap hanya ada di `acquire_sync_lock()` — tidak pernah tercapai karena route berhenti di 409). Kini `is_sync_locked()` ikut me-reap lock >TTL (flock sendiri/lain proses, in-memory, Redis tanpa TTL), dan route selalu menjadwalkan sync dengan flag `queued` — thread menunggu maks `SYNC_WAIT_SEC` (default 120s, env-tunable) sambil menampilkan "Waiting for ongoing sync to finish...". Sync All ikut menunggu `SYNC_ALL_WAIT_SEC` (default 30s).
+- **`sync-status` self-heal** — baris `running` yang lock-nya bebas dan umurnya >`max(300, SYNC_WAIT+60)` detik ditandai `interrupted` (lock = sumber kebenaran, bukan baris DB). Frontend berhenti polling pada status `interrupted` dan menampilkan pesan "queued" dari server.
+
+### 2026-11-12 — Fix SearchBar: teks pencarian tertimpa ikon (terutama di HP)
+
+#### Diperbaiki
+- **SearchBar pakai flex layout** — ikon dan tombol hapus sebelumnya absolute di atas input yang bergantung padding-left; di HP padding bisa tertimpa CSS lain sehingga teks menumpuk dengan ikon. Kini ikon/input/tombol berdampingan dalam satu kotak (#35).
+- **Padding `.input-field` versi mobile (≤640px) dipindah ke `@layer components`** — rule sebelumnya di luar layer sehingga mengalahkan utilitas `pl-9`/`pr-8` SearchBar. Tinggi 44px & font 16px (anti-zoom iOS) tetap (#34).
+
+### 2026-11-11 — Refresh Live menyimpan Actual Type + Push untuk semua role + HSGQ adaptif
+
+#### Diperbaiki
+- **View ONU "Refresh Live" menyimpan Actual Type ke database** — `collect_onu_detail` sudah membaca Equipment ID (`show gpon remote-onu equip`) tapi endpoint live-detail tidak pernah menyimpannya, sementara View ONU menampilkan nilai dari DB. ONU yang offline saat sync / di luar 128 ONU pertama per port tetap kosong walau di-refresh. Nama vendor diabaikan (sama dengan filter sync) (#33).
+
+#### Ditambahkan
+- **Push notification untuk semua role di PWA Android** — banner ajakan aktifkan notifikasi untuk semua user (izin harus lewat klik); bila izin sudah ada, langganan dibuat otomatis (login ulang/perangkat baru). Kartu Web Push kini juga di halaman Profil Saya — sebelumnya hanya di Pengaturan Alert yang tidak bisa diakses semua role. Service worker: getar + `requireInteraction` untuk alert kritis agar tampil mengambang/tetap di layar Android; severity dikirim di payload (#31).
+- **HSGQ: pemilihan tabel & kolom status SNMP otomatis** — kandidat tabel `50224.3.12` (kolom status 3/5) dan `50224.3.3` (8/9); dipilih yang jumlah online-nya cocok dengan penghitung PON OLT (`50224.3.2.3.1.4`). Tanpa penghitung/kandidat → pemetaan lama (kolom 8) tetap dipakai. TX power ONU dari tabel optik kolom `.5`. Jumlah PON dari nama model: `HSGQ-E02`/`G04`/`E08`, `'2P'`. Diadaptasi dari salfanet-radius (#30).
+
+#### Reverted (percobaan dibatalkan, kode bersih)
+- **Fitur browser bawaan web admin modem dihapus seluruhnya** (#29, revert #17–#28) — reverse proxy `/webadmin/<token>/` (token bertanda tangan 30 mnt, cookie jar server-side, URL/Location rewrite, CSP sandbox iframe) sempat dibangun dengan 10 iterasi fix (IP via PPPoE MikroTik, iframe blocked Chrome/http, stub redirect HTTPS Huawei, CSS/JS Huawei 404 & query string, redirect JS ke path root, token GetRandCount, origin terpisah untuk UI modem ber-frame). Dipertahankan nol — semua file fitur dibuang.
+- **MVLAN opsional & checkbox VLAN di modal Service ONU dikembalikan** (#32, revert #18) — validasi `mvlan` kembali minimal 1 dan checkbox VLAN kembali ke perilaku sebelumnya.
+
+### 2026-11-10 — Match MAC mode selisih ±N + terminal hormati port custom
+
+#### Ditambahkan
+- **Match MAC mode "selisih nilai MAC" (±N)** — opsi "-N oktet terakhir" lama hanya mencocokkan awalan: ONU satu batch pabrikan berbagi awalan → hasil ambigu, kandidat pertama dipilih sembarang, selisih lintas batas oktet (…FF → …00) tidak pernah cocok, satu ONU bisa diklaim beberapa sesi. Mode baru `offset=N` membandingkan MAC sebagai angka (OUI sama, |selisih| ≤ N), memilih ONU terdekat, menandai ambigu bila seri atau satu ONU diklaim >1 sesi. `GET /api/mikrotik/mac-match?offset=N` (0–64) mengembalikan `delta`; UI mendapat opsi "Selisih MAC ±1/2/4/8/16". Modul baru `mac_match.py` + 9 test (#16).
+
+#### Diperbaiki
+- **Terminal OLT menghormati port Telnet/SSH custom** — terminal membaca atribut `cli_port` yang tidak ada di model OLT sehingga selalu jatuh ke 22/23. `_cli_port()` kini mengambil `telnet_port`/`ssh_port` sesuai protokol (validasi 1–65535); pesan gagal konek menampilkan port yang dicoba (#15).
+
+### 2026-11-09 — Tema Glass + paksa ganti password default + terminal Telnet negotiation
+
+#### Ditambahkan
+- **Tema glass (glassmorphism) seluruh frontend** — redesign lewat satu lapisan `src/glass.css` di atas design system yang ada tanpa mengubah markup: kartu/modal/sidebar/topbar/bottom-nav kaca (blur + tepi halus), latar aurora statis, tombol/input/tab/badge/status pill direstyle. Tabel & kartu berisi tabel tetap hampir solid (keterbacaan + performa). Dukung gelap & terang, `prefers-reduced-transparency`, fallback tanpa `backdrop-filter`. Untuk membatalkan: hapus `import './glass.css'` di `main.tsx` (#12).
+- **Popup wajib ganti password saat login dengan password bawaan** — flag `must_change_password` sebelumnya hanya di-set saat seed instalasi baru; admin lama dengan password bawaan tidak pernah diminta ganti. Login dengan password bawaan installer kini otomatis menandai akun (audit log) dan semua API diblokir sampai password diganti. `ForcePasswordChange`: modal yang tidak bisa ditutup di atas halaman apa pun (#13).
+- **Sidebar tema terang lebih kontras + ganti tema serempak** — latar sidebar lebih putih, teks menu/submenu/footer lebih gelap, item aktif lebih jelas. Ganti tema gelap↔terang memakai View Transitions (crossfade seluruh halaman satu timing — transisi per-elemen mustahil serempak karena `color` diwarisi dan gradien tak bisa bertransisi). Permukaan glass memakai `background-color` + sheen konstan; aurora dua lapis di-crossfade lewat opacity (#14).
+
+#### Diperbaiki
+- **Terminal OLT menjawab negosiasi Telnet** — terminal web hanya menyalurkan byte mentah; server yang baru mengirim echo setelah klien setuju (WILL ECHO → DO ECHO) tidak menampilkan ketikan, dan byte IAC bocor ke layar. `_TelnetStream` baru: jawab WILL ECHO/SGA dengan DO, tolak opsi lain, kirim NAWS (awal + resize), buang IAC dari output, tahan urutan terpotong antar-baca, `0xFF` dikirim sebagai IAC IAC. Test unit + e2e dengan server telnet palsu (#11).
+
+### 2026-11-08 — Security hardening + deploy andal + fix GTGH 16-port
+
+#### Ditambahkan
+- **Password policy** — minimal 8 karakter, menolak password umum/default, berlaku di create/update user dan ubah profil sendiri; password kosong tidak lagi diterima saat membuat user.
+- **Enforcement `must_change_password` di server** — API mengembalikan `403 password_change_required` kecuali `/api/auth/*`, `/api/public/*`, `/api/profile`.
+- **Ganti password sendiri wajib `current_password`** — `/api/profile` menolak tanpa password lama (`current_password_required`/`current_password_invalid`, percobaan gagal dicatat audit log). Field "Current password" di MyProfile dengan pesan error id/en.
+
+#### Diperbaiki
+- **Terminal: keystroke terkirim ganda** — `ws_terminal_handler` memanggil `chan_write()` dua kali per pesan WebSocket sehingga "show card" sampai sebagai "sshhooww  ccaarrdd" dan command gagal.
+- **Decode GTGH ponIndex `0x10{slot}{port}00`** — `parse_pon_index` memperlakukan semua index ≥ BOARD2_BASE sebagai board 2 legacy, sehingga kartu GTGH 16-port di slot 2 (`0x10020100..0x10021000`) terdecode sebagai port 225–240 → ghost PON port & tabrakan `onu_index`. `encode_pon_index` mendapat `layout='slot_port'` (opt-in, default tetap `'legacy'`).
+- **Loopback binds di installer VPS** — port WebSocket/terminal dan `wa_gateway` di-bind ke `127.0.0.1` (nginx sudah proxy ke sana); `WA_GATEWAY_HOST` override, docker-compose pakai `0.0.0.0` untuk private network.
+- **Update VPS lebih andal** — `deploy/update_vps.sh` memakai `frontend/dist` yang ter-commit (tanpa Node di server), membuang perubahan lokal dist sebelum `git pull`, dan bila build dipaksa: build ke temp dir lalu swap hanya kalau sukses (dulu `vite` mengosongkan `dist/` duluan → frontend blank kalau build gagal karena `workbox-window` tidak terinstall oleh pnpm). `chown -R salfanet:salfanet` setelah pull agar updater web (user salfanet) tidak gagal "Permission denied" pada file root-owned.
+- **AGENTS.md dibersihkan dari kredensial root produksi** — password tetap ada di git history dan harus dirotasi. CI pindah ke Python 3.12 (3.10 tidak bisa install `fpdf2>=2.9` → semua run gagal di "Install dependencies"); job `frontend` baru menjalankan vitest + build dan gagal bila `dist` ter-commit tidak sinkron; `pip-audit` (informational); snapshot `.playwright-mcp` dihapus dari repo.
+
+### 2026-11-07 — CPU/Mem per slot via `show process` + tampilan di dashboard & config
+
+#### Ditambahkan
+- **Koleksi CPU/Mem per slot** dari output `show process` (bukan hanya agregat chassis) — disimpan per card saat sync.
+- **CPU+Mem di kartu OLT dashboard** dan **CPU/Mem/Temp per card di tab System** halaman OLT Configuration.
+- Stats row di config page dirapikan — CPU/Mem/Temp/Uptime agregat distrip karena sudah tampil per-card.
+
+### 2026-11-06 — Sync lock anti-macet + CPU/Mem/Temp per card + TR-069 dedicated dinonaktifkan
+
+#### Diperbaiki
+- **"Sync already in progress" permanen** — `flock()` tidak punya TTL: thread sync yang hang di telnet memegang lock selamanya. `sync_lock.py` mendapat `_reap_stale_flock()` (dipanggil saat acquire gagal: force-close fd proses sendiri, skip pid mati, SIGTERM holder stale) dan `start_sync_watchdog()` (timer daemon yang force-release lock + tandai `OLTSyncStatus` `interrupted` bila sync >15 menit). Watchdog dipasang di `services_sync`, `auto_sync`, `traffic_poller`, dan `routes_onu` (live-detail + post-action sync).
+- **MikroTik poll 409** pada saat bersamaan dengan sync — endpoint poll kini tidak lagi bentrok dengan lock.
+- **CPU/Mem/Temp per card di tab System** halaman konfigurasi OLT.
+
+#### Ditambahkan
+- **Link dukungan Saweria** di footer sidebar.
+
+#### Reverted
+- **WAN TR-069 dedicated (iphost terpisah) dinonaktifkan** — setelah iterasi syntax/index di firmware C320 (`tr069-mgmt N` ↔ `wan N`, `ip-host N dhcp-enable enable`, `wan N service tr069`), dedicated WAN digabung kembali ke PPPoE dan checkbox UI-nya dihapus. TR-069 kembali memakai WAN utama.
+
+### 2026-11-05 — Fix sync mentok 98% + delete ONU 500 + TR-069 dedicated WAN (iterasi)
+
+#### Diperbaiki
+- **Sync berhenti di ~98%** — `OnuRxSample` di-insert sebelum row ONU baru di-flush → FK ke `onus.id` yang belum ada. ONU baru kini di-flush dulu sebelum sample di-insert.
+- **Delete ONU error 500** — bersihkan `genieacs_device_map` & dependents sebelum hapus row ONU.
+- **TR-069 WAN terpisah (iphost dedicated) di template ZTE** — syntax disesuaikan hasil probe `?` di firmware C320 nyata (`ip-host N dhcp-enable enable`, ping/traceroute-response disable, `wan N service tr069`).
+
+### 2026-11-04 — WAN TR-069 terpisah (iphost dedicated + DHCP)
+
+#### Ditambahkan
+- **Opsi WAN TR-069 dedicated** di provisioning ZTE — ACS di `iphost` terpisah dengan DHCP (`ip-host N dhcp-enable enable`) alih-alih menumpang WAN Internet/PPPoE. Dinonaktifkan kembali pada 2026-11-06 setelah iterasi di lapangan.
+
 ### 2026-11-03 — Fase 13 (Tahap 1): Adapter C-Data GPON — monitoring SNMP read-only
 
 #### Ditambahkan

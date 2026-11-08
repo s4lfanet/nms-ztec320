@@ -1,11 +1,11 @@
-# Salfanet NMS — ZTE OLT Management System
+# Salfanet NMS — Multi-Vendor OLT Management System
 
-Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600, C650). Mendukung kartu **GPON** (GTG) dan **EPON** (ETG). Dibangun dengan Flask + React, mendukung sinkronisasi SNMP + CLI (SSH/Telnet), monitoring ONU real-time, alerting, provisioning, dan manajemen infrastruktur FTTH dari satu dashboard.
+Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600, C650; SNMP + CLI penuh) serta **HSGQ, HiOSO, VSOL, BDCOM, C-Data, Raisecom, Dasan, Huawei, FiberHome** (monitoring via SNMP adapter). Mendukung kartu **GPON** (GTG) dan **EPON** (ETG). Dibangun dengan Flask + React, mendukung sinkronisasi SNMP + CLI (SSH/Telnet), monitoring ONU real-time, alerting, provisioning, dan manajemen infrastruktur FTTH dari satu dashboard.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.12+-green)
 ![React](https://img.shields.io/badge/react-19+-cyan)
-![OLT](https://img.shields.io/badge/OLT-ZTE%20C320%2FC300-orange)
+![OLT](https://img.shields.io/badge/OLT-multi--vendor-orange)
 
 ## Fitur Utama
 
@@ -24,6 +24,8 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - **OLT Logs page**: View OLT device logs (`show log`) dan NMS sync logs dari satu halaman. Tab: Device Logs, NMS Logs, ONU Status History
 - **GPON + EPON support**: Kartu GTG (GPON) dan ETG (EPON) terdeteksi otomatis, CLI commands menggunakan prefix yang sesuai (`gpon-olt_`/`gpon-onu_` vs `epon-olt_`/`epon-onu_`)
 - **Auto-backup OLT config**: Backup running-config via Telnet (`write memory` + `show running-config`), simpan ke DB, download/restore, auto-prune berdasarkan retention policy, notifikasi failure ke admin
+- **Per-slot health metrics**: CPU/Mem per card dari `show process` + temperature — tampil di kartu OLT dashboard dan tab System halaman OLT Configuration
+- **Interactive OLT terminal**: Terminal web xterm.js dengan negosiasi Telnet lengkap (WILL/DO ECHO, SGA, NAWS, IAC escaping), hormati `telnet_port`/`ssh_port` custom, audit log per sesi
 
 ### ONU Provisioning
 - Pre-register wizard: scan ONU → pilih template → konfigurasi → preview CLI → register
@@ -46,7 +48,7 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - **Per-channel notification toggles** — setiap alert rule memiliki toggle independen untuk In-App Bell, Telegram, WhatsApp, dan WA Native. Alert engine hanya mengirim ke channel yang di-enable di rule
 - Technician alert sending (per-user phone number)
 - In-app bell notifications dengan dedup via AlertHistory
-- **Web Push (PWA/VAPID)** — notifikasi native browser/HP tanpa app store: subscribe per user dari Alert Settings, toggle `notify_push` per rule, deep-link ke ONU/OLT saat notifikasi diklik, subscription expired otomatis dibersihkan
+- **Web Push (PWA/VAPID)** — notifikasi native browser/HP tanpa app store: subscribe per user dari Alert Settings atau Profil Saya, toggle `notify_push` per rule, deep-link ke ONU/OLT saat notifikasi diklik, subscription expired otomatis dibersihkan. Alert kritis memakai getar + `requireInteraction` agar tampil mengambang di Android
 - **Debounce 120 detik** — alert hanya fires setelah 2x konfirmasi deteksi (mencegah false alert dari transient flap)
 - **Auto-resolve** — notifikasi lama (offline/dyinggasp/los) otomatis ditandai RESOLVED saat ONU/OLT kembali online
 - **Notification lifecycle** — Active → Resolved → Auto-cleanup (>7 hari read notifs dihapus otomatis)
@@ -62,12 +64,14 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - **OLT access control**: User hanya bisa akses OLT yang assigned
 - **CORS hardening**: Non-wildcard origin check
 - **CSRF protection**: SameSite cookie + X-Requested-With header
-- **Sync concurrency lock**: Redis-based distributed lock (mencegah concurrent sync)
+- **Sync concurrency lock**: Redis distributed lock, fallback `flock` lintas proses (Linux) atau in-memory (dev). Stale lock di-reap otomatis (timestamp/pid check) dan watchdog force-release bila sync hang; sync manual antre menunggu sync yang sedang jalan alih-alih ditolak
 - **CLI command sanitization**: Semua command ke OLT (Telnet/SSH) di-strip dari CR/LF/control byte sebelum dikirim — mencegah command injection lewat field seperti nama/deskripsi ONU
 - **Automated DB backup**: Cron per jam (`db_backup.py`) — SQLite & PostgreSQL, retensi 24 hourly + 7 daily, plus opsional upload SCP ke remote server
 - **Restore with auto-rollback**: Restore database dengan validasi dan rollback otomatis
 - **Sensitive config masking**: Password/token di-mask untuk non-admin (termasuk di log, bukan cuma response API)
-- **System update from web UI**: Check dan apply GitHub updates langsung dari browser
+- **Password policy & enforcement**: Minimal 8 karakter, menolak password umum/default. Login dengan password bawaan memaksa popup ganti password (`must_change_password` di-enforce server-side — semua API diblokir sampai diganti). Ganti password sendiri wajib `current_password`
+- **Loopback binds**: WebSocket/terminal dan WhatsApp gateway di-bind ke `127.0.0.1` di installer VPS (nginx yang me-proxy ke luar)
+- **System update from web UI**: Check dan apply GitHub updates langsung dari browser — updater memakai `frontend/dist` yang ter-commit (tanpa Node di server) dan build fallback yang aman
 
 ### FTTH Infrastructure
 - Manajemen hierarki OTB → ODC → ODP
@@ -82,6 +86,11 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Historical traffic logging (raw + hourly aggregation)
 - Traffic grid visualization dengan Recharts
 
+### MikroTik Integration
+- Perangkat MikroTik (RouterOS API): CRUD, test koneksi, poll sesi PPPoE aktif
+- **Match MAC**: Cocokkan sesi PPPoE MikroTik ↔ ONU berdasar MAC — mode strip awalan `-N oktet` atau mode selisih `±N` (bandingkan MAC sebagai angka, OUI sama, kandidat terdekat, deteksi ambigu/klaim ganda). Apply massal untuk isi nama ONU dari identitas sesi
+- **Link state & ping**: Status link per ONU dari sesi PPPoE + ping ke IP client langsung dari View ONU
+
 ### Customization & RBAC
 - Customizable column visibility dan sort order (desktop & mobile)
 - Configurable RX power color ranges dengan preview
@@ -93,7 +102,8 @@ Sistem manajemen OLT/ONU FTTH untuk perangkat **ZTE** (C320, C300, C300-M, C600,
 - Technician assignment untuk ONU
 - ONU custom columns
 - **Sidebar menu disederhanakan**: Menu ONU dari 8 ke 5 item (All ONUs, Unconfigured, Provision ONU, Pre-config ONT, Register Wizard). Route wizard tetap aktif, diakses dari halaman Unconfigured
-- **Dark/Light/System theme + i18n (id/en)**: Tema per user (kolom `users.theme`) dengan fallback localStorage, quick-toggle di Topbar, CSS variables Tailwind v4 — peta Leaflet & grafik Recharts ikut tema otomatis. Dwibahasa Indonesia/Inggris per user (`users.language`, react-i18next) — login, layout, Dashboard, All ONUs, View ONU, dan pesan error (`error_code`) sudah diterjemahkan
+- **Dark/Light/System theme + i18n (id/en)**: Tema per user (kolom `users.theme`) dengan fallback localStorage, quick-toggle di Topbar, CSS variables Tailwind v4 — peta Leaflet & grafik Recharts ikut tema otomatis. Ganti tema serempak lewat View Transitions (crossfade satu timing). Dwibahasa Indonesia/Inggris per user (`users.language`, react-i18next) — login, layout, Dashboard, All ONUs, View ONU, dan pesan error (`error_code`) sudah diterjemahkan
+- **Glassmorphism theme**: Lapisan `glass.css` di atas design system — kartu/modal/sidebar kaca (blur + tepi halus), latar aurora statis. Tabel tetap hampir solid untuk keterbacaan; dukung `prefers-reduced-transparency`
 - **Permission enforcement**: Backend (`@permission_required` decorator + inline `has_permission()` checks) dan frontend (`ProtectedRoute` + `useHasPerm` hook + `Sidebar` filtering) selaras. Admin endpoints (alert rules, bot config, notification management) memerlukan `customization`. ONU field updates menggunakan granular permission per field (`edit_onu_name`, `edit_onu_description`, `configure_onu`)
 - **Tamper-evident audit log**: Setiap baris ActionLog membawa hash chain SHA-256 (prev_hash + hash) — modifikasi/hapus histori langsung terdeteksi via tombol Verify di halaman Action Logs. Retensi via archive terkompresi (JSONL.gz), bukan delete; PostgreSQL memakai trigger append-only
 
@@ -326,14 +336,13 @@ cd /opt/salfanet-nms
 sudo bash deploy/update_vps.sh
 ```
 
-This pulls the latest code, rebuilds the frontend, restarts the `salfanet-nms` service, refreshes the Nginx config (Cloudflare real IP support), and (re)registers the `auto_backup` (hourly) and `auto_sync` (every 5 min) cron jobs.
+This pulls the latest code (the frontend is served from the committed `frontend/dist`, so no Node is needed on the server), restarts the `salfanet-nms` service, refreshes the Nginx config (Cloudflare real IP support), and (re)registers the `auto_backup` (hourly) and `auto_sync` (every 5 min) cron jobs. File ownership is re-set to the `salfanet` user after each pull so the web updater keeps working.
 
 Manual equivalent, if you only need to pull code without touching nginx/cron:
 
 ```bash
 cd /opt/salfanet-nms
 git pull origin main
-cd frontend && npm run build && cd ..
 systemctl restart salfanet-nms
 ```
 
@@ -514,6 +523,8 @@ npm run test
 
 ## Supported OLT Models
 
+### ZTE (full SNMP + CLI)
+
 | Model | SNMP | Telnet CLI | GPON | EPON | Notes |
 |-------|------|-----------|------|------|-------|
 | ZTE C320 | ✅ | ✅ | ✅ | ✅ | Primary tested model (GTG + ETG cards) |
@@ -521,6 +532,15 @@ npm run test
 | ZTE C300-M | ✅ | ✅ | ✅ | ✅ | Full support |
 | ZTE C600 | ✅ | ✅ | ✅ | ✅ | Full support |
 | ZTE C650 | ✅ | ✅ | ✅ | ✅ | Full support |
+
+### Vendor lain (SNMP monitoring via adapter pattern)
+
+| Vendor | Mode | Notes |
+|--------|------|-------|
+| HSGQ | SNMP-only | Tabel & kolom status dipilih otomatis (`50224.3.12` vs `50224.3.3`, divalidasi terhadap penghitung PON OLT), TX power, jumlah PON dari nama model |
+| HiOSO | SNMP + CLI | EPON |
+| VSOL / BDCOM / Raisecom / Dasan / Huawei / FiberHome | SNMP-only | Adapter `StandaloneEponAdapter` generik |
+| C-Data | SNMP-only | GPON (FD1601S/1602S/1608S/1216S/1616GS via tabel NSCRTV `17409.2.8.4`) + EPON generik. Provisioning belum tersedia |
 
 ## Supported ONU Vendors (on ZTE OLT)
 
