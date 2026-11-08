@@ -776,7 +776,6 @@ async def ws_terminal_handler(ws: WebSocket, olt_id: int, proto: str):
                         _audit_terminal_command(user_id, olt, line, password_expected)
                         password_expected = False
             chan_write(data.encode())
-            chan_write(data.encode())
     except WebSocketDisconnect:
         pass
     except Exception as e:
