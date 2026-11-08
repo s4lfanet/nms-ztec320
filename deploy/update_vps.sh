@@ -3,13 +3,36 @@ set -e
 cd /opt/salfanet-nms
 git config --global --add safe.directory /opt/salfanet-nms
 echo "=== Pull ==="
+# frontend/dist is COMMITTED. Discard any local changes to it (e.g. from an old
+# server-side rebuild) so `git pull` cannot fail on "local changes would be
+# overwritten".
+git checkout -- frontend/dist 2>/dev/null || true
+git clean -fdq frontend/dist 2>/dev/null || true
 git pull origin main
-echo "=== Build frontend ==="
-cd frontend
-corepack enable pnpm 2>/dev/null || true
-pnpm install --no-frozen-lockfile 2>&1 | tail -3
-pnpm build 2>&1 | tail -5
-cd ..
+echo "=== Frontend ==="
+# The committed dist is the source of truth: no Node/npm needed on the server.
+# Build only if dist is missing, or when forced: FORCE_FRONTEND_BUILD=1 bash update_vps.sh
+# The build goes to a temp dir and replaces dist only if it succeeds, so a
+# failed build can never leave the web app without a frontend.
+if [ -f frontend/dist/index.html ] && [ "${FORCE_FRONTEND_BUILD:-0}" != "1" ]; then
+    echo "Using committed frontend/dist (no build needed)."
+else
+    echo "Building frontend (dist missing or FORCE_FRONTEND_BUILD=1)..."
+    cd frontend
+    NEW_DIST=$(mktemp -d "$PWD/.dist-new.XXXXXX")
+    if npm ci --no-audit --no-fund && npm run build -- --outDir "$NEW_DIST" --emptyOutDir; then
+        rm -rf .dist-old
+        [ -d dist ] && mv dist .dist-old
+        mv "$NEW_DIST" dist
+        rm -rf .dist-old
+        echo "Frontend build OK."
+    else
+        rm -rf "$NEW_DIST"
+        echo "FRONTEND BUILD FAILED - keeping existing frontend/dist." >&2
+        exit 1
+    fi
+    cd ..
+fi
 echo "=== Restart ==="
 systemctl restart salfanet-nms
 sleep 5
