@@ -517,7 +517,7 @@ ViewOnu, UserManagement, Tr069Profile, RegisterWizard, OltSettings, OltConfigura
 - Service: `systemctl restart salfanet-nms` (runs as user `salfanet`, EnvironmentFile `backend/.env`)
 - Redis: local `redis-server` on 127.0.0.1:6379 (`REDIS_URL` set in `backend/.env`)
 - Cron (root): `auto_sync.py` */5, `traffic_poller.py` 2-59/5, `auto_backup.py` :00, `db_backup.py` :15 → logs in `/var/log/salfanet-*.log`
-- Deploy: `cd /opt/salfanet-nms && git pull && systemctl restart salfanet-nms` (or `bash deploy/update_vps.sh`). `frontend/dist` is committed, so NO build is needed on the server.
+- Deploy: prefer the **Apply Update** button in the web app (runs as user `salfanet`), or `bash deploy/update_vps.sh` (chowns the tree back to `salfanet` after pulling). Do NOT run a bare `git pull` as root: root-owned files make the web updater fail with "Permission denied" (fix: `chown -R salfanet:salfanet /opt/salfanet-nms`). If you must pull manually: `sudo -u salfanet git pull origin main && systemctl restart salfanet-nms`. `frontend/dist` is committed, so NO build is needed on the server.
 - Changed frontend source? Rebuild on the dev machine, then commit dist: `cd frontend && npm ci && npm run build` (npm + `package-lock.json` reproduces dist exactly; CI verifies dist is in sync).
   - `frontend/dist` is committed; on the VPS run `git checkout -- frontend/dist && git clean -fd frontend/dist` before `git pull` if the pull conflicts.
 
