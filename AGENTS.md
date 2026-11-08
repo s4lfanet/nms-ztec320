@@ -522,7 +522,7 @@ ViewOnu, UserManagement, Tr069Profile, RegisterWizard, OltSettings, OltConfigura
 
 ## Production Deployment (NMS ini)
 
-- **Host: 192.168.54.131** (root/seven7890, port 22) — `plink -ssh -batch -pw seven7890 root@192.168.54.131 "..."`
+- **Host: 192.168.54.131** (user root, port 22) — login via SSH key; jangan simpan password/kredensial di repo ini: `ssh root@192.168.54.131 "..."`
 - Path: `/opt/salfanet-nms` (git repo + deployment sekaligus)
 - Service: `systemctl restart salfanet-nms` — backend Flask+FastAPI di port 5000/8765
 - Frontend: `frontend/dist` ter-commit — `git pull` sudah cukup, tidak perlu build di server
