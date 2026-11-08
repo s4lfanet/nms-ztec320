@@ -9,6 +9,13 @@ echo "=== Pull ==="
 git checkout -- frontend/dist 2>/dev/null || true
 git clean -fdq frontend/dist 2>/dev/null || true
 git pull origin main
+# This script runs as root, so files git just created/changed are owned by root.
+# The web app (and its in-app "Apply Update" button) runs as the salfanet user
+# and could then no longer update/delete them ("Permission denied"). Hand the
+# tree back to the service user. Additive: skipped if the user does not exist.
+if id salfanet >/dev/null 2>&1; then
+    chown -R salfanet:salfanet /opt/salfanet-nms
+fi
 echo "=== Frontend ==="
 # The committed dist is the source of truth: no Node/npm needed on the server.
 # Build only if dist is missing, or when forced: FORCE_FRONTEND_BUILD=1 bash update_vps.sh
