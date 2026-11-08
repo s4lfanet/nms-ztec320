@@ -203,7 +203,9 @@ Browser → React SPA (Vite + TypeScript + TailwindCSS v4)
 │   │   └── utils/         # API client, formatters
 │   ├── dist/              # Pre-built frontend — COMMITTED so installers don't need
 │   │                      # Node/pnpm/registry access. Rebuild + commit after any
-│   │                      # frontend change: cd frontend && pnpm build
+│   │                      # frontend change: cd frontend && npm ci && npm run build
+│   │                      # (npm + package-lock.json reproduces dist byte-for-byte;
+│   │                      # CI fails if the committed dist is stale)
 │   └── vite.config.ts     # Vite config with proxy + PWA
 ├── wa_gateway/            # WhatsApp Native gateway (Node.js/Baileys)
 ├── deploy/                # Deployment scripts & configs

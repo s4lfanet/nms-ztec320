@@ -7,6 +7,27 @@ on:
     branches: [main]
 
 jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npx vitest run
+      - run: npm run build
+      - name: Committed dist must match the source
+        run: |
+          if [ -n "$(git status --porcelain -- dist)" ]; then
+            git status --short -- dist | head -20
+            echo "::error::frontend/dist is out of date. Run 'cd frontend && npm ci && npm run build' and commit dist/."
+            exit 1
+          fi
+
   test:
     runs-on: ubuntu-latest
 
