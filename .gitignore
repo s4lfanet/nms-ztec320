@@ -78,3 +78,5 @@ AGENTS.md
 # Reference-only production backups dropped in for comparison — never part
 # of the repo itself
 /backup-nms-*/
+# Playwright MCP page snapshots
+.playwright-mcp/

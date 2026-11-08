@@ -192,7 +192,7 @@ User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${APP_DIR}/backend
 Environment="PATH=${APP_DIR}/.venv/bin"
-ExecStart=${APP_DIR}/.venv/bin/python run_server.py --host 0.0.0.0 --port 5000 --ws-port 8765
+ExecStart=${APP_DIR}/.venv/bin/python run_server.py --host 0.0.0.0 --port 5000 --ws-port 8765 --ws-host 127.0.0.1
 Restart=always
 RestartSec=5
 StandardOutput=journal
