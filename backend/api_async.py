@@ -602,6 +602,95 @@ def _audit_terminal_command(user_id, olt, line, password_expected=False):
         logger.debug(f"[TERM] audit log failed: {e}")
 
 
+# --- Minimal RFC 854 client for the browser terminal -------------------------
+# The terminal bridge is a raw pipe to xterm.js. A real telnet server starts
+# with IAC negotiation (e.g. WILL ECHO / WILL SGA). Without replies the server
+# never learns we accept its echo, so typed characters do not appear, and the
+# IAC bytes themselves leak onto the screen as garbage. This filter answers the
+# negotiation and strips IAC sequences from what is shown.
+_IAC, _DONT, _DO, _WONT, _WILL, _SB, _SE = 255, 254, 253, 252, 251, 250, 240
+_OPT_ECHO, _OPT_SGA, _OPT_NAWS = 1, 3, 31
+
+
+class _TelnetStream:
+    def __init__(self, send):
+        self._send_raw = send
+        self._pending = b''
+        self._answered = set()   # (cmd, opt) already answered -> no negotiation loops
+        self.naws = False
+        self.cols, self.rows = 80, 24
+
+    def _send(self, data):
+        try:
+            self._send_raw(data)
+        except Exception:
+            pass
+
+    def _negotiate(self, cmd, opt):
+        if (cmd, opt) in self._answered:
+            return
+        self._answered.add((cmd, opt))
+        if cmd == _WILL:        # server offers an option
+            self._send(bytes([_IAC, _DO if opt in (_OPT_ECHO, _OPT_SGA) else _DONT, opt]))
+        elif cmd == _DO:        # server asks us to enable an option
+            if opt == _OPT_NAWS:
+                self.naws = True
+                self._send(bytes([_IAC, _WILL, _OPT_NAWS]))
+                self.send_size()
+            else:
+                self._send(bytes([_IAC, _WONT, opt]))
+
+    def set_size(self, cols, rows):
+        self.cols, self.rows = int(cols), int(rows)
+        self.send_size()
+
+    def send_size(self):
+        if not self.naws:
+            return
+        body = bytearray()
+        for v in (self.cols >> 8, self.cols & 0xFF, self.rows >> 8, self.rows & 0xFF):
+            body.append(v)
+            if v == _IAC:
+                body.append(_IAC)
+        self._send(bytes([_IAC, _SB, _OPT_NAWS]) + bytes(body) + bytes([_IAC, _SE]))
+
+    def feed(self, data):
+        """Return display bytes from raw server bytes (replies sent as needed)."""
+        buf = self._pending + data
+        self._pending = b''
+        out = bytearray()
+        i, n = 0, len(buf)
+        while i < n:
+            b = buf[i]
+            if b != _IAC:
+                out.append(b)
+                i += 1
+                continue
+            if i + 1 >= n:
+                self._pending = buf[i:]
+                break
+            cmd = buf[i + 1]
+            if cmd == _IAC:
+                out.append(_IAC)
+                i += 2
+            elif cmd in (_DO, _DONT, _WILL, _WONT):
+                if i + 2 >= n:
+                    self._pending = buf[i:]
+                    break
+                self._negotiate(cmd, buf[i + 2])
+                i += 3
+            elif cmd == _SB:
+                end = buf.find(bytes([_IAC, _SE]), i + 2)
+                if end < 0:
+                    self._pending = buf[i:] if n - i < 4096 else b''
+                    break
+                i = end + 2
+            else:
+                i += 2
+        return bytes(out)
+
+
+
 def _open_terminal_channel(olt, proto):
     """Open a raw interactive channel to the OLT.
     Returns (write_fn, read_fn, close_fn, resize_fn, err)."""
@@ -642,21 +731,30 @@ def _open_terminal_channel(olt, proto):
             if not tn.connect():
                 return None, None, None, None, 'Telnet connect failed'
             tn.sock.settimeout(0.25)
-            def w(data): tn.sock.sendall(data)
+            _lock = _threading.Lock()   # reader thread (IAC replies) vs. input writes
+
+            def _send(b):
+                with _lock:
+                    tn.sock.sendall(b)
+            stream = _TelnetStream(_send)
+
+            def w(data):
+                _send(data.replace(b'\xff', b'\xff\xff'))   # IAC must be doubled
             def r():
                 try:
                     d = tn.sock.recv(4096)
-                    return d if d else b''  # b'' = closed
                 except Exception:
                     return None
+                if not d:
+                    return b''  # b'' = closed
+                clean = stream.feed(d)
+                return clean if clean else None
             def k():
                 try: tn.close()
                 except Exception: pass
             def res(cols, rows):
                 try:
-                    cols, rows = int(cols), int(rows)
-                    naws = bytes([0xFF, 0xFA, 0x1B, cols >> 8, cols & 0xFF, rows >> 8, rows & 0xFF, 0xFF, 0xF0])
-                    tn.sock.sendall(naws)
+                    stream.set_size(cols, rows)
                 except Exception:
                     pass
             return w, r, k, res, ''
