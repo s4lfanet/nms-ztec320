@@ -67,12 +67,18 @@ def sync_olt(olt_id):
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
     from sync_lock import is_sync_locked
-    if is_sync_locked(olt.id):
-        return jsonify({'success': False, 'message': 'Sync already in progress for this OLT'}), 409
+    queued = is_sync_locked(olt.id)
     from flask import current_app
     start_single_sync(current_app._get_current_object(), olt.id)
-    log_action('olt_sync', 'olt', target=olt.name, detail='Manual sync triggered')
-    return jsonify({'success': True, 'message': 'Synchronization started'})
+    log_action('olt_sync', 'olt', target=olt.name,
+               detail='Manual sync queued (another sync running)' if queued
+                      else 'Manual sync triggered')
+    return jsonify({
+        'success': True,
+        'queued': queued,
+        'message': 'Sync queued — waiting for ongoing sync to finish' if queued
+                   else 'Synchronization started',
+    })
 
 
 @bp.route('/api/olt/sync-all', methods=['POST'])
@@ -99,6 +105,22 @@ def sync_status(olt_id):
     sync = OLTSyncStatus.query.filter_by(olt_id=olt_id).first()
     if not sync:
         return jsonify({'status': 'idle', 'progress': 0, 'message': ''})
+    # Self-heal: a 'running' row whose sync lock is free and that started
+    # long ago is leftover state (thread died without a final write), not a
+    # live sync — the lock is the source of truth, not this row.
+    if sync.status == 'running' and sync.started_at:
+        from services_sync import SYNC_WAIT_SEC
+        stale_after = max(300, SYNC_WAIT_SEC + 60)
+        started = sync.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - started).total_seconds() > stale_after:
+            from sync_lock import is_sync_locked
+            if not is_sync_locked(olt_id):
+                sync.status = 'interrupted'
+                sync.message = 'Sync ended without completing'
+                sync.completed_at = datetime.now(timezone.utc)
+                db.session.commit()
     return jsonify({
         'status': sync.status,
         'progress': sync.progress,

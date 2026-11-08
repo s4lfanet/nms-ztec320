@@ -3,15 +3,24 @@
 These functions are called by route_olt.py to avoid blocking the request thread.
 The actual SNMP/CLI collection is delegated to snmp_collector.py.
 """
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from models import db, OLT, OLTSyncStatus
 from extensions import logger
-from sync_lock import acquire_sync_lock, release_sync_lock, start_sync_watchdog
+from sync_lock import acquire_sync_lock, release_sync_lock, start_sync_watchdog, is_sync_locked
 
 MAX_SYNC_WORKERS = 5
+
+# How long a UI-triggered sync waits for a lock held by another sync
+# (auto-sync cron, post-action light sync) before giving up — a manual
+# click used to be rejected instantly ("already in progress") whenever the
+# 5-minute auto-sync happened to be running. Stale holders are still
+# reaped inside acquire_sync_lock() while we wait.
+SYNC_WAIT_SEC = float(os.environ.get('SYNC_WAIT_SEC', '120'))
+SYNC_ALL_WAIT_SEC = float(os.environ.get('SYNC_ALL_WAIT_SEC', '30'))
 
 
 def run_single_sync(app, olt_id, sync_id, light=False):
@@ -26,14 +35,18 @@ def run_single_sync(app, olt_id, sync_id, light=False):
         if not olt or not sync:
             return
 
-        # Acquire per-OLT sync lock
-        lock_token = acquire_sync_lock(olt_id, timeout=0)
+        # Acquire per-OLT sync lock — wait briefly when another sync
+        # holds it so a manual click isn't rejected outright.
+        if is_sync_locked(olt_id):
+            sync.message = 'Waiting for ongoing sync to finish...'
+            db.session.commit()
+        lock_token = acquire_sync_lock(olt_id, timeout=SYNC_WAIT_SEC)
         if lock_token is None:
             sync.status = 'skipped'
             sync.message = 'Sync already in progress \u2014 skipped'
             sync.completed_at = datetime.now(timezone.utc)
             db.session.commit()
-            logger.info(f"Sync skipped for OLT {olt_id} \u2014 already locked")
+            logger.info(f"Sync skipped for OLT {olt_id} \u2014 still locked after {SYNC_WAIT_SEC}s")
             return
 
         def _mark_interrupted():
@@ -128,8 +141,9 @@ def _sync_one_olt(app, olt_id):
     Returns (olt_id, success: bool, message: str).
     """
     with app.app_context():
-        # Acquire per-OLT sync lock
-        lock_token = acquire_sync_lock(olt_id, timeout=0)
+        # Acquire per-OLT sync lock — wait briefly so an OLT mid-sync
+        # isn't silently skipped by Sync All either.
+        lock_token = acquire_sync_lock(olt_id, timeout=SYNC_ALL_WAIT_SEC)
         if lock_token is None:
             sync = OLTSyncStatus.query.filter_by(olt_id=olt_id).first()
             if sync:
@@ -137,7 +151,7 @@ def _sync_one_olt(app, olt_id):
                 sync.message = 'Sync already in progress \u2014 skipped'
                 sync.completed_at = datetime.now(timezone.utc)
                 db.session.commit()
-            logger.info(f"Sync-all skipped OLT {olt_id} \u2014 already locked")
+            logger.info(f"Sync-all skipped OLT {olt_id} \u2014 still locked after {SYNC_ALL_WAIT_SEC}s")
             return olt_id, False, "Skipped \u2014 already syncing"
 
         def _mark_interrupted():
@@ -282,9 +296,14 @@ def start_single_sync(app, olt_id, light=False):
     if not sync:
         sync = OLTSyncStatus(olt_id=olt_id)
         db.session.add(sync)
+    queued = is_sync_locked(olt_id)
     sync.status = 'running'
-    sync.progress = 0
-    sync.message = 'Starting synchronization...'
+    if not queued:
+        sync.progress = 0
+    # Keep the running sync's progress visible while queued — stomping it
+    # with 'Starting...' would make the UI look like the sync restarted.
+    sync.message = ('Queued — waiting for ongoing sync to finish...' if queued
+                    else 'Starting synchronization...')
     sync.started_at = datetime.now(timezone.utc)
     sync.completed_at = None
     db.session.commit()

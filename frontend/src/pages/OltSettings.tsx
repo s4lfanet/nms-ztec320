@@ -138,9 +138,9 @@ export function OltSettings() {
       if (!ok) throw new Error('cancelled');
       return api.syncOlt(oltId);
     },
-    onSuccess: (_, oltId) => {
-      setSyncingId(oltId); setSyncProgress(0); setSyncMessage('Starting sync...');
-      toast.success('Sync started!');
+    onSuccess: (d, oltId) => {
+      setSyncingId(oltId); setSyncProgress(0); setSyncMessage(d?.message || 'Starting sync...');
+      toast.success(d?.message || 'Sync started!');
     },
     onError: (e: Error) => { if (e.message !== 'cancelled') toast.error('Sync failed: ' + e.message); },
   });
@@ -153,7 +153,7 @@ export function OltSettings() {
         const s = await api.syncStatus(syncingId);
         setSyncProgress(s.progress || 0);
         setSyncMessage(s.message || '');
-        if (s.status === 'completed' || s.status === 'error' || s.status === 'skipped') {
+        if (s.status === 'completed' || s.status === 'error' || s.status === 'skipped' || s.status === 'interrupted') {
           clearInterval(interval); setSyncingId(null);
           if (s.status === 'completed') toast.success('Sync completed!');
           else if (s.status === 'error') toast.error('Sync failed: ' + (s.message || ''));

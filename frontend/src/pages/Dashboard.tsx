@@ -128,11 +128,11 @@ export function Dashboard() {
       if (!ok) throw new Error('cancelled');
       return api.syncOlt(oltId);
     },
-    onSuccess: (_, oltId) => {
+    onSuccess: (d, oltId) => {
       setSyncingOlt(oltId);
       setSyncProgress(0);
-      setSyncMessage(t('dashboard.startingSync'));
-      toast.success(t('dashboard.syncStarted'));
+      setSyncMessage(d?.message || t('dashboard.startingSync'));
+      toast.success(d?.message || t('dashboard.syncStarted'));
     },
     onError: (e: Error) => {
       if (e.message !== 'cancelled') toast.error(t('dashboard.syncFailed', { msg: e.message }));
@@ -167,7 +167,7 @@ export function Dashboard() {
         const s = await api.syncStatus(syncingOlt);
         setSyncProgress(s.progress || 0);
         setSyncMessage(s.message || '');
-        if (s.status === 'completed' || s.status === 'error' || s.status === 'skipped') {
+        if (s.status === 'completed' || s.status === 'error' || s.status === 'skipped' || s.status === 'interrupted') {
           clearInterval(interval);
           setSyncingOlt(null);
           if (s.status === 'completed') {

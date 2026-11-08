@@ -114,7 +114,7 @@ export const api = {
     request<{ success: boolean; message?: string }>('/api/customization/rx-colors', { method: 'POST', body: JSON.stringify({ ranges }) }),
 
   // OLT
-  syncOlt: (oltId: number) => request(`/api/olt/${oltId}/sync`, { method: 'POST' }),
+  syncOlt: (oltId: number) => request<{ success: boolean; queued?: boolean; message?: string }>(`/api/olt/${oltId}/sync`, { method: 'POST' }),
   syncAllOlts: () => request(`/api/olt/sync-all`, { method: 'POST' }),
   syncStatus: (oltId: number) => request<SyncStatus>(`/api/olt/${oltId}/sync-status`),
   getOlt: (oltId: number) => request<OltFullData>(`/api/olt/${oltId}`),

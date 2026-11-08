@@ -370,31 +370,69 @@ def start_sync_watchdog(olt_id: int, token: str, max_seconds: float = None,
 
 
 def is_sync_locked(olt_id: int) -> bool:
-    """Check if an OLT is currently locked (non-blocking check)."""
+    """Check if an OLT is currently locked (non-blocking check).
+
+    Reaps provably-stale locks (older than _LOCK_TTL) before answering —
+    the same rules acquire_sync_lock() applies — so callers (e.g. the
+    manual-sync route) never report 'already in progress' for a lock a
+    fresh acquire would have reclaimed.
+    """
     r = _get_redis()
     if r:
         try:
             key = f'{_LOCK_KEY_PREFIX}:{olt_id}'
-            return r.exists(key) > 0
+            if not r.exists(key):
+                return False
+            if (r.ttl(key) or 0) < 0:
+                # Key exists with no expiry — stale; SET NX EX always sets
+                # a TTL, so this only happens after a write-path bug.
+                r.delete(key)
+                return False
+            return True
         except Exception:
             pass
 
     if _HAS_FCNTL:
-        with _local_meta_lock:
-            if olt_id in _file_locks:
-                return True  # held by this process
-        try:
-            fh = _open_lock_file(_lock_file_path(olt_id))
-        except OSError:
-            return False
-        try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-            return False
-        except OSError:
-            return True  # held by another process
-        finally:
-            fh.close()
+        path = _lock_file_path(olt_id)
+        for _ in range(2):
+            with _local_meta_lock:
+                own = _file_locks.get(olt_id)
+            if own:
+                if (time.time() - own[2]) <= _LOCK_TTL:
+                    return True  # held by this process, still fresh
+                _reap_stale_flock(olt_id, path)
+                continue
+            try:
+                fh = _open_lock_file(path)
+            except OSError:
+                return False
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+                return False
+            except OSError:
+                # Held by another process — reap if provably stale (dead
+                # pid, or recorded ts > _LOCK_TTL), then re-probe once.
+                _reap_stale_flock(olt_id, path)
+            finally:
+                fh.close()
+        return True
 
     with _local_meta_lock:
-        return olt_id in _local_lock_holders
+        holder = _local_lock_holders.get(olt_id)
+        if holder is None:
+            return False
+        ts = _local_lock_timestamps.get(olt_id)
+        if ts and (time.time() - ts) <= _LOCK_TTL:
+            return True
+        lock = _local_locks.get(olt_id)
+    # Stale in-memory lock — same force-release the watchdog/acquire apply.
+    if lock:
+        try:
+            lock.release()
+        except RuntimeError:
+            pass
+    with _local_meta_lock:
+        _local_lock_holders.pop(olt_id, None)
+        _local_lock_timestamps.pop(olt_id, None)
+    return False
