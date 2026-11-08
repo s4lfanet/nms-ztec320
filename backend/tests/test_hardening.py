@@ -67,8 +67,27 @@ def test_create_user_accepts_good_password(client):
 
 def test_profile_rejects_weak_password(client):
     _login(client, 'boss')
-    r = client.post('/api/profile', json={'password': 'admin123'}, headers=H)
-    assert r.status_code == 400
+    r = client.post('/api/profile', json={'password': 'admin123', 'current_password': 'Str0ng-pass!'}, headers=H)
+    assert r.status_code == 400 and r.get_json()['error_code'] == 'weak_password'
+
+
+def test_profile_requires_current_password(client):
+    _login(client, 'boss')
+    r = client.post('/api/profile', json={'password': 'Brand-New-Pass1'}, headers=H)
+    assert r.status_code == 400 and r.get_json()['error_code'] == 'current_password_required'
+    r = client.post('/api/profile', json={'password': 'Brand-New-Pass1', 'current_password': 'wrong'}, headers=H)
+    assert r.status_code == 400 and r.get_json()['error_code'] == 'current_password_invalid'
+    # password unchanged: old one still logs in
+    client.post('/api/auth/logout', headers=H)
+    assert client.post('/api/auth/login', json={'username': 'boss', 'password': 'Str0ng-pass!'}, headers=H).status_code == 200
+    r = client.post('/api/profile', json={'password': 'Brand-New-Pass1', 'current_password': 'Str0ng-pass!'}, headers=H)
+    assert r.status_code == 200
+
+
+def test_profile_without_password_needs_no_current_password(client):
+    _login(client, 'boss')
+    r = client.post('/api/profile', json={'full_name': 'Boss Baru'}, headers=H)
+    assert r.status_code == 200
 
 
 def test_must_change_blocks_api_but_allows_profile(client):
@@ -76,7 +95,7 @@ def test_must_change_blocks_api_but_allows_profile(client):
     assert client.get('/api/auth/me').status_code == 200
     r = client.get('/api/users', headers=H)
     assert r.status_code == 403 and r.get_json()['error_code'] == 'password_change_required'
-    r = client.post('/api/profile', json={'password': 'Brand-New-Pass1'}, headers=H)
+    r = client.post('/api/profile', json={'password': 'Brand-New-Pass1', 'current_password': 'Str0ng-pass!'}, headers=H)
     assert r.status_code == 200 and r.get_json()['must_change_password'] is False
     assert client.get('/api/users', headers=H).status_code != 403
 

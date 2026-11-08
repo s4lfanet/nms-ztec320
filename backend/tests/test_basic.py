@@ -1542,7 +1542,7 @@ class TestForcedPasswordChange:
             content_type='application/json')
 
         resp = client.post('/api/profile',
-            data=json.dumps({'password': 'BrandNewStrongPass1'}),
+            data=json.dumps({'password': 'BrandNewStrongPass1', 'current_password': 'admin123'}),
             content_type='application/json',
             headers={'X-Requested-With': 'XMLHttpRequest'})
         assert resp.status_code == 200

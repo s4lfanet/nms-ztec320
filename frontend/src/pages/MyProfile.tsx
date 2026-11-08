@@ -3,7 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../stores/auth';
 import { useTheme, type Theme } from '../stores/theme';
-import { api, type User as UserType } from '../lib/api';
+import { api, ApiError, type User as UserType } from '../lib/api';
 import { toast } from '../components/Toast';
 import { User, Lock, Save, Eye, EyeOff, Image, Upload, RotateCcw, ShieldAlert, Palette, Languages } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
@@ -19,6 +19,7 @@ export function MyProfile() {
   const { theme, set: setTheme } = useTheme();
   const [fullName, setFullName] = useState(user?.full_name || '');
   const [sidebarName, setSidebarName] = useState(user?.sidebar_name || 'Salfanet NMS');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -39,17 +40,24 @@ export function MyProfile() {
       }
       const payload: Record<string, string> = { full_name: fullName };
       if (user?.is_super_admin) payload.sidebar_name = sidebarName;
-      if (password) payload.password = password;
+      if (password) {
+        payload.password = password;
+        payload.current_password = currentPassword;
+      }
       const d = await api.updateProfile(payload);
       if (!d.success) throw new Error(t('error.generic'));
     },
     onSuccess: async () => {
       toast.success(t('profile.updated'));
+      setCurrentPassword('');
       setPassword('');
       setConfirmPass('');
       await fetchUser();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      const code = e instanceof ApiError ? e.errorCode : undefined;
+      toast.error(code ? t(`error.${code}`, { defaultValue: e.message }) : e.message);
+    },
   });
 
   const uploadLogoMut = useMutation({
@@ -237,6 +245,14 @@ export function MyProfile() {
           <Card title={t('profile.changePassword')} icon={<Lock size={18} />}>
             <div className="space-y-4">
               <Input
+                label={t('profile.currentPassword')}
+                type={showPass ? 'text' : 'password'}
+                value={currentPassword}
+                onChange={e => setCurrentPassword(e.target.value)}
+                placeholder={t('profile.currentPasswordPh')}
+                autoComplete="current-password"
+              />
+              <Input
                 label={t('profile.newPassword')}
                 type={showPass ? 'text' : 'password'}
                 value={password}
@@ -264,7 +280,7 @@ export function MyProfile() {
             icon={<Save size={16} />}
             onClick={() => updateMut.mutate()}
             loading={updateMut.isPending}
-            disabled={password !== '' && password !== confirmPass}
+            disabled={password !== '' && (password !== confirmPass || currentPassword === '')}
           >
             {updateMut.isPending ? t('common.saving') : t('profile.saveChanges')}
           </Button>
