@@ -73,6 +73,19 @@ def update_profile():
             return jsonify({'success': False, 'error_code': 'invalid_language', 'message': 'Invalid language value'}), 400
         current_user.language = data['language']
     if 'password' in data and data['password']:
+        # Re-authenticate: a hijacked/unattended session must not be able to
+        # set a new password without knowing the current one.
+        _cur = data.get('current_password') or ''
+        if not _cur:
+            db.session.rollback()
+            return jsonify({'success': False, 'error_code': 'current_password_required',
+                            'message': 'Current password is required to set a new password.'}), 400
+        if not current_user.check_password(_cur):
+            db.session.rollback()
+            log_action('password_change_failed', 'security', target=current_user.username,
+                       detail='Wrong current password on self-service password change')
+            return jsonify({'success': False, 'error_code': 'current_password_invalid',
+                            'message': 'Current password is incorrect.'}), 400
         _pw_err = validate_password(data['password'])
         if _pw_err:
             db.session.rollback()

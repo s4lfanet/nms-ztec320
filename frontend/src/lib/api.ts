@@ -46,7 +46,7 @@ export const api = {
     }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
   me: () => request<{ user: User }>('/api/auth/me'),
-  updateProfile: (data: { full_name?: string; sidebar_name?: string; password?: string; theme?: 'dark' | 'light' | 'system'; language?: 'id' | 'en' }) =>
+  updateProfile: (data: { full_name?: string; sidebar_name?: string; password?: string; current_password?: string; theme?: 'dark' | 'light' | 'system'; language?: 'id' | 'en' }) =>
     request<{ success: boolean; must_change_password?: boolean }>('/api/profile', { method: 'POST', body: JSON.stringify(data) }),
 
   // Dashboard

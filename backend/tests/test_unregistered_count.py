@@ -23,8 +23,14 @@ app.config['SESSION_COOKIE_DOMAIN'] = None
 
 
 @pytest.fixture(autouse=True)
-def clear_caches():
-    """Clear the (in-memory) cache and login rate limits between tests."""
+def clear_caches(monkeypatch):
+    """Clear the (in-memory) cache and login rate limits between tests.
+
+    Also isolate from the process-wide sync lock: an earlier test's background
+    sync can still hold the lock for OLT id 1, which made the endpoint skip the
+    scan and return 0 (flaky). Tests that need a held lock patch it themselves.
+    """
+    monkeypatch.setattr('sync_lock.is_sync_locked', lambda olt_id: False)
     from cache import cache_clear
     from helpers import _login_attempts
     cache_clear('*')
