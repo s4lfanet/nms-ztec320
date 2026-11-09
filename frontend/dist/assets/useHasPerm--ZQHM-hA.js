@@ -1,1 +1,0 @@
-import{p as e}from"./index-C4AuAQNh.js";function t(){let{user:t}=e(),n=new Set(t?.permissions||[]);return e=>t?.is_super_admin?!0:e===`super_admin`?n.has(`all_olt`):n.has(`all_olt`)?!0:n.has(e)}export{t};

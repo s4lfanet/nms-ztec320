@@ -158,12 +158,20 @@ def _state_to_dict(s):
 def mac_match_preview():
     """Preview: match active PPPoE sessions to non-ZTE ONUs by caller-id MAC.
 
-    ?strip=N (0-3) drops the last N MAC octets on both sides before comparing
-    — useful when the CPE's dialing MAC differs from the ONU's base MAC.
-    Only unambiguous (single-ONU) matches are marked eligible.
+    ?strip=N (0-3) drops the last N MAC octets on both sides before comparing.
+    ?offset=N (0-64) compares MACs as numbers: |session MAC - ONU MAC| <= N
+    within the same OUI (CPE WAN MAC = ONU MAC + small offset, also across
+    octet boundaries). Nearest ONU is reported; ties / several sessions on one
+    ONU are flagged ambiguous. Only unambiguous matches are marked eligible.
+    See mac_match.py.
     """
     import link_state_poller as lsp
-    strip = min(3, max(0, int(request.args.get('strip') or 0)))
+    def _int_arg(name, hi):
+        try:
+            return min(hi, max(0, int(request.args.get(name) or 0)))
+        except (TypeError, ValueError):
+            return 0
+    strip, offset = _int_arg('strip', 3), _int_arg('offset', 64)
     only_unnamed = request.args.get('unnamed', '1') == '1'
 
     sessions, dev_errors = [], []
@@ -186,30 +194,24 @@ def mac_match_preview():
     if only_unnamed:
         onus = [o for o in onus if not lsp._name_is_usable(o.name)]
 
-    keep = 12 - 2 * strip  # hex chars compared
-    mac_idx = {}
-    for o in onus:
-        mac_idx.setdefault(lsp._norm_mac(o.serial_number)[:keep], []).append(o)
-
-    matches, collisions = [], 0
-    for s in sessions:
-        cid = lsp._norm_mac(s['caller_id'])
-        if not cid:
-            continue
-        cands = mac_idx.get(cid[:keep], [])
-        if len(cands) > 1:
-            collisions += 1
-        for o in cands[:1]:
-            matches.append({
-                'onu_id': o.id, 'onu_index': o.onu_index,
-                'onu_name': o.name or '', 'serial': o.serial_number,
-                'olt_id': o.olt_id,
-                'session_name': s['name'], 'caller_id': s['caller_id'],
-                'address': s['address'], 'uptime': s['uptime'],
-                'device': s['device'],
-                'match': 'exact' if strip == 0 else f'partial-{strip}',
-                'collision': len(cands) > 1,
-            })
+    from mac_match import match_sessions
+    onu_by_id = {o.id: o for o in onus}
+    found, collisions = match_sessions(
+        sessions, [(o.id, o.serial_number) for o in onus], strip=strip, offset=offset)
+    matches = []
+    for m in found:
+        s = sessions[m['session_idx']]
+        o = onu_by_id[m['onu_key']]
+        matches.append({
+            'onu_id': o.id, 'onu_index': o.onu_index,
+            'onu_name': o.name or '', 'serial': o.serial_number,
+            'olt_id': o.olt_id,
+            'session_name': s['name'], 'caller_id': s['caller_id'],
+            'address': s['address'], 'uptime': s['uptime'],
+            'device': s['device'],
+            'match': m['match'], 'delta': m['delta'],
+            'collision': m['collision'],
+        })
     return jsonify({'success': True, 'matches': matches, 'collisions': collisions,
                     'sessions': len(sessions), 'onus_scanned': len(onus),
                     'device_errors': dev_errors})
