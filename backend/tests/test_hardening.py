@@ -5,7 +5,10 @@ import tempfile
 import pytest
 from sqlalchemy import create_engine
 
+import secrets
+
 from app import app, db
+from routes_auth import INSTALLER_DEFAULT_PASSWORDS
 from models import User, Role
 
 H = {'X-Requested-With': 'XMLHttpRequest'}
@@ -49,6 +52,10 @@ def client():
 def _login(c, user):
     r = c.post('/api/auth/login', json={'username': user, 'password': 'Str0ng-pass!'}, headers=H)
     assert r.status_code == 200
+
+
+def _post_login(c, user, pw):
+    return c.post('/api/auth/login', json={'username': user, 'password': pw}, headers=H)
 
 
 def test_create_user_rejects_empty_and_short_password(client):
@@ -103,3 +110,32 @@ def test_must_change_blocks_api_but_allows_profile(client):
 def test_normal_user_not_blocked(client):
     _login(client, 'boss')
     assert client.get('/api/users', headers=H).status_code != 403
+
+
+def test_login_with_installer_default_password_flags_account(client):
+    """Admin lama (flag False) yang login dengan password bawaan wajib ganti."""
+    default_pw = next(iter(INSTALLER_DEFAULT_PASSWORDS))
+    new_pw = secrets.token_urlsafe(16)
+    app.config['FORCE_DEFAULT_PASSWORD_FLAG'] = True
+    with app.app_context():
+        u = User.query.filter_by(username='boss').first()
+        u.set_password(default_pw)
+        u.must_change_password = False
+        db.session.commit()
+    r = _post_login(client, 'boss', default_pw)
+    assert r.status_code == 200
+    assert r.get_json()['user']['must_change_password'] is True
+    # API lain diblokir sampai password diganti
+    r = client.get('/api/dashboard', headers=H)
+    assert r.status_code == 403
+    assert r.get_json()['error_code'] == 'password_change_required'
+    # ganti password menghapus flag
+    r = client.post('/api/profile', json={'password': new_pw, 'current_password': default_pw}, headers=H)
+    assert r.status_code == 200
+    assert r.get_json()['must_change_password'] is False
+    app.config.pop('FORCE_DEFAULT_PASSWORD_FLAG', None)
+
+
+def test_login_with_strong_password_not_flagged(client):
+    _login(client, 'boss')
+    assert client.get('/api/auth/me', headers=H).get_json()['user']['must_change_password'] is False

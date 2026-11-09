@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { DashboardWsProvider } from '../../hooks/useDashboardWs';
 import { OfflineBanner } from '../OfflineBanner';
+import { ForcePasswordChange } from '../ForcePasswordChange';
 
 const bottomNavItems = [
   { labelKey: 'nav.home', icon: LayoutDashboard, path: '/dashboard' },
@@ -52,6 +53,7 @@ export function AppShell() {
     <DashboardWsProvider>
       <div className="min-h-screen bg-[var(--bg-primary)] transition-colors duration-300">
         <OfflineBanner />
+        <ForcePasswordChange />
         <div className="app-mesh-bg" aria-hidden="true" />
 
         <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onToggle={() => setCollapsed(!collapsed)} onMobileClose={() => setMobileOpen(false)} />

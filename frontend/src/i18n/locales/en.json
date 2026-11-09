@@ -314,6 +314,8 @@
     "subtitle": "Manage your account settings",
     "mustChangeTitle": "Change your default password",
     "mustChangeMsg": "This account still uses the installer default password. Set a new password below before continuing to other pages.",
+    "forceMsg": "This account still uses a default password. Set a new password now to continue.",
+    "forceHint": "At least 8 characters and not a common password.",
     "accountInfo": "Account Information",
     "fullName": "Full Name",
     "brandName": "Sidebar / Brand Name",
