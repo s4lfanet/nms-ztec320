@@ -314,6 +314,8 @@
     "subtitle": "Kelola pengaturan akun Anda",
     "mustChangeTitle": "Ganti password default Anda",
     "mustChangeMsg": "Akun ini masih menggunakan password bawaan instalasi. Silakan atur password baru di bawah ini sebelum melanjutkan ke halaman lain.",
+    "forceMsg": "Akun ini masih memakai password bawaan. Buat password baru sekarang untuk melanjutkan.",
+    "forceHint": "Minimal 8 karakter dan bukan password umum.",
     "accountInfo": "Informasi Akun",
     "fullName": "Nama Lengkap",
     "brandName": "Nama Sidebar / Brand",

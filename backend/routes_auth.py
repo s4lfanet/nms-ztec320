@@ -2,13 +2,16 @@
 
 Blueprint 'auth' — all HTML rendering removed, React SPA at root /* handles UI.
 """
-from flask import Blueprint, redirect, request, jsonify, session
+from flask import Blueprint, redirect, request, jsonify, session, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 
 from models import db, User
 from helpers import utc_iso, log_action, check_rate_limit, record_failed_login, clear_failed_logins
 
 bp = Blueprint('auth', __name__)
+
+# Password bawaan installer (lihat seed admin di app.py).
+INSTALLER_DEFAULT_PASSWORDS = frozenset({'admin123'})
 
 
 @bp.route('/logout')
@@ -57,6 +60,18 @@ def api_login():
     user = User.query.filter_by(username=username).first()
 
     if user and user.check_password(password):
+        # Install yang dibuat sebelum flag ini ada (atau admin yang di-reset
+        # ke password bawaan) tidak pernah ditandai must_change_password.
+        # Tandai sekarang, saat password bawaan terbukti dipakai login.
+        # Suite tes lama memakai password bawaan sebagai kredensial fixture, jadi saat
+        # TESTING penandaan ini hanya aktif bila diminta eksplisit.
+        _flag_default = (not current_app.config.get('TESTING')
+                         or current_app.config.get('FORCE_DEFAULT_PASSWORD_FLAG'))
+        if _flag_default and password in INSTALLER_DEFAULT_PASSWORDS and not user.must_change_password:
+            user.must_change_password = True
+            db.session.commit()
+            log_action('default_password_flagged', 'security', target=user.username,
+                       detail='Login with installer default password — password change required')
         login_user(user)
         session.permanent = True
         clear_failed_logins(client_ip)
