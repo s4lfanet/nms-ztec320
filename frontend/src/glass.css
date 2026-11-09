@@ -1,0 +1,296 @@
+/* ─── Salfanet NMS — Glass theme layer ────────────────────────────────────
+   Lapisan tampilan "glassmorphism" di atas design system yang sudah ada.
+   Sengaja ADDITIVE: tidak mengubah token, kelas, atau markup yang sudah
+   dipakai halaman — hanya menimpa tampilan kelas bersama (.glass-card,
+   .btn-*, .data-table, .modal-*, sidebar, topbar, dst).
+
+   Untuk membatalkan seluruh redesign: hapus `import './glass.css'` di
+   main.tsx.
+
+   Prinsip keterbacaan NOC:
+   - Kaca dipakai untuk kartu statistik, sidebar, header, modal.
+   - Tabel data & terminal tetap (hampir) solid — blur di atas tabel
+     panjang berat dan menurunkan keterbacaan.
+   - Aksen mengikuti --color-accent (tema Customization tetap bekerja).
+*/
+
+:root {
+  --glass-blur: 14px;
+  --glass-radius: 14px;
+  --glass-fill: linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.026));
+  --glass-fill-hover: linear-gradient(145deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.04));
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-border-strong: rgba(255, 255, 255, 0.17);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --glass-shadow: 0 12px 32px -14px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.25);
+  --glass-solid: rgba(15, 19, 27, 0.86);
+  --glass-chrome: rgba(10, 13, 19, 0.66);
+  --glass-modal: rgba(16, 21, 30, 0.78);
+  --glass-field: rgba(255, 255, 255, 0.045);
+  --glass-field-hover: rgba(255, 255, 255, 0.07);
+  --glass-glow: color-mix(in srgb, var(--color-accent) 38%, transparent);
+}
+
+html.light {
+  --glass-fill: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.56));
+  --glass-fill-hover: linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.7));
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-border-strong: rgba(148, 163, 184, 0.5);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --glass-shadow: 0 12px 30px -16px rgba(30, 41, 59, 0.28), 0 1px 3px rgba(30, 41, 59, 0.08);
+  --glass-solid: rgba(255, 255, 255, 0.9);
+  --glass-chrome: rgba(255, 255, 255, 0.7);
+  --glass-modal: rgba(255, 255, 255, 0.86);
+  --glass-field: rgba(255, 255, 255, 0.7);
+  --glass-field-hover: rgba(255, 255, 255, 0.92);
+}
+
+/* ─── Latar: aurora statis (tanpa animasi → ringan di PC NOC lama) ─── */
+.app-mesh-bg::before {
+  background-image:
+    radial-gradient(900px 520px at 8% -8%, color-mix(in srgb, var(--color-accent) 20%, transparent), transparent 62%),
+    radial-gradient(780px 560px at 96% 4%, rgba(139, 92, 246, 0.14), transparent 60%),
+    radial-gradient(900px 600px at 70% 108%, rgba(16, 185, 129, 0.10), transparent 62%),
+    radial-gradient(700px 480px at 0% 100%, rgba(14, 165, 233, 0.08), transparent 60%);
+}
+.app-mesh-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 72%);
+}
+html.light .app-mesh-bg::before {
+  background-image:
+    radial-gradient(900px 520px at 8% -8%, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 62%),
+    radial-gradient(780px 560px at 96% 4%, rgba(167, 139, 250, 0.20), transparent 60%),
+    radial-gradient(900px 600px at 70% 108%, rgba(52, 211, 153, 0.16), transparent 62%);
+}
+html.light .app-mesh-bg::after {
+  background-image: radial-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+}
+
+/* ─── Kartu kaca ─── */
+.glass-card,
+html.light .glass-card {
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-edge), var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+}
+button.glass-card:hover,
+a.glass-card:hover,
+[role="button"].glass-card:hover {
+  background: var(--glass-fill-hover);
+  border-color: var(--glass-border-strong);
+}
+
+/* Kartu berisi tabel → hampir solid & tanpa blur (performa + keterbacaan) */
+.glass-card:has(.data-table),
+.glass-card:has(table) {
+  background: var(--glass-solid);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* Kartu di dalam kartu: jangan blur bertumpuk */
+.glass-card .glass-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: var(--glass-edge);
+  background: var(--glass-field);
+}
+
+/* Stat tile: aksen status tipis + kilau sudut */
+.stat-tile {
+  border-left-width: 0;
+  overflow: hidden;
+}
+.stat-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, rgba(var(--card-tint), 0.95), rgba(var(--card-tint), 0.15));
+  border-radius: 3px 0 0 3px;
+}
+.stat-tile::after {
+  content: '';
+  position: absolute;
+  right: -30px;
+  top: -30px;
+  width: 110px;
+  height: 110px;
+  background: radial-gradient(circle, rgba(var(--card-tint), 0.18), transparent 70%);
+  pointer-events: none;
+}
+
+.section-header {
+  background: rgba(255, 255, 255, 0.025);
+  border-bottom-color: var(--glass-border);
+}
+html.light .section-header { background: rgba(255, 255, 255, 0.4); }
+
+.icon-badge {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 14px -4px rgba(var(--ib-rgb), 0.45);
+}
+
+/* ─── Sidebar & Topbar (kaca "chrome") ─── */
+.sidebar-panel {
+  background: var(--glass-chrome);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border-right: 1px solid var(--glass-border);
+  box-shadow: 8px 0 32px -18px rgba(0, 0, 0, 0.5);
+}
+.sidebar-panel a { position: relative; }
+.sidebar-panel a[aria-current="page"] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 22%, transparent), color-mix(in srgb, var(--color-accent) 6%, transparent));
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  box-shadow: 0 0 18px -6px var(--glass-glow);
+}
+.sidebar-panel a[aria-current="page"]::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 22%;
+  bottom: 22%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--color-accent);
+  box-shadow: 0 0 10px var(--color-accent);
+}
+header.sticky {
+  background: var(--glass-chrome);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border-bottom: 1px solid var(--glass-border);
+}
+.mobile-bottom-nav {
+  background: var(--glass-chrome);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border-top: 1px solid var(--glass-border);
+}
+
+/* ─── Tombol ─── */
+.btn-primary,
+.btn-accent {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--color-accent) 100%, white 14%),
+    var(--color-accent));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 6px 16px -8px var(--glass-glow);
+}
+.btn-primary:hover:not(:disabled),
+.btn-accent:hover:not(:disabled) {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--color-accent-hover) 100%, white 12%),
+    var(--color-accent-hover));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 8px 20px -8px var(--glass-glow);
+}
+.btn-cancel {
+  background: var(--glass-field);
+  border-color: var(--glass-border);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.btn-cancel:hover { background: var(--glass-field-hover); border-color: var(--glass-border-strong); }
+.btn-danger,
+.btn-warning { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.btn-ghost:hover { background: var(--glass-field-hover); }
+.btn-primary:active:not(:disabled),
+.btn-accent:active:not(:disabled) { transform: translateY(0.5px); }
+
+/* ─── Input / select ─── (tanpa width/height: dijaga agar utilitas Tailwind tetap menang) */
+.input-field,
+select {
+  background-color: var(--glass-field);
+  border-color: var(--glass-border);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.input-field:hover,
+select:hover { background-color: var(--glass-field-hover); }
+.input-field:focus,
+select:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent), inset 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+html.light .input-field,
+html.light select { box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06); }
+
+/* ─── Tab ─── */
+.tab-btn-active {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+  border-color: var(--glass-border-strong);
+  box-shadow: var(--glass-edge), 0 4px 12px -6px rgba(0, 0, 0, 0.5);
+}
+html.light .tab-btn-active {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px -3px rgba(30, 41, 59, 0.2);
+}
+
+/* ─── Badge status (pil dengan cincin halus) ─── */
+.badge { border-radius: 999px; padding: 2px 9px; box-shadow: inset 0 0 0 1px currentColor; }
+.badge-success { background: rgba(16, 185, 129, 0.13); box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.32); }
+.badge-warning { background: rgba(245, 158, 11, 0.13); box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.32); }
+.badge-danger  { background: rgba(239, 68, 68, 0.13);  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.34); }
+.badge-info    { background: rgba(56, 189, 248, 0.13); box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.32); }
+.badge-accent  { background: color-mix(in srgb, var(--color-accent) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 34%, transparent); }
+.badge-neutral { box-shadow: inset 0 0 0 1px var(--glass-border); }
+
+/* ─── Tabel data: angka rata (tabular) & header halus ─── */
+.data-table { font-variant-numeric: tabular-nums; }
+.data-table thead th {
+  background: color-mix(in srgb, var(--bg-surface) 82%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom-color: var(--glass-border);
+  letter-spacing: 0.06em;
+}
+.data-table tbody td { border-bottom-color: color-mix(in srgb, var(--border-color) 70%, transparent); }
+.data-table tbody tr:hover { background: color-mix(in srgb, var(--color-accent) 7%, transparent); }
+
+/* ─── Modal ─── */
+.modal-overlay {
+  background: radial-gradient(ellipse at center, rgba(4, 8, 16, 0.5), rgba(4, 8, 16, 0.72));
+  backdrop-filter: blur(7px) saturate(120%);
+  -webkit-backdrop-filter: blur(7px) saturate(120%);
+}
+.modal-wrapper > .glass-card {
+  background: var(--glass-modal);
+  backdrop-filter: blur(26px) saturate(170%);
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  border-color: var(--glass-border-strong);
+  box-shadow: var(--glass-edge), 0 30px 80px -20px rgba(0, 0, 0, 0.7);
+}
+.modal-header, .modal-footer { border-color: var(--glass-border); }
+
+/* ─── Kode / terminal-ish ─── */
+.code-block { background: var(--glass-field); border-color: var(--glass-border); }
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar-thumb { border: 1px solid transparent; background-clip: padding-box; }
+
+/* ─── Aksesibilitas & fallback ─── */
+@media (max-width: 640px) {
+  :root { --glass-blur: 8px; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-card, .sidebar-panel, header.sticky, .mobile-bottom-nav,
+  .modal-wrapper > .glass-card, .modal-overlay, .btn-cancel, .data-table thead th {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .glass-card { background: var(--bg-card); }
+  .sidebar-panel, header.sticky, .mobile-bottom-nav { background: var(--bg-surface); }
+  .modal-wrapper > .glass-card { background: var(--bg-card); }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-card { background: var(--bg-card); }
+  .sidebar-panel, header.sticky, .mobile-bottom-nav { background: var(--bg-surface); }
+  .modal-wrapper > .glass-card { background: var(--bg-card); }
+}
