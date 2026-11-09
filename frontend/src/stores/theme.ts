@@ -14,8 +14,28 @@ export function resolveTheme(t: Theme): ResolvedTheme {
   return t;
 }
 
-function applyClass(resolved: ResolvedTheme) {
-  document.documentElement.classList.toggle('light', resolved === 'light');
+type ViewTransitionDoc = Document & {
+  startViewTransition?: (cb: () => void) => { finished: Promise<unknown> };
+};
+
+/**
+ * Ganti class tema. Saat `animate`, perpindahan dibungkus View Transition
+ * sehingga seluruh halaman crossfade dengan satu timing (lihat komentar di
+ * glass.css). Tanpa dukungan browser / reduced-motion / boot awal: langsung.
+ */
+function applyClass(resolved: ResolvedTheme, animate = false) {
+  const root = document.documentElement;
+  const apply = () => root.classList.toggle('light', resolved === 'light');
+  const changed = root.classList.contains('light') !== (resolved === 'light');
+  const doc = document as ViewTransitionDoc;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!animate || !changed || reduce || !doc.startViewTransition) {
+    apply();
+    return;
+  }
+  root.classList.add('theme-switching');
+  const done = () => root.classList.remove('theme-switching');
+  doc.startViewTransition(apply).finished.then(done, done);
 }
 
 function persistToServer(t: Theme) {
@@ -50,7 +70,7 @@ export const useTheme = create<ThemeState>((set, get) => ({
   set: (t, opts) => {
     if (!VALID.includes(t)) t = 'system';
     const resolved = resolveTheme(t);
-    applyClass(resolved);
+    applyClass(resolved, true);
     localStorage.setItem(STORAGE_KEY, t);
     set({ theme: t, resolved });
     if (opts?.persist !== false) persistToServer(t);
@@ -77,7 +97,7 @@ export function initTheme(): void {
     const { theme } = useTheme.getState();
     if (theme !== 'system') return;
     const next = resolveTheme('system');
-    applyClass(next);
+    applyClass(next, true);
     useTheme.setState({ resolved: next });
   });
 }
