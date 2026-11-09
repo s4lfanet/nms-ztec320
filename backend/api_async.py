@@ -691,6 +691,24 @@ class _TelnetStream:
 
 
 
+def _cli_port(olt, proto):
+    """Port CLI sesuai protokol: ssh_port / telnet_port milik OLT.
+
+    Sebelumnya terminal membaca atribut `cli_port` yang tidak ada di model
+    OLT, sehingga port custom selalu diabaikan dan terminal jatuh ke 22/23.
+    `cli_port` tetap dihormati bila suatu objek memilikinya (kompatibilitas).
+    """
+    default = 22 if proto == 'ssh' else 23
+    for attr in (('ssh_port', 'cli_port') if proto == 'ssh' else ('telnet_port', 'cli_port')):
+        try:
+            v = int(getattr(olt, attr, None) or 0)
+        except (TypeError, ValueError):
+            v = 0
+        if 1 <= v <= 65535:
+            return v
+    return default
+
+
 def _open_terminal_channel(olt, proto):
     """Open a raw interactive channel to the OLT.
     Returns (write_fn, read_fn, close_fn, resize_fn, err)."""
@@ -700,9 +718,7 @@ def _open_terminal_channel(olt, proto):
             import paramiko
             c = paramiko.SSHClient()
             c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            port = 22
-            if getattr(olt, 'cli_port', None):
-                port = olt.cli_port
+            port = _cli_port(olt, 'ssh')
             c.connect(olt.ip_address, port=port,
                       username=olt.cli_username, password=olt.cli_password,
                       timeout=15, banner_timeout=15, auth_timeout=15,
@@ -724,12 +740,10 @@ def _open_terminal_channel(olt, proto):
                 except Exception: pass
             return w, r, k, res, ''
         else:
-            port = 23
-            if getattr(olt, 'cli_port', None):
-                port = olt.cli_port
+            port = _cli_port(olt, 'telnet')
             tn = SimpleTelnet(olt.ip_address, port=port, timeout=15)
             if not tn.connect():
-                return None, None, None, None, 'Telnet connect failed'
+                return None, None, None, None, f'Telnet connect failed (port {port})'
             tn.sock.settimeout(0.25)
             _lock = _threading.Lock()   # reader thread (IAC replies) vs. input writes
 
@@ -810,7 +824,7 @@ async def ws_terminal_handler(ws: WebSocket, olt_id: int, proto: str):
         # Open channel (blocking) off the event loop
         w, r, k, resz, err = await asyncio.to_thread(_open_terminal_channel, olt, proto)
         if w is None:
-            await ws.send_text(f'\r\n*** Gagal konek {proto}://{olt.ip_address} — {err} ***\r\n')
+            await ws.send_text(f'\r\n*** Gagal konek {proto}://{olt.ip_address}:{_cli_port(olt, proto)} — {err} ***\r\n')
             return
         chan_write, chan_close = w, k
 

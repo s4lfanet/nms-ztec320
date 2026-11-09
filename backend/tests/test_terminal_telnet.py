@@ -145,7 +145,7 @@ def fake_server():
 
 def test_echo_visible_and_clean_display(fake_server):
     from api_async import _open_terminal_channel
-    olt = SimpleNamespace(ip_address='127.0.0.1', cli_port=fake_server.port,
+    olt = SimpleNamespace(ip_address='127.0.0.1', telnet_port=fake_server.port, ssh_port=22,
                           cli_username='u', cli_password='p')
     w, r, k, res, err = _open_terminal_channel(olt, 'telnet')
     assert not err
@@ -163,3 +163,45 @@ def test_echo_visible_and_clean_display(fake_server):
         assert bytes(fake_server.typed) == b'admin\r'   # each key sent exactly once
     finally:
         k()
+
+
+# ------------------------------------------------------------ port custom
+
+def test_cli_port_uses_per_protocol_port():
+    from api_async import _cli_port
+    olt = SimpleNamespace(telnet_port=2323, ssh_port=2222)
+    assert _cli_port(olt, 'telnet') == 2323
+    assert _cli_port(olt, 'ssh') == 2222
+
+
+def test_cli_port_defaults_and_invalid_values():
+    from api_async import _cli_port
+    assert _cli_port(SimpleNamespace(), 'telnet') == 23
+    assert _cli_port(SimpleNamespace(), 'ssh') == 22
+    for bad in (None, 0, '', 'abc', 70000, -1):
+        olt = SimpleNamespace(telnet_port=bad, ssh_port=bad)
+        assert _cli_port(olt, 'telnet') == 23
+        assert _cli_port(olt, 'ssh') == 22
+    # string numerik dari form tetap diterima
+    assert _cli_port(SimpleNamespace(telnet_port='8023'), 'telnet') == 8023
+
+
+def test_ssh_terminal_connects_to_custom_port(monkeypatch):
+    import sys, types
+    from api_async import _open_terminal_channel
+    seen = {}
+
+    class FakeChan:
+        def settimeout(self, t): pass
+
+    class FakeClient:
+        def set_missing_host_key_policy(self, p): pass
+        def connect(self, host, port=None, **kw): seen['port'] = port
+        def invoke_shell(self, **kw): return FakeChan()
+
+    fake = types.SimpleNamespace(SSHClient=FakeClient, AutoAddPolicy=lambda: None)
+    monkeypatch.setitem(sys.modules, 'paramiko', fake)
+    olt = SimpleNamespace(ip_address='10.0.0.1', ssh_port=2222, telnet_port=23,
+                          cli_username='u', cli_password='p')
+    _, _, _, _, err = _open_terminal_channel(olt, 'ssh')
+    assert not err and seen['port'] == 2222
