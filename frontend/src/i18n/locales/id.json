@@ -367,6 +367,8 @@
   "macMatch": {
     "stripLabel": "Pengurangan oktet MAC",
     "stripExact": "Exact — MAC penuh",
+    "offset": "Selisih MAC ±{{n}} (angka)",
+    "offsetNote": "Mode “Selisih MAC ±N” membandingkan MAC sebagai angka (OUI sama): cocok untuk router/ONU yang MAC-nya beda beberapa angka, mis. ONU …50 dan router …51, termasuk saat melewati batas oktet. ONU terdekat yang dipilih; seri atau satu ONU diklaim dua sesi ditandai ambigu. Mode “-N oktet” hanya mencocokkan awalan MAC.",
     "strip1": "-1 oktet terakhir",
     "strip2": "-2 oktet terakhir",
     "strip3": "-3 oktet (hanya OUI — hati-hati)",

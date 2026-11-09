@@ -367,6 +367,8 @@
   "macMatch": {
     "stripLabel": "MAC octet strip",
     "stripExact": "Exact — full MAC",
+    "offset": "MAC difference ±{{n}} (numeric)",
+    "offsetNote": "“MAC difference ±N” compares MACs as numbers (same OUI): for routers/ONUs whose MACs differ by a few counts, e.g. ONU …50 and router …51, including across octet boundaries. The nearest ONU is chosen; ties or one ONU claimed by two sessions are flagged ambiguous. “-N octets” only matches the MAC prefix.",
     "strip1": "-1 last octet",
     "strip2": "-2 last octets",
     "strip3": "-3 octets (OUI only — careful)",

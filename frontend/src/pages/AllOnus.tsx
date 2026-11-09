@@ -972,7 +972,8 @@ function MacMatchPanel({ onApply, applying }: {
   applying: boolean;
 }) {
   const { t } = useTranslation();
-  const [strip, setStrip] = useState(0);
+  // '0'..'3' = buang N oktet terakhir (awalan); 'o4' = selisih nilai MAC ±4
+  const [mode, setMode] = useState('0');
   const [scanning, setScanning] = useState(false);
   const [data, setData] = useState<{
     matches: MacMatchResult[]; collisions: number; sessions: number;
@@ -980,10 +981,11 @@ function MacMatchPanel({ onApply, applying }: {
   } | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
-  const scan = async (s: number) => {
+  const scan = async (m: string) => {
     setScanning(true); setData(null); setSelected(new Set());
     try {
-      const d = await api.mikrotikMacMatch(s);
+      const d = m.startsWith('o') ? await api.mikrotikMacMatch(0, Number(m.slice(1)))
+        : await api.mikrotikMacMatch(Number(m));
       setData(d);
       setSelected(new Set(d.matches.filter(m => !m.collision).map(m => m.onu_id)));
       if (!d.matches.length) toast.info(t('macMatch.noMatch'));
@@ -1003,10 +1005,15 @@ function MacMatchPanel({ onApply, applying }: {
         <div className="w-56">
           <Select
             label={t('macMatch.stripLabel')}
-            value={String(strip)}
-            onChange={e => setStrip(Number(e.target.value))}
+            value={mode}
+            onChange={e => setMode(e.target.value)}
             options={[
               { value: '0', label: t('macMatch.stripExact') },
+              { value: 'o1', label: t('macMatch.offset', { n: 1 }) },
+              { value: 'o2', label: t('macMatch.offset', { n: 2 }) },
+              { value: 'o4', label: t('macMatch.offset', { n: 4 }) },
+              { value: 'o8', label: t('macMatch.offset', { n: 8 }) },
+              { value: 'o16', label: t('macMatch.offset', { n: 16 }) },
               { value: '1', label: t('macMatch.strip1') },
               { value: '2', label: t('macMatch.strip2') },
               { value: '3', label: t('macMatch.strip3') },
@@ -1014,7 +1021,7 @@ function MacMatchPanel({ onApply, applying }: {
           />
         </div>
         <Button variant="primary" icon={<RefreshCw size={15} className={scanning ? 'animate-spin' : ''} />}
-          onClick={() => scan(strip)} disabled={scanning || applying}>
+          onClick={() => scan(mode)} disabled={scanning || applying}>
           {scanning ? t('macMatch.scanning') : t('macMatch.scan')}
         </Button>
         {data && (
@@ -1079,6 +1086,9 @@ function MacMatchPanel({ onApply, applying }: {
       )}
       <p className="text-[11px] text-tx3 leading-relaxed">
         {t('macMatch.note')}
+      </p>
+      <p className="text-[11px] text-tx3 leading-relaxed">
+        {t('macMatch.offsetNote')}
       </p>
     </div>
   );
