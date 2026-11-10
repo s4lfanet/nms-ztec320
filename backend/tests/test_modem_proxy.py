@@ -240,3 +240,70 @@ def test_proxy_denied_for_user_without_permission(client, modem, monkeypatch):
     monkeypatch.setattr(mp, 'is_allowed_ip', lambda ip, public_ok=None: True)
     t = _token(client, modem, user='basic')
     assert client.get(f'/webadmin/{t}/').status_code == 403
+
+
+# ───────────── pencarian IP: sesi MikroTik langsung ─────────────
+
+SESS = [
+    {'name': 'yoga@rw04', 'caller_id': 'AA:BB:CC:00:00:10', 'address': '10.20.0.7',
+     'uptime': '1h', 'device': 'ccr'},
+    {'name': 'lain@rw01', 'caller_id': 'AA:BB:CC:00:00:99', 'address': '10.20.0.8',
+     'uptime': '1h', 'device': 'ccr'},
+    {'name': 'pub@x', 'caller_id': '', 'address': '8.8.4.4', 'uptime': '', 'device': 'ccr'},
+]
+
+
+@pytest.fixture
+def live(monkeypatch):
+    import routes_webadmin as rw
+    monkeypatch.setattr(rw, '_live_sessions', lambda force=False: (SESS, [], 1))
+    return rw
+
+
+def _set_onu(client, **kw):
+    with app.app_context():
+        o = db.session.get(ONU, client.onu_id)
+        for k, v in kw.items():
+            setattr(o, k, v)
+        db.session.commit()
+
+
+def test_live_match_by_name_variant(client, live):
+    _set_onu(client, name='yoga@rw04-1')          # suffix -1 dibuang saat match
+    _login(client, 'boss')
+    ips = [t['ip'] for t in client.get(f'/api/onu/{client.onu_id}/webadmin/targets').get_json()['targets']]
+    assert '10.20.0.7' in ips and '10.20.0.8' not in ips and '8.8.4.4' not in ips
+
+
+def test_live_match_by_pppoe_column(client, live):
+    _set_onu(client, name='NA', pppoe='lain@rw01')
+    _login(client, 'boss')
+    ips = [t['ip'] for t in client.get(f'/api/onu/{client.onu_id}/webadmin/targets').get_json()['targets']]
+    assert '10.20.0.8' in ips
+
+
+def test_live_match_by_mac_offset(client, live):
+    _set_onu(client, name='NA', serial_number='AA:BB:CC:00:00:0E')   # sesi = ONU + 2
+    _login(client, 'boss')
+    ips = [t['ip'] for t in client.get(f'/api/onu/{client.onu_id}/webadmin/targets').get_json()['targets']]
+    assert '10.20.0.7' in ips
+
+
+def test_manual_session_pick_allowed_only_from_live_sessions(client, live):
+    _login(client, 'boss')
+    url = f'/api/onu/{client.onu_id}/webadmin/session'
+    assert client.post(url, json={'ip': '10.20.0.8'}, headers=H).status_code == 403
+    assert client.post(url, json={'ip': '10.20.0.8', 'from_session': True}, headers=H).status_code == 200
+    assert client.post(url, json={'ip': '10.99.9.9', 'from_session': True}, headers=H).status_code == 403
+    assert client.post(url, json={'ip': '8.8.4.4', 'from_session': True}, headers=H).status_code == 403
+
+
+def test_pppoe_sessions_search_filters_and_permission(client, live):
+    _login(client, 'basic')
+    assert client.get('/api/webadmin/pppoe-sessions').status_code == 403
+    client.post('/api/auth/logout', headers=H)
+    _login(client, 'boss')
+    rows = client.get('/api/webadmin/pppoe-sessions?q=lain').get_json()['sessions']
+    assert [r['address'] for r in rows] == ['10.20.0.8']
+    all_rows = client.get('/api/webadmin/pppoe-sessions').get_json()['sessions']
+    assert '8.8.4.4' not in [r['address'] for r in all_rows]

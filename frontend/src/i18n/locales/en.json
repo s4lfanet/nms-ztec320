@@ -394,7 +394,17 @@
     "reload": "Reload",
     "newTab": "Open in new tab",
     "noTarget": "No IP",
-    "noTargetHint": "No IP belonging to this ONU (PPPoE/TR-069) is available. Make sure link-state or TR-069 is synced.",
-    "hint": "Pick the modem IP and click Open. The page is fetched from the NMS server."
+    "noTargetHint": "No automatic IP for this ONU. Search and pick its PPPoE session below.",
+    "hint": "Pick the modem IP and click Open. The page is fetched from the NMS server.",
+    "manualPick": "Picked manually (MikroTik session)",
+    "searched": "Searched {{dev}} MikroTik ({{n}} active PPPoE sessions).",
+    "names": "Names matched",
+    "noTr069": "ONU is not mapped to GenieACS.",
+    "devErr": "Router error",
+    "pickTitle": "Pick from MikroTik PPPoE sessions",
+    "searchPh": "Search username / IP / MAC",
+    "search": "Search",
+    "sessCount": "Showing {{shown}} of {{total}} sessions",
+    "noSess": "No matching session."
   }
 }
