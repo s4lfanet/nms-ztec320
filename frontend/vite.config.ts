@@ -34,7 +34,7 @@ export default defineConfig({
         importScripts: ['push-sw.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/auth/, /^\/static/, /^\/ws/, /^\/health/, /^\/docs/, /^\/openapi/, /^\/spa/, /^\/metrics/, /^\/webadmin/],
+        navigateFallbackDenylist: [/^\/api/, /^\/auth/, /^\/static/, /^\/ws/, /^\/health/, /^\/docs/, /^\/openapi/, /^\/spa/, /^\/metrics/],
         // No runtimeCaching for /api/ and /ws/ — let the browser handle
         // them natively. A NetworkOnly SW route on a downed origin throws
         // noisy "no-response" errors; bypassing the SW avoids that.

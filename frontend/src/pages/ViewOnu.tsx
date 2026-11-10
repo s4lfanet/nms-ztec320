@@ -15,7 +15,6 @@ import { useState, useEffect, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useTranslation } from 'react-i18next';
-import { ModemWebAdminButton } from '../components/ModemWebAdmin';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
 import { Card, EmptyState, Modal, Button } from '../components/ui';
 
@@ -484,7 +483,6 @@ export function ViewOnu() {
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2">
         {hasPerm('reboot_onu') && <ActBtn icon={<RotateCcw size={14} />} label={t('viewOnu.reboot')} onClick={() => doAction('reset', t('viewOnu.reboot'))} loading={pendingAction === 'reset'} />}
-        {hasPerm('modem_webadmin') && <ModemWebAdminButton onuId={onuId} />}
         <ActBtn icon={<Activity size={14} />} label={t('viewOnu.getStatus')} onClick={() => getStatusMut.mutate()} loading={pendingAction === 'get-status'} />
         <ActBtn icon={<FileText size={14} />} label={t('viewOnu.showConfig')} onClick={showConfig} loading={pendingAction === 'show-config'} />
         {hasPerm('configure_onu') && <ActBtn icon={<RefreshCw size={14} />} label={t('viewOnu.resyncConfig')} onClick={async () => {

@@ -386,28 +386,5 @@
     "colMatch": "Match",
     "ambiguous": "ambiguous",
     "note": "Only non-ZTE ONUs with an empty name (NA) are scanned. Apply writes the PPPoE username to the ONU Name and PPPoE fields. Ambiguous matches (several ONUs sharing a MAC prefix — usually the same vendor OUI) cannot be selected; reduce the octet strip or set the name manually."
-  },
-  "webadmin": {
-    "open": "Modem Web Admin",
-    "title": "Modem Browser",
-    "connect": "Open",
-    "reload": "Reload",
-    "newTab": "Open in new tab",
-    "noTarget": "No IP",
-    "noTargetHint": "No automatic IP for this ONU. Search and pick its PPPoE session below.",
-    "hint": "Pick the modem IP and click Open. The page is fetched from the NMS server.",
-    "manualPick": "Picked manually (MikroTik session)",
-    "searched": "Searched {{dev}} MikroTik ({{n}} active PPPoE sessions).",
-    "names": "Names matched",
-    "noTr069": "ONU is not mapped to GenieACS.",
-    "devErr": "Router error",
-    "pickTitle": "Pick from MikroTik PPPoE sessions",
-    "searchPh": "Search username / IP / MAC",
-    "search": "Search",
-    "sessCount": "Showing {{shown}} of {{total}} sessions",
-    "noSess": "No matching session.",
-    "cfgTitle": "Separate origin settings (required for framed modem UIs, e.g. Huawei)",
-    "cfgHint": "Enter a dedicated subdomain pointing to this same NMS server, e.g. https://modem.example.com. Modem pages load from there so the modem's menu and content frames can talk to each other without access to the NMS session. Leave empty to disable.",
-    "cfgSaved": "Modem browser origin saved"
   }
 }
