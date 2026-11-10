@@ -386,5 +386,15 @@
     "colMatch": "Match",
     "ambiguous": "ambiguous",
     "note": "Only non-ZTE ONUs with an empty name (NA) are scanned. Apply writes the PPPoE username to the ONU Name and PPPoE fields. Ambiguous matches (several ONUs sharing a MAC prefix — usually the same vendor OUI) cannot be selected; reduce the octet strip or set the name manually."
+  },
+  "webadmin": {
+    "open": "Modem Web Admin",
+    "title": "Modem Browser",
+    "connect": "Open",
+    "reload": "Reload",
+    "newTab": "Open in new tab",
+    "noTarget": "No IP",
+    "noTargetHint": "No IP belonging to this ONU (PPPoE/TR-069) is available. Make sure link-state or TR-069 is synced.",
+    "hint": "Pick the modem IP and click Open. The page is fetched from the NMS server."
   }
 }
