@@ -271,8 +271,6 @@ def proxy(token, path):
         if new is None:
             return Response('Redirect ke host lain diblokir', 502, mimetype='text/plain')
         resp.headers['Location'] = new
-    resp.headers['Content-Security-Policy'] = mp.SANDBOX_CSP
-    resp.headers['X-Frame-Options'] = 'SAMEORIGIN'
-    resp.headers['Cache-Control'] = 'no-store'
-    resp.headers['Referrer-Policy'] = 'no-referrer'
+    for k, v in mp.security_headers(request.headers.get('Sec-Fetch-Dest')).items():
+        resp.headers[k] = v
     return _cors(resp)

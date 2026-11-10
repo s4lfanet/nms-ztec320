@@ -226,7 +226,10 @@ def test_proxy_e2e(client, modem, monkeypatch):
     r = client.get(f'/webadmin/{t}/', headers={'Cookie': 'session=' + nms_cookie})
     assert r.status_code == 200
     assert f'/webadmin/{t}/cgi-bin/s.cgi'.encode() in r.data
-    assert r.headers['Content-Security-Policy'].startswith('sandbox')
+    assert r.headers['Content-Security-Policy'].startswith('sandbox')      # dibuka langsung
+    f = client.get(f'/webadmin/{t}/', headers={'Sec-Fetch-Dest': 'iframe'})
+    assert 'Content-Security-Policy' not in f.headers                       # di iframe ber-sandbox
+    assert 'X-Frame-Options' not in f.headers
     assert 'Set-Cookie' not in r.headers
     assert nms_cookie not in _Modem.seen['cookie']
     # cookie modem dipakai ulang dari jar server-side
