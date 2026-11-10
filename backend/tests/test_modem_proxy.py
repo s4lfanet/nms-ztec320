@@ -98,6 +98,7 @@ class _Modem(http.server.BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        _Modem.seen['path'] = self.path
         _Modem.seen['cookie'] = self.headers.get('Cookie', '')
         _Modem.seen['host'] = self.headers.get('Host')
         if self.path == '/':
@@ -377,3 +378,12 @@ def test_cookie_shim_injected_and_sync(client, modem, monkeypatch):
                        data='Cookie=body:Language:english:id=-1;path=/').status_code == 204
     client.get(f'/webadmin/{t}/other')
     assert 'Cookie=body:Language:english:id=-1' in _Modem.seen['cookie']
+
+
+def test_query_string_forwarded_raw(client, modem, monkeypatch):
+    monkeypatch.setattr(mp, 'is_allowed_ip', lambda ip, public_ok=None: ip == '127.0.0.1')
+    t = _token(client, modem)
+    client.get(f'/webadmin/{t}/Cuscss/login.css?202304251725030553184798')
+    assert _Modem.seen['path'] == '/Cuscss/login.css?202304251725030553184798'
+    client.get(f'/webadmin/{t}/x.asp?a=1&b=2')
+    assert _Modem.seen['path'] == '/x.asp?a=1&b=2'
