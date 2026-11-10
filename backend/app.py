@@ -51,6 +51,7 @@ from routes_traffic import bp as traffic_bp
 from routes_auto_provision import bp as auto_provision_bp
 from routes_mikrotik import bp as mikrotik_bp
 from routes_genieacs import bp as genieacs_bp
+from routes_webadmin import bp as webadmin_bp
 from routes_api_v1 import bp as api_v1_bp
 from routes_reports import bp as reports_bp
 from metrics_service import (
@@ -91,6 +92,7 @@ app.register_blueprint(traffic_bp)
 app.register_blueprint(auto_provision_bp)
 app.register_blueprint(mikrotik_bp)
 app.register_blueprint(genieacs_bp)
+app.register_blueprint(webadmin_bp)
 app.register_blueprint(api_v1_bp)
 app.register_blueprint(reports_bp)
 
@@ -116,7 +118,7 @@ def _csrf_protection():
                 '/api/public/forgot-password',
                 '/api/public/register', '/api/public/register/pay',
             )
-            if request.path not in _csrf_exempt:
+            if request.path not in _csrf_exempt and not request.path.startswith('/webadmin/'):
                 return jsonify({'error': 'Missing X-Requested-With header'}), 403
 
 
@@ -142,6 +144,10 @@ def _enforce_password_change():
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses."""
+    if request.path.startswith('/webadmin/'):
+        # Konten modem tak tepercaya: header (CSP sandbox, dll) diatur routes_webadmin.
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-XSS-Protection'] = '1; mode=block'

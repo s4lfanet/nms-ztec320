@@ -386,5 +386,15 @@
     "colMatch": "Match",
     "ambiguous": "ambigu",
     "note": "Hanya ONU non-ZTE dengan nama belum terisi (NA) yang discan. Apply menulis username PPPoE ke field Name dan PPPoE ONU. Match ambigu (beberapa ONU berbagi prefix MAC — biasanya OUI pabrikan sama) tidak bisa dipilih; perkecil pengurangan oktet atau isi nama manual."
+  },
+  "webadmin": {
+    "open": "Web Admin Modem",
+    "title": "Browser Modem",
+    "connect": "Buka",
+    "reload": "Muat ulang",
+    "newTab": "Buka di tab baru",
+    "noTarget": "Tidak ada IP",
+    "noTargetHint": "Belum ada IP milik ONU ini (PPPoE/TR-069) yang bisa dibuka. Pastikan link-state atau TR-069 sudah sinkron.",
+    "hint": "Pilih IP modem lalu klik Buka. Halaman diakses dari server NMS."
   }
 }
