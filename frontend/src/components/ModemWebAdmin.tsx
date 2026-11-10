@@ -27,6 +27,7 @@ export function ModemWebAdminButton({ onuId }: { onuId: number }) {
   const [scheme, setScheme] = useState<'http' | 'https'>('http');
   const [port, setPort] = useState('');
   const [src, setSrc] = useState('');
+  const [tabSrc, setTabSrc] = useState('');
   const [reload, setReload] = useState(0);
   const [q, setQ] = useState('');
   const [sess, setSess] = useState<Sess[] | null>(null);
@@ -59,7 +60,7 @@ export function ModemWebAdminButton({ onuId }: { onuId: number }) {
     try {
       const r = await api.onuWebAdminSession(onuId, {
         ip, scheme, port: port ? Number(port) : undefined, from_session: fromSession || undefined });
-      setSrc(r.url); setReload(n => n + 1);
+      setSrc(r.url); setTabSrc(r.tab_url || r.url); setReload(n => n + 1);
     } catch (e) { err(e); } finally { setLoading(false); }
   };
 
@@ -98,7 +99,7 @@ export function ModemWebAdminButton({ onuId }: { onuId: number }) {
                 </button>
                 {src && <>
                   <button onClick={() => setReload(n => n + 1)} className="p-1.5 text-tx2 hover:text-tx1" title={t('webadmin.reload')}><RefreshCw size={15} /></button>
-                  <a href={src} target="_blank" rel="noreferrer" className="p-1.5 text-tx2 hover:text-tx1" title={t('webadmin.newTab')}><ExternalLink size={15} /></a>
+                  <a href={tabSrc} target="_blank" rel="noreferrer" className="p-1.5 text-tx2 hover:text-tx1" title={t('webadmin.newTab')}><ExternalLink size={15} /></a>
                 </>}
               </div>
             </div>

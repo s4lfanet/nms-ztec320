@@ -82,10 +82,13 @@ def _serializer(secret_key):
     return URLSafeTimedSerializer(secret_key, salt=TOKEN_SALT)
 
 
-def make_token(secret_key, onu_id, user_id, scheme, host, port):
+def make_token(secret_key, onu_id, user_id, scheme, host, port, mode='frame'):
+    """mode 'frame' = dimuat di iframe ber-sandbox viewer NMS;
+    'tab' = dibuka langsung di tab baru (respons wajib CSP sandbox)."""
     return _serializer(secret_key).dumps(
         {'o': int(onu_id), 'u': int(user_id), 's': scheme, 'h': host,
-         'p': int(port), 'n': secrets.token_hex(6)})
+         'p': int(port), 'n': secrets.token_hex(6),
+         'm': 'tab' if mode == 'tab' else 'frame'})
 
 
 def read_token(secret_key, token):
@@ -241,18 +244,22 @@ SANDBOX_CSP = ("sandbox allow-scripts allow-forms allow-popups allow-modals "
                "allow-downloads")
 
 
-def security_headers(sec_fetch_dest):
-    """Header keamanan respons modem menurut cara halaman dimuat.
+def security_headers(mode, sec_fetch_dest=None):
+    """Header keamanan respons modem.
 
-    * Dimuat di <iframe> (viewer NMS): iframe sudah ber-atribut `sandbox`
-      (origin buram). JANGAN kirim `CSP: sandbox` + XFO/frame-ancestors —
-      kombinasi itu membuat Chrome memblokir frame ("Konten ini diblokir")
-      karena origin dokumen jadi buram dan 'self' tak cocok.
-    * Dibuka langsung (tab baru / navigasi atas): wajib `CSP: sandbox` agar
-      skrip modem tidak berjalan di origin NMS.
+    Mode ditentukan dari token, BUKAN dari Sec-Fetch-Dest: browser tidak
+    mengirim header Sec-Fetch-* bila NMS dibuka lewat http:// (bukan https),
+    sehingga deteksi lama gagal dan iframe tetap dapat `CSP: sandbox` →
+    Chrome menampilkan "Konten ini diblokir".
+
+    * 'frame': iframe di viewer sudah ber-atribut sandbox → tanpa CSP sandbox.
+      Bila token frame dibuka sebagai dokumen teratas (terdeteksi saat
+      Sec-Fetch-Dest=document tersedia), tetap dikunci dengan CSP sandbox.
+    * 'tab': selalu CSP sandbox.
     """
     h = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'}
-    if (sec_fetch_dest or '').lower() not in ('iframe', 'frame'):
+    dest = (sec_fetch_dest or '').lower()
+    if mode == 'tab' or dest == 'document':
         h['Content-Security-Policy'] = SANDBOX_CSP
     return h
 
