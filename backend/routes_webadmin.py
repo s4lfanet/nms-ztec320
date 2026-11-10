@@ -228,6 +228,12 @@ def proxy(token, path):
     scheme, host, port = payload['s'], payload['h'], payload['p']
     prefix = f'/webadmin/{token}'
     url = f'{scheme}://{host}:{port}/{path}'
+    # Query diteruskan apa adanya: '?20230425...' (cache-buster tanpa '=') kalau
+    # lewat request.args jadi '?20230425...=' dan modem Huawei membalas 404,
+    # sehingga CSS/JS gagal dan halaman login tampil polos.
+    qs = request.query_string.decode('latin-1')
+    if qs:
+        url += '?' + qs
     key = mp.jar_key(payload)
     body = request.get_data() if request.method in ('POST', 'PUT', 'DELETE') else None
     if path == '__nms_cookie' and request.method == 'POST':
@@ -244,7 +250,7 @@ def proxy(token, path):
     try:
         with httpx.Client(verify=False, follow_redirects=False,
                           timeout=mp.UPSTREAM_TIMEOUT) as c:
-            with c.stream(request.method, url, params=list(request.args.items(multi=True)),
+            with c.stream(request.method, url,
                           content=body, headers=headers) as r:
                 chunks, size = [], 0
                 for ch in r.iter_bytes():
@@ -253,6 +259,8 @@ def proxy(token, path):
                         return Response('Respons modem terlalu besar', 502, mimetype='text/plain')
                     chunks.append(ch)
                 status, rheaders = r.status_code, r.headers
+                logger.info('webadmin %s %s/%s -> %s %s', request.method, host, path[:80],
+                            status, rheaders.get('content-type', ''))
                 set_cookies = rheaders.get_list('set-cookie')
                 content = b''.join(chunks)
     except httpx.HTTPError as e:
