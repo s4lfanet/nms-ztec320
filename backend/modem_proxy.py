@@ -230,6 +230,14 @@ def inject_head(html, snippet):
     return snippet + html
 
 
+# Navigasi/submit JS ke path root ("/", "/" + x, "/index.asp"): location=,
+# location.href=, location.replace/assign(, .action=, setAction(, $.post/ajax url.
+_JS_NAV = re.compile(
+    r"""(?P<a>(?:\blocation(?:\.href)?\s*=\s*|\blocation\.(?:replace|assign)\(\s*|"""
+    r"""\.action\s*=\s*|\bsetAction\(\s*|\burl\s*:\s*|\.(?:open|post|get)\(\s*(?:["'][A-Z]+["']\s*,\s*)?))"""
+    r"""(?P<q>["'])/(?!/|webadmin/)""")
+
+
 def _is_text_type(ctype):
     c = (ctype or '').lower()
     return ('text/html' in c or 'text/css' in c or 'javascript' in c
@@ -254,6 +262,7 @@ def rewrite_text(text, prefix, scheme, host, port, ctype):
     if is_html or is_css:
         text = _CSS_URL.sub(lambda m: f"url({m.group('q')}{prefix}/", text)
     if is_html or is_js:
+        text = _JS_NAV.sub(lambda m: f"{m.group('a')}{m.group('q')}{prefix}/", text)
         text = _JS_STR.sub(
             lambda m: f"{m.group('q')}{prefix}/{m.group('p')}{m.group('q')}", text)
 
