@@ -394,7 +394,17 @@
     "reload": "Muat ulang",
     "newTab": "Buka di tab baru",
     "noTarget": "Tidak ada IP",
-    "noTargetHint": "Belum ada IP milik ONU ini (PPPoE/TR-069) yang bisa dibuka. Pastikan link-state atau TR-069 sudah sinkron.",
-    "hint": "Pilih IP modem lalu klik Buka. Halaman diakses dari server NMS."
+    "noTargetHint": "Belum ada IP otomatis untuk ONU ini. Cari dan pilih sesi PPPoE-nya di bawah.",
+    "hint": "Pilih IP modem lalu klik Buka. Halaman diakses dari server NMS.",
+    "manualPick": "Dipilih manual (sesi MikroTik)",
+    "searched": "Dicari di {{dev}} MikroTik ({{n}} sesi PPPoE aktif).",
+    "names": "Nama yang dicocokkan",
+    "noTr069": "ONU belum ter-map ke GenieACS.",
+    "devErr": "Error router",
+    "pickTitle": "Pilih dari sesi PPPoE MikroTik",
+    "searchPh": "Cari username / IP / MAC",
+    "search": "Cari",
+    "sessCount": "Menampilkan {{shown}} dari {{total}} sesi",
+    "noSess": "Tidak ada sesi yang cocok."
   }
 }

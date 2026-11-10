@@ -5,12 +5,18 @@ Lihat modem_proxy.py untuk model keamanan. Hanya IP milik ONU itu sendiri
 """
 from urllib.parse import urlsplit
 
+import threading
+import time
+
 import httpx
 from flask import Blueprint, Response, current_app, jsonify, request
 from flask_login import login_required, current_user
 
 import modem_proxy as mp
 from models import db, ONU, OLT, OnuLinkState, GenieacsDeviceMap, MikrotikDevice, User
+from routeros_client import RouterOSClient
+import link_state_poller as lsp
+from mac_match import match_sessions
 from helpers import permission_required, log_action
 from extensions import logger
 import genieacs_client
@@ -35,20 +41,93 @@ def _managed_ips():
     return ips
 
 
-def collect_targets(onu_id):
-    """Daftar IP kandidat milik ONU: [{ip, source, label}] (sudah divalidasi)."""
-    cand = []
+_SESS_TTL = 20
+_sess_cache = {'ts': 0.0, 'data': ([], [], 0)}
+_sess_lock = threading.Lock()
+
+
+def _live_sessions(force=False):
+    """Sesi PPPoE aktif dari semua MikroTik aktif: (sessions, errors, n_device).
+
+    Di-cache 20 detik agar membuka dialog berulang tidak membebani router."""
+    with _sess_lock:
+        if not force and time.time() - _sess_cache['ts'] < _SESS_TTL:
+            return _sess_cache['data']
+        sessions, errors, n = [], [], 0
+        for dev in MikrotikDevice.query.filter_by(enabled=True).all():
+            n += 1
+            try:
+                with RouterOSClient(dev.host, dev.api_mode, dev.api_port, dev.api_ssl,
+                                    dev.api_user, dev.api_password, timeout=8) as cli:
+                    for r in cli.get_pppoe_active() or []:
+                        if r.get('address'):
+                            sessions.append({'name': r.get('name', ''),
+                                             'caller_id': r.get('caller-id', ''),
+                                             'address': r.get('address', ''),
+                                             'uptime': r.get('uptime', ''),
+                                             'device': dev.name})
+            except Exception as e:
+                errors.append(f'{dev.name}: {str(e)[:100]}')
+        _sess_cache.update(ts=time.time(), data=(sessions, errors, n))
+        return _sess_cache['data']
+
+
+def _onu_names(onu, ls, tr069):
+    """Semua nama yang mungkin sama dengan username PPPoE ONU ini."""
+    names = []
+    for v in (onu.pppoe, onu.name, onu.description,
+              ls.pppoe_user if ls else '', (tr069 or {}).get('pppoe_username')):
+        v = (v or '').strip()
+        if v and (v == onu.pppoe or v == (tr069 or {}).get('pppoe_username')
+                  or lsp._name_is_usable(v)):
+            names.append(v)
+    out = []
+    for n in names:
+        for k in lsp._session_variants(n):
+            if k.lower() not in out:
+                out.append(k.lower())
+    return out
+
+
+def _match_live(onu, ls, tr069, sessions):
+    """Sesi MikroTik milik ONU: via username (semua sumber), lalu MAC."""
+    names = set(_onu_names(onu, ls, tr069))
+    found = []
+    for s in sessions:
+        sn = (s['name'] or '').lower()
+        if sn and any(k in names for k in lsp._session_variants(sn)):
+            found.append((s, 'username'))
+    if found:
+        return found
+    # MAC caller-id ↔ serial/MAC ONU: exact, lalu offset (CPE MAC = ONU MAC + n)
+    for kw, label in (({'strip': 0, 'offset': 0}, 'MAC'), ({'strip': 0, 'offset': 64}, 'MAC±')):
+        res, _coll = match_sessions(sessions, [(onu.id, onu.serial_number)], **kw)
+        ok = [m for m in res if not m['collision']]
+        if ok:
+            return [(sessions[m['session_idx']], label) for m in ok]
+    return []
+
+
+def collect_targets_info(onu_id):
+    """({targets}, info): IP kandidat milik ONU + keterangan hasil pencarian."""
+    onu = db.session.get(ONU, onu_id)
     ls = OnuLinkState.query.filter_by(onu_id=onu_id).first()
+    cand = []
     if ls and ls.pppoe_ip:
         cand.append((ls.pppoe_ip, 'pppoe', 'PPPoE'))
+    tr069 = None
     mapping = GenieacsDeviceMap.query.filter_by(onu_id=onu_id).first()
     if mapping:
-        params = genieacs_client.get_device_params(mapping.device_id) or {}
-        if params.get('wan_ip'):
-            cand.append((params['wan_ip'], 'tr069', 'WAN (TR-069)'))
-        for c in params.get('wan_conns') or []:
+        tr069 = genieacs_client.get_device_params(mapping.device_id) or {}
+        if tr069.get('wan_ip'):
+            cand.append((tr069['wan_ip'], 'tr069', 'WAN (TR-069)'))
+        for c in tr069.get('wan_conns') or []:
             if c.get('ip'):
                 cand.append((c['ip'], 'tr069', f"{c.get('service') or c.get('type') or 'WAN'} (TR-069)"))
+    sessions, errors, n_dev = _live_sessions()
+    live_matches = _match_live(onu, ls, tr069, sessions) if onu else []
+    for s, how in live_matches:
+        cand.append((s['address'], 'mikrotik', f"PPPoE {s['name']} ({how}, {s['device']})"))
     managed = _managed_ips()
     seen, out = set(), []
     for ip, src, label in cand:
@@ -57,7 +136,35 @@ def collect_targets(onu_id):
             continue
         seen.add(ip)
         out.append({'ip': ip, 'source': src, 'label': label})
-    return out
+    info = {'mikrotik_devices': n_dev, 'sessions': len(sessions), 'errors': errors,
+            'tr069': bool(mapping), 'names': _onu_names(onu, ls, tr069) if onu else []}
+    return out, info
+
+
+def collect_targets(onu_id):
+    return collect_targets_info(onu_id)[0]
+
+
+def _session_ip_ok(ip):
+    """IP sesi PPPoE MikroTik yang boleh dipilih manual (bukan IP terkelola)."""
+    sessions = _live_sessions()[0]
+    return (ip in {s['address'] for s in sessions} and ip not in _managed_ips()
+            and mp.is_allowed_ip(ip))
+
+
+@bp.route('/api/webadmin/pppoe-sessions', methods=['GET'])
+@permission_required(_PERM)
+def pppoe_sessions():
+    """Cari sesi PPPoE aktif di MikroTik (untuk memilih IP modem manual)."""
+    q = (request.args.get('q') or '').strip().lower()
+    sessions, errors, _n = _live_sessions(force=request.args.get('refresh') == '1')
+    managed = _managed_ips()
+    rows = [s for s in sessions
+            if mp.is_allowed_ip(s['address']) and s['address'] not in managed
+            and (not q or q in s['name'].lower() or q in s['address']
+                 or q in (s['caller_id'] or '').lower())]
+    return jsonify({'success': True, 'total': len(sessions), 'errors': errors,
+                    'sessions': rows[:50]})
 
 
 @bp.route('/api/onu/<int:onu_id>/webadmin/targets', methods=['GET'])
@@ -65,7 +172,8 @@ def collect_targets(onu_id):
 def targets(onu_id):
     if not db.session.get(ONU, onu_id):
         return jsonify({'success': False, 'message': 'ONU not found'}), 404
-    return jsonify({'success': True, 'targets': collect_targets(onu_id)})
+    targets, info = collect_targets_info(onu_id)
+    return jsonify({'success': True, 'targets': targets, 'info': info})
 
 
 @bp.route('/api/onu/<int:onu_id>/webadmin/session', methods=['POST'])
@@ -81,13 +189,15 @@ def create_session(onu_id):
     port = mp.valid_port(data.get('port') or (443 if scheme == 'https' else 80))
     if port is None:
         return jsonify({'success': False, 'message': 'Port tidak valid'}), 400
-    if host not in {t['ip'] for t in collect_targets(onu_id)}:
+    if host not in {t['ip'] for t in collect_targets(onu_id)} and not (
+            data.get('from_session') and _session_ip_ok(host)):
         log_action('webadmin_denied', 'security', target=str(onu_id), detail=f'ip={host}')
         return jsonify({'success': False,
                         'message': 'IP bukan milik ONU ini atau tidak diizinkan'}), 403
     token = mp.make_token(current_app.config['SECRET_KEY'], onu_id, current_user.id,
                           scheme, host, port)
-    log_action('webadmin_open', 'onu', target=str(onu_id), detail=f'{scheme}://{host}:{port}')
+    log_action('webadmin_open', 'onu', target=str(onu_id), detail=f'{scheme}://{host}:{port}'
+               + (' (sesi PPPoE manual)' if data.get('from_session') else ''))
     return jsonify({'success': True, 'url': f'/webadmin/{token}/', 'ttl': mp.TOKEN_TTL})
 
 
