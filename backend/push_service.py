@@ -170,6 +170,7 @@ def send_push_alerts(alerts: list[dict]) -> dict:
             'body': (a.get('message') or '')[:220],
             'url': url,
             'tag': f"alert-{a.get('alert_type') or 'general'}-{a.get('target_id') or 0}",
+            'severity': (a.get('severity') or 'warning'),
         }
         r = send_push_to_all(payload)
         for k in total:
