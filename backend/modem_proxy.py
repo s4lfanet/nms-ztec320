@@ -180,6 +180,56 @@ def https_redirect_port(text):
     return valid_port(m.group(1)) if m else 443
 
 
+_EXT_TYPES = {'.css': 'text/css', '.js': 'application/javascript',
+              '.html': 'text/html', '.htm': 'text/html', '.asp': 'text/html',
+              '.png': 'image/png', '.gif': 'image/gif', '.jpg': 'image/jpeg',
+              '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon'}
+
+
+def fix_content_type(path, ctype):
+    """Perbaiki Content-Type yang salah/kosong dari modem berdasarkan ekstensi.
+
+    Respons /webadmin memakai nosniff; modem (mis. Huawei) kerap mengirim CSS/JS
+    sebagai text/html atau tanpa tipe sehingga Chrome menolak memuatnya
+    (halaman login tampil polos tanpa gaya dan skrip tidak jalan)."""
+    p = (path or '').split('?', 1)[0].lower()
+    ext = p[p.rfind('.'):] if '.' in p.rsplit('/', 1)[-1] else ''
+    want = _EXT_TYPES.get(ext)
+    if not want:
+        return ctype
+    if want.split('/')[0] in (ctype or '').lower() and want.split('/')[1] in (ctype or '').lower():
+        return ctype
+    charset = '; charset=utf-8' if want.startswith('text/') or 'javascript' in want else ''
+    return want + charset
+
+
+def cookie_shim(prefix, cookies):
+    """Skrip pengganti document.cookie untuk iframe ber-sandbox (origin buram).
+
+    Di origin buram, document.cookie melempar SecurityError sehingga login
+    modem yang menyetel cookie lewat JS (Huawei: "Cookie=body:Language:...")
+    gagal. Shim menyimpan cookie di memori halaman dan menyinkronkannya ke jar
+    server lewat POST {prefix}/__nms_cookie agar ikut terkirim ke modem."""
+    import json
+    init = json.dumps(dict(cookies or {})).replace('</', '<\\/')
+    pre = json.dumps(prefix)
+    return ('<script>(function(){var P=%s,c=%s;function s(){var a=[];for(var k in c)'
+            'a.push(k+"="+c[k]);return a.join("; ")}try{Object.defineProperty(document,'
+            '"cookie",{configurable:true,get:s,set:function(v){v=String(v);var f=v.split(";")[0],'
+            'i=f.indexOf("=");if(i<1)return;var n=f.slice(0,i).trim(),x=f.slice(i+1).trim(),'
+            'l=v.toLowerCase();if(!x||l.indexOf("max-age=0")>=0||l.indexOf("1970")>=0)delete c[n];'
+            'else c[n]=x;try{var r=new XMLHttpRequest();r.open("POST",P+"/__nms_cookie",false);'
+            'r.setRequestHeader("Content-Type","text/plain");r.send(v)}catch(e){}}})}catch(e){}'
+            '})();</script>') % (pre, init)
+
+
+def inject_head(html, snippet):
+    m = re.search(r'<head[^>]*>', html, re.I)
+    if m:
+        return html[:m.end()] + snippet + html[m.end():]
+    return snippet + html
+
+
 def _is_text_type(ctype):
     c = (ctype or '').lower()
     return ('text/html' in c or 'text/css' in c or 'javascript' in c

@@ -230,6 +230,12 @@ def proxy(token, path):
     url = f'{scheme}://{host}:{port}/{path}'
     key = mp.jar_key(payload)
     body = request.get_data() if request.method in ('POST', 'PUT', 'DELETE') else None
+    if path == '__nms_cookie' and request.method == 'POST':
+        # sinkron dari shim document.cookie (lihat mp.cookie_shim)
+        line = (body or b'').decode('utf-8', 'replace')[:4096]
+        if line:
+            mp.JAR.update(key, [line])
+        return _cors(Response(status=204))
     if body is not None and len(body) > mp.MAX_BODY_IN:
         return Response('Body terlalu besar', 413, mimetype='text/plain')
 
@@ -253,7 +259,7 @@ def proxy(token, path):
         return Response(f'Gagal menghubungi modem: {type(e).__name__}', 502, mimetype='text/plain')
 
     mp.JAR.update(key, set_cookies)
-    ctype = rheaders.get('content-type', '')
+    ctype = mp.fix_content_type(path, rheaders.get('content-type', ''))
     if mp._is_text_type(ctype) and len(content) <= mp.MAX_REWRITE:
         enc = r.encoding or 'utf-8'
         try:
@@ -274,12 +280,17 @@ def proxy(token, path):
                                                 request.headers.get('Sec-Fetch-Dest')).items():
                     resp.headers[k] = v
                 return _cors(resp)
-        content = mp.rewrite_text(text, prefix, scheme, host, port, ctype).encode(enc, errors='replace')
+        text = mp.rewrite_text(text, prefix, scheme, host, port, ctype)
+        if 'html' in ctype.lower():
+            text = mp.inject_head(text, mp.cookie_shim(prefix, mp.JAR.get(key)))
+        content = text.encode(enc, errors='replace')
 
     resp = Response(content, status)
     for k in mp.RESP_PASS:
         if k in rheaders:
             resp.headers[k] = rheaders[k]
+    if ctype:
+        resp.headers['Content-Type'] = ctype
     loc = rheaders.get('location')
     if loc:
         new = mp.rewrite_location(loc, prefix, scheme, host, port)
