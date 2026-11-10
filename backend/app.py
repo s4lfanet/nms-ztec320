@@ -51,7 +51,6 @@ from routes_traffic import bp as traffic_bp
 from routes_auto_provision import bp as auto_provision_bp
 from routes_mikrotik import bp as mikrotik_bp
 from routes_genieacs import bp as genieacs_bp
-from routes_webadmin import bp as webadmin_bp
 from routes_api_v1 import bp as api_v1_bp
 from routes_reports import bp as reports_bp
 from metrics_service import (
@@ -92,7 +91,6 @@ app.register_blueprint(traffic_bp)
 app.register_blueprint(auto_provision_bp)
 app.register_blueprint(mikrotik_bp)
 app.register_blueprint(genieacs_bp)
-app.register_blueprint(webadmin_bp)
 app.register_blueprint(api_v1_bp)
 app.register_blueprint(reports_bp)
 
@@ -101,19 +99,6 @@ app.register_blueprint(reports_bp)
 def _metrics_before_request():
     """Record request start time for Prometheus timing."""
     g._req_start = time.time()
-
-
-@app.before_request
-def _webadmin_host_lockdown():
-    """Host khusus browser modem hanya melayani /webadmin/ — bukan SPA/API NMS."""
-    try:
-        import modem_proxy as _mp
-        h = _mp.webadmin_host()
-    except Exception:
-        h = ''
-    if h and request.host.lower() == h and not request.path.startswith('/webadmin/'):
-        return jsonify({'error': 'not found'}), 404
-    return None
 
 
 @app.before_request
@@ -131,7 +116,7 @@ def _csrf_protection():
                 '/api/public/forgot-password',
                 '/api/public/register', '/api/public/register/pay',
             )
-            if request.path not in _csrf_exempt and not request.path.startswith('/webadmin/'):
+            if request.path not in _csrf_exempt:
                 return jsonify({'error': 'Missing X-Requested-With header'}), 403
 
 
@@ -157,10 +142,6 @@ def _enforce_password_change():
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses."""
-    if request.path.startswith('/webadmin/'):
-        # Konten modem tak tepercaya: header (CSP sandbox, dll) diatur routes_webadmin.
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-        return response
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-XSS-Protection'] = '1; mode=block'
@@ -175,13 +156,6 @@ def add_security_headers(response):
         "connect-src 'self' ws: wss: https:; "
         "frame-ancestors 'none';"
     )
-    try:
-        import modem_proxy as _mp
-        _wo = _mp.webadmin_origin()
-        if _wo:
-            response.headers['Content-Security-Policy'] += f" frame-src 'self' {_wo};"
-    except Exception:
-        pass
     if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https':
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     # Prevent Cloudflare/browser from caching API responses (especially 401s)

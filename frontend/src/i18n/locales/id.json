@@ -386,28 +386,5 @@
     "colMatch": "Match",
     "ambiguous": "ambigu",
     "note": "Hanya ONU non-ZTE dengan nama belum terisi (NA) yang discan. Apply menulis username PPPoE ke field Name dan PPPoE ONU. Match ambigu (beberapa ONU berbagi prefix MAC — biasanya OUI pabrikan sama) tidak bisa dipilih; perkecil pengurangan oktet atau isi nama manual."
-  },
-  "webadmin": {
-    "open": "Web Admin Modem",
-    "title": "Browser Modem",
-    "connect": "Buka",
-    "reload": "Muat ulang",
-    "newTab": "Buka di tab baru",
-    "noTarget": "Tidak ada IP",
-    "noTargetHint": "Belum ada IP otomatis untuk ONU ini. Cari dan pilih sesi PPPoE-nya di bawah.",
-    "hint": "Pilih IP modem lalu klik Buka. Halaman diakses dari server NMS.",
-    "manualPick": "Dipilih manual (sesi MikroTik)",
-    "searched": "Dicari di {{dev}} MikroTik ({{n}} sesi PPPoE aktif).",
-    "names": "Nama yang dicocokkan",
-    "noTr069": "ONU belum ter-map ke GenieACS.",
-    "devErr": "Error router",
-    "pickTitle": "Pilih dari sesi PPPoE MikroTik",
-    "searchPh": "Cari username / IP / MAC",
-    "search": "Cari",
-    "sessCount": "Menampilkan {{shown}} dari {{total}} sesi",
-    "noSess": "Tidak ada sesi yang cocok.",
-    "cfgTitle": "Pengaturan origin terpisah (wajib untuk modem ber-frame, mis. Huawei)",
-    "cfgHint": "Isi subdomain khusus yang diarahkan ke server NMS yang sama, mis. https://modem.salfa.my.id. Halaman modem akan dimuat dari sana sehingga menu & isi modem bisa saling terhubung tanpa akses ke sesi NMS. Kosongkan untuk menonaktifkan.",
-    "cfgSaved": "Origin browser modem disimpan"
   }
 }

@@ -113,7 +113,6 @@ AVAILABLE_PERMISSIONS = {
     'manage_users': 'User Management',
     'manage_tr069': 'TR069 Profile Management',
     'genieacs_manage': 'GenieACS TR-069 Actions',
-    'modem_webadmin': 'Web Admin Modem (browser bawaan)',
     'manage_api_tokens': 'API Token Management',
     'olt_terminal': 'OLT Terminal (Telnet/SSH)',
     'pon_port_control': 'Enable/Disable PON Port',
