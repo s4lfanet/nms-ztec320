@@ -288,6 +288,10 @@ def proxy(token, path):
                                                 request.headers.get('Sec-Fetch-Dest')).items():
                     resp.headers[k] = v
                 return _cors(resp)
+        if len(text) < 6000 and 'location' in text:
+            # diagnosa redirect JS modem (mis. respons login.cgi)
+            hits = [ln.strip()[:160] for ln in text.splitlines() if 'location' in ln][:6]
+            logger.info('webadmin redirect-js %s: %s', path[:60], ' | '.join(hits))
         text = mp.rewrite_text(text, prefix, scheme, host, port, ctype)
         if 'html' in ctype.lower():
             text = mp.inject_head(text, mp.cookie_shim(prefix, mp.JAR.get(key)))

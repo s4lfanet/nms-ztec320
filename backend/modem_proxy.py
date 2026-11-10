@@ -159,7 +159,7 @@ _ATTR = re.compile(
 _CSS_URL = re.compile(r'''url\(\s*(?P<q>["']?)/(?!/|webadmin/)''', re.I)
 _META_REFRESH = re.compile(r'''(?P<a>\burl\s*=\s*)/(?!/)''', re.I)
 _JS_STR = re.compile(
-    r'''(?P<q>["'])/(?!/|webadmin/)(?P<p>(?:cgi-bin/|[\w\-./]+\.(?:html?|cgi|asp|aspx|jsp|php|js|css|json|xml|png|gif|jpe?g|ico|svg|lua|do|action)\b)[^"'\s<>]*)(?P=q)''',
+    r'''(?<!\+)(?<!\+ )(?<!\+  )(?P<q>["'])/(?!/|webadmin/)(?P<p>(?:cgi-bin/|[\w\-./]+\.(?:html?|cgi|asp|aspx|jsp|php|js|css|json|xml|png|gif|jpe?g|ico|svg|lua|do|action)\b)[^"'\s<>]*)(?P=q)''',
     re.I)
 
 
@@ -230,6 +230,15 @@ def inject_head(html, snippet):
     return snippet + html
 
 
+# Kepala URL rakitan: "/frameaspdes/" + Language + "/x.js" → hanya potongan
+# PERTAMA yang diberi prefix; potongan setelah '+' dibiarkan (lihat _JS_STR).
+_JS_CONCAT_HEAD = re.compile(
+    r'''(?<![+\w])(?P<s>\s*)(?P<q>["'])/(?!/|webadmin/)(?P<p>[\w\-./]*)(?P=q)(?=\s*\+)''')
+# Variabel tujuan halaman: var pageName = '/'; top.location.replace(pageName)
+_JS_PAGEVAR = re.compile(
+    r'''(?P<a>\b\w*(?:page|url|href|path|link|dest|target|redirect)\w*\s*=\s*)(?P<q>["'])/(?!/|webadmin/)''',
+    re.I)
+
 # Navigasi/submit JS ke path root ("/", "/" + x, "/index.asp"): location=,
 # location.href=, location.replace/assign(, .action=, setAction(, $.post/ajax url.
 _JS_NAV = re.compile(
@@ -262,7 +271,10 @@ def rewrite_text(text, prefix, scheme, host, port, ctype):
     if is_html or is_css:
         text = _CSS_URL.sub(lambda m: f"url({m.group('q')}{prefix}/", text)
     if is_html or is_js:
+        text = _JS_CONCAT_HEAD.sub(
+            lambda m: f"{m.group('s')}{m.group('q')}{prefix}/{m.group('p')}{m.group('q')}", text)
         text = _JS_NAV.sub(lambda m: f"{m.group('a')}{m.group('q')}{prefix}/", text)
+        text = _JS_PAGEVAR.sub(lambda m: f"{m.group('a')}{m.group('q')}{prefix}/", text)
         text = _JS_STR.sub(
             lambda m: f"{m.group('q')}{prefix}/{m.group('p')}{m.group('q')}", text)
 
