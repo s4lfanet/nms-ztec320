@@ -387,3 +387,18 @@ def test_query_string_forwarded_raw(client, modem, monkeypatch):
     assert _Modem.seen['path'] == '/Cuscss/login.css?202304251725030553184798'
     client.get(f'/webadmin/{t}/x.asp?a=1&b=2')
     assert _Modem.seen['path'] == '/x.asp?a=1&b=2'
+
+
+@pytest.mark.parametrize('src,exp', [
+    ('window.location="/";', 'window.location="/webadmin/T/";'),
+    ("top.location.href = '/' + page;", "top.location.href = '/webadmin/T/' + page;"),
+    ('location.replace("/index.asp")', 'location.replace("/webadmin/T/index.asp")'),
+    ('Form.setAction("/login.cgi")', 'Form.setAction("/webadmin/T/login.cgi")'),
+    ('f.action = "/login.cgi";', 'f.action = "/webadmin/T/login.cgi";'),
+    ('$.ajax({url : "/asp/GetRandCount.asp", type:"POST"})', '$.ajax({url : "/webadmin/T/asp/GetRandCount.asp", type:"POST"})'),
+    ('xhr.open("POST", "/getajax.cgi?x")', 'xhr.open("POST", "/webadmin/T/getajax.cgi?x")'),
+    ('var a = s.split("/");', 'var a = s.split("/");'),
+    ('location.href="//cdn/x"', 'location.href="//cdn/x"'),
+])
+def test_rewrite_js_navigation(src, exp):
+    assert mp.rewrite_text(src, '/webadmin/T', 'https', '10.0.0.1', 80, 'application/javascript') == exp
