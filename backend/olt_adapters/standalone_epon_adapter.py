@@ -9,7 +9,7 @@ import re
 from models import OLT, ONU, OLTPort, OLTUplink
 from .base import BaseOLTAdapter
 from .normalized import RackData, NormalizedSlot, NormalizedPort, NormalizedPsu
-from .snmp_oids import VENDOR_OIDS
+from .snmp_oids import VENDOR_OIDS, HSGQ_PROFILES, HSGQ_PON_ONLINE
 from .hioso_adapter import format_mac_or_sn, parse_optical_dbm, parse_onu_suffix
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,12 @@ class StandaloneEponAdapter(BaseOLTAdapter):
 
     def _default_pon_count(self) -> int:
         model = (self.olt.model or '').upper()
+        # HSGQ-E02 / HSGQ-G04 / XPON-08: angka 2 digit setelah E/G/PON = jumlah PON
+        m = re.search(r'(?:^|[-\s_])(?:[EG]|X?PON)-?(\d{2})\b', model)
+        if m and int(m.group(1)) in (1, 2, 4, 8, 16):
+            return int(m.group(1))
+        if re.search(r'\b2\s*-?P(?:ON)?\b', model):
+            return 2
         if '16' in model:
             return 16
         if '8' in model:
@@ -155,6 +161,42 @@ class StandaloneEponAdapter(BaseOLTAdapter):
             return format_uptime(self.olt.uptime * 100)
         return None
 
+    @staticmethod
+    def _int_or_none(v):
+        try:
+            return int(str(v).split()[0])
+        except Exception:
+            return None
+
+    def _hsgq_pick_oids(self, sc) -> dict:
+        """Pilih tabel/kolom status HSGQ yang cocok dengan penghitung online OLT."""
+        stats = []
+        for prof in HSGQ_PROFILES:
+            try:
+                res = sc._run(sc._walk_async(prof['onu_status']))
+            except Exception:
+                res = {}
+            vals = [self._int_or_none(v) for v in res.values()]
+            if vals:
+                stats.append((prof, len(vals), sum(1 for v in vals if v == 1)))
+        if not stats:
+            return {}
+        try:
+            counts = [self._int_or_none(v) for v in sc._run(sc._walk_async(HSGQ_PON_ONLINE)).values()]
+            counts = [c for c in counts if c is not None and c >= 0]
+            expected = sum(counts) if counts else None
+        except Exception:
+            expected = None
+        chosen = stats[0]
+        if expected is not None:
+            chosen = min(stats, key=lambda s: abs(s[2] - expected))
+            if chosen[2] != expected:
+                logger.warning(f"[HSGQ:{self.olt.name}] tidak ada kolom status yang cocok dengan "
+                               f"penghitung OLT ({expected}); pakai {chosen[0]['id']} ({chosen[2]})")
+        logger.info(f"[HSGQ:{self.olt.name}] profil SNMP {chosen[0]['id']}: "
+                    f"{chosen[1]} ONU, {chosen[2]} online, penghitung OLT {expected}")
+        return chosen[0]
+
     def collect_onus(self) -> list:
         """Collect ONU data via SNMP using vendor-specific OIDs."""
         onus = []
@@ -167,6 +209,10 @@ class StandaloneEponAdapter(BaseOLTAdapter):
                 return []
 
             sc = SNMPCollector(self.olt.ip_address, self.olt.snmp_community or 'public', self.olt.snmp_port or 161)
+            if vendor == 'hsgq':
+                picked = self._hsgq_pick_oids(sc)
+                if picked:
+                    oids = picked
             sn_oid = oids.get('onu_sn') or oids.get('onu_mac')
             name_oid = oids.get('onu_name') or oids.get('onu_desc')
             status_oid = oids.get('onu_status')
@@ -178,6 +224,8 @@ class StandaloneEponAdapter(BaseOLTAdapter):
             status_res = sc._run(sc._walk_async(status_oid)) if status_oid else {}
             rx_res = sc._run(sc._walk_async(rx_oid)) if rx_oid else {}
             dist_res = sc._run(sc._walk_async(dist_oid)) if dist_oid else {}
+            tx_oid = oids.get('onu_tx')
+            tx_res = sc._run(sc._walk_async(tx_oid)) if tx_oid else {}
 
             all_keys = list(dict.fromkeys(list(status_res.keys()) + list(sn_res.keys()) + list(name_res.keys())))
             for key in all_keys:
@@ -221,7 +269,7 @@ class StandaloneEponAdapter(BaseOLTAdapter):
                     'reg_status': 1,
                     'rx_power': rx_dbm if status == 'online' else None,
                     'onu_rx_power': rx_dbm if status == 'online' else None,
-                    'tx_power': None,
+                    'tx_power': parse_optical_dbm(tx_res.get(key)) if status == 'online' else None,
                     'distance': dist_val,
                     'actual_type': '',
                     'last_dereg_reason': '',
