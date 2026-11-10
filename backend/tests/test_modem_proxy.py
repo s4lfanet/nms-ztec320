@@ -402,3 +402,14 @@ def test_query_string_forwarded_raw(client, modem, monkeypatch):
 ])
 def test_rewrite_js_navigation(src, exp):
     assert mp.rewrite_text(src, '/webadmin/T', 'https', '10.0.0.1', 80, 'application/javascript') == exp
+
+
+@pytest.mark.parametrize('src,exp', [
+    ('src="/frameaspdes/" + Language + "/ssmpdes.js"', 'src="/webadmin/T/frameaspdes/" + Language + "/ssmpdes.js"'),
+    ("var u = '/html/' + p + '.asp';", "var u = '/webadmin/T/html/' + p + '.asp';"),
+    ("var pageName = '/';\ntop.location.replace(pageName);", "var pageName = '/webadmin/T/';\ntop.location.replace(pageName);"),
+    ('var Url = "/index.asp";', 'var Url = "/webadmin/T/index.asp";'),
+    ('x = a + "/y.js";', 'x = a + "/y.js";'),
+])
+def test_rewrite_js_concat_and_pagevar(src, exp):
+    assert mp.rewrite_text(src, '/webadmin/T', 'https', '10.0.0.1', 80, 'application/javascript') == exp
