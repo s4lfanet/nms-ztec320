@@ -194,11 +194,13 @@ def create_session(onu_id):
         log_action('webadmin_denied', 'security', target=str(onu_id), detail=f'ip={host}')
         return jsonify({'success': False,
                         'message': 'IP bukan milik ONU ini atau tidak diizinkan'}), 403
-    token = mp.make_token(current_app.config['SECRET_KEY'], onu_id, current_user.id,
-                          scheme, host, port)
+    key = current_app.config['SECRET_KEY']
+    token = mp.make_token(key, onu_id, current_user.id, scheme, host, port, mode='frame')
+    tab_token = mp.make_token(key, onu_id, current_user.id, scheme, host, port, mode='tab')
     log_action('webadmin_open', 'onu', target=str(onu_id), detail=f'{scheme}://{host}:{port}'
                + (' (sesi PPPoE manual)' if data.get('from_session') else ''))
-    return jsonify({'success': True, 'url': f'/webadmin/{token}/', 'ttl': mp.TOKEN_TTL})
+    return jsonify({'success': True, 'url': f'/webadmin/{token}/',
+                    'tab_url': f'/webadmin/{tab_token}/', 'ttl': mp.TOKEN_TTL})
 
 
 def _cors(resp):
@@ -271,6 +273,6 @@ def proxy(token, path):
         if new is None:
             return Response('Redirect ke host lain diblokir', 502, mimetype='text/plain')
         resp.headers['Location'] = new
-    for k, v in mp.security_headers(request.headers.get('Sec-Fetch-Dest')).items():
+    for k, v in mp.security_headers(payload.get('m', 'frame'), request.headers.get('Sec-Fetch-Dest')).items():
         resp.headers[k] = v
     return _cors(resp)

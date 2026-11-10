@@ -204,6 +204,7 @@ def test_session_ok_returns_token_url(client):
                     json={'ip': '192.168.77.5', 'port': 8080}, headers=H)
     assert r.status_code == 200
     url = r.get_json()['url']
+    assert r.get_json()['tab_url'] != url
     assert url.startswith('/webadmin/') and url.endswith('/')
     d = mp.read_token(app.config['SECRET_KEY'], url.split('/')[2])
     assert d['h'] == '192.168.77.5' and d['p'] == 8080
@@ -226,10 +227,17 @@ def test_proxy_e2e(client, modem, monkeypatch):
     r = client.get(f'/webadmin/{t}/', headers={'Cookie': 'session=' + nms_cookie})
     assert r.status_code == 200
     assert f'/webadmin/{t}/cgi-bin/s.cgi'.encode() in r.data
-    assert r.headers['Content-Security-Policy'].startswith('sandbox')      # dibuka langsung
-    f = client.get(f'/webadmin/{t}/', headers={'Sec-Fetch-Dest': 'iframe'})
-    assert 'Content-Security-Policy' not in f.headers                       # di iframe ber-sandbox
-    assert 'X-Frame-Options' not in f.headers
+    # token frame tanpa Sec-Fetch-* (NMS via http://) → tidak boleh CSP sandbox
+    assert 'Content-Security-Policy' not in r.headers
+    assert 'X-Frame-Options' not in r.headers
+    # token frame dibuka sebagai dokumen teratas (https) → dikunci
+    d = client.get(f'/webadmin/{t}/', headers={'Sec-Fetch-Dest': 'document'})
+    assert d.headers['Content-Security-Policy'].startswith('sandbox')
+    # token tab selalu dikunci
+    with app.app_context():
+        uid = User.query.filter_by(username='boss').first().id
+    tt = mp.make_token(app.config['SECRET_KEY'], client.onu_id, uid, 'http', '127.0.0.1', modem, mode='tab')
+    assert client.get(f'/webadmin/{tt}/').headers['Content-Security-Policy'].startswith('sandbox')
     assert 'Set-Cookie' not in r.headers
     assert nms_cookie not in _Modem.seen['cookie']
     # cookie modem dipakai ulang dari jar server-side
