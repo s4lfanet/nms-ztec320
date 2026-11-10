@@ -104,6 +104,19 @@ def _metrics_before_request():
 
 
 @app.before_request
+def _webadmin_host_lockdown():
+    """Host khusus browser modem hanya melayani /webadmin/ — bukan SPA/API NMS."""
+    try:
+        import modem_proxy as _mp
+        h = _mp.webadmin_host()
+    except Exception:
+        h = ''
+    if h and request.host.lower() == h and not request.path.startswith('/webadmin/'):
+        return jsonify({'error': 'not found'}), 404
+    return None
+
+
+@app.before_request
 def _csrf_protection():
     """CSRF protection: reject state-changing requests without custom header.
 
@@ -162,6 +175,13 @@ def add_security_headers(response):
         "connect-src 'self' ws: wss: https:; "
         "frame-ancestors 'none';"
     )
+    try:
+        import modem_proxy as _mp
+        _wo = _mp.webadmin_origin()
+        if _wo:
+            response.headers['Content-Security-Policy'] += f" frame-src 'self' {_wo};"
+    except Exception:
+        pass
     if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https':
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     # Prevent Cloudflare/browser from caching API responses (especially 401s)

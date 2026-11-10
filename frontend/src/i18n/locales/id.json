@@ -405,6 +405,9 @@
     "searchPh": "Cari username / IP / MAC",
     "search": "Cari",
     "sessCount": "Menampilkan {{shown}} dari {{total}} sesi",
-    "noSess": "Tidak ada sesi yang cocok."
+    "noSess": "Tidak ada sesi yang cocok.",
+    "cfgTitle": "Pengaturan origin terpisah (wajib untuk modem ber-frame, mis. Huawei)",
+    "cfgHint": "Isi subdomain khusus yang diarahkan ke server NMS yang sama, mis. https://modem.salfa.my.id. Halaman modem akan dimuat dari sana sehingga menu & isi modem bisa saling terhubung tanpa akses ke sesi NMS. Kosongkan untuk menonaktifkan.",
+    "cfgSaved": "Origin browser modem disimpan"
   }
 }
