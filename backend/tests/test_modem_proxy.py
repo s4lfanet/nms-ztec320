@@ -358,3 +358,22 @@ def test_huawei_stub_switches_to_https_token(client, monkeypatch):
     nt = r.headers['Location'].split('/')[2]
     d = mp.read_token(app.config['SECRET_KEY'], nt)
     assert d['s'] == 'https' and d['p'] == 80 and d['h'] == '192.168.30.106'
+
+
+def test_fix_content_type():
+    assert mp.fix_content_type('Cuscss/login.css', 'text/html') == 'text/css; charset=utf-8'
+    assert mp.fix_content_type('a/md5.js?1', '') == 'application/javascript; charset=utf-8'
+    assert mp.fix_content_type('x.css', 'text/css') == 'text/css'
+    assert mp.fix_content_type('login.cgi', 'text/html') == 'text/html'
+
+
+def test_cookie_shim_injected_and_sync(client, modem, monkeypatch):
+    monkeypatch.setattr(mp, 'is_allowed_ip', lambda ip, public_ok=None: ip == '127.0.0.1')
+    t = _token(client, modem)
+    r = client.get(f'/webadmin/{t}/')
+    assert b'Object.defineProperty(document' in r.data and b'__nms_cookie' in r.data
+    # shim menyinkron cookie JS → dipakai ke modem
+    assert client.post(f'/webadmin/{t}/__nms_cookie',
+                       data='Cookie=body:Language:english:id=-1;path=/').status_code == 204
+    client.get(f'/webadmin/{t}/other')
+    assert 'Cookie=body:Language:english:id=-1' in _Modem.seen['cookie']
