@@ -7,6 +7,7 @@ import { api, ApiError, type User as UserType } from '../lib/api';
 import { toast } from '../components/Toast';
 import { User, Lock, Save, Eye, EyeOff, Image, Upload, RotateCcw, ShieldAlert, Palette, Languages } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
+import { PushDeviceCard } from '../components/PushDeviceCard';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, Input, Select } from '../components/ui';
 
@@ -286,6 +287,7 @@ export function MyProfile() {
           </Button>
         </div>
       </div>
+      <div className="mt-6 max-w-xl"><PushDeviceCard /></div>
     </PageContainer>
   );
 }

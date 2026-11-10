@@ -16,6 +16,11 @@ self.addEventListener('push', (event) => {
       badge: '/pwa/icon-192.png',
       tag: data.tag || 'nms-alert',
       renotify: true,
+      // Android: getar + tetap tampil (heads-up/mengambang) untuk gangguan kritis
+      vibrate: [200, 100, 200, 100, 300],
+      requireInteraction: data.severity === 'critical',
+      silent: false,
+      timestamp: Date.now(),
       data: { url: data.url || '/' },
     })
   );
