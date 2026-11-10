@@ -1,6 +1,7 @@
 """Browser bawaan web admin modem: validasi target, token, rewrite, proxy e2e."""
 import http.server
 import os
+import secrets
 import tempfile
 import threading
 
@@ -13,7 +14,7 @@ from models import User, Role, OLT, ONU, OnuLinkState
 
 H = {'X-Requested-With': 'XMLHttpRequest'}
 KEY = 'unit-test-key'
-PW = 'Str0ng-pass!'
+PW = 'Pw-' + secrets.token_urlsafe(12)
 
 
 # ───────────────────────────── unit ─────────────────────────────
@@ -82,9 +83,9 @@ def test_cookie_jar_set_and_delete():
 
 
 def test_upstream_headers_never_forward_nms_cookie():
-    h = mp.build_upstream_headers({'cookie': 'session=SECRET', 'accept': '*/*'},
+    h = mp.build_upstream_headers({'cookie': 'session=' + KEY, 'accept': '*/*'},
                                   'http', '10.0.0.1', 80, {'sid': 'a', 'session': 'x'})
-    assert 'session=SECRET' not in h.get('cookie', '') and 'session=x' not in h['cookie']
+    assert 'session=' + KEY not in h.get('cookie', '') and 'session=x' not in h['cookie']
     assert h['cookie'] == 'sid=a'
 
 
@@ -221,12 +222,13 @@ def _token(client, port, user='boss'):
 def test_proxy_e2e(client, modem, monkeypatch):
     monkeypatch.setattr(mp, 'is_allowed_ip', lambda ip, public_ok=None: ip == '127.0.0.1')
     t = _token(client, modem)
-    r = client.get(f'/webadmin/{t}/', headers={'Cookie': 'session=NMSSECRET'})
+    nms_cookie = 'nms-' + secrets.token_hex(4)
+    r = client.get(f'/webadmin/{t}/', headers={'Cookie': 'session=' + nms_cookie})
     assert r.status_code == 200
     assert f'/webadmin/{t}/cgi-bin/s.cgi'.encode() in r.data
     assert r.headers['Content-Security-Policy'].startswith('sandbox')
     assert 'Set-Cookie' not in r.headers
-    assert 'NMSSECRET' not in _Modem.seen['cookie']
+    assert nms_cookie not in _Modem.seen['cookie']
     # cookie modem dipakai ulang dari jar server-side
     client.get(f'/webadmin/{t}/other')
     assert _Modem.seen['cookie'] == 'sid=abc'
