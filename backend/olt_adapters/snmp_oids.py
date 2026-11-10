@@ -214,3 +214,34 @@ VENDOR_CLI = {
         'show_system':     'show system',
     },
 }
+
+
+# ── HSGQ: kandidat tabel ONU (diadaptasi dari salfanet-radius profiles.ts) ──
+# Dua skema tabel: 50224.3.12 (firmware "ID", GPON/EPON baru) dan 50224.3.3
+# (EPON lama). Sumber komunitas tidak sepakat kolom status mana yang benar,
+# jadi semua kandidat dicoba dan dipilih yang jumlah ONU online-nya paling
+# dekat dengan penghitung OLT sendiri per PON (HSGQ_PON_ONLINE).
+# Indeks ONU: 0x01000000 | PON << 8 | ONU. Daya optik dalam seperseratus dBm.
+_HSGQ_ID_TABLE = '.50224.3.12.2.1'
+_HSGQ_ID_OPTIC = '.50224.3.12.3.1'
+_HSGQ_OLD_TABLE = '.50224.3.3.2.1'
+_HSGQ_OLD_OPTIC = '.50224.3.3.3.1'
+
+
+def _hsgq_id(pid, col):
+    return {'id': pid, 'onu_status': f'{_HSGQ_ID_TABLE}.{col}', 'onu_name': f'{_HSGQ_ID_TABLE}.2',
+            'onu_distance': f'{_HSGQ_ID_TABLE}.19', 'olt_rx': f'{_HSGQ_ID_OPTIC}.4',
+            'onu_tx': f'{_HSGQ_ID_OPTIC}.5'}
+
+
+def _hsgq_old(pid, col):
+    return {'id': pid, 'onu_status': f'{_HSGQ_OLD_TABLE}.{col}', 'onu_name': f'{_HSGQ_OLD_TABLE}.2',
+            'onu_mac': f'{_HSGQ_OLD_TABLE}.7', 'onu_distance': f'{_HSGQ_OLD_TABLE}.15',
+            'olt_rx': f'{_HSGQ_OLD_OPTIC}.4', 'onu_tx': f'{_HSGQ_OLD_OPTIC}.5'}
+
+
+# Urutan = prioritas bila seri. hsgq-old-8 = pemetaan lama NMS ini.
+HSGQ_PROFILES = [_hsgq_old('hsgq-old-8', 8), _hsgq_old('hsgq-old-9', 9),
+                 _hsgq_id('hsgq-id-3', 3), _hsgq_id('hsgq-id-5', 5)]
+HSGQ_PON_ONLINE = '.50224.3.2.3.1.4'
+
