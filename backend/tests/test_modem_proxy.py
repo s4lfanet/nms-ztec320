@@ -441,3 +441,35 @@ def test_shim_not_injected_into_ajax_token(client, monkeypatch):
     t = mp.make_token(app.config['SECRET_KEY'], client.onu_id, uid, 'https', '192.168.30.106', 80)
     r = client.post(f'/webadmin/{t}/asp/GetRandCount.asp', data='')
     assert r.data.decode() == token_body
+
+
+# ───────────── origin terpisah ─────────────
+
+def test_normalize_origin():
+    assert mp.normalize_origin('https://Modem.Salfa.my.id/') == 'https://modem.salfa.my.id'
+    assert mp.normalize_origin('http://10.0.0.1:8081') == 'http://10.0.0.1:8081'
+    assert mp.normalize_origin('javascript:alert(1)') == ''
+    assert mp.normalize_origin('https://a.b/c') == ''
+
+
+def test_separate_origin_flow(client, modem, monkeypatch):
+    monkeypatch.setenv('WEBADMIN_ORIGIN', 'https://modem.example.test')
+    _login(client, 'boss')
+    r = client.post(f'/api/onu/{client.onu_id}/webadmin/session', json={'ip': '192.168.77.5'}, headers=H)
+    j = r.get_json()
+    assert j['url'].startswith('https://modem.example.test/webadmin/') and j['separate_origin']
+    # halaman NMS mengizinkan frame dari origin modem
+    assert "frame-src 'self' https://modem.example.test" in client.get('/api/onu/1/link-state').headers['Content-Security-Policy']
+    monkeypatch.setattr(mp, 'is_allowed_ip', lambda ip, public_ok=None: ip == '127.0.0.1')
+    # di host modem: tanpa CSP sandbox; selain /webadmin ditolak
+    t = _token(client, modem)
+    pr = client.get(f'/webadmin/{t}/', base_url='https://modem.example.test')
+    assert pr.status_code == 200 and 'Content-Security-Policy' not in pr.headers
+    assert client.get('/api/auth/me', base_url='https://modem.example.test').status_code == 404
+    assert client.get('/', base_url='https://modem.example.test').status_code == 404
+
+
+def test_settings_save_super_admin_only(client):
+    _login(client, 'boss')          # bukan super admin
+    r = client.post('/api/webadmin/settings', json={'origin': 'https://m.example.test'}, headers=H)
+    assert r.status_code == 403

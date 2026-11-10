@@ -4,6 +4,7 @@ import { Globe, X, RefreshCw, ExternalLink, AlertTriangle, Search } from 'lucide
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { toast } from './Toast';
+import { useAuth } from '../stores/auth';
 
 interface Target { ip: string; source: string; label: string }
 interface Info { mikrotik_devices: number; sessions: number; errors: string[]; tr069: boolean; names: string[] }
@@ -28,6 +29,10 @@ export function ModemWebAdminButton({ onuId }: { onuId: number }) {
   const [port, setPort] = useState('');
   const [src, setSrc] = useState('');
   const [tabSrc, setTabSrc] = useState('');
+  const [separate, setSeparate] = useState(false);
+  const [cfgOpen, setCfgOpen] = useState(false);
+  const [origin, setOrigin] = useState('');
+  const { user } = useAuth();
   const [reload, setReload] = useState(0);
   const [q, setQ] = useState('');
   const [sess, setSess] = useState<Sess[] | null>(null);
@@ -52,6 +57,15 @@ export function ModemWebAdminButton({ onuId }: { onuId: number }) {
     } catch (e) { err(e); } finally { setLoading(false); }
   }, [q]);
 
+  const loadCfg = async () => {
+    setCfgOpen(o => !o);
+    try { const r = await api.webAdminSettings(); setOrigin(r.stored || r.origin || ''); } catch (e) { err(e); }
+  };
+  const saveCfg = async () => {
+    try { const r = await api.webAdminSaveSettings(origin.trim()); setOrigin(r.origin); toast.success(t('webadmin.cfgSaved')); }
+    catch (e) { err(e); }
+  };
+
   const pickSession = (s: Sess) => { setIp(s.address); setFromSession(true); setSess(null); };
 
   const connect = async () => {
@@ -60,7 +74,7 @@ export function ModemWebAdminButton({ onuId }: { onuId: number }) {
     try {
       const r = await api.onuWebAdminSession(onuId, {
         ip, scheme, port: port ? Number(port) : undefined, from_session: fromSession || undefined });
-      setSrc(r.url); setTabSrc(r.tab_url || r.url); setReload(n => n + 1);
+      setSrc(r.url); setTabSrc(r.tab_url || r.url); setSeparate(!!r.separate_origin); setReload(n => n + 1);
     } catch (e) { err(e); } finally { setLoading(false); }
   };
 
@@ -106,7 +120,7 @@ export function ModemWebAdminButton({ onuId }: { onuId: number }) {
             <div className="flex-1 min-h-0 bg-white relative">
               {src ? (
                 <iframe key={reload} src={src} title="modem-webadmin"
-                  sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+                  sandbox={`allow-scripts allow-forms allow-popups allow-modals allow-downloads${separate ? ' allow-same-origin' : ''}`}
                   referrerPolicy="no-referrer" className="absolute inset-0 w-full h-full border-0" />
               ) : (
                 <div className="absolute inset-0 overflow-y-auto bg-surface p-4 text-tx2">
@@ -125,6 +139,18 @@ export function ModemWebAdminButton({ onuId }: { onuId: number }) {
                         )}
                       </div>
                     </div>
+                    {user?.is_super_admin && (
+                      <div className="border border-brd rounded-xl p-3 space-y-2 text-xs">
+                        <button onClick={loadCfg} className="font-medium text-tx1">{t('webadmin.cfgTitle')} {cfgOpen ? '▴' : '▾'}</button>
+                        {cfgOpen && <>
+                          <p className="text-tx3">{t('webadmin.cfgHint')}</p>
+                          <div className="flex gap-2">
+                            <input value={origin} onChange={e => setOrigin(e.target.value)} placeholder="https://modem.domain-anda.id" className="input-field text-xs" />
+                            <button onClick={saveCfg} className="btn-primary text-xs">{t('common.save')}</button>
+                          </div>
+                        </>}
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <p className="text-xs font-medium text-tx1">{t('webadmin.pickTitle')}</p>
                       <div className="flex gap-2">

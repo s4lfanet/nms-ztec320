@@ -5,6 +5,7 @@ Lihat modem_proxy.py untuk model keamanan. Hanya IP milik ONU itu sendiri
 """
 from urllib.parse import urlsplit
 
+import os
 import threading
 import time
 
@@ -13,7 +14,7 @@ from flask import Blueprint, Response, current_app, jsonify, request
 from flask_login import login_required, current_user
 
 import modem_proxy as mp
-from models import db, ONU, OLT, OnuLinkState, GenieacsDeviceMap, MikrotikDevice, User
+from models import db, SystemConfig, ONU, OLT, OnuLinkState, GenieacsDeviceMap, MikrotikDevice, User
 from routeros_client import RouterOSClient
 import link_state_poller as lsp
 from mac_match import match_sessions
@@ -197,10 +198,49 @@ def create_session(onu_id):
     key = current_app.config['SECRET_KEY']
     token = mp.make_token(key, onu_id, current_user.id, scheme, host, port, mode='frame')
     tab_token = mp.make_token(key, onu_id, current_user.id, scheme, host, port, mode='tab')
+    origin = mp.webadmin_origin()
     log_action('webadmin_open', 'onu', target=str(onu_id), detail=f'{scheme}://{host}:{port}'
                + (' (sesi PPPoE manual)' if data.get('from_session') else ''))
-    return jsonify({'success': True, 'url': f'/webadmin/{token}/',
-                    'tab_url': f'/webadmin/{tab_token}/', 'ttl': mp.TOKEN_TTL})
+    return jsonify({'success': True, 'url': f'{origin}/webadmin/{token}/',
+                    'tab_url': f'{origin}/webadmin/{tab_token}/',
+                    'separate_origin': bool(origin), 'ttl': mp.TOKEN_TTL})
+
+
+def _on_separate_host():
+    h = mp.webadmin_host()
+    return bool(h) and request.host.lower() == h
+
+
+@bp.route('/api/webadmin/settings', methods=['GET'])
+@permission_required(_PERM)
+def get_settings():
+    row = SystemConfig.query.filter_by(key='webadmin_origin').first()
+    return jsonify({'success': True, 'origin': mp.webadmin_origin(),
+                    'stored': (row.value if row else '') or '',
+                    'from_env': bool(mp.normalize_origin(os.environ.get('WEBADMIN_ORIGIN', '')))})
+
+
+@bp.route('/api/webadmin/settings', methods=['POST'])
+@login_required
+def save_settings():
+    if not getattr(current_user, 'is_super_admin', False):
+        return jsonify({'success': False, 'message': 'Hanya super admin'}), 403
+    raw = ((request.get_json(silent=True) or {}).get('origin') or '').strip()
+    val = mp.normalize_origin(raw)
+    if raw and not val:
+        return jsonify({'success': False, 'message': 'Format origin: https://host[:port]'}), 400
+    if val and urlsplit(val).netloc.lower() == request.host.lower():
+        return jsonify({'success': False,
+                        'message': 'Origin harus berbeda dari alamat NMS (pakai subdomain lain)'}), 400
+    row = SystemConfig.query.filter_by(key='webadmin_origin').first()
+    if row:
+        row.value = val
+    else:
+        db.session.add(SystemConfig(key='webadmin_origin', value=val))
+    db.session.commit()
+    mp.reset_origin_cache()
+    log_action('webadmin_settings', 'settings', detail=f'origin={val or "-"}')
+    return jsonify({'success': True, 'origin': val})
 
 
 def _cors(resp):
@@ -285,7 +325,8 @@ def proxy(token, path):
                 resp = Response('', 302)
                 resp.headers['Location'] = f'/webadmin/{new_tok}/'
                 for k, v in mp.security_headers(payload.get('m', 'frame'),
-                                                request.headers.get('Sec-Fetch-Dest')).items():
+                                                request.headers.get('Sec-Fetch-Dest'),
+                                                separate=_on_separate_host()).items():
                     resp.headers[k] = v
                 return _cors(resp)
         if len(text) < 6000 and 'location' in text:
@@ -309,6 +350,6 @@ def proxy(token, path):
         if new is None:
             return Response('Redirect ke host lain diblokir', 502, mimetype='text/plain')
         resp.headers['Location'] = new
-    for k, v in mp.security_headers(payload.get('m', 'frame'), request.headers.get('Sec-Fetch-Dest')).items():
+    for k, v in mp.security_headers(payload.get('m', 'frame'), request.headers.get('Sec-Fetch-Dest'), separate=_on_separate_host()).items():
         resp.headers[k] = v
     return _cors(resp)

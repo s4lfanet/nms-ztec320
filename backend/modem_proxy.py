@@ -37,6 +37,52 @@ ALLOWED_SCHEMES = ('http', 'https')
 _CGNAT = ipaddress.ip_network('100.64.0.0/10')
 
 
+# ─────────────────────────── origin terpisah ────────────────────────────
+_ORIGIN_RE = re.compile(r'^(https?)://([a-z0-9.-]+)(?::(\d{1,5}))?/?$', re.I)
+_origin_cache = {'ts': 0.0, 'v': ''}
+
+
+def normalize_origin(value):
+    """'https://modem.contoh.id/' → 'https://modem.contoh.id' ('' bila tak valid)."""
+    m = _ORIGIN_RE.match((value or '').strip())
+    if not m:
+        return ''
+    port = f':{m.group(3)}' if m.group(3) else ''
+    return f'{m.group(1).lower()}://{m.group(2).lower()}{port}'
+
+
+def webadmin_origin():
+    """Origin khusus browser modem (mis. https://modem.salfa.my.id) atau ''.
+
+    Bila diset, halaman modem dimuat dari origin itu sehingga iframe boleh
+    `allow-same-origin` (frame/iframe modem bisa saling memanggil — wajib untuk
+    UI Huawei/ZTE yang memakai frame) tanpa memberi akses ke origin/sesi NMS.
+    Sumber: env WEBADMIN_ORIGIN, lalu SystemConfig 'webadmin_origin' (cache 30 dtk)."""
+    env = normalize_origin(os.environ.get('WEBADMIN_ORIGIN', ''))
+    if env:
+        return env
+    if time.time() - _origin_cache['ts'] < 30:
+        return _origin_cache['v']
+    v = ''
+    try:
+        from models import SystemConfig
+        row = SystemConfig.query.filter_by(key='webadmin_origin').first()
+        v = normalize_origin(row.value if row else '')
+    except Exception:
+        v = ''
+    _origin_cache.update(ts=time.time(), v=v)
+    return v
+
+
+def reset_origin_cache():
+    _origin_cache['ts'] = 0.0
+
+
+def webadmin_host():
+    o = webadmin_origin()
+    return urlsplit(o).netloc.lower() if o else ''
+
+
 # ───────────────────────────── validasi target ──────────────────────────────
 
 def allow_public():
@@ -342,7 +388,7 @@ SANDBOX_CSP = ("sandbox allow-scripts allow-forms allow-popups allow-modals "
                "allow-downloads")
 
 
-def security_headers(mode, sec_fetch_dest=None):
+def security_headers(mode, sec_fetch_dest=None, separate=False):
     """Header keamanan respons modem.
 
     Mode ditentukan dari token, BUKAN dari Sec-Fetch-Dest: browser tidak
@@ -356,6 +402,9 @@ def security_headers(mode, sec_fetch_dest=None):
     * 'tab': selalu CSP sandbox.
     """
     h = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'}
+    if separate:
+        # Origin khusus modem: sudah terisolasi dari origin NMS, tak perlu sandbox.
+        return h
     dest = (sec_fetch_dest or '').lower()
     if mode == 'tab' or dest == 'document':
         h['Content-Security-Policy'] = SANDBOX_CSP
