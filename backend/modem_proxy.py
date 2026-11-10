@@ -223,6 +223,16 @@ def cookie_shim(prefix, cookies):
             '})();</script>') % (pre, init)
 
 
+def is_html_document(text):
+    """True hanya untuk dokumen HTML sungguhan.
+
+    Respons ajax modem sering ber-Content-Type text/html padahal isinya data
+    (Huawei /asp/GetRandCount.asp = token login). Menyisipkan shim ke sana
+    merusak token → login modem selalu gagal."""
+    head = (text or '')[:2048].lower()
+    return '<html' in head or '<head' in head or '<!doctype' in head or '<body' in head
+
+
 def inject_head(html, snippet):
     m = re.search(r'<head[^>]*>', html, re.I)
     if m:
