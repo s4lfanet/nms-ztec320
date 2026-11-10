@@ -163,6 +163,23 @@ _JS_STR = re.compile(
     re.I)
 
 
+_HTTPS_STUB = re.compile(r"""window\.location\s*=\s*["']https://["']\s*\+\s*HostInfo""")
+_SSLPORT = re.compile(r"""var\s+SSLPort\s*=\s*["'](\d{1,5})["']""")
+
+
+def https_redirect_port(text):
+    """Deteksi halaman stub redirect HTTPS (Huawei HG8145/HG8245, dll).
+
+    Modem merakit `window.location = "https://" + HostInfo + ":" + SSLPort`
+    dari location.host — di proxy itu jadi domain NMS sehingga keluar dari
+    /webadmin. Kembalikan port HTTPS tujuan (int) atau None.
+    """
+    if not text or not _HTTPS_STUB.search(text):
+        return None
+    m = _SSLPORT.search(text)
+    return valid_port(m.group(1)) if m else 443
+
+
 def _is_text_type(ctype):
     c = (ctype or '').lower()
     return ('text/html' in c or 'text/css' in c or 'javascript' in c
