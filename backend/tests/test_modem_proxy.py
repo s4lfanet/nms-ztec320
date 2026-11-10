@@ -318,3 +318,43 @@ def test_pppoe_sessions_search_filters_and_permission(client, live):
     assert [r['address'] for r in rows] == ['10.20.0.8']
     all_rows = client.get('/api/webadmin/pppoe-sessions').get_json()['sessions']
     assert '8.8.4.4' not in [r['address'] for r in all_rows]
+
+
+HUAWEI_STUB = """<script>var SSLPort ='80';
+var HostInfo = window.location.host;
+window.location="https://" + HostInfo + ":" + SSLPort;</script>"""
+
+
+def test_https_redirect_port_detect():
+    assert mp.https_redirect_port(HUAWEI_STUB) == 80
+    assert mp.https_redirect_port('<a href="https://x">') is None
+
+
+def test_huawei_stub_switches_to_https_token(client, monkeypatch):
+    import routes_webadmin as rw
+    monkeypatch.setattr(mp, 'is_allowed_ip', lambda ip, public_ok=None: True)
+
+    class R:
+        status_code = 200
+        encoding = 'utf-8'
+        headers = __import__('httpx').Headers({'content-type': 'text/html'})
+        def iter_bytes(self):
+            yield HUAWEI_STUB.encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class C:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def stream(self, *a, **k): return R()
+
+    monkeypatch.setattr(rw.httpx, 'Client', C)
+    with app.app_context():
+        uid = User.query.filter_by(username='boss').first().id
+    t = mp.make_token(app.config['SECRET_KEY'], client.onu_id, uid, 'http', '192.168.30.106', 80)
+    r = client.get(f'/webadmin/{t}/')
+    assert r.status_code == 302
+    nt = r.headers['Location'].split('/')[2]
+    d = mp.read_token(app.config['SECRET_KEY'], nt)
+    assert d['s'] == 'https' and d['p'] == 80 and d['h'] == '192.168.30.106'

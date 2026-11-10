@@ -261,6 +261,19 @@ def proxy(token, path):
         except LookupError:
             text = content.decode('utf-8', errors='replace')
             enc = 'utf-8'
+        # Stub redirect HTTPS modem (Huawei): pindah sendiri ke https://IP:SSLPort
+        # lewat token baru, agar tetap di dalam proxy.
+        if scheme == 'http' and 'html' in ctype.lower() and path in ('', 'index.html', 'index.asp'):
+            sport = mp.https_redirect_port(text)
+            if sport:
+                new_tok = mp.make_token(current_app.config['SECRET_KEY'], payload['o'], payload['u'],
+                                        'https', host, sport, mode=payload.get('m', 'frame'))
+                resp = Response('', 302)
+                resp.headers['Location'] = f'/webadmin/{new_tok}/'
+                for k, v in mp.security_headers(payload.get('m', 'frame'),
+                                                request.headers.get('Sec-Fetch-Dest')).items():
+                    resp.headers[k] = v
+                return _cors(resp)
         content = mp.rewrite_text(text, prefix, scheme, host, port, ctype).encode(enc, errors='replace')
 
     resp = Response(content, status)
