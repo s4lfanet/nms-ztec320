@@ -413,3 +413,31 @@ def test_rewrite_js_navigation(src, exp):
 ])
 def test_rewrite_js_concat_and_pagevar(src, exp):
     assert mp.rewrite_text(src, '/webadmin/T', 'https', '10.0.0.1', 80, 'application/javascript') == exp
+
+
+def test_shim_not_injected_into_ajax_token(client, monkeypatch):
+    import routes_webadmin as rw
+    monkeypatch.setattr(mp, 'is_allowed_ip', lambda ip, public_ok=None: True)
+    token_body = '\ufeff3c9a1b2d4e5f60718293a4b5c6d7e8f9'
+
+    class R:
+        status_code = 200
+        encoding = 'utf-8'
+        headers = __import__('httpx').Headers({'content-type': 'text/html; charset=UTF-8'})
+        def iter_bytes(self):
+            yield token_body.encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class C:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def stream(self, *a, **k): return R()
+
+    monkeypatch.setattr(rw.httpx, 'Client', C)
+    with app.app_context():
+        uid = User.query.filter_by(username='boss').first().id
+    t = mp.make_token(app.config['SECRET_KEY'], client.onu_id, uid, 'https', '192.168.30.106', 80)
+    r = client.post(f'/webadmin/{t}/asp/GetRandCount.asp', data='')
+    assert r.data.decode() == token_body
