@@ -238,7 +238,24 @@ def build_upstream_headers(req_headers, scheme, host, port, jar_cookies):
 
 
 SANDBOX_CSP = ("sandbox allow-scripts allow-forms allow-popups allow-modals "
-               "allow-downloads; frame-ancestors 'self'")
+               "allow-downloads")
+
+
+def security_headers(sec_fetch_dest):
+    """Header keamanan respons modem menurut cara halaman dimuat.
+
+    * Dimuat di <iframe> (viewer NMS): iframe sudah ber-atribut `sandbox`
+      (origin buram). JANGAN kirim `CSP: sandbox` + XFO/frame-ancestors —
+      kombinasi itu membuat Chrome memblokir frame ("Konten ini diblokir")
+      karena origin dokumen jadi buram dan 'self' tak cocok.
+    * Dibuka langsung (tab baru / navigasi atas): wajib `CSP: sandbox` agar
+      skrip modem tidak berjalan di origin NMS.
+    """
+    h = {'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'}
+    if (sec_fetch_dest or '').lower() not in ('iframe', 'frame'):
+        h['Content-Security-Policy'] = SANDBOX_CSP
+    return h
+
 
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
