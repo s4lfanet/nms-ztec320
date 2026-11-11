@@ -133,6 +133,12 @@ def api_onu_rx_history(onu_id):
     return jsonify({'success': True, 'range': rng, 'points': points})
 
 
+# Sama dengan _bad_models di telnet_client (sync): bukan model perangkat.
+_LIVE_BAD_MODELS = {'', 'n/a', 'none', 'unknown', 'null', '-', 'not set', 'all', 'czte',
+                    'zte', 'huawei', 'fiberhome', 'alcatel-lucent', 'eci', 'hsgq', 'raisecom',
+                    'bdcom', 'c-data', 'vsol', 'dasan'}
+
+
 @bp.route('/api/onu/<int:onu_id>/live-detail')
 @login_required
 def api_onu_live_detail(onu_id):
@@ -202,6 +208,14 @@ def api_onu_live_detail(onu_id):
                     onu.tx_power = live_detail['tx_power']; updated = True
                 if live_detail.get('onu_type') and not onu.onu_type:
                     onu.onu_type = live_detail['onu_type']; updated = True
+                # Actual type (Equipment ID dari 'show gpon remote-onu equip').
+                # Sebelumnya dibaca tapi tidak pernah disimpan → ONU yang offline
+                # saat sync (atau di luar 128 ONU pertama per port) tetap kosong
+                # walau sudah Refresh Live. Nama vendor bukan model → diabaikan.
+                _live_type = str(live_detail.get('actual_type') or live_detail.get('model') or '').strip()
+                if _live_type and _live_type.lower() not in _LIVE_BAD_MODELS \
+                        and _live_type != (onu.actual_type or ''):
+                    onu.actual_type = _live_type[:100]; updated = True
                 # Read-back WiFi config from ONU running-config
                 wifi_entries = live_detail.get('wifi_entries', [])
                 if wifi_entries:
