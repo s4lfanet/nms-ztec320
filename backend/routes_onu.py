@@ -2500,11 +2500,6 @@ def _sanitize_provisioning_input(name='', description='', tcont_profile='', traf
             continue
         for vlan_field in ('vlan', 'mvlan'):
             if s.get(vlan_field) not in (None, ''):
-                # MVLAN opsional: 0 = tidak diisi (telnet_client memakai 0 sebagai
-                # penanda "tanpa MVLAN"); VLAN utama tetap minimal 1.
-                if vlan_field == 'mvlan' and str(s[vlan_field]).strip() == '0':
-                    s[vlan_field] = 0
-                    continue
                 s[vlan_field] = sanitize_cli_int(s[vlan_field], f'services[{i}].{vlan_field}', min_val=1, max_val=4094)
 
     return out
