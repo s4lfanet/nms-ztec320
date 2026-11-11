@@ -370,7 +370,9 @@ html:not(.light) .map-tiles-dark {
   .input-field {
     height: 44px;
     font-size: 16px; /* Prevent iOS zoom */
-    padding: 0 14px;
+    /* padding dipindah ke @layer components (akhir file): rule tanpa layer
+       mengalahkan utilitas Tailwind pl-9/pr-8, sehingga teks input pencarian
+       menumpuk dengan ikon kaca pembesar di HP. */
     border-radius: 10px;
   }
   select.input-field {
@@ -379,7 +381,6 @@ html:not(.light) .map-tiles-dark {
   }
   textarea.input-field {
     min-height: 80px;
-    padding: 12px 14px;
   }
   .label-sm {
     font-size: 12.5px;
@@ -952,3 +953,10 @@ html { font-size: 16px; }
   html { font-size: 15px; }
 }
 
+/* Padding input versi HP — di dalam layer agar utilitas (pl-9, pr-8, px-*) tetap menang. */
+@layer components {
+  @media (max-width: 640px) {
+    .input-field { padding: 0 14px; }
+    textarea.input-field { padding: 12px 14px; }
+  }
+}
