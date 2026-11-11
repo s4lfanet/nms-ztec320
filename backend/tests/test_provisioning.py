@@ -1147,3 +1147,40 @@ class TestRestoreFactoryKeepConfig:
                                     headers={'X-Requested-With': 'XMLHttpRequest'})
         data = resp.get_json()
         assert data['success'] is False
+
+
+# ==================== ONU Live Detail — actual type tersimpan ====================
+
+class TestOnuLiveDetailActualType:
+    def _make_onu(self, olt_id, actual=''):
+        with app.app_context():
+            onu = ONU(olt_id=olt_id, frame=1, slot=1, port=1, onu_id=7,
+                      serial_number='ZTEGTYPE007', actual_type=actual)
+            db.session.add(onu)
+            db.session.commit()
+            return onu.id
+
+    def _refresh(self, auth_client, onu_id, detail):
+        with patch('snmp_collector.create_cli_collector') as mock_cli:
+            mock_tc = MagicMock()
+            mock_tc.collect_onu_detail.return_value = detail
+            mock_cli.return_value = mock_tc
+            return auth_client.get(f'/api/onu/{onu_id}/live-detail')
+
+    def test_actual_type_saved_from_live(self, auth_client, test_olt):
+        onu_id = self._make_onu(test_olt)
+        assert self._refresh(auth_client, onu_id, {'actual_type': 'F670L'}).status_code == 200
+        with app.app_context():
+            assert db.session.get(ONU, onu_id).actual_type == 'F670L'
+
+    def test_actual_type_updated_when_changed(self, auth_client, test_olt):
+        onu_id = self._make_onu(test_olt, actual='F609')
+        self._refresh(auth_client, onu_id, {'actual_type': 'HG8145V5'})
+        with app.app_context():
+            assert db.session.get(ONU, onu_id).actual_type == 'HG8145V5'
+
+    def test_vendor_name_not_saved_as_type(self, auth_client, test_olt):
+        onu_id = self._make_onu(test_olt, actual='F609')
+        self._refresh(auth_client, onu_id, {'actual_type': 'ZTE'})
+        with app.app_context():
+            assert db.session.get(ONU, onu_id).actual_type == 'F609'
