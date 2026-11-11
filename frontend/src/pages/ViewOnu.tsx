@@ -1095,8 +1095,8 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
         </div>
 
         {/* VLAN */}
-        <div className="flex items-center gap-2"><input type="checkbox" checked={!!String(vlan).trim()} onChange={e => setVlan(e.target.checked ? String(vlans[0]?.vlan_id ?? 100) : '')} className="cursor-pointer" /><label className="label-sm cursor-pointer" onClick={() => { if (!String(vlan).trim()) setVlan(String(vlans[0]?.vlan_id ?? 100)); }}>Vlan</label></div>
-        {!!String(vlan).trim() && <div className="flex gap-2 md:gap-3 flex-wrap">
+        <div className="flex items-center gap-2"><input type="checkbox" checked={!!vlan} onChange={e => { if (!e.target.checked) setVlan(''); }} className="cursor-pointer" /><label className="label-sm cursor-pointer" onClick={() => { if (!vlan) setVlan(' '); }}>Vlan</label></div>
+        {!!vlan && <div className="flex gap-2 md:gap-3 flex-wrap">
           <div className="flex-1 min-w-[140px]"><SelectField label="" value={vlan} onChange={setVlan} options={vlans.map(v => ({ value: String(v.vlan_id), label: `${v.vlan_id} - ${v.name}` }))} placeholder="Select Vlan" /></div>
           <div className="flex items-center gap-2"><input type="checkbox" checked={cosEnabled} onChange={e => setCosEnabled(e.target.checked)} className="cursor-pointer" /><span className="text-xs">CoS</span>
             {cosEnabled && <select value={cos} onChange={e => setCos(e.target.value)} className="input-field w-20"><option value="">CoS</option>{[0,1,2,3,4,5,6,7,8].map(c => <option key={c} value={c}>{c}</option>)}</select>}
