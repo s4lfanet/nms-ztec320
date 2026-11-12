@@ -10,24 +10,35 @@ interface SearchBarProps {
   onKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => void;
 }
 
+/**
+ * Kolom pencarian. Ikon & tombol hapus diletakkan berdampingan (flex), bukan
+ * melayang (absolute) di atas input — sehingga teks tidak pernah tertimpa ikon
+ * walau padding input diubah oleh CSS lain (versi HP, skala teks Android, dll).
+ */
 export function SearchBar({ value, onChange, placeholder = 'Search...', className, onKeyDown }: SearchBarProps) {
   return (
-    <div className={cn('relative', className)}>
-      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-tx3 pointer-events-none" />
+    <div
+      className={cn(
+        'input-field !flex items-center gap-2 !px-3 focus-within:!border-accent cursor-text',
+        className,
+      )}
+      onClick={e => (e.currentTarget.querySelector('input') as HTMLInputElement | null)?.focus()}
+    >
+      <Search size={15} className="text-tx3 shrink-0 pointer-events-none" />
       <input
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
-        className="input-field pl-9 pr-8"
+        className="flex-1 min-w-0 h-full !p-0 bg-transparent border-0 outline-none text-tx1 placeholder:text-tx3"
         aria-label={placeholder}
       />
       {value && (
         <button
           type="button"
           onClick={() => onChange('')}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-tx3 hover:text-tx1 transition-colors"
+          className="touch-sm shrink-0 !min-h-0 !min-w-0 p-0.5 text-tx3 hover:text-tx1 transition-colors"
           aria-label="Clear search"
         >
           <X size={14} />
