@@ -79,3 +79,25 @@ def test_falls_back_to_legacy_mapping_without_counter(monkeypatch):
                                      ('EPON 2P', 2), ('OLT', 4), ('HSGQ-E16', 16)])
 def test_default_pon_count(model, n):
     assert _adapter(model)._default_pon_count() == n
+
+
+def test_optic_index_with_zero_suffix_and_centi_scale(monkeypatch):
+    k = _keys()
+    data = {
+        '.50224.3.12.2.1.3': {k[0]: 1, k[1]: 1, k[2]: 1},
+        '.50224.3.2.3.1.4': {'1': 2, '2': 1},
+        '.50224.3.12.2.1.2': {k[0]: 'a', k[1]: 'b', k[2]: 'c'},
+        '.50224.3.12.2.1.19': {k[0]: 1200},
+        # RX ber-ekor .0.0 (laporan lapangan)
+        '.50224.3.12.3.1.4': {k[0] + '.0.0': -2122, k[1] + '.0.0': -2350, k[2] + '.0.0': -1999},
+        # kolom .5 bukan TX (nilai seperti RX), TX sebenarnya di .3
+        '.50224.3.12.3.1.5': {k[0] + '.0.0': -2600},
+        '.50224.3.12.3.1.3': {k[0] + '.0.0': 95, k[1] + '.0.0': 210, k[2] + '.0.0': 180},
+    }
+    import snmp_core
+    monkeypatch.setattr(snmp_core, 'SNMPCollector', _fake(data))
+    by = {(o['port'], o['onu_id']): o for o in _adapter().collect_onus()}
+    assert by[(1, 1)]['rx_power'] == -21.22
+    assert by[(1, 1)]['tx_power'] == 0.95          # bukan 9.5 (skala /100)
+    assert by[(2, 1)]['rx_power'] == -19.99
+    assert by[(1, 1)]['distance'] == 1200

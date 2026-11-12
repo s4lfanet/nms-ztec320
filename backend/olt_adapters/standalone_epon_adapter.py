@@ -15,6 +15,31 @@ from .hioso_adapter import format_mac_or_sn, parse_optical_dbm, parse_onu_suffix
 logger = logging.getLogger(__name__)
 
 
+def _norm_index_keys(res):
+    """'16777472.0.0' → '16777472' (ekor nol pada indeks tabel optik HSGQ)."""
+    if not res:
+        return res
+    out = {}
+    for k, v in res.items():
+        parts = str(k).strip('.').split('.')
+        if len(parts) > 1 and all(p == '0' for p in parts[1:]):
+            k = parts[0]
+        out.setdefault(str(k), v)
+    return out
+
+
+def _centi_dbm(v):
+    """Nilai optik HSGQ: integer = dBm × 100 (-2122 → -21.22). None bila tak valid."""
+    try:
+        x = float(str(v).split()[0])
+    except Exception:
+        return None
+    if x in (0, -1, 65535, -65535, 2147483647, -2147483648):
+        return None
+    d = round(x / 100.0, 2)
+    return d if -60.0 <= d <= 15.0 else None
+
+
 class StandaloneEponAdapter(BaseOLTAdapter):
     """Generic SNMP adapter for HSGQ, VSOL, C-Data, BDCOM, Huawei, FiberHome, Raisecom, Dasan."""
 
@@ -168,6 +193,32 @@ class StandaloneEponAdapter(BaseOLTAdapter):
         except Exception:
             return None
 
+    def _hsgq_tx_column(self, sc, oids, tx_res):
+        """Kolom TX ONU HSGQ tidak konsisten antar sumber (.5 vs .3 di tabel
+        optik). Pilih kolom yang nilainya berada di rentang TX ONU (-5..+8 dBm)."""
+        def looks_tx(res):
+            vals = [v for v in (_centi_dbm(x) for x in res.values()) if v is not None]
+            if not vals:
+                return False
+            vals.sort()
+            med = vals[len(vals) // 2]
+            return -5.0 <= med <= 8.0
+        if looks_tx(tx_res):
+            return tx_res
+        base = (oids.get('onu_tx') or '').rsplit('.', 1)[0]
+        for col in ('3', '5'):
+            oid = f'{base}.{col}'
+            if not base or oid == oids.get('onu_tx'):
+                continue
+            try:
+                alt = _norm_index_keys(sc._run(sc._walk_async(oid)))
+            except Exception:
+                continue
+            if looks_tx(alt):
+                logger.info(f"[HSGQ:{self.olt.name}] TX ONU dari kolom optik .{col}")
+                return alt
+        return tx_res
+
     def _hsgq_pick_oids(self, sc) -> dict:
         """Pilih tabel/kolom status HSGQ yang cocok dengan penghitung online OLT."""
         stats = []
@@ -226,6 +277,14 @@ class StandaloneEponAdapter(BaseOLTAdapter):
             dist_res = sc._run(sc._walk_async(dist_oid)) if dist_oid else {}
             tx_oid = oids.get('onu_tx')
             tx_res = sc._run(sc._walk_async(tx_oid)) if tx_oid else {}
+            optic_scale = None
+            if vendor == 'hsgq':
+                # Laporan lapangan: indeks optik HSGQ ber-ekor ('16777472.0.0')
+                # sedangkan tabel status/jarak '16777472' → redaman N/A.
+                sn_res, name_res, status_res, rx_res, dist_res, tx_res = (
+                    _norm_index_keys(r) for r in (sn_res, name_res, status_res, rx_res, dist_res, tx_res))
+                tx_res = self._hsgq_tx_column(sc, oids, tx_res)
+                optic_scale = _centi_dbm   # nilai mentah = dBm × 100
 
             all_keys = list(dict.fromkeys(list(status_res.keys()) + list(sn_res.keys()) + list(name_res.keys())))
             for key in all_keys:
@@ -244,7 +303,7 @@ class StandaloneEponAdapter(BaseOLTAdapter):
                 else:
                     status = 'offline'
 
-                rx_dbm = parse_optical_dbm(rx_res.get(key))
+                rx_dbm = (optic_scale or parse_optical_dbm)(rx_res.get(key))
                 dist_val = None
                 if key in dist_res:
                     try:
@@ -269,7 +328,7 @@ class StandaloneEponAdapter(BaseOLTAdapter):
                     'reg_status': 1,
                     'rx_power': rx_dbm if status == 'online' else None,
                     'onu_rx_power': rx_dbm if status == 'online' else None,
-                    'tx_power': parse_optical_dbm(tx_res.get(key)) if status == 'online' else None,
+                    'tx_power': (optic_scale or parse_optical_dbm)(tx_res.get(key)) if status == 'online' else None,
                     'distance': dist_val,
                     'actual_type': '',
                     'last_dereg_reason': '',
