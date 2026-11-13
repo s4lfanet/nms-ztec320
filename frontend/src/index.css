@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source not "../dist";
 
 /* ─── Salfanet NMS Theme — Optical Carbon & Carrier Cyan ─── */
 /* Grounded in telecom hardware & optical test instrumentation (OTDR / NOC):
