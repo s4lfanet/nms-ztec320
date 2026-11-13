@@ -19,7 +19,7 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', classNam
   return (
     <div
       className={cn(
-        'input-field !flex items-center gap-2 !px-3 focus-within:!border-accent cursor-text',
+        'input-field search-bar !flex items-center gap-2 !px-3 cursor-text',
         className,
       )}
       onClick={e => (e.currentTarget.querySelector('input') as HTMLInputElement | null)?.focus()}
@@ -31,7 +31,7 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', classNam
         onChange={e => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
-        className="flex-1 min-w-0 h-full !p-0 bg-transparent border-0 outline-none text-tx1 placeholder:text-tx3"
+        className="search-bar-input flex-1 min-w-0 h-full !p-0 bg-transparent border-0 outline-none text-tx1 placeholder:text-tx3"
         aria-label={placeholder}
       />
       {value && (
