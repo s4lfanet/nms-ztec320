@@ -57,6 +57,7 @@ const navItems: NavItem[] = [
       { labelKey: 'nav.users', path: '/dashboard/users', permission: 'manage_users' },
       { labelKey: 'nav.alertSettings', path: '/dashboard/settings/alerts', permission: 'customization' },
       { labelKey: 'nav.cloudflare', path: '/dashboard/settings/cloudflare', permission: 'super_admin' },
+      { labelKey: 'nav.aiAgent', path: '/dashboard/settings/ai', permission: 'super_admin' },
       { labelKey: 'nav.systemUpdate', path: '/dashboard/settings/update', permission: 'super_admin' },
       { labelKey: 'nav.alertHistory', path: '/dashboard/alerts/history', permission: 'view_dashboard' },
     ],

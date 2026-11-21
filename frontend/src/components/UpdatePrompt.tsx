@@ -46,13 +46,13 @@ export function UpdatePrompt() {
     return () => { alive = false; window.clearTimeout(first); window.clearInterval(timer); };
   }, [isSuper]);
 
-  if (!info || location.pathname.startsWith('/settings/update')) return null;
+  if (!info || location.pathname.includes('/settings/update')) return null;
 
   const later = () => {
     try { localStorage.setItem(DISMISS_KEY, info.remote_sha || ''); } catch { /* ignore */ }
     setInfo(null);
   };
-  const open = () => { setInfo(null); navigate('/settings/update'); };
+  const open = () => { setInfo(null); navigate('/dashboard/settings/update'); };
   const commits = info.commits || [];
 
   return (

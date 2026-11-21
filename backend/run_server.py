@@ -138,6 +138,11 @@ def start_servers(flask_port: int = 5000, ws_port: int = 8765,
     link_thread.start()
     logger.info("Link-state poller started")
 
+    # AI agent: balas pertanyaan dari bot Telegram (idle sampai diaktifkan
+    # di Pengaturan AI Agent + kanal Telegram dinyalakan)
+    from ai_agent import start_telegram_poller
+    start_telegram_poller(flask_app)
+
     # Start Flask in a background thread
     flask_thread = threading.Thread(
         target=run_flask,

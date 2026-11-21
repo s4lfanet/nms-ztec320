@@ -93,6 +93,8 @@ app.register_blueprint(mikrotik_bp)
 app.register_blueprint(genieacs_bp)
 app.register_blueprint(api_v1_bp)
 app.register_blueprint(reports_bp)
+from routes_ai import bp as ai_bp
+app.register_blueprint(ai_bp)
 
 
 @app.before_request

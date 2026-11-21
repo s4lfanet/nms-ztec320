@@ -72,7 +72,8 @@
     "oltLogs": "OLT Logs",
     "reports": "Reports",
     "terminal": "OLT Terminal",
-    "home": "Home"
+    "home": "Home",
+    "aiAgent": "AI Agent"
   },
   "topbar": {
     "alarms": "Network Alarms",
