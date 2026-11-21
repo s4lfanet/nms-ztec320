@@ -1773,6 +1773,7 @@ class TelnetCollector:
             olt_prefix = 'epon-olt' if is_epon else 'gpon-olt'
             onu_if = f'{onu_prefix}_{frame}/{slot}/{port}:{onu_id}'
             pon_if = f'{olt_prefix}_{frame}/{slot}/{port}'
+            registered_here = False   # True setelah 'onu N type ... sn ...' sukses di sesi ini
             service_name = f'VLAN{vlan:04d}'
 
             # Step 1: end + configure terminal
@@ -1794,6 +1795,7 @@ class TelnetCollector:
             if err:
                 self._send_command(tn, 'end'); tn.close()
                 return False, f'Registration failed: {err}'
+            registered_here = True
 
             self._send_command(tn, 'exit')
 
@@ -1996,6 +1998,11 @@ class TelnetCollector:
             self._send_command(tn, 'end')
             tn.close()
             if last_err:
+                # 'onu N ... sn ...' sudah masuk OLT tapi konfigurasi gagal, dan ONU
+                # tidak disimpan ke DB → ghost: slot terpakai di OLT, register ulang
+                # ditolak. Batalkan registrasi agar OLT kembali bersih.
+                if registered_here:
+                    return False, f'CLI error: {last_err} — {self._rollback_registration(pon_if, onu_id)}'
                 return False, f'CLI error: {last_err}'
 
             # G7: Read-back verification
@@ -2010,6 +2017,8 @@ class TelnetCollector:
             logger.error(f"register_vendor_template failed: {e}")
             try: tn.close()
             except: pass
+            if locals().get('registered_here'):
+                return False, f'{e} — {self._rollback_registration(pon_if, onu_id)}'
             return False, str(e)
 
     def _verify_onu_registered(self, frame, slot, port, onu_id, is_epon=False):
@@ -2949,6 +2958,7 @@ class TelnetCollector:
             pon_if = f'{olt_prefix}_{frame}/{slot}/{port}'
 
             last_err = None
+            registered_here = False   # True setelah 'onu N type ... sn ...' sukses di sesi ini
             def sc(cmd):
                 nonlocal last_err
                 out, err = self._send_cmd_check(tn, cmd, timeout=10)
@@ -3010,6 +3020,7 @@ class TelnetCollector:
                 if err:
                     self._send_command(tn, 'end'); tn.close()
                     return False, f'Registration failed: {err}'
+                registered_here = True
                 self._send_command(tn, 'exit')
             else:
                 logger.info(f"[register_unified] skip_registration=True — ONU already registered via SNMP, configuring services only")
@@ -3363,6 +3374,11 @@ class TelnetCollector:
             self._send_command(tn, 'end')
             tn.close()
             if last_err:
+                # 'onu N ... sn ...' sudah masuk OLT tapi konfigurasi gagal, dan ONU
+                # tidak disimpan ke DB → ghost: slot terpakai di OLT, register ulang
+                # ditolak. Batalkan registrasi agar OLT kembali bersih.
+                if registered_here:
+                    return False, f'CLI error: {last_err} — {self._rollback_registration(pon_if, onu_id)}'
                 return False, f'CLI error: {last_err}'
 
             # G7: Read-back verification — confirm ONU is registered
@@ -3377,7 +3393,36 @@ class TelnetCollector:
             logger.error(f"register_unified failed: {e}")
             try: tn.close()
             except: pass
+            if locals().get('registered_here'):
+                return False, f'{e} — {self._rollback_registration(pon_if, onu_id)}'
             return False, str(e)
+
+    def _rollback_registration(self, pon_if, onu_id):
+        """Hapus ONU yang baru didaftarkan pada sesi registrasi yang gagal
+        ('no onu N') lewat koneksi baru. Mengembalikan keterangan untuk pesan."""
+        manual = f'hapus manual: interface {pon_if} → no onu {onu_id}'
+        try:
+            tn = self._connect()
+            if not tn:
+                return f'registrasi di OLT TIDAK dapat dibatalkan (koneksi gagal); {manual}'
+            try:
+                self._send_command(tn, 'end')
+                self._send_command(tn, 'configure terminal')
+                _, err = self._send_cmd_check(tn, f'interface {pon_if}')
+                if not err:
+                    _, err = self._send_cmd_check(tn, f'no onu {onu_id}')
+                self._send_command(tn, 'end')
+            finally:
+                try: tn.close()
+                except Exception: pass
+            if err:
+                logger.warning(f"[register] rollback {pon_if} onu {onu_id} gagal: {err}")
+                return f'registrasi di OLT gagal dibatalkan ({err}); {manual}'
+            logger.info(f"[register] rollback OK: {pon_if} no onu {onu_id}")
+            return 'registrasi dibatalkan otomatis di OLT, aman untuk register ulang'
+        except Exception as e:
+            logger.warning(f"[register] rollback exception: {e}")
+            return f'registrasi di OLT TIDAK dapat dibatalkan ({e}); {manual}'
 
     def collect_vlans(self):
         """Collect VLAN configuration from ZTE C320.
