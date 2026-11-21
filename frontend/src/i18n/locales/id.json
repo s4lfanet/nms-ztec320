@@ -72,7 +72,8 @@
     "oltLogs": "Log OLT",
     "reports": "Laporan",
     "terminal": "Terminal OLT",
-    "home": "Beranda"
+    "home": "Beranda",
+    "aiAgent": "AI Agent"
   },
   "topbar": {
     "alarms": "Alarm Jaringan",

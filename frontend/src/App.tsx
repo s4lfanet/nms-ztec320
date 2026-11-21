@@ -29,6 +29,7 @@ const Tr069Profile = lazy(() => import('./pages/Tr069Profile').then(m => ({ defa
 const ActionLogs = lazy(() => import('./pages/ActionLogs').then(m => ({ default: m.ActionLogs })));
 const AlertHistoryPage = lazy(() => import('./pages/AlertHistory').then(m => ({ default: m.AlertHistory })));
 const Traffic = lazy(() => import('./pages/Traffic').then(m => ({ default: m.Traffic })));
+const AiAgentSettings = lazy(() => import('./pages/AiAgentSettings').then(m => ({ default: m.AiAgentSettings })));
 const CloudflareTunnel = lazy(() => import('./pages/CloudflareTunnel').then(m => ({ default: m.CloudflareTunnel })));
 const GuidePage = lazy(() => import('./pages/GuidePage').then(m => ({ default: m.GuidePage })));
 const UnconfiguredOnus = lazy(() => import('./pages/UnconfiguredOnus').then(m => ({ default: m.UnconfiguredOnus })));
@@ -206,6 +207,7 @@ export default function App() {
         <Route path="profile" element={<MyProfile />} />
         <Route path="settings/alerts" element={<AlertSettings />} />
         <Route path="settings/cloudflare" element={<CloudflareTunnel />} />
+        <Route path="settings/ai" element={<AiAgentSettings />} />
         <Route path="settings/auto-provision" element={<AutoProvision />} />
         <Route path="alerts/history" element={<AlertHistoryPage />} />
         <Route path="ftth" element={<FtthInfrastructure />} />

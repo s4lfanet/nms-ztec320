@@ -19,6 +19,9 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 
 const PORT = process.env.WA_GATEWAY_PORT || 3001;
+// AI agent NMS: URL endpoint pesan masuk + kunci internal (diwarisi dari env NMS)
+const AI_INBOUND_URL = process.env.NMS_AI_INBOUND_URL || '';
+const INTERNAL_KEY = process.env.INTERNAL_API_KEY || '';
 const AUTH_DIR = process.env.WA_AUTH_DIR ? path.resolve(process.env.WA_AUTH_DIR) : path.join(__dirname, 'auth_state');
 
 let sock = null;
@@ -89,8 +92,31 @@ async function connectWA() {
       }
     });
 
-    sock.ev.on('messages.upsert', () => {
-      // We don't process incoming messages — send-only gateway
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+      // Diteruskan ke AI agent NMS hanya bila NMS_AI_INBOUND_URL diset (dijalankan
+      // oleh NMS). NMS sendiri yang memutuskan pengirim boleh dijawab atau tidak.
+      if (type !== 'notify' || !AI_INBOUND_URL || !INTERNAL_KEY) return;
+      for (const m of messages || []) {
+        try {
+          const jid = m.key?.remoteJid || '';
+          if (m.key?.fromMe || !jid.endsWith('@s.whatsapp.net')) continue;   // abaikan grup/status
+          const text = m.message?.conversation || m.message?.extendedTextMessage?.text || '';
+          if (!text.trim()) continue;
+          const sender = jid.split('@')[0];
+          const r = await fetch(AI_INBOUND_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'wa-gateway',
+                       'X-Internal-Key': INTERNAL_KEY },
+            body: JSON.stringify({ sender, text }),
+            signal: AbortSignal.timeout(120000),
+          });
+          if (!r.ok) continue;
+          const { reply } = await r.json();
+          if (reply) await sock.sendMessage(jid, { text: reply }, { quoted: m });
+        } catch (err) {
+          console.error('[WA] AI inbound error:', err.message);
+        }
+      }
     });
 
   } catch (err) {

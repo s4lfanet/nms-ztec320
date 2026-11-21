@@ -117,6 +117,7 @@ AVAILABLE_PERMISSIONS = {
     'olt_terminal': 'OLT Terminal (Telnet/SSH)',
     'pon_port_control': 'Enable/Disable PON Port',
     'customization': 'Customization',
+    'ai_agent': 'AI Agent (tanya status jaringan)',
     'view_dashboard': 'View Dashboard',
     'view_onus': 'View All ONUs',
     'receive_alerts': 'Receive Alert Notifications',

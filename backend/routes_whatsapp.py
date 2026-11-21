@@ -185,6 +185,9 @@ def wa_native_start():
         env = os.environ.copy()
         env['WA_GATEWAY_PORT'] = str(port)
         env['WA_AUTH_DIR'] = auth_dir
+        # AI agent: gateway meneruskan pesan masuk ke NMS (NMS yang menyaring pengirim)
+        env.setdefault('NMS_AI_INBOUND_URL',
+                       f"http://127.0.0.1:{os.environ.get('NMS_FLASK_PORT', '5000')}/api/internal/ai/wa-inbound")
         env['PATH'] = '/usr/local/bin:/usr/bin:/bin:' + env.get('PATH', '')
         # Try restart first (works if process exists)
         restart = subprocess.run([PM2_BIN, 'restart', name, '--update-env'],
