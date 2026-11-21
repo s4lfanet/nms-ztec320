@@ -21,6 +21,17 @@ const PRESETS: { label: string; provider: Provider; base: string; model: string 
   { label: 'Ollama (lokal)', provider: 'openai', base: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:7b' },
 ];
 
+/** Perintah cepat — dijawab langsung dari database NMS tanpa AI (0 token). */
+const QUICK: [string, string][] = [
+  ['/ringkasan', 'Status semua OLT'],
+  ['/gangguan', 'ONU offline / LOS / dying gasp'],
+  ['/redaman', 'ONU online dengan RX < -27 dBm'],
+  ['/alert', 'Alert 6 jam terakhir'],
+  ['/cari <kata>', 'Cari pelanggan (nama/PPPoE/SN)'],
+  ['/onu <ID|nama>', 'Detail satu ONU'],
+  ['/menu', 'Daftar perintah'],
+];
+
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="flex items-center gap-2 text-sm text-tx2 cursor-pointer">
@@ -59,8 +70,8 @@ export function AiAgentSettings() {
     } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
   };
 
-  const ask = async () => {
-    const question = q.trim();
+  const ask = async (preset?: string) => {
+    const question = (preset ?? q).trim();
     if (!question) return;
     setChat(c => [...c, { role: 'user', text: question }]); setQ(''); setAsking(true);
     try {
@@ -126,7 +137,7 @@ export function AiAgentSettings() {
       </div>
       <Card title="Coba tanya" className="mt-4">
         <div className="space-y-2 max-h-[45vh] overflow-y-auto mb-3">
-          {chat.length === 0 && <p className="text-xs text-tx3">Contoh: “ringkasan semua OLT”, “cek pelanggan budi”, “ONU mana yang LOS?”</p>}
+          {chat.length === 0 && <p className="text-xs text-tx3">Perintah berawalan <b>/</b> dijawab langsung dari database NMS tanpa AI (gratis, instan) — klik tombol di bawah. Pertanyaan bebas, mis. “kenapa budi sering putus?”, dijawab AI.</p>}
           {chat.map((m, i) => (
             <div key={i} className={m.role === 'user' ? 'text-right' : ''}>
               <span className={`inline-block max-w-[90%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm text-left ${m.role === 'user' ? 'bg-accent/15 text-tx1' : 'bg-glass text-tx1'}`}>{m.text}</span>
@@ -134,10 +145,18 @@ export function AiAgentSettings() {
           ))}
           {asking && <Loader2 size={16} className="animate-spin text-tx3" />}
         </div>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {QUICK.map(([cmd, desc]) => (
+            <button key={cmd} onClick={() => (cmd.includes('<') ? setQ(cmd.split(' ')[0] + ' ') : ask(cmd))}
+              title={desc} className="px-2.5 py-1 rounded-lg text-xs border border-brd text-tx2 hover:text-tx1 hover:border-accent/40 font-mono">
+              {cmd}
+            </button>
+          ))}
+        </div>
         <div className="flex gap-2">
           <input className="input-field" value={q} onChange={e => setQ(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && ask()} placeholder="Tulis pertanyaan… (/reset untuk mulai ulang)" />
-          <Button onClick={ask} loading={asking} icon={<Send size={15} />}>Kirim</Button>
+          <Button onClick={() => ask()} loading={asking} icon={<Send size={15} />}>Kirim</Button>
         </div>
       </Card>
     </PageContainer>

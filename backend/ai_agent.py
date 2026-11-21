@@ -210,6 +210,19 @@ TOOLS = [
 _TOOL_FN = {t[0]: t[3] for t in TOOLS}
 
 
+def _strip_empty(v):
+    if isinstance(v, dict):
+        return {k: _strip_empty(x) for k, x in v.items() if x not in (None, '', [], {})}
+    if isinstance(v, list):
+        return [_strip_empty(x) for x in v]
+    return v
+
+
+def _compact(result):
+    """JSON hasil tool sehemat mungkin (tanpa spasi, tanpa field kosong) → hemat token."""
+    return json.dumps(_strip_empty(result), ensure_ascii=False, default=str, separators=(',', ':'))
+
+
 def run_tool(name, args):
     fn = _TOOL_FN.get(name)
     if not fn:
@@ -264,7 +277,7 @@ def _call_anthropic(cfg, messages):
             return '\n'.join(c.get('text', '') for c in content if c.get('type') == 'text').strip()
         msgs.append({'role': 'user', 'content': [
             {'type': 'tool_result', 'tool_use_id': c['id'],
-             'content': json.dumps(run_tool(c['name'], c.get('input')), ensure_ascii=False, default=str)}
+             'content': _compact(run_tool(c['name'], c.get('input')))}
             for c in calls]})
     return 'Maaf, pertanyaan ini butuh terlalu banyak langkah. Coba persempit pertanyaannya.'
 
@@ -296,8 +309,147 @@ def _call_openai(cfg, messages):
             except ValueError:
                 args = {}
             msgs.append({'role': 'tool', 'tool_call_id': c.get('id'),
-                         'content': json.dumps(run_tool(fn.get('name'), args), ensure_ascii=False, default=str)})
+                         'content': _compact(run_tool(fn.get('name'), args))})
     return 'Maaf, pertanyaan ini butuh terlalu banyak langkah. Coba persempit pertanyaannya.'
+
+
+# ──────────────────────── perintah cepat (tanpa AI) ─────────────────────────
+# Template /perintah dijawab langsung dari database — 0 token, instan, tetap
+# jalan walau API key belum diisi. Teks bebas (bukan '/…') diteruskan ke AI.
+
+def _fmt_rx(v):
+    return f'{v:.2f} dBm' if isinstance(v, (int, float)) else '-'
+
+
+def _fmt_onu_line(o):
+    extra = f" ({o['reason']})" if o.get('reason') else ''
+    rx = f" | RX {_fmt_rx(o.get('rx_power_dbm'))}" if o.get('status') == 'online' else ''
+    return f"- {o.get('name') or '-'} | {o['olt']} {o['interface']} | {o['status']}{rx}{extra}"
+
+
+def _cmd_menu(_arg):
+    return ('*Perintah cepat NMS* (tanpa AI, gratis):\n'
+            '/ringkasan — status semua OLT\n'
+            '/cari <nama/PPPoE/SN> — cari pelanggan\n'
+            '/onu <ID atau nama> — detail satu ONU\n'
+            '/gangguan [nama OLT] — ONU offline/LOS/dying gasp\n'
+            '/redaman [nama OLT] — ONU online dengan RX < -27 dBm\n'
+            '/alert [jam] — alert terbaru (default 6 jam)\n'
+            '/reset — mulai percakapan AI baru\n\n'
+            'Pertanyaan bebas (tanpa /) dijawab oleh AI.')
+
+
+def _cmd_summary(_arg):
+    rows = tool_summary({})['olts']
+    if not rows:
+        return 'Belum ada OLT.'
+    out = ['*Ringkasan OLT*']
+    tot = {'t': 0, 'on': 0, 'off': 0, 'los': 0, 'dg': 0}
+    for o in rows:
+        st = 'ONLINE' if o['online'] else 'OFFLINE'
+        temp = f", {o['temperature_c']}°C" if o.get('temperature_c') else ''
+        out.append(f"- {o['olt']} [{st}{temp}]: {o['onu_online'] or 0}/{o['onu_total'] or 0} online, "
+                   f"LOS {o['onu_los'] or 0}, DG {o['onu_dying_gasp'] or 0}, offline {o['onu_offline'] or 0}")
+        tot['t'] += o['onu_total'] or 0; tot['on'] += o['onu_online'] or 0
+        tot['los'] += o['onu_los'] or 0; tot['dg'] += o['onu_dying_gasp'] or 0
+    out.append(f"Total: {tot['on']}/{tot['t']} online, LOS {tot['los']}, DG {tot['dg']}")
+    return '\n'.join(out)
+
+
+def _cmd_search(arg):
+    if len(arg) < 2:
+        return 'Format: /cari <nama/PPPoE/SN>, contoh: /cari budi'
+    r = tool_search_onu({'query': arg, 'limit': 10})
+    if not r.get('onus'):
+        return f'Tidak ada ONU yang cocok dengan "{arg}".'
+    lines = [f"*{r['count']} ONU cocok \"{arg}\"*"] + [
+        _fmt_onu_line(o) + f" | ID {o['id']}" for o in r['onus']]
+    if r['count'] == 10:
+        lines.append('(maks 10 — persempit kata kunci)')
+    return '\n'.join(lines)
+
+
+def _cmd_onu(arg):
+    if not arg:
+        return 'Format: /onu <ID atau nama>, contoh: /onu 125 atau /onu budi'
+    if arg.isdigit():
+        d = tool_onu_detail({'onu_id': int(arg)})
+    else:
+        r = tool_search_onu({'query': arg, 'limit': 5})
+        if not r.get('onus'):
+            return f'Tidak ada ONU yang cocok dengan "{arg}".'
+        if r['count'] > 1:
+            return _cmd_search(arg) + '\nKetik /onu <ID> untuk detail.'
+        d = tool_onu_detail({'onu_id': r['onus'][0]['id']})
+    if d.get('error'):
+        return d['error']
+    online = d['status'] == 'online'
+    lines = [f"*{d.get('name') or '-'}* (ID {d['id']})",
+             f"OLT: {d['olt']} {d['interface']}",
+             f"Status: {d['status']}" + (f" — {d['last_down_reason']}" if not online and d.get('last_down_reason') else ''),
+             f"PPPoE: {d.get('pppoe') or '-'} | SN: {d.get('serial') or '-'}",
+             f"Model: {d.get('model') or '-'}"]
+    if online:
+        lines.append(f"RX ONU: {_fmt_rx(d.get('onu_rx_power_dbm') or d.get('rx_power_dbm'))} | "
+                     f"RX OLT: {_fmt_rx(d.get('rx_power_dbm'))} | TX: {_fmt_rx(d.get('tx_power_dbm'))}")
+    if d.get('distance_m'):
+        lines.append(f"Jarak: {d['distance_m']} m")
+    lines.append(f"Online terakhir: {d.get('last_online') or '-'} | Offline terakhir: {d.get('last_offline') or '-'}")
+    return '\n'.join(lines)
+
+
+def _cmd_problems(arg):
+    r = tool_problem_onus({'olt': arg or None, 'limit': 20, 'include_weak_signal': False})
+    rows = r['not_online']
+    if not rows:
+        return 'Tidak ada ONU yang bermasalah' + (f' di OLT "{arg}".' if arg else '. Semua online.')
+    head = f"*{len(rows)} ONU tidak online*" + (f' (OLT "{arg}")' if arg else '') + (' — 20 terbaru' if len(rows) == 20 else '')
+    return '\n'.join([head] + [_fmt_onu_line(o) for o in rows])
+
+
+def _cmd_weak(arg):
+    q = ONU.query.filter(ONU.status == 'online', ONU.rx_power.isnot(None), ONU.rx_power < -27)
+    if arg:
+        q = q.join(OLT, ONU.olt_id == OLT.id).filter(OLT.name.ilike(f'%{arg}%'))
+    rows = q.order_by(ONU.rx_power).limit(20).all()
+    if not rows:
+        return 'Tidak ada ONU online dengan redaman di bawah -27 dBm.'
+    return '\n'.join([f'*{len(rows)} ONU redaman lemah (< -27 dBm)*'] + [_fmt_onu_line(_onu_brief(o)) for o in rows])
+
+
+def _cmd_alerts(arg):
+    hours = int(arg) if arg.isdigit() else 6
+    r = tool_recent_alerts({'hours': hours})
+    if not r['alerts']:
+        return f'Tidak ada alert dalam {r["hours"]} jam terakhir.'
+    return '\n'.join([f"*Alert {r['hours']} jam terakhir* ({len(r['alerts'])})"] + [
+        f"- {a['time']} [{a['severity']}] {a['title']}" for a in r['alerts'][:15]])
+
+
+QUICK_COMMANDS = {
+    'menu': _cmd_menu, 'bantuan': _cmd_menu, 'help': _cmd_menu, 'start': _cmd_menu,
+    'ringkasan': _cmd_summary, 'status': _cmd_summary,
+    'cari': _cmd_search,
+    'onu': _cmd_onu, 'detail': _cmd_onu,
+    'gangguan': _cmd_problems, 'down': _cmd_problems, 'los': _cmd_problems,
+    'redaman': _cmd_weak,
+    'alert': _cmd_alerts,
+}
+
+
+def quick_command(text):
+    """Jawaban perintah /… atau None bila bukan perintah cepat."""
+    if not text.startswith('/'):
+        return None
+    head, _, arg = text[1:].partition(' ')
+    fn = QUICK_COMMANDS.get(head.lower().split('@')[0])   # '/ringkasan@namabot' (grup Telegram)
+    if not fn:
+        return None
+    try:
+        return fn(arg.strip())[:3500]
+    except Exception as e:
+        logger.warning(f'[AI] quick command {head}: {e}')
+        return f'Gagal menjalankan /{head}: {str(e)[:120]}'
 
 
 # ─────────────────────────────── percakapan ─────────────────────────────────
@@ -341,6 +493,11 @@ def ask(conv_key, question):
     cfg = get_config(include_key=True)
     if cfg['ai_enabled'] != '1':
         return 'AI agent NMS belum diaktifkan.'
+    quick = quick_command(question)
+    if quick is not None:
+        return quick
+    if question.startswith('/'):
+        return 'Perintah tidak dikenal. Ketik /menu untuk daftar perintah.'
     if cfg['ai_provider'] == 'anthropic' and not cfg['api_key']:
         return 'Kunci API AI belum diisi di pengaturan NMS.'
     history = HISTORY.get(conv_key)
