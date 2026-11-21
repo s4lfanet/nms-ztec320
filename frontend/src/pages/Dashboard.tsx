@@ -18,6 +18,7 @@ import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, EmptyState, Select } from '../components/ui';
 import { FilterBar, SearchBar } from '../components/shared';
+import { useStatusFlash, flashClass } from '../hooks/useStatusFlash';
 
 const REFRESH_INTERVAL = 30;
 
@@ -233,6 +234,22 @@ export function Dashboard() {
     }
     return a.name.localeCompare(b.name);
   }), [filteredOlts, sortKey]);
+
+  // Animasi: kartu OLT "menyala" sekali per sesi browser; kartu berkedip saat
+  // kondisi OLT berubah (down/naik, ada/hilang gangguan) pada refresh otomatis.
+  const [ignite] = useState(() => {
+    try {
+      if (sessionStorage.getItem('nms-dash-ignited')) return false;
+      sessionStorage.setItem('nms-dash-ignited', '1');
+    } catch { /* ignore */ }
+    return true;
+  });
+  const oltFlash = useStatusFlash(
+    olts,
+    o => o.id,
+    o => (!o.is_online ? 'down' : (o.offline_onu || 0) + (o.dyinggasp_onu || 0) + (o.los_onu || 0) > 0
+      ? `warning:${(o.offline_onu || 0) + (o.dyinggasp_onu || 0) + (o.los_onu || 0)}` : 'up'),
+  );
 
   // Network Health Score — weighted composite of infrastructure health.
   // 40% OLT availability + 40% ONU online rate + 20% ONU signal quality
@@ -509,10 +526,12 @@ export function Dashboard() {
         />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {sortedOlts.map(olt => (
+          {sortedOlts.map((olt, i) => (
             <OltCard
               key={olt.id}
               olt={olt}
+              igniteDelay={ignite ? i * 120 : undefined}
+              flash={oltFlash.get(olt.id)}
               onSync={hasPerm('settings_ip_olts') ? () => syncMutation.mutate(olt.id) : undefined}
               syncing={syncingOlt === olt.id}
               syncProgress={syncingOlt === olt.id ? syncProgress : undefined}
@@ -566,17 +585,23 @@ function StatCard({ icon, label, value, sub, color, progress, delay = 0 }: {
   );
 }
 
-function OltCard({ olt, onSync, syncing, syncProgress, onConfig }: {
+function OltCard({ olt, onSync, syncing, syncProgress, onConfig, igniteDelay, flash }: {
   olt: OltInfo; onSync?: () => void; syncing: boolean;
   syncProgress?: number; onConfig?: () => void;
+  igniteDelay?: number; flash?: string;
 }) {
   const { t } = useTranslation();
   const problemCount = (olt.offline_onu || 0) + (olt.dyinggasp_onu || 0) + (olt.los_onu || 0);
   const onlinePct = olt.total_onu > 0 ? Math.round((olt.online_onu / olt.total_onu) * 100) : 0;
 
   return (
-    <div className={cn(
+    <div
+      data-tone={!olt.is_online ? 'danger' : problemCount > 0 ? 'warning' : 'success'}
+      style={igniteDelay !== undefined ? ({ '--ignite-d': `${igniteDelay}ms` } as React.CSSProperties) : undefined}
+      className={cn(
       'rounded-xl border bg-glass overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-8px_rgba(0,0,0,0.4)] animate-fade-in',
+      igniteDelay !== undefined && 'ignite-sweep',
+      flash && flashClass(flash.split(':')[0]),
       !olt.is_online
         ? 'border-l-4 border-l-danger border-danger/25'
         : problemCount > 0

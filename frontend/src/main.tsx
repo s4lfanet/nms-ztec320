@@ -6,6 +6,7 @@ import { Toaster } from './components/Toast'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import './index.css'
 import './glass.css'  // tema glass (additive; hapus baris ini untuk kembali ke tampilan lama)
+import './motion.css' // animasi: nyala dashboard, kedip status, transisi halaman (hapus untuk mematikan)
 import './lib/api'  // Global fetch interceptor for CSRF protection
 import './i18n'     // react-i18next — id/en locales, browser pref + user profile
 import { initTheme } from './stores/theme'

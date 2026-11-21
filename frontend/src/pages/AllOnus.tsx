@@ -18,6 +18,7 @@ import { LocationPicker } from '../components/LocationPicker';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, EmptyState, Select, Input, Modal } from '../components/ui';
+import { useStatusFlash, flashClass } from '../hooks/useStatusFlash';
 import { FilterBar, SearchBar, StatusBadge } from '../components/shared';
 
 export function AllOnus() {
@@ -182,6 +183,9 @@ export function AllOnus() {
     else p.set('signal', next);
     setSearchParams(p, { replace: true });
   };
+
+  // Kedip baris ONU yang statusnya berubah saat data ter-refresh (gangguan baru/pulih)
+  const onuFlash = useStatusFlash((data as AllOnusData | undefined)?.onus, o => o.id, o => o.status);
 
   if (isLoading) return <TableSkeleton />;
 
@@ -441,7 +445,7 @@ export function AllOnus() {
               {onus.map((onu) => (
                 <tr
                   key={onu.id}
-                  className="border-b border-brd/50 hover:bg-glass/50 transition-colors"
+                  className={`border-b border-brd/50 hover:bg-glass/50 transition-colors ${onuFlash.has(onu.id) ? flashClass(onuFlash.get(onu.id)) : ''}`}
                 >
                   <td className="px-4 py-3">
                     <span className="text-sm text-tx2">{onu.olt_name}</span>
@@ -540,7 +544,7 @@ export function AllOnus() {
               />
             )}
             {onus.map((onu) => (
-              <div key={onu.id} className="p-4">
+              <div key={onu.id} className={`p-4 ${onuFlash.has(onu.id) ? flashClass(onuFlash.get(onu.id)) : ''}`}>
                 {/* Top row: name + status */}
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="min-w-0 flex-1">
