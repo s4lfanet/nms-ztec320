@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Download, X } from 'lucide-react';
+import { Download, X, Loader2 } from 'lucide-react';
+import { toast } from './Toast';
 import { useAuth } from '../stores/auth';
 
 interface CheckResult {
@@ -18,14 +19,32 @@ const FIRST_DELAY_MS = 15_000;            // tunggu halaman selesai dimuat
 /**
  * Pop-up "Update tersedia" untuk super admin: cek GitHub berkala lewat
  * /api/system/update/check (endpoint yang sama dengan halaman Update Sistem).
- * Tidak memasang update otomatis — tombolnya membuka halaman Update Sistem.
+ * "Update sekarang" memasang update dari pop-up (konfirmasi dulu), lalu memuat
+ * ulang halaman setelah service hidup lagi; "Detail" membuka halaman Update Sistem.
  * "Nanti" menyembunyikan pop-up sampai ada commit baru lagi.
  */
+/** Tunggu service mati lalu hidup lagi (maks ±90 dtk). */
+async function waitForRestart() {
+  const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+  const up = async () => {
+    try {
+      const r = await fetch('/api/public/branding', { cache: 'no-store' });
+      return r.ok;
+    } catch { return false; }
+  };
+  await sleep(4000);
+  for (let i = 0; i < 45; i++) {
+    if (await up()) { await sleep(1500); return; }
+    await sleep(2000);
+  }
+}
+
 export function UpdatePrompt() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [info, setInfo] = useState<CheckResult | null>(null);
+  const [phase, setPhase] = useState<'idle' | 'applying' | 'restarting'>('idle');
   const isSuper = !!user?.is_super_admin;
 
   useEffect(() => {
@@ -53,6 +72,31 @@ export function UpdatePrompt() {
     setInfo(null);
   };
   const open = () => { setInfo(null); navigate('/dashboard/settings/update'); };
+
+  // Pasang langsung dari pop-up: endpoint yang sama dengan tombol Apply Update.
+  const applyNow = async () => {
+    if (!confirm('Pasang update sekarang? Kode terbaru diambil dari GitHub lalu service di-restart — aplikasi tidak bisa diakses beberapa detik.')) return;
+    setPhase('applying');
+    try {
+      const r = await fetch('/api/system/update/apply', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      const d = await r.json();
+      if (!d.success) { toast.error(d.message || 'Update gagal'); setPhase('idle'); return; }
+      if (!d.restarted) { toast.success(d.message); setPhase('idle'); setInfo(null); return; }
+      setPhase('restarting');
+      await waitForRestart();
+      try {
+        const regs = await navigator.serviceWorker?.getRegistrations?.();
+        await Promise.all((regs || []).map(reg => reg.update().catch(() => undefined)));
+      } catch { /* ignore */ }
+      window.location.reload();
+    } catch {
+      toast.error('Gagal memasang update — coba dari halaman Update Sistem');
+      setPhase('idle');
+    }
+  };
   const commits = info.commits || [];
 
   return (
@@ -72,12 +116,20 @@ export function UpdatePrompt() {
               {commits.length > 5 && <li className="text-tx3">… dan {commits.length - 5} lainnya</li>}
             </ul>
           )}
-          <div className="flex gap-2 mt-3">
-            <button onClick={open} className="btn-primary text-xs">Lihat &amp; Update</button>
-            <button onClick={later} className="px-3 py-1.5 rounded-xl text-xs border border-brd text-tx2 hover:text-tx1">Nanti</button>
-          </div>
+          {phase === 'idle' ? (
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button onClick={applyNow} className="btn-primary text-xs">Update sekarang</button>
+              <button onClick={open} className="px-3 py-1.5 rounded-xl text-xs border border-brd text-tx2 hover:text-tx1">Detail</button>
+              <button onClick={later} className="px-3 py-1.5 rounded-xl text-xs text-tx3 hover:text-tx1">Nanti</button>
+            </div>
+          ) : (
+            <p className="flex items-center gap-2 mt-3 text-xs text-tx2">
+              <Loader2 size={14} className="animate-spin" />
+              {phase === 'applying' ? 'Mengambil update dari GitHub…' : 'Service memulai ulang — halaman dimuat ulang otomatis…'}
+            </p>
+          )}
         </div>
-        <button onClick={later} className="p-1 text-tx3 hover:text-tx1" aria-label="close"><X size={16} /></button>
+        {phase === 'idle' && <button onClick={later} className="p-1 text-tx3 hover:text-tx1" aria-label="close"><X size={16} /></button>}
       </div>
     </div>
   );
