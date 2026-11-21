@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Animasi bermakna: dashboard menyala, kedip status, transisi halaman
+
+#### Ditambahkan
+- **Lapisan animasi `src/motion.css`** (hapus import di `main.tsx` untuk mematikan): kartu OLT di Dashboard disapu cahaya fiber berurutan sekali per sesi browser (warna mengikuti kondisi OLT); kartu OLT dan baris/kartu ONU di All ONUs **berkedip sesuai warna status** saat refresh otomatis membawa perubahan (gangguan baru/pulih) lewat hook `useStatusFlash`; konten halaman muncul halus saat pindah menu. Semua dimatikan saat `prefers-reduced-motion`.
+
 ### 2026-11-22 — Perintah cepat AI Agent (tanpa token)
 
 #### Ditambahkan

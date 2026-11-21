@@ -1,0 +1,61 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Lapisan animasi NMS (additive). Hapus `import './motion.css'` di main.tsx
+   untuk mematikan seluruhnya. Prinsip: sedikit momen yang bermakna —
+   1) "nyala" dashboard sekali per sesi, 2) kedip saat status berubah,
+   3) transisi halus antar halaman. Semua dimatikan bila pengguna memilih
+   reduced motion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* 1) Dashboard menyala: cahaya fiber menyapu kartu OLT berurutan, sekali. */
+.ignite-sweep { position: relative; isolation: isolate; }
+.ignite-sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(105deg,
+    transparent 30%,
+    rgb(var(--ignite-rgb, 14 165 233) / 0.22) 46%,
+    rgb(255 255 255 / 0.35) 50%,
+    rgb(var(--ignite-rgb, 14 165 233) / 0.22) 54%,
+    transparent 70%);
+  background-size: 250% 100%;
+  background-position: 120% 0;
+  opacity: 0;
+  animation: igniteSweep 1.1s cubic-bezier(.4, 0, .2, 1) var(--ignite-d, 0ms) 1 both;
+}
+.ignite-sweep[data-tone="danger"]  { --ignite-rgb: 239 68 68; }
+.ignite-sweep[data-tone="warning"] { --ignite-rgb: 245 158 11; }
+.ignite-sweep[data-tone="success"] { --ignite-rgb: 16 185 129; }
+@keyframes igniteSweep {
+  0%   { opacity: 0; background-position: 120% 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { opacity: 0; background-position: -20% 0; }
+}
+
+/* 2) Status berubah: dua denyut cincin warna status + latar tipis. */
+.status-flash { animation: statusFlash 1.05s ease-out 2; }
+.status-flash-danger  { --flash-rgb: 239 68 68; }
+.status-flash-warning { --flash-rgb: 245 158 11; }
+.status-flash-success { --flash-rgb: 16 185 129; }
+@keyframes statusFlash {
+  0%   { box-shadow: inset 0 0 0 2px rgb(var(--flash-rgb) / 0.85), 0 0 0 0 rgb(var(--flash-rgb) / 0.45);
+         background-color: rgb(var(--flash-rgb) / 0.14); }
+  70%  { box-shadow: inset 0 0 0 2px rgb(var(--flash-rgb) / 0),    0 0 0 10px rgb(var(--flash-rgb) / 0); }
+  100% { box-shadow: none; background-color: transparent; }
+}
+
+/* 3) Transisi antar halaman: konten baru muncul halus. */
+.page-enter { animation: pageEnter 0.24s cubic-bezier(.2, .7, .2, 1) both; }
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ignite-sweep::after { animation: none; display: none; }
+  .status-flash { animation: none; outline: 2px solid rgb(var(--flash-rgb) / 0.8); outline-offset: -2px; }
+  .page-enter { animation: none; }
+}
