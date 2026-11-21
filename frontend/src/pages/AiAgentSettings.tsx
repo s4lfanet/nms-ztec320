@@ -39,7 +39,7 @@ export function AiAgentSettings() {
   const [asking, setAsking] = useState(false);
 
   useEffect(() => {
-    api.aiSettings().then(r => setCfg(r.config as Cfg)).catch(e => toast.error((e as Error).message));
+    api.aiSettings().then(r => setCfg(r.config as unknown as Cfg)).catch(e => toast.error((e as Error).message));
   }, []);
 
   if (!cfg) return <PageContainer><div className="p-8 text-tx3"><Loader2 className="animate-spin" /></div></PageContainer>;
@@ -54,7 +54,7 @@ export function AiAgentSettings() {
     setSaving(true);
     try {
       const r = await api.aiSaveSettings({ ...cfg, ...(apiKey ? { api_key: apiKey } : {}) });
-      setCfg(r.config as Cfg); setApiKey('');
+      setCfg(r.config as unknown as Cfg); setApiKey('');
       toast.success('Pengaturan AI Agent disimpan');
     } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
   };
