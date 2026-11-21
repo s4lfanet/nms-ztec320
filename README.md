@@ -25,6 +25,8 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - **GPON + EPON support**: Kartu GTG (GPON) dan ETG (EPON) terdeteksi otomatis, CLI commands menggunakan prefix yang sesuai (`gpon-olt_`/`gpon-onu_` vs `epon-olt_`/`epon-onu_`)
 - **Auto-backup OLT config**: Backup running-config via Telnet (`write memory` + `show running-config`), simpan ke DB, download/restore, auto-prune berdasarkan retention policy, notifikasi failure ke admin
 - **Per-slot health metrics**: CPU/Mem per card dari `show process` + temperature — tampil di kartu OLT dashboard dan tab System halaman OLT Configuration
+- **HSGQ adaptif**: Tabel SNMP ONU HSGQ (`50224.3.12` / `50224.3.3`) dan kolom status dipilih otomatis berdasar penghitung online PON OLT; redaman RX/TX dengan normalisasi indeks ber-ekor `.0.0` dan skala dBm×100; model 2-PON (E02/G02) dikenali
+- **Refresh Live menyimpan Actual Type**: Equipment ID dari `show gpon remote-onu equip` saat Refresh Live di View ONU disimpan ke database
 - **Interactive OLT terminal**: Terminal web xterm.js dengan negosiasi Telnet lengkap (WILL/DO ECHO, SGA, NAWS, IAC escaping), hormati `telnet_port`/`ssh_port` custom, audit log per sesi
 
 ### ONU Provisioning
@@ -35,6 +37,7 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - WiFi SSID OMCI config: Open/WPA/WPA2/Mixed auth untuk dual-band (2.4G & 5G)
 - TR069/ACS profile support untuk Fiberhome VEIP template
 - **FiberHome VEIP WAN config**: PPPoE/DHCP/Static WAN mode, WAN service add/edit/delete dari View ONU
+- **Rollback registrasi gagal**: Bila `onu N type … sn …` sudah masuk OLT tetapi konfigurasi layanan gagal, NMS menjalankan `no onu N` otomatis — tidak ada ONU "ghost" yang menghalangi register ulang
 - **TCONT profile fallback**: Auto-fallback ke `default` profile jika specified profile tidak ditemukan
 - **EPON support**: Deteksi otomatis kartu ETG, CLI prefix `epon-olt_`/`epon-onu_`, scan uncfg EPON, script preview dinamis
 - **EPON ONU registration**: MAC address diformat dotted (`xxxx.xxxx.xxxx`) untuk CLI ZTE, ONU type `ALL-EPON` (bukan `All`), keyword `mac` (bukan `sn`), skip GPON-only template commands (tcont/gemport), apply basic bridge service via `service-port`
@@ -71,7 +74,7 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - **Sensitive config masking**: Password/token di-mask untuk non-admin (termasuk di log, bukan cuma response API)
 - **Password policy & enforcement**: Minimal 8 karakter, menolak password umum/default. Login dengan password bawaan memaksa popup ganti password (`must_change_password` di-enforce server-side — semua API diblokir sampai diganti). Ganti password sendiri wajib `current_password`
 - **Loopback binds**: WebSocket/terminal dan WhatsApp gateway di-bind ke `127.0.0.1` di installer VPS (nginx yang me-proxy ke luar)
-- **System update from web UI**: Check dan apply GitHub updates langsung dari browser — updater memakai `frontend/dist` yang ter-commit (tanpa Node di server) dan build fallback yang aman
+- **System update from web UI**: Check dan apply GitHub updates langsung dari browser — updater memakai `frontend/dist` yang ter-commit (tanpa Node di server) dan build fallback yang aman. Pop-up **Update tersedia** untuk super admin (cek GitHub tiap 6 jam, tidak auto-apply)
 
 ### FTTH Infrastructure
 - Manajemen hierarki OTB → ODC → ODP
@@ -90,6 +93,11 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - Perangkat MikroTik (RouterOS API): CRUD, test koneksi, poll sesi PPPoE aktif
 - **Match MAC**: Cocokkan sesi PPPoE MikroTik ↔ ONU berdasar MAC — mode strip awalan `-N oktet` atau mode selisih `±N` (bandingkan MAC sebagai angka, OUI sama, kandidat terdekat, deteksi ambigu/klaim ganda). Apply massal untuk isi nama ONU dari identitas sesi
 - **Link state & ping**: Status link per ONU dari sesi PPPoE + ping ke IP client langsung dari View ONU
+
+### AI Agent (baca-saja)
+- **Tanya status jaringan lewat WhatsApp/Telegram/web**: ringkasan OLT, cari pelanggan, detail ONU, ONU bermasalah/redaman lemah, alert terbaru — data langsung dari DB NMS via tool calling, tanpa perintah ke OLT
+- **Multi-provider**: Claude API (Anthropic) atau endpoint OpenAI-compatible (OpenAI, Gemini, OpenRouter, Ollama lokal, dll.); API key terenkripsi; halaman Sistem → AI Agent dengan kotak uji
+- **Akses terbatas**: whitelist nomor WA / chat ID Telegram, atau nomor HP user aktif ber-izin `ai_agent`; pengirim lain diabaikan; setiap pertanyaan di audit log. Gateway WA meneruskan pesan masuk ke `/api/internal/ai/wa-inbound` (header `X-Internal-Key`)
 
 ### Customization & RBAC
 - Customizable column visibility dan sort order (desktop & mobile)

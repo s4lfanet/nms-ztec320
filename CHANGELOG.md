@@ -4,6 +4,23 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-21 — AI Agent, pop-up update, rollback registrasi gagal
+
+#### Ditambahkan
+- **AI Agent NMS (baca-saja) via WhatsApp & Telegram** — `ai_agent.py` + `routes_ai.py`: Claude API atau endpoint OpenAI-compatible (OpenAI/Gemini/OpenRouter/Ollama). Tool baca DB: ringkasan OLT, cari ONU, detail ONU, ONU bermasalah/redaman lemah, alert terbaru; riwayat percakapan 30 menit per pengirim (`/reset`). Gateway WA meneruskan pesan teks pribadi ke `/api/internal/ai/wa-inbound` (`X-Internal-Key` = `INTERNAL_API_KEY`); Telegram via long-poll bot alert. Izin baru `ai_agent`; halaman Sistem → AI Agent (super admin) dengan preset penyedia & kotak uji. Mati secara default (#41).
+- **Pop-up "Update tersedia" untuk super admin** — cek `/api/system/update/check` 15 dtk setelah login lalu tiap 6 jam; tombol ke halaman Update Sistem (tidak auto-apply), "Nanti" disembunyikan sampai commit baru (#40, path diperbaiki di #41).
+- **Panduan diperbarui** — panduan baru AI Agent, Notifikasi Push (PWA), Terminal OLT; pembaruan All ONUs (Match MAC ±N), View ONU (Refresh Live → Actual Type), Register/Provision (rollback), OLT Settings (multi-vendor, HSGQ, port custom), My Profile, Alert Settings, System Update. Opsi tipe OLT `HSGQ-E02`/`HSGQ-G02`.
+
+#### Diperbaiki
+- **Registrasi gagal meninggalkan ONU "ghost" di OLT** — `register_unified`/`register_vendor_template` kini menjalankan `no onu N` (koneksi baru) bila gagal setelah `onu N type … sn …` sukses, baik karena error CLI maupun exception; bila pembatalan gagal, pesan berisi perintah hapus manual (#39).
+
+### 2026-11-13 — HSGQ redaman, SearchBar, build deterministik
+
+#### Diperbaiki
+- **HSGQ: redaman RX/TX N/A** — indeks tabel optik `16777472.0.0` dinormalkan ke `16777472`; nilai optik selalu dibagi 100 (TX 95 → 0.95 dBm); kolom TX ONU dipilih otomatis antara `.5`/`.3` berdasar rentang nilai TX (#36).
+- **Kolom search tampak dua kotak saat fokus** — cincin fokus global `*:focus-visible` ikut menempel di input dalam SearchBar; fokus kini hanya di bingkai luar (#37).
+- **Build frontend deterministik** — `@source not "../dist"`: Tailwind v4 tidak lagi memindai `frontend/dist` yang ter-commit, sehingga hasil CSS lokal = CI (#38).
+
 ### Pending — Sync manual antre + `is_sync_locked` ikut bersihkan lock basi
 
 #### Diperbaiki
