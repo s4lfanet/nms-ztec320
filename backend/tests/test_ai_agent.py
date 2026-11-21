@@ -167,3 +167,26 @@ def test_web_ask_permission_and_settings(client, monkeypatch):
     assert client.post('/api/ai/ask', json={'question': 'x'}, headers=H).get_json()['answer'] == 'ok'
     cfg = client.get('/api/ai/settings').get_json()['config']
     assert cfg['has_key'] and 'api_key' not in cfg
+
+
+def test_quick_commands_no_ai_call(client, monkeypatch):
+    with app.app_context():
+        ai_agent.save_config({'ai_enabled': '1'})          # tanpa API key
+    def boom(*a, **k):
+        raise AssertionError('AI tidak boleh dipanggil untuk perintah cepat')
+    monkeypatch.setattr(ai_agent.httpx, 'post', boom)
+    with app.app_context():
+        assert '/ringkasan' in ai_agent.ask('q', '/menu')
+        assert 'C320-A' in ai_agent.ask('q', '/ringkasan') and 'LOS 1' in ai_agent.ask('q', '/ringkasan')
+        assert 'budi@rw01' in ai_agent.ask('q', '/cari budi')
+        d = ai_agent.ask('q', '/onu budi')
+        assert 'gpon-onu_1/1/1:1' in d and '-21.50 dBm' in d
+        assert 'ani@rw02' in ai_agent.ask('q', '/gangguan')
+        assert 'Tidak ada ONU online' in ai_agent.ask('q', '/redaman')
+        assert 'Tidak ada alert' in ai_agent.ask('q', '/alert 3')
+        assert 'tidak dikenal' in ai_agent.ask('q', '/xyz')
+        assert 'C320-A' in ai_agent.ask('q', '/ringkasan@nmsbot')
+
+
+def test_compact_tool_json():
+    assert ai_agent._compact({'a': None, 'b': '', 'c': [1, {'d': None, 'e': 2}]}) == '{"c":[1,{"e":2}]}'

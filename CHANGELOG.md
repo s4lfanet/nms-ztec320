@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Perintah cepat AI Agent (tanpa token)
+
+#### Ditambahkan
+- **Perintah cepat `/…` di AI Agent** — `/ringkasan`, `/gangguan [OLT]`, `/redaman [OLT]`, `/alert [jam]`, `/cari <kata>`, `/onu <ID|nama>`, `/menu` dijawab langsung dari DB tanpa memanggil AI (0 token, instan, jalan walau API key kosong); format ringkas untuk WhatsApp/Telegram, mendukung `/perintah@namabot`. Hasil tool ke AI kini JSON ringkas tanpa field kosong (hemat token). Tombol perintah cepat di halaman AI Agent; panduan diperbarui.
+
 ### 2026-11-21 — AI Agent, pop-up update, rollback registrasi gagal
 
 #### Ditambahkan

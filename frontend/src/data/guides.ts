@@ -698,6 +698,10 @@ export const guides: Guide[] = [
         content: 'AI agent membaca data NMS dan menjawab dalam bahasa sehari-hari, misalnya: **"ringkasan semua OLT"**, **"cek pelanggan budi"**, **"ONU mana yang LOS?"**, **"yang redamannya jelek?"**, **"gangguan 6 jam terakhir"**.\n\nAI hanya bisa **membaca** — tidak bisa reboot, register, atau mengubah konfigurasi. Percakapan diingat 30 menit per pengirim; ketik **/reset** untuk mulai baru.',
       },
       {
+        title: 'Perintah Cepat (hemat token)',
+        content: 'Perintah berawalan **/** dijawab langsung dari database NMS **tanpa AI** — gratis, instan, dan tetap jalan walau API key belum diisi:\n**/ringkasan** — status semua OLT\n**/gangguan [OLT]** — ONU offline/LOS/dying gasp\n**/redaman [OLT]** — ONU online dengan RX < -27 dBm\n**/alert [jam]** — alert terbaru (default 6 jam)\n**/cari <nama/PPPoE/SN>** — cari pelanggan\n**/onu <ID atau nama>** — detail satu ONU\n**/menu** — daftar perintah\n\nGunakan pertanyaan bebas (tanpa /) hanya untuk analisis yang butuh AI, mis. "kenapa budi sering putus?".',
+      },
+      {
         title: 'Pilih Penyedia AI',
         content: 'Buka **Sistem → AI Agent** (super admin), pilih **Preset penyedia**: Claude (Anthropic), OpenAI, Google Gemini, OpenRouter, atau Ollama (model lokal di server). Penyedia lain yang OpenAI-compatible bisa dipakai dengan format **OpenAI-compatible** + Base URL + nama model dari dokumentasinya.\n\nIsi **API Key** (disimpan terenkripsi). Langganan Claude Pro/Max **tidak bisa** dipakai — gunakan API key yang dibayar per pemakaian. Model harus mendukung *tool calling*.',
       },
@@ -715,7 +719,8 @@ export const guides: Guide[] = [
       'API key penyedia AI, atau Ollama yang berjalan di server',
     ],
     tips: [
-      'Paling praktis & akurat: Claude Haiku atau GPT-4o-mini — biayanya kecil untuk tanya-jawab NOC',
+      'Paling hemat: pakai perintah cepat (/ringkasan, /gangguan, /onu …) untuk pengecekan rutin — 0 token',
+      'Paling praktis & akurat untuk pertanyaan bebas: Claude Haiku atau Gemini Flash',
       'Ollama gratis & data tidak keluar server, tapi butuh RAM besar dan model yang mendukung tools (mis. Qwen 2.5 ≥7B)',
       'Bot Telegram yang dipakai AI jangan dipakai aplikasi lain untuk membaca pesan (getUpdates bentrok)',
     ],
