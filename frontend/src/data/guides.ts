@@ -72,6 +72,10 @@ export const guides: Guide[] = [
         content: 'Tabel menampilkan: OLT, Name, Status, RX ONU, SN/MAC, Type, Distance, Technician, ODP, ID, dan Actions (tidak ada kolom PPPoE terpisah di tabel utama). Klik header kolom untuk sort. Server-side pagination — default 20 ONU per halaman, bisa diganti ke 10/50/100.\n\nKlik **View** untuk detail ONU (ViewOnu page). Klik **Delete** untuk deregister ONU dari OLT.\n\n**Inline edit** (langsung di tabel, tanpa buka modal) hanya untuk kolom **Technician** dan **ODP port** — klik cell-nya langsung. Untuk edit field lain (name, description, ONU ID, actual type/model, lokasi di peta) klik **Edit**, yang membuka modal terpisah, bukan inline.',
       },
       {
+        title: 'Match MAC (sesi PPPoE MikroTik)',
+        content: 'Tombol **Match MAC** mencocokkan sesi PPPoE aktif di MikroTik dengan ONU berdasarkan MAC, lalu bisa mengisi nama ONU dari username PPPoE secara massal.\n\nPilih mode pencocokan: **Persis**, **Selisih MAC ±1/2/4/8/16** (MAC router = MAC ONU + N, dibandingkan sebagai angka dalam OUI yang sama — paling akurat untuk modem satu batch), atau mode lama **-N oktet terakhir** (hanya mencocokkan awalan). Hasil yang ambigu/bentrok ditandai dan tidak ikut di-apply otomatis.',
+      },
+      {
         title: 'Export & Signal Refresh',
         content: '**Export CSV**: download semua ONU ke file CSV (semua halaman, tidak hanya halaman current).\n\n**Signal Refresh**: kirim SNMP get RX power ke semua OLT untuk update nilai terbaru. Bisa lambat jika OLT banyak.',
       },
@@ -81,6 +85,7 @@ export const guides: Guide[] = [
       'Inline edit langsung di tabel hanya untuk Technician & ODP port — field lainnya lewat modal Edit',
       'Column visibility & order bisa diatur di Customization page',
       'Export CSV include semua ONU (tidak terfilter by pagination)',
+      'Match MAC butuh MikroTik yang sudah ditambahkan di menu Mikrotik — mulai dari mode Selisih ±1, naikkan bila banyak yang tidak cocok',
     ],
   },
   {
@@ -96,7 +101,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Traffic Chart',
-        content: 'Grafik traffic menampilkan download/upload bandwidth, di-polling setiap 3 detik.\n\nKlik **Refresh Live** untuk re-fetch data terbaru dari OLT.',
+        content: 'Grafik traffic menampilkan download/upload bandwidth, di-polling setiap 3 detik.\n\nKlik **Refresh Live** untuk re-fetch data terbaru dari OLT. Refresh Live juga membaca model perangkat (Equipment ID) langsung dari ONU dan menyimpannya sebagai **Actual Type** — berguna untuk ONU yang Actual Type-nya kosong karena sedang offline saat sync. Hanya untuk ONU GPON yang sedang online.',
       },
       {
         title: 'WAN Services',
@@ -147,6 +152,7 @@ export const guides: Guide[] = [
       'Pre-config ONT: masukkan Serial Number manual untuk skip scan OLT, bukan untuk provision ulang ONU yang sudah terdaftar',
       'Pastikan ONU sudah online (uncfg) sebelum provision',
       'Assign ODP port saat provisioning bersifat opsional — dropdown hanya menampilkan port yang masih available',
+      'Registrasi yang gagal di tengah otomatis dibatalkan di OLT (no onu N) sehingga aman untuk diulang',
     ],
   },
   {
@@ -172,10 +178,15 @@ export const guides: Guide[] = [
         title: 'Review & Register',
         content: 'Review semua config. Script CLI preview menampilkan exact command yang akan dikirim.\n\nSetiap ONU di daftar punya dropdown **"— ODP (optional) —"** untuk langsung assign ke port ODP pelanggan saat registrasi — opsional, bisa di-assign belakangan juga.\n\nKlik **Register** untuk eksekusi. ONU akan di-register ke OLT dan config diterapkan.',
       },
+      {
+        title: 'Kalau Registrasi Gagal',
+        content: 'Bila ONU sudah terdaftar di OLT tetapi salah satu perintah konfigurasi (tcont/gemport/service-port/WAN/WiFi) ditolak, NMS otomatis **membatalkan registrasi** di OLT (`no onu N`) — OLT dan database tetap bersih, jadi ONU bisa langsung di-register ulang. Pesan error menyebut perintah yang ditolak OLT; perbaiki penyebabnya (mis. profil T-CONT, VLAN, tipe ONU) lalu ulangi.\n\nKalau pesan berisi **"hapus manual"**, OLT tidak bisa dihubungi saat pembatalan — jalankan perintah yang tertera di pesan lewat Terminal OLT.',
+      },
     ],
     tips: [
       'Assign ODP port saat registrasi bersifat opsional — dropdown hanya menampilkan port yang masih available',
       'Kalau kebutuhan VLAN/WAN tidak cocok dengan 7 template ini, pakai Provision Wizard yang konfigurasinya bebas',
+      'ONU "ghost" sisa registrasi gagal sebelum fitur pembatalan otomatis: jalankan Sync OLT lalu hapus dari All ONUs, atau hapus lewat Terminal (interface gpon-olt_… → no onu N)',
     ],
   },
   {
@@ -211,7 +222,7 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Tambah OLT',
-        content: 'Klik **Add OLT** untuk menambah OLT baru. Isi: name, IP address, model (saat ini hanya ZTE — C320/C300/C300-M/C600/C650), SNMP community, CLI credentials (SSH/Telnet).\n\nTest koneksi SNMP dan CLI sebelum save.',
+        content: 'Klik **Add OLT** untuk menambah OLT baru. Isi: name, IP address, tipe OLT, SNMP community, CLI credentials (SSH/Telnet) dan port-nya bila bukan 22/23.\n\nTipe OLT: **ZTE** C320/C300/C300-M/C600/C650 (provisioning + monitoring penuh), serta **HiOSO, HSGQ, VSOL, C-Data, BDCOM** (monitoring & alert via SNMP). Untuk HSGQ, NMS otomatis memilih tabel SNMP yang cocok dengan firmware (dibandingkan dengan penghitung ONU online OLT) dan membaca redaman RX/TX; pilih tipe sesuai jumlah PON (mis. HSGQ E02 untuk 2 PON).\n\nTest koneksi SNMP dan CLI sebelum save.',
       },
       {
         title: 'Edit, Sync & Config',
@@ -230,7 +241,8 @@ export const guides: Guide[] = [
       'SNMP community default: public (read-only). Set write community untuk config via SNMP.',
       'CLI credentials (SSH/Telnet) diperlukan untuk ONU provisioning dan live detail',
       'Pastikan OLT reachable dari server NMS (cek firewall)',
-      'Model OLT saat ini terbatas ZTE saja — belum ada pilihan vendor lain di form Add/Edit OLT',
+      'Provisioning (register ONU) baru tersedia untuk ZTE — vendor lain saat ini monitoring & alert via SNMP',
+      'Port Telnet/SSH custom dipakai juga oleh Terminal OLT',
     ],
   },
   {
@@ -458,7 +470,11 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Profil & Password',
-        content: 'Ubah nama lengkap, atau ganti password (perlu konfirmasi password baru). Kalau muncul banner paksa ganti password (biasanya untuk akun admin bawaan yang baru pertama kali dipakai), password harus diganti dulu sebelum lanjut pakai sistem.',
+        content: 'Ubah nama lengkap, atau ganti password — wajib mengisi **password lama**, password baru minimal 8 karakter dan bukan password umum/bawaan.\n\nLogin memakai password bawaan installer memunculkan jendela **wajib ganti password** yang tidak bisa ditutup; semua fitur terkunci sampai password diganti.',
+      },
+      {
+        title: 'Notifikasi Push di Perangkat Ini',
+        content: 'Kartu **Web Push** di halaman ini bisa dipakai semua role: klik **Aktifkan Web Push** untuk menerima alert gangguan sebagai notifikasi HP/desktop walau aplikasi ditutup, lalu **Kirim Test** untuk mencoba. Lihat panduan Notifikasi Push untuk detailnya.',
       },
       {
         title: 'Branding (Super Admin)',
@@ -501,6 +517,7 @@ export const guides: Guide[] = [
       'Read notifications > 7 hari auto-delete saat alert check cycle',
       'Bell badge count hanya include active (non-resolved) unread notifications',
       'Tab WA Native dan Cron Job hanya terlihat untuk akun super admin',
+      'Notifikasi push HP: nyalakan toggle Web Push di tiap alert rule (default mati), lalu tiap user mengaktifkan push di perangkatnya',
     ],
   },
   {
@@ -564,12 +581,17 @@ export const guides: Guide[] = [
         title: 'Apply Update',
         content: 'Jalankan `git pull` + build ulang frontend + restart service secara otomatis. Aplikasi akan sempat tidak bisa diakses beberapa detik selama restart.',
       },
+      {
+        title: 'Pop-up Update Tersedia',
+        content: 'NMS mengecek GitHub otomatis ±15 detik setelah login lalu tiap 6 jam. Bila ada versi baru, super admin melihat pop-up **Update tersedia** berisi jumlah dan judul perubahan. **Lihat & Update** membuka halaman ini (update tidak terpasang otomatis); **Nanti** menyembunyikan pop-up sampai ada commit baru berikutnya.',
+      },
     ],
     prerequisites: [
       'Hanya bisa diakses oleh akun dengan permission manage_users (super admin)',
     ],
     tips: [
       'Pastikan tidak ada proses provisioning/sync yang sedang berjalan sebelum Apply Update, karena service akan restart',
+      'Setelah update, tutup lalu buka ulang aplikasi PWA (atau hard refresh) agar tampilan terbaru termuat',
     ],
   },
   {
@@ -662,6 +684,91 @@ export const guides: Guide[] = [
       'Peta Leaflet, grafik Recharts, dan terminal mengikuti tema secara otomatis',
       'Mode "System" cocok untuk laptop yang berganti tema siang/malam otomatis',
       'Pesan error login kini diterjemahkan otomatis sesuai bahasa (error_code dari backend)',
+    ],
+  },
+  {
+    id: 'ai-agent',
+    category: 'System',
+    page: '/dashboard/settings/ai',
+    title: 'Panduan AI Agent',
+    description: 'Tanya status jaringan lewat WhatsApp/Telegram memakai AI (baca-saja)',
+    steps: [
+      {
+        title: 'Apa yang Bisa Ditanyakan',
+        content: 'AI agent membaca data NMS dan menjawab dalam bahasa sehari-hari, misalnya: **"ringkasan semua OLT"**, **"cek pelanggan budi"**, **"ONU mana yang LOS?"**, **"yang redamannya jelek?"**, **"gangguan 6 jam terakhir"**.\n\nAI hanya bisa **membaca** — tidak bisa reboot, register, atau mengubah konfigurasi. Percakapan diingat 30 menit per pengirim; ketik **/reset** untuk mulai baru.',
+      },
+      {
+        title: 'Pilih Penyedia AI',
+        content: 'Buka **Sistem → AI Agent** (super admin), pilih **Preset penyedia**: Claude (Anthropic), OpenAI, Google Gemini, OpenRouter, atau Ollama (model lokal di server). Penyedia lain yang OpenAI-compatible bisa dipakai dengan format **OpenAI-compatible** + Base URL + nama model dari dokumentasinya.\n\nIsi **API Key** (disimpan terenkripsi). Langganan Claude Pro/Max **tidak bisa** dipakai — gunakan API key yang dibayar per pemakaian. Model harus mendukung *tool calling*.',
+      },
+      {
+        title: 'Kanal & Siapa yang Dijawab',
+        content: 'Centang **WhatsApp** (gateway WA Native bawaan NMS) dan/atau **Telegram** (bot yang sama dengan bot alert).\n\nYang dijawab: nomor WA / chat ID Telegram di kolom **Pengirim yang diizinkan**, plus (khusus WhatsApp) nomor HP user aktif yang punya izin **AI Agent** atau super admin. Pengirim lain diabaikan tanpa balasan. Setiap pertanyaan tercatat di Activity Log.',
+      },
+      {
+        title: 'Aktifkan & Uji',
+        content: 'Centang **Aktifkan AI Agent** → **Simpan** → uji di kotak **Coba tanya**.\n\nUntuk WhatsApp: buka pengaturan WA Native lalu klik **Start** ulang gateway agar pesan masuk diteruskan ke NMS. Pesan grup diabaikan — tanya lewat chat pribadi ke nomor gateway.',
+      },
+    ],
+    prerequisites: [
+      'Akun super admin untuk mengatur; izin AI Agent (di Role) untuk user yang boleh bertanya',
+      'API key penyedia AI, atau Ollama yang berjalan di server',
+    ],
+    tips: [
+      'Paling praktis & akurat: Claude Haiku atau GPT-4o-mini — biayanya kecil untuk tanya-jawab NOC',
+      'Ollama gratis & data tidak keluar server, tapi butuh RAM besar dan model yang mendukung tools (mis. Qwen 2.5 ≥7B)',
+      'Bot Telegram yang dipakai AI jangan dipakai aplikasi lain untuk membaca pesan (getUpdates bentrok)',
+    ],
+  },
+  {
+    id: 'push-notifications',
+    category: 'System',
+    page: '/dashboard/profile',
+    title: 'Panduan Notifikasi Push (PWA)',
+    description: 'Alert gangguan muncul sebagai notifikasi HP walau aplikasi ditutup',
+    steps: [
+      {
+        title: 'Pasang Aplikasi (PWA)',
+        content: 'Buka NMS di Chrome Android → menu ⋮ → **Instal aplikasi / Tambahkan ke layar utama**. Notifikasi push juga bekerja di browser desktop, tetapi paling andal di PWA terpasang.',
+      },
+      {
+        title: 'Aktifkan di Perangkat',
+        content: 'Setelah login muncul ajakan **Aktifkan notifikasi gangguan?** — klik **Aktifkan** dan izinkan notifikasi. Bisa juga lewat kartu **Web Push** di Profil Saya. Berlaku untuk semua role; bila izin sudah pernah diberikan, perangkat otomatis didaftarkan ulang setelah login.',
+      },
+      {
+        title: 'Pilih Alert yang Dikirim',
+        content: 'Di **Alert Settings**, nyalakan toggle **Web Push** pada alert rule yang ingin dikirim ke HP (default mati). Alert kritis (OLT down, LOS) bergetar dan tetap tampil di layar sampai disentuh.',
+      },
+      {
+        title: 'Notifikasi Tidak Mengambang?',
+        content: 'Di Android: tekan lama ikon aplikasi NMS → **Info aplikasi → Notifikasi** → aktifkan **Pop-up / Tampilkan di layar**. Beberapa merek HP mematikan ini secara default. Gunakan **Kirim Test** di Profil Saya untuk mencoba.',
+      },
+    ],
+    tips: [
+      'Butuh akses HTTPS (domain) — push tidak bekerja lewat http://IP',
+      'Banner ajakan yang ditutup dengan "Nanti" muncul lagi setelah 7 hari',
+    ],
+  },
+  {
+    id: 'terminal',
+    category: 'Infrastructure',
+    page: '/dashboard/terminal',
+    title: 'Panduan Terminal OLT',
+    description: 'Akses CLI OLT (Telnet/SSH) langsung dari browser',
+    steps: [
+      {
+        title: 'Buka Sesi',
+        content: 'Pilih OLT dan protokol (**Telnet** atau **SSH**). Terminal memakai port yang diisi di OLT Settings (mendukung port custom selain 22/23) dan kredensial CLI OLT tersebut.',
+      },
+      {
+        title: 'Mengetik & Perintah',
+        content: 'Terminal menangani negosiasi Telnet (echo, ukuran layar) sehingga ketikan tampil normal. Gunakan untuk perintah yang belum ada tombolnya di NMS, mis. `show gpon onu state gpon-olt_1/1/1` atau membersihkan ONU ghost (`interface gpon-olt_… → no onu N`).',
+      },
+    ],
+    prerequisites: ['Izin Terminal OLT (olt_terminal) pada role user'],
+    tips: [
+      'Setiap sesi tercatat di Activity Log',
+      'Kalau gagal konek, pesan error menampilkan protokol dan port yang dicoba — cek port di OLT Settings',
     ],
   },
 ];

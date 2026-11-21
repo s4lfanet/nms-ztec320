@@ -223,6 +223,12 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 19. **Optimistic Logout** — `auth.ts` store clears user state immediately on `logout()` and fires `api.logout()` in background without awaiting. Prevents UI delay — `ProtectedRoute` redirects to `/` instantly when `user` becomes `null`.
 
+20. **Registrasi gagal → rollback otomatis** — `register_unified()` / `register_vendor_template()` menandai `registered_here` setelah `onu N type … sn …` sukses; bila langkah layanan gagal (CLI error / exception) dipanggil `_rollback_registration(pon_if, onu_id)` → `no onu N` lewat koneksi baru. Jangan mengembalikan `False` setelah registrasi tanpa rollback — ONU jadi "ghost" (ada di OLT, tidak di DB) dan register ulang ditolak.
+
+21. **AI Agent (`ai_agent.py`, `routes_ai.py`)** — baca-saja: tool hanya query DB (tanpa Telnet/SNMP). Config di `SystemConfig` kunci `ai_*` (API key terenkripsi `ai_api_key_enc`). WhatsApp: `wa_gateway/index.js` meneruskan pesan teks pribadi ke `NMS_AI_INBOUND_URL` (diset saat gateway di-Start dari NMS) dengan `X-Internal-Key`; NMS yang menyaring pengirim (`sender_allowed`). Telegram: thread `ai-telegram-poller` dari `run_server.py` (long-poll getUpdates bot alert). Tambah tool baru di `TOOLS` — tetap baca-saja kecuali ada konfirmasi user + audit.
+
+22. **Tailwind tidak memindai `frontend/dist`** — `@source not "../dist"` di `index.css`. Tanpa ini CSS hasil build bergantung pada dist lama dan cek "dist sinkron" di CI gagal.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

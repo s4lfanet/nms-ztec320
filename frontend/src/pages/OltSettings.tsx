@@ -1198,9 +1198,11 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
     {
       group: 'HSGQ (Monitoring & Alert via SNMP)',
       items: [
+        { value: 'HSGQ-E02', label: 'HSGQ E02 (2-Port EPON)' },
         { value: 'HSGQ-E04', label: 'HSGQ E04 (4-Port EPON)' },
         { value: 'HSGQ-E08', label: 'HSGQ E08 (8-Port EPON)' },
         { value: 'HSGQ-E16', label: 'HSGQ E16 (16-Port EPON)' },
+        { value: 'HSGQ-G02', label: 'HSGQ G02 (2-Port GPON)' },
         { value: 'HSGQ-G04', label: 'HSGQ G04 (4-Port GPON)' },
         { value: 'HSGQ-G08', label: 'HSGQ G08 (8-Port GPON)' },
       ],
