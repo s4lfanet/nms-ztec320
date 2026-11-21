@@ -583,7 +583,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Pop-up Update Tersedia',
-        content: 'NMS mengecek GitHub otomatis ±15 detik setelah login lalu tiap 6 jam. Bila ada versi baru, super admin melihat pop-up **Update tersedia** berisi jumlah dan judul perubahan. **Lihat & Update** membuka halaman ini (update tidak terpasang otomatis); **Nanti** menyembunyikan pop-up sampai ada commit baru berikutnya.',
+        content: 'NMS mengecek GitHub otomatis ±15 detik setelah login lalu tiap 6 jam. Bila ada versi baru, super admin melihat pop-up **Update tersedia** berisi jumlah dan judul perubahan. **Update sekarang** langsung memasang update (dengan konfirmasi) lalu memuat ulang halaman setelah service hidup kembali; **Detail** membuka halaman ini; **Nanti** menyembunyikan pop-up sampai ada commit baru berikutnya.',
       },
     ],
     prerequisites: [
