@@ -99,10 +99,14 @@ async function connectWA() {
       for (const m of messages || []) {
         try {
           const jid = m.key?.remoteJid || '';
-          if (m.key?.fromMe || !jid.endsWith('@s.whatsapp.net')) continue;   // abaikan grup/status
+          // Chat pribadi saja (abaikan grup/status). WhatsApp kini bisa memakai
+          // alamat '@lid' (ID privasi) — nomor HP asli ada di senderPn/remoteJidAlt.
+          if (m.key?.fromMe || !(jid.endsWith('@s.whatsapp.net') || jid.endsWith('@lid'))) continue;
           const text = m.message?.conversation || m.message?.extendedTextMessage?.text || '';
           if (!text.trim()) continue;
-          const sender = jid.split('@')[0];
+          const pnJid = [m.key?.senderPn, m.key?.remoteJidAlt, jid]
+            .find(j => typeof j === 'string' && j.endsWith('@s.whatsapp.net')) || jid;
+          const sender = pnJid.split('@')[0].split(':')[0];
           const r = await fetch(AI_INBOUND_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'wa-gateway',
