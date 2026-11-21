@@ -10,6 +10,7 @@ import { DashboardWsProvider } from '../../hooks/useDashboardWs';
 import { OfflineBanner } from '../OfflineBanner';
 import { ForcePasswordChange } from '../ForcePasswordChange';
 import { PushPrompt } from '../PushPrompt';
+import { UpdatePrompt } from '../UpdatePrompt';
 
 const bottomNavItems = [
   { labelKey: 'nav.home', icon: LayoutDashboard, path: '/dashboard' },
@@ -56,6 +57,7 @@ export function AppShell() {
         <OfflineBanner />
         <ForcePasswordChange />
         <PushPrompt />
+        <UpdatePrompt />
         <div className="app-mesh-bg" aria-hidden="true" />
 
         <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onToggle={() => setCollapsed(!collapsed)} onMobileClose={() => setMobileOpen(false)} />
