@@ -8,12 +8,14 @@ import {
   Bell, MessageCircle, Send, Settings, Shield, Save,
   ToggleLeft, ToggleRight, AlertTriangle, Radio, Wifi,
   Zap, Clock, RefreshCw, Smartphone, QrCode, LogOut, Loader2,
-  Play, Square, Server, Activity, Cpu, Thermometer, CheckCircle2, Terminal
+  Play, Square, Server, Activity, Cpu, Thermometer, CheckCircle2, Terminal, MapPin, Trash2, Plus
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, Input, Select, Tabs, EmptyState } from '../components/ui';
 import { PushDeviceCard } from '../components/PushDeviceCard';
+import { useHasPerm } from '../hooks/useHasPerm';
+import { confirm } from '../components/ConfirmDialog';
 
 type SectionKey = 'whatsapp' | 'rules' | 'telegram' | 'whatsapp_native' | 'cronjob';
 
@@ -234,6 +236,7 @@ function AlertRulesSection() {
         <RuleCard key={String(rule.id)} rule={rule} onSave={(r) => updateMut.mutate(r)} saving={updateMut.isPending} />
       ))}
       <OutageCorrelationCard />
+      <TechnicianAreasCard />
     </div>
   );
 }
@@ -1815,6 +1818,142 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
         )}
       </Card>
     </div>
+  );
+}
+
+/* ─── Wilayah teknisi (Fase 2) ─── */
+
+type AreaRow = { id: number; user_id: number; user_name: string; user_phone: string; node_type: string; node_id: number; node_name: string; role: 'primary' | 'backup' };
+type AreaNode = { type: string; id: number; name: string };
+const AREA_TYPES = ['olt', 'otb', 'jc', 'odc', 'odp'] as const;
+
+function TechnicianAreasCard() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const hasPerm = useHasPerm();
+  const canEdit = hasPerm('manage_users');
+  const { data: areaData } = useQuery({
+    queryKey: ['technician-areas'],
+    queryFn: async () => { const r = await fetch('/api/technician-areas', { credentials: 'include' }); return r.json(); },
+  });
+  const { data: nodeData } = useQuery({
+    queryKey: ['technician-area-nodes'],
+    queryFn: async () => { const r = await fetch('/api/technician-areas/nodes', { credentials: 'include' }); return r.json(); },
+    enabled: canEdit,
+  });
+  const { data: techData } = useQuery({
+    queryKey: ['technicians'],
+    queryFn: async () => { const r = await fetch('/api/technicians', { credentials: 'include' }); return r.json(); },
+    enabled: canEdit,
+  });
+  const areas: AreaRow[] = areaData?.areas || [];
+  const nodes: AreaNode[] = nodeData?.nodes || [];
+  const techs: { id: number; full_name: string; username: string; phone: string }[] = techData?.technicians || [];
+  const [userId, setUserId] = useState('');
+  const [node, setNode] = useState('');
+  const [role, setRole] = useState<'primary' | 'backup'>('primary');
+  const [busy, setBusy] = useState(false);
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['technician-areas'] });
+
+  const add = async () => {
+    if (!userId || !node) { toast.error(t('pg_alerts.areaPickBoth')); return; }
+    const [node_type, node_id] = node.split(':');
+    setBusy(true);
+    try {
+      const r = await fetch('/api/technician-areas', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ user_id: Number(userId), node_type, node_id: Number(node_id), role }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success(t('pg_alerts.areaSaved')); setNode(''); refresh(); }
+      else toast.error(d.message || t('pg_alerts.failedToSave'));
+    } catch { toast.error(t('pg_alerts.failedToSave')); }
+    setBusy(false);
+  };
+
+  const remove = async (a: AreaRow) => {
+    const ok = await confirm({ title: t('pg_alerts.areaRemoveTitle'), message: `${a.user_name} — ${a.node_type.toUpperCase()} ${a.node_name}`, variant: 'danger' });
+    if (!ok) return;
+    const r = await fetch(`/api/technician-areas/${a.id}`, { method: 'DELETE', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    const d = await r.json();
+    if (d.success) refresh(); else toast.error(d.message || t('pg_alerts.failedToSave'));
+  };
+
+  const byUser = new Map<number, AreaRow[]>();
+  areas.forEach(a => byUser.set(a.user_id, [...(byUser.get(a.user_id) || []), a]));
+
+  return (
+    <Card
+      icon={
+        <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center">
+          <MapPin size={15} className="text-accent" />
+        </div>
+      }
+      title={t('pg_alerts.areaTitle')}
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-tx3">{t('pg_alerts.areaDesc')}</p>
+
+        {areas.length === 0 ? (
+          <p className="text-xs text-tx3 p-3 rounded-lg bg-glass border border-brd">{t('pg_alerts.areaEmpty')}</p>
+        ) : (
+          <div className="space-y-2">
+            {[...byUser.entries()].map(([uid, rows]) => (
+              <div key={uid} className="p-3 rounded-lg bg-glass border border-brd">
+                <div className="text-sm font-semibold text-tx1">{rows[0].user_name}
+                  {!rows[0].user_phone && <span className="ml-2 text-[11px] font-normal text-warning">{t('pg_alerts.areaNoPhone')}</span>}
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {rows.map(a => (
+                    <span key={a.id} className={cn('inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md border text-xs',
+                      a.role === 'primary' ? 'border-accent/40 bg-accent/10 text-tx1' : 'border-brd bg-surface text-tx2')}>
+                      <span className="font-mono text-[10px] text-tx3">{a.node_type.toUpperCase()}</span>
+                      {a.node_name}
+                      {a.role === 'backup' && <span className="text-[10px] text-tx3">({t('pg_alerts.areaBackup')})</span>}
+                      {canEdit && (
+                        <button type="button" onClick={() => remove(a)} aria-label={t('pg_alerts.areaRemoveTitle')}
+                          className="p-1 rounded hover:bg-danger/10 text-tx3 hover:text-danger">
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {canEdit && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-brd">
+            <Select label={t('pg_alerts.areaTechnician')} value={userId} onChange={e => setUserId(e.target.value)}>
+              <option value="">{t('pg_alerts.areaChoose')}</option>
+              {techs.map(u => <option key={u.id} value={u.id}>{u.full_name || u.username}</option>)}
+            </Select>
+            <Select label={t('pg_alerts.areaNode')} value={node} onChange={e => setNode(e.target.value)}>
+              <option value="">{t('pg_alerts.areaChoose')}</option>
+              {AREA_TYPES.map(ty => {
+                const list = nodes.filter(n => n.type === ty);
+                return list.length ? (
+                  <optgroup key={ty} label={ty.toUpperCase()}>
+                    {list.map(n => <option key={`${ty}:${n.id}`} value={`${ty}:${n.id}`}>{n.name}</option>)}
+                  </optgroup>
+                ) : null;
+              })}
+            </Select>
+            <Select label={t('pg_alerts.areaRole')} value={role} onChange={e => setRole(e.target.value as 'primary' | 'backup')}>
+              <option value="primary">{t('pg_alerts.areaPrimary')}</option>
+              <option value="backup">{t('pg_alerts.areaBackup')}</option>
+            </Select>
+            <div className="sm:col-span-3">
+              <Button variant="primary" icon={<Plus size={15} />} loading={busy} onClick={add}>{t('pg_alerts.areaAdd')}</Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

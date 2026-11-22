@@ -1741,7 +1741,21 @@
     "outageRatio": "Share of ONUs down (%)",
     "outageRatioHelp": "For ODC/JC/OTB: most ONUs below it must be down (50–100).",
     "outageSave": "Save correlation",
-    "outageSaved": "Outage correlation settings saved"
+    "outageSaved": "Outage correlation settings saved",
+    "areaTitle": "Technician areas",
+    "areaDesc": "Alerts in an area go to its primary technician first (ONU's assigned technician → ODP → ODC/JC → OTB → OLT). Technicians without an area (admin/NOC) still receive every alert. Backup technicians are used for escalation.",
+    "areaEmpty": "No areas yet. Every technician receives every alert.",
+    "areaNoPhone": "no WhatsApp number",
+    "areaTechnician": "Technician",
+    "areaNode": "Area (OLT/OTB/JC/ODC/ODP)",
+    "areaRole": "Role",
+    "areaPrimary": "Primary",
+    "areaBackup": "Backup",
+    "areaChoose": "— Choose —",
+    "areaAdd": "Add area",
+    "areaSaved": "Technician area saved",
+    "areaPickBoth": "Pick a technician and an area",
+    "areaRemoveTitle": "Remove this area?"
   },
   "pg_addonu": {
     "onuInfo": "ONU info",

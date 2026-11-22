@@ -95,6 +95,8 @@ app.register_blueprint(api_v1_bp)
 app.register_blueprint(reports_bp)
 from routes_ai import bp as ai_bp
 app.register_blueprint(ai_bp)
+from routes_tech_areas import bp as tech_areas_bp  # noqa: E402
+app.register_blueprint(tech_areas_bp)
 
 
 @app.before_request

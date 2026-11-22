@@ -756,6 +756,20 @@ class TrafficLogHourly(db.Model):
 
 # ==================== FTTH INFRASTRUCTURE ====================
 
+class TechnicianArea(db.Model):
+    """Wilayah tanggung jawab teknisi: OLT / OTB / JC / ODC / ODP. Alert di
+    wilayah ini dikirim ke teknisi `primary` dulu; `backup` dipakai eskalasi."""
+    __tablename__ = 'technician_areas'
+    __table_args__ = (db.UniqueConstraint('user_id', 'node_type', 'node_id', name='uq_tech_area'),)
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    node_type = db.Column(db.String(10), nullable=False)  # olt, otb, jc, odc, odp
+    node_id = db.Column(db.Integer, nullable=False)
+    role = db.Column(db.String(10), default='primary', nullable=False)  # primary | backup
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    user = db.relationship('User', backref=db.backref('areas', lazy=True, cascade='all, delete-orphan'))
+
+
 class FTTHOTB(db.Model):
     """OTB/ODF at server room — top of FTTH chain, fed by OLT PON port
     (feed_source='pon', via FTTHPonPort.otb_id) or, on a distributed feeder
