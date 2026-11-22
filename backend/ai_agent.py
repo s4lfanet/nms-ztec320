@@ -23,7 +23,8 @@ PERM = 'ai_agent'
 MAX_TOOL_ROUNDS = 6
 HISTORY_TURNS = 8
 HISTORY_TTL = 30 * 60
-REQUEST_TIMEOUT = 60
+REQUEST_TIMEOUT = 90
+TEST_TIMEOUT = 60
 
 DEFAULTS = {
     'ai_enabled': '0',
@@ -336,6 +337,22 @@ def _call_anthropic(cfg, messages):
     return 'Maaf, pertanyaan ini butuh terlalu banyak langkah. Coba persempit pertanyaannya.'
 
 
+def _extra_params(cfg):
+    """Parameter tambahan per penyedia. Gemini (model 'thinking') dibatasi
+    reasoning_effort=low supaya cepat membalas — tanpa ini Gemini 3.x bisa
+    berpikir lama hingga koneksi timeout. Penyedia lain tidak diberi
+    parameter ini (model non-reasoning OpenAI menolaknya)."""
+    if 'generativelanguage.googleapis.com' in (cfg.get('ai_base_url') or ''):
+        return {'reasoning_effort': 'low'}
+    return {}
+
+
+def _timeout_message(cfg, seconds):
+    return (f"{cfg['ai_model']} tidak membalas dalam {seconds} detik. Penyedia mungkin sedang sibuk atau "
+            f"model berpikir terlalu lama — coba lagi, atau pakai model yang lebih ringan "
+            f"(mis. gemini-3.5-flash-lite). Pastikan juga server NMS bisa mengakses internet.")
+
+
 def _api_error(label, r):
     """Pesan error penyedia yang ringkas & bisa ditindaklanjuti (bukan JSON mentah)."""
     msg = ''
@@ -369,8 +386,8 @@ def test_connection():
         return False, 'API key belum diisi.'
     try:
         if cfg['ai_provider'] == 'anthropic':
-            r = httpx.post(f"{cfg['ai_base_url']}/v1/messages", timeout=30, json={
-                'model': cfg['ai_model'], 'max_tokens': 16,
+            r = httpx.post(f"{cfg['ai_base_url']}/v1/messages", timeout=TEST_TIMEOUT, json={
+                'model': cfg['ai_model'], 'max_tokens': 64,
                 'messages': [{'role': 'user', 'content': 'Balas satu kata: OK'}],
             }, headers={'x-api-key': cfg['api_key'], 'anthropic-version': '2023-06-01',
                         'content-type': 'application/json'})
@@ -381,14 +398,17 @@ def test_connection():
             headers = {'content-type': 'application/json'}
             if cfg.get('api_key'):
                 headers['authorization'] = f"Bearer {cfg['api_key']}"
-            r = httpx.post(f"{cfg['ai_base_url']}/chat/completions", timeout=30, json={
-                'model': cfg['ai_model'], 'max_tokens': 16,
+            r = httpx.post(f"{cfg['ai_base_url']}/chat/completions", timeout=TEST_TIMEOUT, json={
+                **_extra_params(cfg),
+                'model': cfg['ai_model'], 'max_tokens': 256,
                 'messages': [{'role': 'user', 'content': 'Balas satu kata: OK'}],
             }, headers=headers)
             if r.status_code >= 400:
                 return False, _api_error('AI API', r)
             text = ((r.json().get('choices') or [{}])[0].get('message') or {}).get('content') or ''
         return True, f"Terhubung ke {cfg['ai_model']} — balasan: {text.strip()[:60] or '(kosong)'}"
+    except httpx.TimeoutException:
+        return False, _timeout_message(cfg, TEST_TIMEOUT)
     except httpx.HTTPError as e:
         return False, f'Tidak bisa terhubung ke {cfg["ai_base_url"]}: {e}'
 
@@ -403,6 +423,7 @@ def _call_openai(cfg, messages):
         headers['authorization'] = f"Bearer {cfg['api_key']}"
     for _ in range(MAX_TOOL_ROUNDS):
         r = httpx.post(f"{cfg['ai_base_url']}/chat/completions", timeout=REQUEST_TIMEOUT, json={
+            **_extra_params(cfg),
             'model': cfg['ai_model'], 'max_tokens': int(cfg['ai_max_tokens'] or 1024),
             'messages': msgs, 'tools': tools,
         }, headers=headers)
@@ -634,6 +655,8 @@ def ask(conv_key, question):
             answer = _call_anthropic(cfg, messages)
         else:
             answer = _call_openai(cfg, messages)
+    except httpx.TimeoutException:
+        return 'Maaf, AI sedang tidak bisa dihubungi — ' + _timeout_message(cfg, REQUEST_TIMEOUT)
     except Exception as e:
         logger.warning(f'[AI] {cfg["ai_provider"]} error: {e}')
         return f'Maaf, AI sedang tidak bisa dihubungi — {str(e)[:320]}'

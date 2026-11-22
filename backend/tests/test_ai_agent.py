@@ -212,7 +212,7 @@ def test_connection_check(client, monkeypatch):
     assert not r['success'] and sent == []
     _enable('anthropic')
     r = client.post('/api/ai/test', headers=H).get_json()
-    assert r['success'] and 'OK' in r['message'] and sent[-1][1]['max_tokens'] == 16
+    assert r['success'] and 'OK' in r['message'] and sent[-1][1]['max_tokens'] == 64
     # Ollama: OpenAI-compatible tanpa key tetap boleh
     with app.app_context():
         ai_agent.save_config({'ai_provider': 'openai', 'ai_base_url': 'http://127.0.0.1:11434/v1'})
@@ -249,3 +249,33 @@ def test_retired_gemini_model_is_upgraded(client):
         # model sama di penyedia lain tidak disentuh
         ai_agent.save_config({'ai_model': 'gemini-2.5-flash', 'ai_base_url': 'https://openrouter.ai/api/v1'})
         assert ai_agent.get_config()['ai_model'] == 'gemini-2.5-flash'
+
+
+def test_gemini_low_reasoning_and_timeout(client, monkeypatch):
+    sent = []
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        sent.append(json)
+        return _Resp({'choices': [{'message': {'content': 'OK'}}]})
+
+    monkeypatch.setattr(ai_agent.httpx, 'post', fake_post)
+    _enable('openai', ai_base_url='https://generativelanguage.googleapis.com/v1beta/openai', ai_model='gemini-3.8-flash')
+    _login(client, 'boss')
+    assert client.post('/api/ai/test', headers=H).get_json()['success']
+    assert sent[-1]['reasoning_effort'] == 'low'
+    with app.app_context():
+        ai_agent.ask('g', 'halo')
+    assert sent[-1]['reasoning_effort'] == 'low'
+    # penyedia lain tidak diberi reasoning_effort
+    with app.app_context():
+        ai_agent.save_config({'ai_base_url': 'https://api.openai.com/v1', 'ai_model': 'gpt-4o-mini'})
+    client.post('/api/ai/test', headers=H)
+    assert 'reasoning_effort' not in sent[-1]
+
+    def slow(*a, **k):
+        raise ai_agent.httpx.ReadTimeout('The read operation timed out')
+    monkeypatch.setattr(ai_agent.httpx, 'post', slow)
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert not r['success'] and 'tidak membalas dalam' in r['message']
+    with app.app_context():
+        assert 'tidak membalas dalam' in ai_agent.ask('g2', 'halo')
