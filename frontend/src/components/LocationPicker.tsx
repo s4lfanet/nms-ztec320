@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MapPin, Crosshair, X, Check } from 'lucide-react';
 import { toast } from './Toast';
 
@@ -28,12 +29,13 @@ interface LocationPickerProps {
 }
 
 export function LocationPicker({ latitude, longitude, onChange }: LocationPickerProps) {
+  const { t } = useTranslation();
   const [showMap, setShowMap] = useState(false);
   const [detecting, setDetecting] = useState(false);
 
   const detectGPS = () => {
     if (!navigator.geolocation) {
-      toast.error('Geolocation not supported by this browser');
+      toast.error(t('cmp_loc.geolocationNotSupportedBy'));
       return;
     }
     setDetecting(true);
@@ -41,7 +43,7 @@ export function LocationPicker({ latitude, longitude, onChange }: LocationPicker
       (pos) => {
         onChange(pos.coords.latitude.toFixed(6), pos.coords.longitude.toFixed(6));
         setDetecting(false);
-        toast.success('Location detected');
+        toast.success(t('cmp_loc.locationDetected'));
       },
       (err) => {
         setDetecting(false);
@@ -128,6 +130,7 @@ function MapModal({ lat, lng, onPick, onClose }: {
   onPick: (lat: string, lng: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const markerRef = useRef<any>(null);
@@ -141,7 +144,7 @@ function MapModal({ lat, lng, onPick, onClose }: {
       await loadLeaflet();
       setReady(true);
     } catch (e) {
-      setError('Failed to load map. Check your internet connection.');
+      setError(t('cmp_loc.failedToLoadMap'));
     }
   }, []);
 
@@ -195,10 +198,10 @@ function MapModal({ lat, lng, onPick, onClose }: {
           markerRef.current = L.marker([sLat, sLng]).addTo(map);
         }
       } else {
-        toast.error('Location not found');
+        toast.error(t('cmp_loc.locationNotFound'));
       }
     } catch {
-      toast.error('Search failed');
+      toast.error(t('cmp_loc.searchFailed'));
     }
     setSearching(false);
   };
@@ -208,7 +211,7 @@ function MapModal({ lat, lng, onPick, onClose }: {
       const ll = markerRef.current.getLatLng();
       onPick(ll.lat.toFixed(6), ll.lng.toFixed(6));
     } else {
-      toast.warning('Click on the map to set a location first');
+      toast.warning(t('cmp_loc.clickTheMapTo'));
     }
   };
 
@@ -225,7 +228,7 @@ function MapModal({ lat, lng, onPick, onClose }: {
         } else {
           markerRef.current = L.marker([gLat, gLng]).addTo(map);
         }
-        toast.success('GPS location detected');
+        toast.success(t('cmp_loc.gpsLocationDetected'));
       },
       (err) => toast.error(`GPS error: ${err.message}`),
       { enableHighAccuracy: true, timeout: 10000 }
@@ -238,7 +241,7 @@ function MapModal({ lat, lng, onPick, onClose }: {
         <div className="modal-overlay" />
         <div className="relative glass-card w-full max-w-2xl p-6 text-center">
           <p className="text-danger text-sm mb-3">{error}</p>
-          <button onClick={onClose} className="btn-cancel text-sm">Close</button>
+          <button onClick={onClose} className="btn-cancel text-sm">{t('cmp_loc.close')}</button>
         </div>
       </div>
     );
@@ -249,7 +252,7 @@ function MapModal({ lat, lng, onPick, onClose }: {
       <div className="modal-overlay" />
       <div className="relative glass-card w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
         <div className="px-4 py-3 border-b border-brd flex items-center justify-between">
-          <h3 className="text-sm font-semibold flex items-center gap-2"><MapPin size={16} /> Pick Location on Map</h3>
+          <h3 className="text-sm font-semibold flex items-center gap-2"><MapPin size={16} /> {t('cmp_loc.pickLocationOnMap')}</h3>
           <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
         </div>
         {/* Search bar */}
@@ -259,7 +262,7 @@ function MapModal({ lat, lng, onPick, onClose }: {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            placeholder="Search address or place..."
+            placeholder={t('cmp_loc.searchAddressOrPlace')}
           />
           <button onClick={handleSearch} disabled={searching} className="px-3 py-1.5 rounded-lg bg-accent/10 text-accent text-xs font-medium hover:bg-accent/20 disabled:opacity-50">
             {searching ? '...' : 'Search'}
@@ -270,15 +273,15 @@ function MapModal({ lat, lng, onPick, onClose }: {
         </div>
         {/* Map */}
         <div className="relative flex-1 min-h-[300px]">
-          {!ready && <div className="absolute inset-0 flex items-center justify-center text-tx3 text-sm">Loading map...</div>}
+          {!ready && <div className="absolute inset-0 flex items-center justify-center text-tx3 text-sm">{t('cmp_loc.loadingMap')}</div>}
           <div ref={mapRef} className="w-full h-full" style={{ minHeight: 300 }} />
         </div>
         {/* Footer */}
         <div className="px-4 py-3 border-t border-brd flex items-center justify-between">
-          <p className="text-xs text-tx3">Click on map to place marker</p>
+          <p className="text-xs text-tx3">{t('cmp_loc.clickTheMapTo2')}</p>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="btn-cancel text-sm">Cancel</button>
-            <button onClick={handleConfirm} className="btn-primary text-sm flex items-center gap-1.5"><Check size={14} /> Confirm Location</button>
+            <button onClick={onClose} className="btn-cancel text-sm">{t('cmp_loc.cancel')}</button>
+            <button onClick={handleConfirm} className="btn-primary text-sm flex items-center gap-1.5"><Check size={14} /> {t('cmp_loc.confirmLocation')}</button>
           </div>
         </div>
       </div>

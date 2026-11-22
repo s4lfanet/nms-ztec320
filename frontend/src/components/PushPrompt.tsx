@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BellRing, X } from 'lucide-react';
 import { toast } from './Toast';
 import { getPushState, enablePush, pushSupported } from '../lib/push';
@@ -20,6 +21,7 @@ function dismissedRecently(): boolean {
  * - Izin belum ditanya: tampilkan banner (izin harus diminta lewat klik).
  */
 export function PushPrompt() {
+  const { t } = useTranslation();
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -43,8 +45,8 @@ export function PushPrompt() {
     setBusy(true);
     try {
       const ok = await enablePush();
-      if (ok) toast.success('Notifikasi gangguan aktif di perangkat ini');
-      else toast.error('Izin notifikasi ditolak');
+      if (ok) toast.success(t('cmp_pprompt.problemNotificationsAreOn'));
+      else toast.error(t('cmp_pprompt.notificationPermissionDenied'));
       setShow(false);
     } catch (e) {
       toast.error((e as Error).message || 'Gagal mengaktifkan notifikasi');
@@ -60,11 +62,11 @@ export function PushPrompt() {
       <div className="bg-surface border border-brd rounded-2xl shadow-2xl p-4 flex gap-3 items-start">
         <BellRing size={20} className="text-accent shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-tx1">Aktifkan notifikasi gangguan?</p>
-          <p className="text-xs text-tx3 mt-0.5">Terima alert OLT/ONU sebagai notifikasi di HP ini, walau aplikasi sedang ditutup.</p>
+          <p className="text-sm font-semibold text-tx1">{t('cmp_pprompt.turnOnProblemNotifications')}</p>
+          <p className="text-xs text-tx3 mt-0.5">{t('cmp_pprompt.getOltOnuAlerts')}</p>
           <div className="flex gap-2 mt-3">
-            <button onClick={enable} disabled={busy} className="btn-primary text-xs disabled:opacity-50">Aktifkan</button>
-            <button onClick={later} className="px-3 py-1.5 rounded-xl text-xs border border-brd text-tx2 hover:text-tx1">Nanti</button>
+            <button onClick={enable} disabled={busy} className="btn-primary text-xs disabled:opacity-50">{t('cmp_pprompt.turnOn')}</button>
+            <button onClick={later} className="px-3 py-1.5 rounded-xl text-xs border border-brd text-tx2 hover:text-tx1">{t('cmp_pprompt.later')}</button>
           </div>
         </div>
         <button onClick={later} className="p-1 text-tx3 hover:text-tx1" aria-label="close"><X size={16} /></button>

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 
 /**
@@ -42,6 +43,7 @@ const MODES: Array<{ v: string; l: string }> = [
 ];
 
 export function PortMapEditor({ value, onChange, includeWifi = false, vlanList }: PortMapEditorProps) {
+  const { t } = useTranslation();
   const ports = [...ETH_PORTS, ...(includeWifi ? [...WIFI_PORTS, ...VEIP_PORTS] : [])];
   const rows = Array.isArray(value) ? value : [];
 
@@ -65,7 +67,7 @@ export function PortMapEditor({ value, onChange, includeWifi = false, vlanList }
         </button>
       </div>
       {rows.length === 0 && (
-        <p className="text-[10px] text-tx3">Empty = no explicit port config (ports keep ONT defaults / existing auto-tag).</p>
+        <p className="text-[10px] text-tx3">{t('cmp_portmap.emptyNoExplicitPort')}</p>
       )}
       <div className="space-y-2">
         {rows.map((r, i) => (

@@ -358,7 +358,9 @@
     "language": "Bahasa",
     "langId": "Indonesia",
     "langEn": "English",
-    "allAccess": "Semua akses (Super Admin)"
+    "allAccess": "Semua akses (Super Admin)",
+    "logoBadFormat": "Format tidak didukung. Gunakan PNG, JPG, WEBP, atau GIF.",
+    "logoTooBig": "Ukuran file maksimal 2MB."
   },
   "error": {
     "invalid_credentials": "Username atau password salah",
@@ -1765,5 +1767,114 @@
     "step3": "Konfigurasi",
     "step4": "Tinjau & provision",
     "selected": "ONU {{sn}} di {{pon}} dipilih"
+  },
+  "cmp_push": {
+    "webPushDisabledOn": "Web Push dinonaktifkan di perangkat ini",
+    "webPushOnThis": "Web Push aktif — perangkat ini akan menerima alert",
+    "notificationPermissionDeniedBy": "Izin notifikasi ditolak browser",
+    "testPushSentCheck": "Tes push terkirim — cek notifikasi di perangkat ini",
+    "webPushThisBrowser": "Web Push (browser ini)",
+    "on": "Aktif",
+    "notSupported": "Tidak didukung",
+    "blockedByBrowser": "Diblokir browser",
+    "off": "Nonaktif",
+    "receiveAlertsAsSystem": "Terima alert sebagai notifikasi sistem di perangkat ini — walau aplikasi sedang tidak dibuka. Nyalakan juga toggle 'Web Push' di aturan alert.",
+    "openTheSiteSettings": "Buka pengaturan situs di browser (ikon gembok di address bar) → izinkan Notifications → refresh halaman."
+  },
+  "cmp_pprompt": {
+    "problemNotificationsAreOn": "Notifikasi gangguan aktif di perangkat ini",
+    "notificationPermissionDenied": "Izin notifikasi ditolak",
+    "turnOnProblemNotifications": "Aktifkan notifikasi gangguan?",
+    "getOltOnuAlerts": "Terima alert OLT/ONU sebagai notifikasi di HP ini, walau aplikasi sedang ditutup.",
+    "turnOn": "Aktifkan",
+    "later": "Nanti"
+  },
+  "cmp_update": {
+    "failedToApplyThe": "Gagal memasang update — coba dari halaman Update Sistem",
+    "updateAvailable": "Update tersedia",
+    "updateNow": "Update sekarang",
+    "later": "Nanti"
+  },
+  "cmp_search": {
+    "searchOnusOltsOdps": "Cari ONU, OLT, ODP, ODC, user…",
+    "typeAtLeast2": "Ketik minimal 2 karakter…",
+    "searching": "Mencari…",
+    "noResults": "Tidak ditemukan.",
+    "navigate": "navigasi",
+    "open": "buka",
+    "close": "tutup"
+  },
+  "cmp_tut": {
+    "tip": "Tips:",
+    "seeAllGuides": "Lihat semua panduan"
+  },
+  "cmp_off": {
+    "connectionLostDataCan": "Koneksi terputus — data tidak dapat diperbarui"
+  },
+  "cmp_portmap": {
+    "emptyNoExplicitPort": "Kosong = tanpa config port eksplisit (port tetap memakai default ONT / auto-tag yang ada)."
+  },
+  "cmp_map": {
+    "linkOkPppoePing": "Link OK (PPPoE + ping)",
+    "linkSlowLoss": "Link lambat / loss",
+    "linkDownPingTimeout": "Link down (ping timeout)",
+    "noPppoeSession": "Tidak ada sesi PPPoE",
+    "notCheckedYet": "Belum dicek",
+    "loadingMap": "Memuat peta…",
+    "unregistered": "Belum terdaftar",
+    "linkSlow": "Link lambat",
+    "noSession": "Tanpa sesi",
+    "highlightedPath": "Jalur disorot",
+    "drawModeClickThe": "Mode gambar: klik peta untuk menambah titik jalur",
+    "savePath": "Simpan jalur",
+    "clear": "Bersihkan",
+    "linkOkFull": "Link OK (PPPoE + ping)",
+    "linkSlowFull": "Link lambat / loss",
+    "linkDownFull": "Link down (ping timeout)",
+    "noPppoe": "Tidak ada sesi PPPoE",
+    "notChecked": "Belum dicek"
+  },
+  "cmp_loc": {
+    "geolocationNotSupportedBy": "Browser ini tidak mendukung geolokasi",
+    "locationDetected": "Lokasi terdeteksi",
+    "failedToLoadMap": "Gagal memuat peta. Periksa koneksi internet.",
+    "locationNotFound": "Lokasi tidak ditemukan",
+    "searchFailed": "Pencarian gagal",
+    "clickTheMapTo": "Klik peta untuk memilih lokasi terlebih dahulu",
+    "gpsLocationDetected": "Lokasi GPS terdeteksi",
+    "close": "Tutup",
+    "pickLocationOnMap": "Pilih lokasi di peta",
+    "searchAddressOrPlace": "Cari alamat atau tempat…",
+    "loadingMap": "Memuat peta…",
+    "clickTheMapTo2": "Klik peta untuk menaruh penanda",
+    "cancel": "Batal",
+    "confirmLocation": "Konfirmasi lokasi"
+  },
+  "cmp_rack": {
+    "avgRxPower": "Rata-rata RX power",
+    "transDistance": "Jarak transmisi",
+    "temperature": "Suhu",
+    "supplyVoltage": "Tegangan",
+    "biasCurrent": "Arus bias",
+    "networkError": "Gangguan jaringan",
+    "unconfigured": "Belum terkonfigurasi",
+    "refresh": "Muat ulang",
+    "perPonPortDetail": "Detail per port PON",
+    "noOnu": "Tidak ada ONU",
+    "syncedAt": "Sinkron:"
+  },
+  "cmp_zte": {
+    "retry": "Coba lagi",
+    "card": "Kartu:",
+    "portDetailNotAvailable": "Detail port tidak tersedia via SNMP",
+    "temperature": "Suhu",
+    "biasCurrent": "Arus bias",
+    "voltage": "Tegangan",
+    "cardInfo": "Info card",
+    "portDetailNotAvailable2": "Detail port tidak tersedia via SNMP — menampilkan info level card"
+  },
+  "cmp_epon": {
+    "retry": "Coba lagi",
+    "refreshRackStatus": "Muat ulang status rack"
   }
 }

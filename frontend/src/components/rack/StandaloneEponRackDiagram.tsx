@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RefreshCw } from 'lucide-react';
 import { useRackData } from '../../hooks/useRackData';
 import { useRackMetrics } from '../../hooks/useRackMetrics';
@@ -26,6 +27,7 @@ function uplColor(p: CardPort): { bg: string; ring: string; glow: string } {
 }
 
 export default function StandaloneEponRackDiagram({ oltId, onPortClick, onMetrics }: RackDiagramProps) {
+  const { t } = useTranslation();
   const { data, loading, refreshing, error, reload, refresh } = useRackData(oltId);
   const metrics = useRackMetrics(data);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; content: React.ReactNode } | null>(null);
@@ -52,7 +54,7 @@ export default function StandaloneEponRackDiagram({ oltId, onPortClick, onMetric
     return (
       <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-xs text-danger">
         Gagal memuat sasis: {error}
-        <button onClick={() => reload()} className="ml-3 underline font-medium">Coba lagi</button>
+        <button onClick={() => reload()} className="ml-3 underline font-medium">{t('cmp_epon.retry')}</button>
       </div>
     );
   }
@@ -114,7 +116,7 @@ export default function StandaloneEponRackDiagram({ oltId, onPortClick, onMetric
                 onClick={refresh}
                 disabled={refreshing}
                 className="p-1.5 rounded-md hover:bg-glass text-tx3 hover:text-tx1 transition-colors"
-                title="Refresh rack status"
+                title={t('cmp_epon.refreshRackStatus')}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
               </button>

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 import { cn } from '../lib/utils';
 
 // Standard OpenStreetMap tiles — free, no API key. CartoDB's free dark basemap
@@ -87,12 +89,13 @@ export interface MapLine {
 }
 
 // ODP→ONU line appearance by live link-state (PPPoE session + ping)
+// label = kunci terjemahan; diterjemahkan dengan i18n.t() saat dipakai (popup HTML)
 const LINK_LINE_STYLE: Record<string, { color: string; dash?: string; label: string }> = {
-  ok: { color: '#10b981', label: 'Link OK (PPPoE + ping)' },
-  slow: { color: '#f59e0b', label: 'Link lambat / loss' },
-  down: { color: '#ef4444', label: 'Link down (ping timeout)' },
-  no_session: { color: '#64748b', dash: '4 3', label: 'Tidak ada sesi PPPoE' },
-  unknown: { color: '#06b6d4', dash: '4 3', label: 'Belum dicek' },
+  ok: { color: '#10b981', label: 'cmp_map.linkOkFull' },
+  slow: { color: '#f59e0b', label: 'cmp_map.linkSlowFull' },
+  down: { color: '#ef4444', label: 'cmp_map.linkDownFull' },
+  no_session: { color: '#64748b', dash: '4 3', label: 'cmp_map.noPppoe' },
+  unknown: { color: '#06b6d4', dash: '4 3', label: 'cmp_map.notChecked' },
 };
 
 function onuLineStyle(line: MapLine) {
@@ -256,7 +259,7 @@ function buildPopupHtml(m: MapMarker): string {
     if (m.link_state) {
       const stMeta = LINK_LINE_STYLE[m.link_state] || LINK_LINE_STYLE.unknown;
       const service: string[] = [
-        popupRow('Link', stMeta.label, { color: stMeta.color, bold: true }),
+        popupRow('Link', i18n.t(stMeta.label), { color: stMeta.color, bold: true }),
         popupRow('IP', m.pppoe_ip),
         popupRow('Session', m.session_uptime),
         popupRow('RTT', m.rtt_ms != null ? `${m.rtt_ms} ms` : ''),
@@ -347,6 +350,7 @@ export function LeafletMap({
   drawMode?: boolean;
   onDrawComplete?: (coords: [number, number][]) => void;
 }) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
@@ -479,7 +483,7 @@ export function LeafletMap({
           line.session_uptime ? `Uptime: ${line.session_uptime}` : '',
         ].filter(Boolean).join(' · ');
         pl.bindTooltip(
-          `<b>${line.label}</b><br/>${st.label}${extra ? `<br/>${extra}` : ''}`,
+          `<b>${line.label}</b><br/>${i18n.t(st.label)}${extra ? `<br/>${extra}` : ''}`,
           { sticky: true }
         );
       }
@@ -538,7 +542,7 @@ export function LeafletMap({
                 d.ping.loss_pct != null ? `loss ${d.ping.loss_pct}%` : '',
                 d.source ? `via ${d.source}` : '',
               ].filter(Boolean).join(' · ');
-              out.innerHTML = `<span style="color:${st.color};font-weight:600">${st.label}</span><br/>${parts}`;
+              out.innerHTML = `<span style="color:${st.color};font-weight:600">${i18n.t(st.label)}</span><br/>${parts}`;
               if (d.state) {
                 m.link_state = d.state.link_state;
                 m.rtt_ms = d.state.rtt_ms;
@@ -653,7 +657,7 @@ export function LeafletMap({
   if (!loaded) {
     return (
       <div className="glass-card p-8 text-center">
-        <div className="animate-pulse text-tx3 text-sm">Loading map...</div>
+        <div className="animate-pulse text-tx3 text-sm">{t('cmp_map.loadingMap')}</div>
       </div>
     );
   }
@@ -687,7 +691,7 @@ export function LeafletMap({
         </div>
         <div className="flex items-center gap-1.5 text-xs">
           <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--color-offline)', border: '1px solid var(--text-3)' }} />
-          <span className="text-tx3">Unregister</span>
+          <span className="text-tx3">{t('cmp_map.unregistered')}</span>
         </div>
         {/* ODP→ONU live link-state legend */}
         <div className="flex items-center gap-1.5 text-xs">
@@ -696,7 +700,7 @@ export function LeafletMap({
         </div>
         <div className="flex items-center gap-1.5 text-xs">
           <div className="w-6 h-0.5 rounded" style={{ background: '#f59e0b' }} />
-          <span className="text-tx3">Link Lambat</span>
+          <span className="text-tx3">{t('cmp_map.linkSlow')}</span>
         </div>
         <div className="flex items-center gap-1.5 text-xs">
           <div className="w-6 h-0.5 rounded" style={{ background: '#ef4444' }} />
@@ -704,12 +708,12 @@ export function LeafletMap({
         </div>
         <div className="flex items-center gap-1.5 text-xs">
           <div className="w-6 h-0.5 rounded" style={{ background: 'repeating-linear-gradient(90deg,#64748b 0 4px,transparent 4px 7px)' }} />
-          <span className="text-tx3">No Session</span>
+          <span className="text-tx3">{t('cmp_map.noSession')}</span>
         </div>
         {selectedMarker && (
           <div className="flex items-center gap-1.5 text-xs ml-auto">
             <div className="w-3 h-1 rounded-full bg-warning" />
-            <span className="text-tx3">Highlighted Path</span>
+            <span className="text-tx3">{t('cmp_map.highlightedPath')}</span>
             <button onClick={() => { setSelectedMarker(null); if (highlightRef.current) highlightRef.current.clearLayers(); }} className="text-tx3 hover:text-tx1 ml-1">✕</button>
           </div>
         )}
@@ -725,10 +729,10 @@ export function LeafletMap({
       {/* Draw mode controls */}
       {drawMode && (
         <div className="mt-2 flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-warning font-medium">Draw Mode: Click on map to add waypoints</span>
+          <span className="text-xs text-warning font-medium">{t('cmp_map.drawModeClickThe')}</span>
           <span className="text-xs text-tx3">{drawPoints.length} points</span>
-          <button onClick={saveDrawnPath} disabled={drawPoints.length < 2} className="px-2 py-1 rounded bg-success text-tx1 text-xs font-medium disabled:opacity-50">Save Path</button>
-          <button onClick={clearDrawnPath} disabled={drawPoints.length === 0} className="px-2 py-1 rounded bg-glass text-tx2 text-xs font-medium disabled:opacity-50">Clear</button>
+          <button onClick={saveDrawnPath} disabled={drawPoints.length < 2} className="px-2 py-1 rounded bg-success text-tx1 text-xs font-medium disabled:opacity-50">{t('cmp_map.savePath')}</button>
+          <button onClick={clearDrawnPath} disabled={drawPoints.length === 0} className="px-2 py-1 rounded bg-glass text-tx2 text-xs font-medium disabled:opacity-50">{t('cmp_map.clear')}</button>
         </div>
       )}
 

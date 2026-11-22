@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Search, Server, Radio, Box, Package, Grid, User } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -22,6 +23,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export function SearchPalette() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Record<string, SearchItem[]>>({});
@@ -91,17 +93,17 @@ export function SearchPalette() {
         <div className="flex items-center gap-3 px-4 py-3 border-b border-brd">
           <Search size={16} className="text-tx3 flex-shrink-0" />
           <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
-            onKeyDown={onKeyDown} placeholder="Cari ONU, OLT, ODP, ODC, user…"
+            onKeyDown={onKeyDown} placeholder={t('cmp_search.searchOnusOltsOdps')}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-tx3" />
           <kbd className="px-1.5 py-0.5 text-[10px] rounded bg-glass text-tx3 font-mono">ESC</kbd>
         </div>
         <div className="max-h-[50vh] overflow-y-auto">
           {query.length < 2 && (
-            <div className="px-4 py-6 text-center text-xs text-tx3">Ketik minimal 2 karakter…</div>
+            <div className="px-4 py-6 text-center text-xs text-tx3">{t('cmp_search.typeAtLeast2')}</div>
           )}
-          {loading && <div className="px-4 py-4 text-center text-xs text-tx3">Mencari…</div>}
+          {loading && <div className="px-4 py-4 text-center text-xs text-tx3">{t('cmp_search.searching')}</div>}
           {!loading && query.length >= 2 && items.length === 0 && (
-            <div className="px-4 py-6 text-center text-xs text-tx3">Tidak ditemukan.</div>
+            <div className="px-4 py-6 text-center text-xs text-tx3">{t('cmp_search.noResults')}</div>
           )}
           {!loading && items.map((item, i) => {
             const Icon = TYPE_ICONS[item.type] || Radio;
@@ -123,9 +125,9 @@ export function SearchPalette() {
           })}
         </div>
         <div className="px-4 py-2 border-t border-brd flex items-center gap-3 text-[10px] text-tx3">
-          <span><kbd className="px-1 py-0.5 bg-glass rounded font-mono">↑↓</kbd> navigasi</span>
-          <span><kbd className="px-1 py-0.5 bg-glass rounded font-mono">Enter</kbd> buka</span>
-          <span><kbd className="px-1 py-0.5 bg-glass rounded font-mono">Ctrl+K</kbd> tutup</span>
+          <span><kbd className="px-1 py-0.5 bg-glass rounded font-mono">↑↓</kbd> {t('cmp_search.navigate')}</span>
+          <span><kbd className="px-1 py-0.5 bg-glass rounded font-mono">Enter</kbd> {t('cmp_search.open')}</span>
+          <span><kbd className="px-1 py-0.5 bg-glass rounded font-mono">Ctrl+K</kbd> {t('cmp_search.close')}</span>
         </div>
       </div>
     </div>
