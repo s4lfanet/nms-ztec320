@@ -1732,7 +1732,16 @@
     "standby": "Standby / off",
     "ruleActive": "Rule active",
     "active": "Active",
-    "switchNative": "Switch to WA Native (QR)"
+    "switchNative": "Switch to WA Native (QR)",
+    "outageTitle": "Mass outage correlation",
+    "outageDesc": "When many ONUs go down together, NMS looks for the fault point in the FTTH topology (ODP → ODC/JC → OTB) and sends one alert for that point, with a likely cause (power cut or fibre cut) and a location link. Requires ONUs linked to ODP ports in the FTTH menu.",
+    "outageEnable": "Escalate correlation to ODC/JC/OTB",
+    "outageMinOnu": "Minimum ONUs down",
+    "outageMinOnuHelp": "ONUs down at one point before it counts as an outage (2–20).",
+    "outageRatio": "Share of ONUs down (%)",
+    "outageRatioHelp": "For ODC/JC/OTB: most ONUs below it must be down (50–100).",
+    "outageSave": "Save correlation",
+    "outageSaved": "Outage correlation settings saved"
   },
   "pg_addonu": {
     "onuInfo": "ONU info",

@@ -41,6 +41,13 @@ export function FtthInfrastructure() {
     const urlTab = (searchParams.get('tab') as Tab) || 'overview';
     setTab(urlTab);
   }, [searchParams]);
+  // Deep link from an outage alert (?tab=odc&odc=3): open the impact list for that node.
+  useEffect(() => {
+    for (const type of ['odp', 'odc', 'jc', 'otb'] as const) {
+      const id = Number(searchParams.get(type));
+      if (id > 0) { setImpactTarget({ type, id, name: `${type.toUpperCase()} #${id}` }); break; }
+    }
+  }, [searchParams]);
   const [modal, setModal] = useState<ModalType>(null);
   const [editItem, setEditItem] = useState<any>(null);
   const [parentCtx, setParentCtx] = useState<any>(null);
@@ -2090,7 +2097,7 @@ function ImpactModal({ target, onClose }: { target: { type: 'otb' | 'jc' | 'odc'
     queryFn: () => api.ftthImpact(target.type, target.id),
   });
   return (
-    <SharedModal open onClose={onClose} icon={<Users size={16} />} title={t('pg_ftth.impactTitle', { name: target.name })} size="sm">
+    <SharedModal open onClose={onClose} icon={<Users size={16} />} title={t('pg_ftth.impactTitle', { name: data?.name || target.name })} size="sm">
       {isLoading && <div className="text-center py-8 text-tx3 text-sm">{t('pg_ftth.calculating')}</div>}
       {data && (
         <>

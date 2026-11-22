@@ -233,7 +233,97 @@ function AlertRulesSection() {
       {rules.map((rule) => (
         <RuleCard key={String(rule.id)} rule={rule} onSave={(r) => updateMut.mutate(r)} saving={updateMut.isPending} />
       ))}
+      <OutageCorrelationCard />
     </div>
+  );
+}
+
+/* ─── Korelasi gangguan massal (ODP → ODC/JC → OTB) ─── */
+
+function OutageCorrelationCard() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['system-config'],
+    queryFn: async () => { const r = await fetch('/api/system-config', { credentials: 'include' }); return r.json(); },
+  });
+  const [enabled, setEnabled] = useState(true);
+  const [minOnu, setMinOnu] = useState('3');
+  const [ratio, setRatio] = useState('80');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const c = data?.config;
+    if (!c) return;
+    setEnabled(!['0', 'false', 'off', 'no'].includes(String(c.outage_correlation_enabled ?? '1').toLowerCase()));
+    setMinOnu(String(c.odp_outage_threshold || '3'));
+    setRatio(String(c.outage_ratio_threshold || '80'));
+  }, [data]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const r = await fetch('/api/system-config', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({
+          outage_correlation_enabled: enabled ? '1' : '0',
+          odp_outage_threshold: String(Math.max(2, Math.min(20, parseInt(minOnu) || 3))),
+          outage_ratio_threshold: String(Math.max(50, Math.min(100, parseInt(ratio) || 80))),
+        }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success(t('pg_alerts.outageSaved')); qc.invalidateQueries({ queryKey: ['system-config'] }); }
+      else toast.error(d.message || t('pg_alerts.failedToSave'));
+    } catch { toast.error(t('pg_alerts.failedToSave')); }
+    setSaving(false);
+  };
+
+  return (
+    <Card
+      icon={
+        <div className="w-8 h-8 rounded-lg bg-danger/10 border border-danger/20 flex items-center justify-center">
+          <Radio size={15} className="text-danger" />
+        </div>
+      }
+      title={t('pg_alerts.outageTitle')}
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-tx3">{t('pg_alerts.outageDesc')}</p>
+        <button
+          type="button"
+          onClick={() => setEnabled(v => !v)}
+          className={cn(
+            'w-full flex items-center gap-2.5 p-2.5 rounded-lg border text-xs font-medium transition-colors',
+            enabled ? 'border-accent/50 bg-accent/10 text-tx1' : 'border-brd bg-surface/60 text-tx3 hover:text-tx2'
+          )}
+        >
+          <span className="flex-1 text-left">{t('pg_alerts.outageEnable')}</span>
+          {enabled ? <ToggleRight size={18} className="text-accent flex-shrink-0" /> : <ToggleLeft size={18} className="flex-shrink-0" />}
+        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Input
+            label={t('pg_alerts.outageMinOnu')}
+            type="number" min={2} max={20}
+            value={minOnu}
+            onChange={e => setMinOnu(e.target.value)}
+            helperText={t('pg_alerts.outageMinOnuHelp')}
+          />
+          <Input
+            label={t('pg_alerts.outageRatio')}
+            type="number" min={50} max={100}
+            value={ratio}
+            disabled={!enabled}
+            onChange={e => setRatio(e.target.value)}
+            helperText={t('pg_alerts.outageRatioHelp')}
+          />
+        </div>
+        <div className="pt-2 border-t border-brd">
+          <Button variant="primary" icon={<Save size={15} />} loading={saving} onClick={save}>
+            {t('pg_alerts.outageSave')}
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 

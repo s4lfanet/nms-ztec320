@@ -1303,14 +1303,19 @@ def _deep_link_url(target_type, target_id):
     from models import SystemConfig
     cfg = {c.key: c.value for c in SystemConfig.query.all()}
     base = (cfg.get('base_url') or 'https://salfanet.id').rstrip('/')
+    # Real SPA routes (BrowserRouter under /dashboard) — the old '#/onu/..'
+    # links landed on the login redirect instead of the target page.
     routes = {
-        'olt': f'/olt/{target_id}',
-        'onu': f'/onu/{target_id}',
-        'odp': f'/ftth?odp={target_id}',
-        'pon': f'/onus?pon={target_id}',
+        'olt': f'/dashboard/settings/olts/{target_id}/config',
+        'onu': f'/dashboard/onus/{target_id}',
+        'odp': f'/dashboard/ftth?tab=odp&odp={target_id}',
+        'odc': f'/dashboard/ftth?tab=odc&odc={target_id}',
+        'jc': f'/dashboard/ftth?tab=jc&jc={target_id}',
+        'otb': f'/dashboard/ftth?tab=otb&otb={target_id}',
+        'pon': f'/dashboard/onus?pon={target_id}',
     }
     path = routes.get(target_type)
-    return f'{base}#{path}' if path else ''
+    return f'{base}{path}' if path else ''
 
 
 def _inject_deep_link(alerts):
@@ -1321,107 +1326,248 @@ def _inject_deep_link(alerts):
             a['message'] = (a.get('message') or '') + f"\n🔗 Lihat detail: {url}"
 
 
-def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force_send=False):
-    """If ≥N ONUs in the same ODP are down, emit one ODP-outage alert and
-    mark the individual ONU AlertHistory rows as suppressed_by='odp_outage'."""
-    from models import db, ONU, AlertHistory, Notification, SystemConfig, FTTHODP
+_OUTAGE_LABEL = {'odp': 'ODP', 'odc': 'ODC', 'jc': 'JC', 'otb': 'OTB/ODF'}
+_DOWN_STATUSES = ('offline', 'dyinggasp', 'los')
 
-    # Threshold from config (default 3)
-    row = SystemConfig.query.filter_by(key='odp_outage_threshold').first()
+
+def _outage_settings():
+    """(threshold, correlation_enabled, ratio_pct) from SystemConfig."""
+    from models import SystemConfig
+    keys = ['odp_outage_threshold', 'outage_correlation_enabled', 'outage_ratio_threshold']
+    cfg = {c.key: c.value for c in SystemConfig.query.filter(SystemConfig.key.in_(keys)).all()}
     try:
-        threshold = int(row.value) if row and row.value else 3
+        threshold = int(cfg.get('odp_outage_threshold') or 3)
     except (ValueError, TypeError):
         threshold = 3
     threshold = max(2, min(20, threshold))
+    enabled = str(cfg.get('outage_correlation_enabled', '1')).strip().lower() not in ('0', 'false', 'off', 'no')
+    try:
+        ratio = int(cfg.get('outage_ratio_threshold') or 80)
+    except (ValueError, TypeError):
+        ratio = 80
+    ratio = max(50, min(100, ratio))
+    return threshold, enabled, ratio
 
-    # Collect down ONUs per ODP
-    odp_down = {}  # odp_id -> {'odp': obj, 'onus': [onu,...]}
-    for olt in olts:
-        down_onus = ONU.query.filter(
-            ONU.olt_id == olt.id,
-            ONU.status.in_(['offline', 'dyinggasp', 'los'])
-        ).all()
-        for onu in down_onus:
-            port = getattr(onu, 'odp_port', None)
-            if not port or not port.odp_id:
+
+def _classify_outage(onus):
+    """Guess the cause from the down reasons: mostly DyingGasp = power cut,
+    mostly LOS = fibre cut. Returns (key, line for the message)."""
+    n = len(onus) or 1
+    dg = sum(1 for o in onus if o.status == 'dyinggasp')
+    los = sum(1 for o in onus if o.status == 'los')
+    if dg * 100 >= 60 * n:
+        return 'power', f"⚡ Dugaan: listrik padam ({dg}/{n} Dying Gasp) — cek PLN/adaptor dulu sebelum berangkat."
+    if los * 100 >= 60 * n:
+        return 'fiber', f"✂️ Dugaan: kabel putus/tertekuk ({los}/{n} LOS) — perlu dicek ke lapangan."
+    return 'mixed', f"❓ Penyebab campuran (LOS {los}, Dying Gasp {dg}, offline {n - los - dg})."
+
+
+def _maps_link(node):
+    lat = getattr(node, 'latitude', None)
+    lng = getattr(node, 'longitude', None)
+    if lat is None or lng is None:
+        return ''
+    return f"https://maps.google.com/?q={lat},{lng}"
+
+
+def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force_send=False):
+    """Root-cause correlation for mass outages.
+
+    ODP level (original behaviour): ≥N ONUs down on the same ODP → one ODP alert.
+    With `outage_correlation_enabled` (default on) the check also climbs the
+    FTTH topology (ODP → parent ODP → ODC/JC → OTB) and, when most ONUs under a
+    higher node are down, sends ONE alert for that node instead of one per ODP.
+    Individual ONU AlertHistory rows are marked suppressed_by='<type>_outage'.
+    Open outage notifications whose node has recovered are resolved and a
+    "pulih" alert is sent. Read-only on the FTTH tables — no OLT commands."""
+    from collections import Counter
+    from models import db, ONU, AlertHistory, Notification
+    from ftth_topology import onu_leaf_nodes, ancestors, collect_downstream_onus, get_node
+
+    threshold, enabled, ratio = _outage_settings()
+    olt_by_id = {o.id: o for o in olts}
+    if not olt_by_id:
+        return
+
+    down_onus = ONU.query.filter(
+        ONU.olt_id.in_(list(olt_by_id.keys())),
+        ONU.status.in_(_DOWN_STATUSES)
+    ).all()
+
+    anc_cache = {}
+    direct_odp = {}   # odp_id -> [onu]  (ONUs on the ODP's own ports)
+    covered = {}      # (type, id) -> {onu_id: onu}  (every down ONU below the node)
+    for onu in down_onus:
+        port = getattr(onu, 'odp_port', None)
+        if port and port.odp_id:
+            direct_odp.setdefault(port.odp_id, []).append(onu)
+        if enabled:
+            for leaf in onu_leaf_nodes(onu):
+                for node in {leaf} | ancestors(leaf[0], leaf[1], anc_cache):
+                    covered.setdefault(node, {})[onu.id] = onu
+
+    qualifying = {}   # (type, id) -> {'down': [onu], 'total': int|None}
+    for odp_id, onus in direct_odp.items():
+        if len(onus) >= threshold:
+            qualifying[('odp', odp_id)] = {'down': onus, 'total': None}
+    if enabled:
+        for node, by_id in covered.items():
+            if len(by_id) < threshold:
                 continue
-            odp_down.setdefault(port.odp_id, {'odp': port.odp, 'onus': []})['onus'].append(onu)
+            total = len({u.id for u in collect_downstream_onus(node[0], node[1])})
+            if total and len(by_id) * 100 >= ratio * total:
+                prev = qualifying.get(node)
+                if not prev or len(by_id) >= len(prev['down']):
+                    qualifying[node] = {'down': list(by_id.values()), 'total': total}
 
-    for odp_id, info in odp_down.items():
-        down = info['onus']
-        if len(down) < threshold:
+    if enabled:
+        qkeys = set(qualifying)
+        roots = [n for n in qualifying if not (ancestors(n[0], n[1], anc_cache) & qkeys)]
+    else:
+        roots = list(qualifying)
+    root_set = set(roots)
+
+    # ── Resolve outage notifications whose node is no longer the root ──
+    open_notifs = Notification.query.filter(
+        Notification.category.in_(['odp_outage', 'outage']),
+        Notification.resolved == False,  # noqa: E712
+        Notification.olt_id.in_(list(olt_by_id.keys())),
+    ).all()
+    for n in open_notifs:
+        key = (n.target_type or '', n.target_id)
+        if key in root_set:
             continue
+        n.resolved = True
+        n.resolved_at = now
+        still_down = len(covered.get(key, {})) or (len(direct_odp.get(key[1], [])) if key[0] == 'odp' else 0)
+        if still_down >= threshold:
+            continue  # superseded by an alert on a node above it — not a recovery
+        node = get_node(key[0], key[1])
+        label = _OUTAGE_LABEL.get(key[0], key[0].upper())
+        name = getattr(node, 'name', None) or f"#{key[1]}"
+        olt = olt_by_id.get(n.olt_id)
+        alerts_to_send.append({
+            'type': f"{n.category}_recovery",
+            'severity': 'info',
+            'title': f"✅ Pulih: {label} {name}",
+            'message': (
+                f"✅ GANGGUAN {label.upper()} PULIH\n\n"
+                f"{label}: {name}\n"
+                f"OLT: {olt.name if olt else '?'}\n"
+                f"ONU yang tadinya down sudah kembali online.\n"
+                f"🕒 {_fmt_time(now)}"
+            ),
+            'olt_name': olt.name if olt else '',
+            'olt_ip': olt.ip_address if olt else '',
+            'is_recovery': True,
+            'target_type': key[0],
+            'target_id': key[1],
+        })
 
-        odp = info['odp']
-        olt = down[0].olt_id
-        # Suppress individual ONU alerts — mark their AlertHistory
+    # ── Emit one alert per root node ──
+    for node_type, node_id in roots:
+        node = get_node(node_type, node_id)
+        if node is None:
+            continue
+        info = qualifying[(node_type, node_id)]
+        down = info['down']
+        olt = Counter(o.olt_id for o in down).most_common(1)[0][0]
+        olt_obj = olt_by_id.get(olt)
+        tag = f"{node_type}_outage"
+
         for onu in down:
-            for atype in ('offline', 'dyinggasp', 'los'):
-                hist = AlertHistory.query.filter_by(
-                    onu_id=onu.id, alert_type=atype
-                ).first()
+            for atype in _DOWN_STATUSES:
+                hist = AlertHistory.query.filter_by(onu_id=onu.id, alert_type=atype).first()
                 if hist and not hist.suppressed_by:
-                    hist.suppressed_by = 'odp_outage'
+                    hist.suppressed_by = tag
 
-        title = f"🔧 Gangguan ODP: {odp.name} ({len(down)} ONU down)"
+        _cause, cause_line = _classify_outage(down)
+        maps = _maps_link(node)
+        maps_line = f"📍 Lokasi: {maps}\n" if maps else ''
         onu_list = "\n".join(
             f"  • {o.name or o.serial_number or o.onu_id_str} — {_friendly_down_reason(o.status)}"
             for o in down[:10]
         )
         if len(down) > 10:
             onu_list += f"\n  ... dan {len(down) - 10} lainnya"
-        message = (
-            f"🔧 KEMUNGKINAN GANGGUAN DI ODP\n\n"
-            f"ODP: {odp.name}\n"
-            f"OLT: {next((o.name for o in olts if o.id == olt), '?')}\n"
-            f"ONU Down: {len(down)} dari total port ODP\n\n"
-            f"ONU Terdampak:\n{onu_list}\n\n"
-            f"⚠️ Kemungkinan gangguan pada ODP/splitter/drop cable.\n"
-            f"🕒 {_fmt_time(now)}"
-        )
+
+        if node_type == 'odp':
+            category = 'odp_outage'
+            title = f"🔧 Gangguan ODP: {node.name} ({len(down)} ONU down)"
+            message = (
+                f"🔧 KEMUNGKINAN GANGGUAN DI ODP\n\n"
+                f"ODP: {node.name}\n"
+                f"OLT: {olt_obj.name if olt_obj else '?'}\n"
+                f"ONU Down: {len(down)} dari total port ODP\n\n"
+                f"ONU Terdampak:\n{onu_list}\n\n"
+                f"⚠️ Kemungkinan gangguan pada ODP/splitter/drop cable.\n"
+                f"{cause_line}\n"
+                f"{maps_line}"
+                f"🕒 {_fmt_time(now)}"
+            )
+        else:
+            category = 'outage'
+            label = _OUTAGE_LABEL.get(node_type, node_type.upper())
+            total = info['total'] or len(down)
+            pct = round(len(down) * 100 / total) if total else 100
+            olt_names = sorted({olt_by_id[o.olt_id].name for o in down if o.olt_id in olt_by_id})
+            odp_names = sorted({o.odp_port.odp.name for o in down
+                                if getattr(o, 'odp_port', None) and o.odp_port.odp})
+            odp_text = ", ".join(odp_names[:8]) + (f" (+{len(odp_names) - 8})" if len(odp_names) > 8 else '')
+            title = f"🚨 Gangguan {label}: {node.name} ({len(down)} ONU down)"
+            message = (
+                f"🚨 KEMUNGKINAN GANGGUAN DI {label.upper()}\n\n"
+                f"{label}: {node.name}\n"
+                f"OLT: {', '.join(olt_names) or '?'}\n"
+                f"ONU Down: {len(down)} dari {total} ONU di bawahnya ({pct}%)\n"
+                f"ODP terdampak: {odp_text or '-'}\n\n"
+                f"{cause_line}\n"
+                f"{maps_line}\n"
+                f"ONU Terdampak:\n{onu_list}\n\n"
+                f"🕒 {_fmt_time(now)}"
+            )
 
         existing = Notification.query.filter_by(
-            olt_id=olt, category='odp_outage', is_read=False
+            category=category, target_type=node_type, target_id=node_id, resolved=False
         ).first()
         if existing:
             existing.created_at = now
+            existing.title = title
             existing.message = message
         else:
             notifications_to_create.append({
                 'olt_id': olt,
                 'onu_id': None,
                 'severity': 'critical',
-                'category': 'odp_outage',
+                'category': category,
                 'title': title,
                 'message': message,
                 'target_roles': '',
-                'target_type': 'odp',
-                'target_id': odp_id,
+                'target_type': node_type,
+                'target_id': node_id,
             })
 
         if not existing or force_send:
             alerts_to_send.append({
-                'type': 'odp_outage',
+                'type': category,
                 'severity': 'critical',
                 'title': title,
                 'message': message,
-                'olt_name': next((o.name for o in olts if o.id == olt), ''),
-                'olt_ip': next((o.ip_address for o in olts if o.id == olt), ''),
+                'olt_name': olt_obj.name if olt_obj else '',
+                'olt_ip': olt_obj.ip_address if olt_obj else '',
                 'is_recovery': False,
-                'target_type': 'odp',
-                'target_id': odp_id,
+                'target_type': node_type,
+                'target_id': node_id,
+                'cause': _cause,
             })
 
-        # Record in AlertHistory
-        hist = AlertHistory.query.filter_by(
-            olt_id=olt, alert_type='odp_outage'
-        ).first()
+        hist = AlertHistory.query.filter_by(olt_id=olt, alert_type=category).first()
         if hist:
             hist.last_alert_at = now
             hist.last_value = str(len(down))
         else:
             db.session.add(AlertHistory(
-                olt_id=olt, alert_type='odp_outage',
+                olt_id=olt, alert_type=category,
                 last_value=str(len(down)), last_alert_at=now
             ))
 

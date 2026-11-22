@@ -1732,7 +1732,16 @@
     "standby": "Standby / Off",
     "ruleActive": "Rule aktif",
     "active": "Aktif",
-    "switchNative": "Beralih ke WA Native (QR)"
+    "switchNative": "Beralih ke WA Native (QR)",
+    "outageTitle": "Korelasi gangguan massal",
+    "outageDesc": "Saat banyak ONU mati bersamaan, NMS mencari titik gangguan di topologi FTTH (ODP → ODC/JC → OTB) dan mengirim satu alert untuk titik itu, lengkap dengan dugaan penyebab (listrik padam atau kabel putus) dan link lokasi. Butuh ONU yang sudah terhubung ke port ODP di menu FTTH.",
+    "outageEnable": "Naikkan korelasi ke ODC/JC/OTB",
+    "outageMinOnu": "Minimal ONU mati",
+    "outageMinOnuHelp": "Jumlah ONU mati di satu titik sebelum dianggap gangguan (2–20).",
+    "outageRatio": "Persentase ONU mati (%)",
+    "outageRatioHelp": "Untuk ODC/JC/OTB: sebagian besar ONU di bawahnya harus mati (50–100).",
+    "outageSave": "Simpan korelasi",
+    "outageSaved": "Pengaturan korelasi gangguan disimpan"
   },
   "pg_addonu": {
     "onuInfo": "Info ONU",

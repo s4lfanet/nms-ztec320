@@ -125,8 +125,10 @@ class TestDeepLink:
             db.session.commit()
             url = _deep_link_url('onu', 42)
             assert 'nms.test' in url
-            assert 'onu/42' in url
+            assert url == 'https://nms.test/dashboard/onus/42'
+            assert '#' not in url
             url2 = _deep_link_url('odp', 7)
             assert 'odp=7' in url2
+            assert _deep_link_url('odc', 3).endswith('/dashboard/ftth?tab=odc&odc=3')
             assert _deep_link_url('', 1) == ''
             assert _deep_link_url('onu', None) == ''

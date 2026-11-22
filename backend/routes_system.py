@@ -421,9 +421,11 @@ def get_system_config():
 @login_required
 def update_system_config():
     """Update system configuration. Super admin can update all keys.
-    Non-super-admin can only update alert_check_interval and timezone."""
+    Non-super-admin can only update alert_check_interval, timezone and the
+    outage-correlation keys."""
     data = request.get_json() or {}
-    allowed_keys = {'alert_check_interval', 'timezone'}
+    allowed_keys = {'alert_check_interval', 'timezone',
+                    'odp_outage_threshold', 'outage_correlation_enabled', 'outage_ratio_threshold'}
     if not current_user.is_super_admin:
         for key in data:
             if key not in allowed_keys:
