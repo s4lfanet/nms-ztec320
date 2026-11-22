@@ -119,7 +119,7 @@ export function MikrotikSettings() {
   return (
     <PageContainer>
       <PageHeader
-        title="Mikrotik PPPoE Servers"
+        title="Server PPPoE Mikrotik"
         description="RouterOS devices dipoll untuk sesi PPPoE + ping client — mewarnai garis ODP→ONU di peta FTTH."
         action={canManage && (
           <div className="flex items-center gap-2">

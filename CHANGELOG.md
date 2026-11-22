@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Redesign Fase 4: penyeragaman
+
+#### Diubah
+- Judul dan deskripsi halaman kini berbahasa Indonesia dan sama dengan nama di menu: Manajemen User, Infrastruktur FTTH, Pengaturan Alert & Notifikasi, Monitoring Trafik, Profil TR069, Template ONU, Log Aktivitas, Log OLT, Server PPPoE Mikrotik, Update Sistem, ONU Belum Terkonfigurasi, Pengaturan/Ringkasan OLT (kartu "Daftar OLT"), Kustomisasi, Wizard Registrasi ONU. Istilah teknis (ONU, OLT, PON, TR069) tetap.
+- **Terminal OLT**: area terminal yang kosong kini memberi petunjuk ("Pilih OLT di atas, lalu tekan Hubungkan"); petunjuk hilang begitu sesi dibuka.
+
+#### Diperbaiki
+- Daftar user menampilkan badge "User" untuk super admin tanpa role; `/api/users` kini mengirim `is_super_admin` (tambahan, field lama tetap) dan badge menjadi "Super Admin".
+
 ### 2026-11-22 — Redesign Fase 3: Riwayat Alert, FTTH, Konfigurasi OLT
 
 #### Diubah

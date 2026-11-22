@@ -192,8 +192,8 @@ export function FtthInfrastructure() {
     <PageContainer className="space-y-3 md:space-y-4">
       <PageHeader
         icon={<Network size={20} />}
-        title="FTTH Infrastructure"
-        description="Manage OTB/ODF → ODC → ODP → ONU chain with map coordinates"
+        title="Infrastruktur FTTH"
+        description="Kelola rantai OTB/ODF → ODC → ODP → ONU beserta koordinat peta"
       />
       <div className="flex items-center gap-2 flex-wrap">
         <Tabs

@@ -260,8 +260,8 @@ export function Traffic() {
     <PageContainer className="animate-fade-in">
       <PageHeader
         icon={<Activity size={22} className="text-accent" />}
-        title="Traffic Monitoring"
-        description="Real-time and historical bandwidth usage per OLT / PON port"
+        title="Monitoring Trafik"
+        description="Pemakaian bandwidth real-time dan riwayat per OLT / port PON"
       />
 
       {/* Filters */}

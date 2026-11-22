@@ -150,8 +150,8 @@ export function UnconfiguredOnus() {
             <Server size={18} />
           </button>
         }
-        title="Unconfigured ONUs"
-        description="Discover and register ONUs across all OLTs"
+        title="ONU Belum Terkonfigurasi"
+        description="Temukan dan daftarkan ONU baru di semua OLT"
         action={
           <>
             <Button

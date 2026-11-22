@@ -125,7 +125,19 @@ export function Terminal() {
       <div className="text-[10px] text-tx3 mb-2">
         Idle timeout: 10 menit • Max session: 60 menit • Semua command diaudit (password tidak dicatat)
       </div>
-      <div ref={termRef} className="rounded-lg border border-brd overflow-hidden" style={{ minHeight: 480, background: '#0d1117' }} />
+      <div className="relative">
+        <div ref={termRef} className="rounded-lg border border-brd overflow-hidden" style={{ minHeight: 480, background: '#0d1117' }} />
+        {/* Petunjuk saat belum tersambung (redesign Fase 4) — tidak menghalangi klik */}
+        {status === 'idle' && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center">
+            <div className="max-w-xs text-sm text-slate-400">
+              <TermIcon size={28} className="mx-auto mb-3 text-slate-500" aria-hidden="true" />
+              {oltId ? <>Tekan <strong className="text-slate-200">Hubungkan</strong> untuk membuka sesi {proto.toUpperCase()} ke {currentOlt?.name || 'OLT'}.</>
+                : <>Pilih OLT di atas, lalu tekan <strong className="text-slate-200">Hubungkan</strong>.</>}
+            </div>
+          </div>
+        )}
+      </div>
     </PageContainer>
   );
 }

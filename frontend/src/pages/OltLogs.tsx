@@ -95,8 +95,8 @@ export function OltLogs() {
   return (
     <PageContainer className="p-4 md:p-6">
       <PageHeader
-        title="OLT Logs"
-        description="View OLT device logs and NMS sync activity"
+        title="Log OLT"
+        description="Log perangkat OLT dan aktivitas sinkronisasi NMS"
         action={
           <>
             {olts.length > 0 && (

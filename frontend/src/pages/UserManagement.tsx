@@ -84,8 +84,8 @@ export function UserManagement() {
   return (
     <PageContainer className="animate-fade-in">
       <PageHeader
-        title="User Management"
-        description="Manage users and roles"
+        title="Manajemen User"
+        description="Kelola akun pengguna dan hak akses (role)"
         action={
           canManage && (
             tab === 'users' ? (
@@ -133,7 +133,7 @@ export function UserManagement() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-tx2">{u.username}</td>
-                  <td className="px-4 py-3"><span className="px-2 py-0.5 rounded-full text-xs bg-accent/15 text-accent">{u.role}</span></td>
+                  <td className="px-4 py-3"><span className="px-2 py-0.5 rounded-full text-xs bg-accent/15 text-accent">{u.is_super_admin && (!u.role || u.role === 'User') ? 'Super Admin' : u.role}</span></td>
                   <td className="px-4 py-3">
                     {u.phone ? (
                       <span className="flex items-center gap-1.5 text-sm text-tx2"><Phone size={12} className="text-tx3" /> {u.phone}</span>
@@ -167,7 +167,7 @@ export function UserManagement() {
                     <div className="font-medium text-sm truncate">{u.full_name}</div>
                     <div className="text-xs text-tx3 truncate">{u.username}</div>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full text-xs bg-accent/15 text-accent flex-shrink-0">{u.role}</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-accent/15 text-accent flex-shrink-0">{u.is_super_admin && (!u.role || u.role === 'User') ? 'Super Admin' : u.role}</span>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {canManage && <button onClick={() => setUserModal({ mode: 'edit', id: u.id })}
                       className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent transition-colors">
