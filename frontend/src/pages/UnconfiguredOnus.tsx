@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -34,6 +35,7 @@ interface OltScanResult {
 }
 
 export function UnconfiguredOnus() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [scanning, setScanning] = useState(false);
   const [scanAll, setScanAll] = useState(false);
@@ -69,15 +71,15 @@ export function UnconfiguredOnus() {
       }
       return {
         oltId, oltName: olt.name, oltIp: olt.ip_address, oltModel: olt.model || 'ZTE-C320',
-        isOnline: olt.is_online, onus: [], registeredTypes: [], error: d.message || 'Scan failed',
+        isOnline: olt.is_online, onus: [], registeredTypes: [], error: d.message || t('unconfigured.scanFailed'),
       };
     } catch {
       return {
         oltId, oltName: olt.name, oltIp: olt.ip_address, oltModel: olt.model || 'ZTE-C320',
-        isOnline: olt.is_online, onus: [], registeredTypes: [], error: 'Connection failed',
+        isOnline: olt.is_online, onus: [], registeredTypes: [], error: t('unconfigured.connFailed'),
       };
     }
-  }, [olts]);
+  }, [olts, t]);
 
   const handleScanAll = async () => {
     if (olts.length === 0) return;
@@ -93,8 +95,8 @@ export function UnconfiguredOnus() {
       setResults([...allResults]);
     }
     const totalOnus = allResults.reduce((sum, r) => sum + r.onus.length, 0);
-    if (totalOnus > 0) toast.success(`Found ${totalOnus} unconfigured ONU(s) across ${allResults.length} OLT(s)`);
-    else toast.warning('No unconfigured ONUs found');
+    if (totalOnus > 0) toast.success(t('unconfigured.foundAll', { count: totalOnus, olts: allResults.length }));
+    else toast.warning(t('unconfigured.noneFound'));
     setScanning(false);
     setScanAll(false);
   };
@@ -108,9 +110,9 @@ export function UnconfiguredOnus() {
         if (idx >= 0) { const n = [...prev]; n[idx] = r; return n; }
         return [...prev, r];
       });
-      if (r.onus.length > 0) toast.success(`Found ${r.onus.length} unconfigured ONU(s) on ${r.oltName}`);
+      if (r.onus.length > 0) toast.success(t('unconfigured.foundOne', { count: r.onus.length, olt: r.oltName }));
       else if (r.error) toast.error(`${r.oltName}: ${r.error}`);
-      else toast.warning(`No unconfigured ONUs on ${r.oltName}`);
+      else toast.warning(t('unconfigured.noneOnOlt', { olt: r.oltName }));
     }
     setScanningOltIds(prev => { const n = new Set(prev); n.delete(oltId); return n; });
   };
@@ -120,7 +122,7 @@ export function UnconfiguredOnus() {
 
   const copySn = (sn: string) => {
     navigator.clipboard?.writeText(sn);
-    toast.success(`Copied: ${sn}`);
+    toast.success(t('unconfigured.copied', { sn }));
   };
 
   const goToRegister = (oltId: number, onu: UnconfiguredOnu) => {
@@ -150,8 +152,8 @@ export function UnconfiguredOnus() {
             <Server size={18} />
           </button>
         }
-        title="ONU Belum Terkonfigurasi"
-        description="Temukan dan daftarkan ONU baru di semua OLT"
+        title={t('unconfigured.title')}
+        description={t('unconfigured.subtitle')}
         action={
           <>
             <Button
@@ -160,12 +162,12 @@ export function UnconfiguredOnus() {
               onClick={handleScanAll}
               disabled={scanning || olts.length === 0}
             >
-              <span className="hidden sm:inline">{scanning ? 'Scanning...' : 'Scan All'}</span>
-              <span className="sm:hidden">{scanning ? '...' : 'Scan'}</span>
+              <span className="hidden sm:inline">{scanning ? t('unconfigured.scanning') : t('unconfigured.scanAll')}</span>
+              <span className="sm:hidden">{scanning ? '…' : t('unconfigured.scan')}</span>
             </Button>
             <Button variant="secondary" icon={<Plus size={14} />} onClick={goToPreRegister}>
-              <span className="hidden sm:inline">Pre-Register</span>
-              <span className="sm:hidden">Manual</span>
+              <span className="hidden sm:inline">{t('unconfigured.preRegister')}</span>
+              <span className="sm:hidden">{t('unconfigured.manual')}</span>
             </Button>
           </>
         }
@@ -173,7 +175,7 @@ export function UnconfiguredOnus() {
 
       {/* Registration Mode Selector */}
       <Card bodyClassName="p-3 flex items-center gap-3 flex-wrap">
-        <span className="text-xs md:text-sm font-semibold text-tx2">Scan Mode:</span>
+        <span className="text-xs md:text-sm font-semibold text-tx2">{t('unconfigured.scanMode')}</span>
         <div className="flex gap-2">
           <button type="button" onClick={() => setRegisterMode('cli')}
             className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition',
@@ -192,7 +194,7 @@ export function UnconfiguredOnus() {
       <div className="grid grid-cols-3 gap-2 md:gap-3">
         <div className="glass-card p-3 md:p-4 text-center">
           <div className="text-xl md:text-2xl font-bold text-accent">{olts.length}</div>
-          <div className="text-[10px] md:text-xs text-tx3 uppercase font-semibold">Total OLTs</div>
+          <div className="text-[10px] md:text-xs text-tx3 uppercase font-semibold">{t('unconfigured.totalOlts')}</div>
         </div>
         <div className="glass-card p-3 md:p-4 text-center">
           <div className="text-xl md:text-2xl font-bold text-success">{onlineOlts}</div>
@@ -202,7 +204,7 @@ export function UnconfiguredOnus() {
           <div className={cn('text-xl md:text-2xl font-bold', totalOnus > 0 ? 'text-warning' : 'text-tx3')}>
             {totalOnus}
           </div>
-          <div className="text-[10px] md:text-xs text-tx3 uppercase font-semibold">Unconfigured</div>
+          <div className="text-[10px] md:text-xs text-tx3 uppercase font-semibold">{t('unconfigured.statUnconfigured')}</div>
         </div>
       </div>
 
@@ -210,15 +212,15 @@ export function UnconfiguredOnus() {
       {results.length === 0 && !scanning && (
         <EmptyState
           icon={Radio}
-          title="No scan results yet"
-          description="Click Scan All to discover unconfigured ONUs across all OLTs, or Pre-Register for manual entry without scanning."
+          title={t('unconfigured.emptyTitle')}
+          description={t('unconfigured.emptyDesc')}
           action={
             <div className="flex gap-2 justify-center flex-wrap">
               <Button variant="primary" icon={<Search size={16} />} onClick={handleScanAll} disabled={olts.length === 0}>
-                Scan All OLTs
+                {t('unconfigured.scanAllOlts')}
               </Button>
               <Button variant="secondary" icon={<Plus size={16} />} onClick={goToPreRegister}>
-                Pre-Register Manual
+                {t('unconfigured.preRegisterManual')}
               </Button>
             </div>
           }
@@ -230,9 +232,9 @@ export function UnconfiguredOnus() {
         <Card bodyClassName="p-4 flex items-center gap-3">
           <Loader2 size={20} className="animate-spin text-accent flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium">Scanning all OLTs...</div>
+            <div className="text-sm font-medium">{t('unconfigured.scanningAll')}</div>
             <div className="text-xs text-tx3">
-              {results.length}/{olts.length} OLTs scanned • {totalOnus} ONUs found so far
+              {t('unconfigured.progress', { done: results.length, total: olts.length, found: totalOnus })}
             </div>
           </div>
         </Card>
@@ -272,11 +274,13 @@ export function UnconfiguredOnus() {
                       'px-2 py-1 rounded-lg text-xs font-medium',
                       r.onus.length > 0 ? 'bg-warning/15 text-warning' : 'bg-glass text-tx3',
                     )}>
-                      {r.onus.length} ONU(s)
+                      {t('unconfigured.onuCount', { count: r.onus.length })}
                     </span>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleScanOne(r.oltId); }}
                       disabled={isScanningThis}
+                      aria-label={t('unconfigured.rescan', { olt: r.oltName })}
+                      title={t('unconfigured.rescan', { olt: r.oltName })}
                       className="p-2 rounded-lg hover:bg-glass text-tx3 hover:text-accent transition-colors disabled:opacity-50"
                     >
                       {isScanningThis ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -321,7 +325,7 @@ export function UnconfiguredOnus() {
                           <div className="flex items-center gap-2 mt-1">
                             {/* SN / MAC */}
                             <span className="text-xs font-mono text-tx1 font-medium">{onu.sn}</span>
-                            <button onClick={() => copySn(onu.sn)}
+                            <button onClick={() => copySn(onu.sn)} aria-label={t('unconfigured.copySn')} title={t('unconfigured.copySn')}
                               className="text-tx3 hover:text-accent transition-colors">
                               <Copy size={12} />
                             </button>
@@ -336,7 +340,7 @@ export function UnconfiguredOnus() {
                           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-all flex-shrink-0"
                         >
                           <Zap size={14} />
-                          <span className="hidden sm:inline">Register</span>
+                          <span className="hidden sm:inline">{t('unconfigured.register')}</span>
                         </button>
                       </div>
                     );
@@ -347,7 +351,7 @@ export function UnconfiguredOnus() {
               {/* No ONUs */}
               {!isCollapsed && !r.error && r.onus.length === 0 && !isScanningThis && (
                 <div className="border-t border-brd p-4 text-center text-xs text-tx3">
-                  No unconfigured ONUs found on this OLT
+                  {t('unconfigured.noneThisOlt')}
                 </div>
               )}
             </Card>

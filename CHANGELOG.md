@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Terjemahan kelompok 1: Pengaturan OLT, ONU Belum Terkonfigurasi, Riwayat Alert
+
+#### Diubah
+- **Pengaturan OLT** (termasuk dialog Tambah/Edit OLT, Migrasi PON, Migrasi antar-OLT, Backup Config, Port PON), **ONU Belum Terkonfigurasi**, dan **Riwayat Alert** kini mengikuti pilihan bahasa di Profil (Indonesia/English): judul, tombol, kolom, pesan sukses/gagal, dan dialog konfirmasi. Istilah teknis (ONU, OLT, PON, SNMP, CLI) dan pesan yang datang dari server tidak diubah.
+- Teks "Never / 5m ago" dan format tanggal (`formatDate`, `timeAgo`) mengikuti bahasa yang dipilih.
+
+#### Ditambahkan
+- Test `i18n-keys`: setiap `t('kunci')` di kode wajib ada di file bahasa (melengkapi test kesamaan kunci id/en yang sudah ada).
+
 ### 2026-11-22 — Redesign Fase 4: penyeragaman
 
 #### Diubah

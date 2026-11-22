@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '../lib/utils';
 import {
@@ -34,7 +35,7 @@ const alertTypeConfig: Record<string, { label: string; icon: React.ReactNode; co
   olt_cpu_high: { label: 'CPU HIGH', icon: <Cpu size={14} />, color: 'text-warning', bg: 'bg-warning/15' },
   olt_mem_high: { label: 'MEM HIGH', icon: <Activity size={14} />, color: 'text-warning', bg: 'bg-warning/15' },
   olt_temp_high: { label: 'TEMP HIGH', icon: <Thermometer size={14} />, color: 'text-danger', bg: 'bg-danger/15' },
-  sync_stale: { label: 'SYNC TERTUNDA', icon: <Clock size={14} />, color: 'text-warning', bg: 'bg-warning/15' },
+  sync_stale: { label: 'SYNC_STALE', icon: <Clock size={14} />, color: 'text-warning', bg: 'bg-warning/15' },
 };
 
 function getTypeConfig(type: string) {
@@ -42,6 +43,7 @@ function getTypeConfig(type: string) {
 }
 
 export function AlertHistory() {
+  const { t, i18n } = useTranslation();
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState('');
   const perPage = 30;
@@ -61,34 +63,36 @@ export function AlertHistory() {
   const total = data?.total || 0;
   const pages = data?.pages || 0;
 
-  const allTypes = Object.entries(alertTypeConfig).map(([key, val]) => ({ key, label: val.label }));
+  // Label jenis alert = kode teknis (OFFLINE, LOS, RX LOW…); hanya yang berupa kata biasa diterjemahkan
+  const typeLabel = (label: string) => label === 'SYNC_STALE' ? t('alertHistory.syncStale') : label;
+  const allTypes = Object.entries(alertTypeConfig).map(([key, val]) => ({ key, label: typeLabel(val.label) }));
 
   return (
     <PageContainer className="animate-fade-in">
-      <PageHeader title="Riwayat Alert" description="Riwayat semua alert yang terdeteksi oleh sistem monitoring" />
+      <PageHeader title={t('alertHistory.title')} description={t('alertHistory.subtitle')} />
 
       {/* Filter jenis alert (redesign Fase 3): satu baris geser di HP,
           membungkus di desktop — tidak lagi memakan 3–4 baris layar HP. */}
       <div className="flex items-center gap-2">
         <Filter size={15} className="text-tx3 shrink-0 hidden md:block" aria-hidden="true" />
-        <div role="toolbar" aria-label="Filter jenis alert" className="scroll-row md:flex-wrap md:overflow-visible -mx-3 px-3 md:mx-0 md:px-0 flex-1 min-w-0">
+        <div role="toolbar" aria-label={t('alertHistory.filterType')} className="scroll-row md:flex-wrap md:overflow-visible -mx-3 px-3 md:mx-0 md:px-0 flex-1 min-w-0">
           <button
             onClick={() => { setTypeFilter(''); setPage(1); }}
             aria-pressed={!typeFilter}
             className={cn('px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-medium transition-all whitespace-nowrap',
               !typeFilter ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1 border border-brd')}
           >
-            Semua
+            {t('alertHistory.all')}
           </button>
-          {allTypes.map(t => (
+          {allTypes.map(ty => (
             <button
-              key={t.key}
-              onClick={() => { setTypeFilter(t.key); setPage(1); }}
-              aria-pressed={typeFilter === t.key}
+              key={ty.key}
+              onClick={() => { setTypeFilter(ty.key); setPage(1); }}
+              aria-pressed={typeFilter === ty.key}
               className={cn('px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-medium transition-all whitespace-nowrap',
-                typeFilter === t.key ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1 border border-brd')}
+                typeFilter === ty.key ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1 border border-brd')}
             >
-              {t.label}
+              {ty.label}
             </button>
           ))}
         </div>
@@ -97,12 +101,12 @@ export function AlertHistory() {
       {/* Table */}
       <Card bodyClassName="p-0">
         {isLoading ? (
-          <LoadingOverlay label="Memuat data..." />
+          <LoadingOverlay label={t('common.loading')} />
         ) : history.length === 0 ? (
           <EmptyState
             icon={CheckCircle2}
-            title="Belum ada riwayat alert"
-            description="Sistem monitoring belum mendeteksi masalah apapun"
+            title={t('alertHistory.empty')}
+            description={t('alertHistory.emptyDesc')}
           />
         ) : (
           <>
@@ -110,11 +114,11 @@ export function AlertHistory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-brd">
-                    <th className="text-left px-4 py-3 text-xs font-medium text-tx3">Tipe</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-tx3">{t('alertHistory.colType')}</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-tx3">OLT</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-tx3">ONU</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-tx3">Value</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-tx3">Waktu</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-tx3">{t('alertHistory.colValue')}</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-tx3">{t('alertHistory.colTime')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -125,7 +129,7 @@ export function AlertHistory() {
                         <td className="px-4 py-3">
                           <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium', cfg.bg, cfg.color)}>
                             {cfg.icon}
-                            {cfg.label}
+                            {typeLabel(cfg.label)}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-tx2">
@@ -140,7 +144,7 @@ export function AlertHistory() {
                         <td className="px-4 py-3 text-tx3 text-xs">
                           <div className="flex items-center gap-1.5">
                             <Clock size={12} />
-                            {item.last_alert_at ? new Date(item.last_alert_at).toLocaleString('id-ID', {
+                            {item.last_alert_at ? new Date(item.last_alert_at).toLocaleString(i18n.language === 'en' ? 'en-GB' : 'id-ID', {
                               day: '2-digit', month: 'short', year: 'numeric',
                               hour: '2-digit', minute: '2-digit'
                             }) : '—'}
@@ -157,12 +161,13 @@ export function AlertHistory() {
             {pages > 1 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-brd">
                 <p className="text-xs text-tx3">
-                  Halaman {page} dari {pages} • Total {total} records
+                  {t('alertHistory.pageInfo', { page, pages, total })}
                 </p>
                 <div className="flex gap-1">
                   <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
                     disabled={page <= 1}
+                    aria-label={t('common.previous')}
                     className="p-1.5 rounded-lg hover:bg-glass disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <ChevronLeft size={16} />
@@ -185,6 +190,7 @@ export function AlertHistory() {
                   <button
                     onClick={() => setPage(p => Math.min(pages, p + 1))}
                     disabled={page >= pages}
+                    aria-label={t('common.next')}
                     className="p-1.5 rounded-lg hover:bg-glass disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <ChevronRight size={16} />
