@@ -835,7 +835,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Pilih Penyedia AI',
-        content: 'Buka **Sistem → AI Agent** (super admin), pilih **Preset penyedia**: Claude (Anthropic), OpenAI, Google Gemini, OpenRouter, atau Ollama (model lokal di server). Penyedia lain yang OpenAI-compatible bisa dipakai dengan format **OpenAI-compatible** + Base URL + nama model dari dokumentasinya.\n\nIsi **API Key** (disimpan terenkripsi). Langganan Claude Pro/Max **tidak bisa** dipakai — gunakan API key yang dibayar per pemakaian. Model harus mendukung *tool calling*.',
+        content: 'Buka **Sistem → AI Agent** (super admin), pilih **Penyedia AI**: Claude (Anthropic), OpenAI, Google Gemini, OpenRouter, atau Ollama (model lokal di server). Alamat API, format, dan model terisi otomatis.\n\nTempel **API key** di kolom di bawahnya — link **Buat API key …** membuka halaman penyedia untuk membuatnya. Key disimpan terenkripsi; kosongkan kolom bila tidak ingin menggantinya. Ollama tidak memerlukan key.\n\nPenyedia lain yang kompatibel OpenAI: pilih **Lainnya (atur manual)**, lalu buka **Pengaturan lanjutan** untuk mengisi Format API, Alamat API, dan model. Langganan Claude Pro/Max atau ChatGPT Plus **tidak bisa** dipakai — gunakan API key yang dibayar per pemakaian. Model harus mendukung *tool calling*.\n\nSetelah **Simpan**, tekan **Tes koneksi** untuk memastikan key dan model benar (mengirim satu pesan pendek).',
       },
       {
         title: 'Kanal & Siapa yang Dijawab',
