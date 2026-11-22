@@ -298,7 +298,7 @@ def _call_anthropic(cfg, messages):
         }, headers={'x-api-key': cfg['api_key'], 'anthropic-version': '2023-06-01',
                     'content-type': 'application/json'})
         if r.status_code >= 400:
-            raise RuntimeError(f'Claude API {r.status_code}: {r.text[:300]}')
+            raise RuntimeError(_api_error('Claude API', r))
         data = r.json()
         content = data.get('content') or []
         msgs.append({'role': 'assistant', 'content': content})
@@ -310,6 +310,31 @@ def _call_anthropic(cfg, messages):
              'content': _compact(run_tool(c['name'], c.get('input')))}
             for c in calls]})
     return 'Maaf, pertanyaan ini butuh terlalu banyak langkah. Coba persempit pertanyaannya.'
+
+
+def _api_error(label, r):
+    """Pesan error penyedia yang ringkas & bisa ditindaklanjuti (bukan JSON mentah)."""
+    msg = ''
+    try:
+        data = r.json()
+        if isinstance(data, list) and data:
+            data = data[0]
+        err = data.get('error') if isinstance(data, dict) else None
+        if isinstance(err, dict):
+            msg = err.get('message') or ''
+        elif isinstance(err, str):
+            msg = err
+    except Exception:
+        pass
+    msg = (msg or r.text or '').strip().replace('\n', ' ')[:220]
+    hint = ''
+    if r.status_code == 404 and 'model' in msg.lower():
+        hint = ' → nama model tidak tersedia; ganti kolom Model di halaman AI Agent.'
+    elif r.status_code in (401, 403):
+        hint = ' → API key salah/tidak berlaku.'
+    elif r.status_code == 429:
+        hint = ' → batas pemakaian/kuota penyedia tercapai; coba lagi nanti.'
+    return f'{label} {r.status_code}: {msg}{hint}'
 
 
 def test_connection():
@@ -326,7 +351,7 @@ def test_connection():
             }, headers={'x-api-key': cfg['api_key'], 'anthropic-version': '2023-06-01',
                         'content-type': 'application/json'})
             if r.status_code >= 400:
-                return False, f'Claude API {r.status_code}: {r.text[:200]}'
+                return False, _api_error('Claude API', r)
             text = ''.join(c.get('text', '') for c in r.json().get('content') or [])
         else:
             headers = {'content-type': 'application/json'}
@@ -337,7 +362,7 @@ def test_connection():
                 'messages': [{'role': 'user', 'content': 'Balas satu kata: OK'}],
             }, headers=headers)
             if r.status_code >= 400:
-                return False, f'AI API {r.status_code}: {r.text[:200]}'
+                return False, _api_error('AI API', r)
             text = ((r.json().get('choices') or [{}])[0].get('message') or {}).get('content') or ''
         return True, f"Terhubung ke {cfg['ai_model']} — balasan: {text.strip()[:60] or '(kosong)'}"
     except httpx.HTTPError as e:
@@ -358,7 +383,7 @@ def _call_openai(cfg, messages):
             'messages': msgs, 'tools': tools,
         }, headers=headers)
         if r.status_code >= 400:
-            raise RuntimeError(f'AI API {r.status_code}: {r.text[:300]}')
+            raise RuntimeError(_api_error('AI API', r))
         msg = (r.json().get('choices') or [{}])[0].get('message') or {}
         calls = msg.get('tool_calls') or []
         msgs.append({k: v for k, v in msg.items() if k in ('role', 'content', 'tool_calls')})
@@ -587,7 +612,7 @@ def ask(conv_key, question):
             answer = _call_openai(cfg, messages)
     except Exception as e:
         logger.warning(f'[AI] {cfg["ai_provider"]} error: {e}')
-        return f'Maaf, AI sedang tidak bisa dihubungi ({str(e)[:160]}).'
+        return f'Maaf, AI sedang tidak bisa dihubungi — {str(e)[:320]}'
     answer = answer or '(tidak ada jawaban)'
     HISTORY.put(conv_key, messages + [{'role': 'assistant', 'content': answer}])
     return answer[:3500]
