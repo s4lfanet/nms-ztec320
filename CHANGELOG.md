@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-23 — PWA: tampilan baru tidak lagi tertahan di HP
+
+#### Diperbaiki
+- Aplikasi (terutama PWA di HP yang di-resume dari latar belakang) bisa terus memakai tampilan lama setelah server di-update, tanpa pemberitahuan "versi baru", karena browser hanya memeriksa service worker baru saat halaman dimuat penuh. Kini pemeriksaan dilakukan tiap 15 menit dan setiap kali aplikasi kembali dibuka.
+- Halaman Update Sistem: saat server sudah terbaru, ada tombol **Muat ulang tampilan** untuk langsung mengambil tampilan terbaru.
+
 ### 2026-11-23 — GenieACS: operasi massal modem
 
 #### Ditambahkan
