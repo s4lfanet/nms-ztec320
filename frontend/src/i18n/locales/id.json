@@ -1741,7 +1741,21 @@
     "outageRatio": "Persentase ONU mati (%)",
     "outageRatioHelp": "Untuk ODC/JC/OTB: sebagian besar ONU di bawahnya harus mati (50–100).",
     "outageSave": "Simpan korelasi",
-    "outageSaved": "Pengaturan korelasi gangguan disimpan"
+    "outageSaved": "Pengaturan korelasi gangguan disimpan",
+    "areaTitle": "Wilayah teknisi",
+    "areaDesc": "Alert di wilayah ini dikirim ke teknisi utama lebih dulu (ONU yang ditugaskan ke teknisi tertentu → ODP → ODC/JC → OTB → OLT). Teknisi tanpa wilayah (admin/NOC) tetap menerima semua alert. Teknisi cadangan dipakai saat eskalasi.",
+    "areaEmpty": "Belum ada wilayah. Semua teknisi menerima semua alert.",
+    "areaNoPhone": "tanpa nomor WA",
+    "areaTechnician": "Teknisi",
+    "areaNode": "Wilayah (OLT/OTB/JC/ODC/ODP)",
+    "areaRole": "Peran",
+    "areaPrimary": "Utama",
+    "areaBackup": "Cadangan",
+    "areaChoose": "— Pilih —",
+    "areaAdd": "Tambah wilayah",
+    "areaSaved": "Wilayah teknisi disimpan",
+    "areaPickBoth": "Pilih teknisi dan wilayah",
+    "areaRemoveTitle": "Hapus wilayah ini?"
   },
   "pg_addonu": {
     "onuInfo": "Info ONU",

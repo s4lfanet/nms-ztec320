@@ -248,7 +248,7 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
                     'title': title,
                     'message': message,
                     'olt_name': olt.name,
-                    'olt_ip': olt.ip_address,
+                    'olt_ip': olt.ip_address, 'olt_id': olt.id,
                     'is_recovery': False,
                     'target_type': 'olt',
                     'target_id': olt.id,
@@ -338,7 +338,7 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
                 alerts_to_send.append({
                     'type': 'olt_cpu_high', 'severity': 'warning',
                     'title': title, 'message': message,
-                    'olt_name': olt.name, 'olt_ip': olt.ip_address, 'is_recovery': False,
+                    'olt_name': olt.name, 'olt_ip': olt.ip_address, 'olt_id': olt.id, 'is_recovery': False,
                 })
 
             hist = AlertHistory.query.filter_by(olt_id=olt.id, alert_type='olt_cpu_high').first()
@@ -376,7 +376,7 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
                 alerts_to_send.append({
                     'type': 'olt_mem_high', 'severity': 'warning',
                     'title': title, 'message': message,
-                    'olt_name': olt.name, 'olt_ip': olt.ip_address, 'is_recovery': False,
+                    'olt_name': olt.name, 'olt_ip': olt.ip_address, 'olt_id': olt.id, 'is_recovery': False,
                 })
 
             hist = AlertHistory.query.filter_by(olt_id=olt.id, alert_type='olt_mem_high').first()
@@ -415,7 +415,7 @@ def _check_olt_health(olt, rule, now, notifications_to_create, alerts_to_send):
                 alerts_to_send.append({
                     'type': 'olt_temp_high', 'severity': 'critical',
                     'title': title, 'message': message,
-                    'olt_name': olt.name, 'olt_ip': olt.ip_address, 'is_recovery': False,
+                    'olt_name': olt.name, 'olt_ip': olt.ip_address, 'olt_id': olt.id, 'is_recovery': False,
                 })
 
             hist = AlertHistory.query.filter_by(olt_id=olt.id, alert_type='olt_temp_high').first()
@@ -513,7 +513,7 @@ def _check_sync_staleness(olt, now, notifications_to_create, alerts_to_send):
             alerts_to_send.append({
                 'type': 'sync_stale', 'severity': 'warning',
                 'title': title, 'message': message,
-                'olt_name': olt.name, 'olt_ip': olt.ip_address, 'is_recovery': False,
+                'olt_name': olt.name, 'olt_ip': olt.ip_address, 'olt_id': olt.id, 'is_recovery': False,
             })
 
     hist = AlertHistory.query.filter_by(olt_id=olt.id, alert_type='sync_stale').first()
@@ -973,7 +973,8 @@ def _build_offline_batch(olt, interface, offline_onus, total_onus, now,
             'title': title,
             'message': message,
             'olt_name': olt.name,
-            'olt_ip': olt.ip_address,
+            'olt_ip': olt.ip_address, 'olt_id': olt.id,
+            'onu_ids': [o.id for o in offline_onus],
             'interface': interface,
             'affected': affected,
             'total': total_onus,
@@ -1058,8 +1059,9 @@ def _build_signal_drop_batch(olt, interface, drop_onus, total_onus, now,
             'severity': 'warning',
             'title': title,
             'message': message,
+            'onu_ids': [d['onu'].id for d in drop_onus],
             'olt_name': olt.name,
-            'olt_ip': olt.ip_address,
+            'olt_ip': olt.ip_address, 'olt_id': olt.id,
             'interface': interface,
             'odp_name': odp_name,
             'affected': affected,
@@ -1140,11 +1142,12 @@ def _build_recovery_batch(olt, interface, recovery_onus, total_onus, now,
 
     recovery_alerts.append({
         'type': 'recovery_batch' if recovered > 1 else 'recovery',
+        'onu_ids': [o.id for o in recovery_onus],
         'severity': 'info',
         'title': title,
         'message': message,
         'olt_name': olt.name,
-        'olt_ip': olt.ip_address,
+        'olt_ip': olt.ip_address, 'olt_id': olt.id,
         'interface': interface,
         'odp_name': odp_name,
         'affected': recovered,
@@ -1280,7 +1283,7 @@ def _handle_unconfigured_alert(onu, olt, rule, now, notifications, alerts):
             'severity': 'warning',
             'title': title,
             'message': message,
-            'olt_name': olt.name,
+            'olt_name': olt.name, 'olt_id': olt.id, 'onu_ids': [onu.id],
             'is_recovery': False,
         })
 
@@ -1459,6 +1462,7 @@ def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force
             ),
             'olt_name': olt.name if olt else '',
             'olt_ip': olt.ip_address if olt else '',
+            'olt_id': n.olt_id,
             'is_recovery': True,
             'target_type': key[0],
             'target_id': key[1],
@@ -1555,6 +1559,8 @@ def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force
                 'message': message,
                 'olt_name': olt_obj.name if olt_obj else '',
                 'olt_ip': olt_obj.ip_address if olt_obj else '',
+                'olt_id': olt,
+                'onu_ids': [o.id for o in down],
                 'is_recovery': False,
                 'target_type': node_type,
                 'target_id': node_id,
@@ -1644,7 +1650,7 @@ def _build_unregistered_alert(olt, unregistered, now, notifications, alerts, for
             'title': title,
             'message': message,
             'olt_name': olt.name,
-            'olt_ip': olt.ip_address,
+            'olt_ip': olt.ip_address, 'olt_id': olt.id,
             'affected': count,
             'is_recovery': False,
         })
@@ -1720,34 +1726,81 @@ def _send_external_alerts(alerts, rule=None):
     _send_technician_alerts(alerts)
 
 
+def _technician_recipients(alerts):
+    """{user: [alert, ...]} for WA to technicians (Fase 2 routing).
+
+    Teknisi dengan wilayah (TechnicianArea) hanya menerima alert wilayahnya
+    (atau ONU yang ditugaskan ke mereka). Teknisi tanpa wilayah (admin/NOC)
+    menerima semua alert seperti sebelumnya. Bila sebuah alert tidak cocok
+    dengan wilayah mana pun dan tidak ada teknisi tanpa wilayah, alert dikirim
+    ke semua teknisi supaya tidak hilang. Hasil routing dicatat di
+    alert['assigned_user_ids']."""
+    from models import User
+    from alert_routing import load_areas, route_alert
+    users = User.query.filter(User.phone != None, User.phone != '', User.is_super_admin == False).all()  # noqa: E711,E712
+    technicians = [u for u in users if u.role and u.role.has_permission('receive_alerts')]
+    if not technicians:
+        return {}
+    eligible = {u.id: u for u in technicians}
+    try:
+        idx = load_areas()
+    except Exception as e:  # table missing / DB issue → old behaviour
+        logger.warning(f"[ALERT] technician areas unavailable: {e}")
+        idx = {}
+    with_area = {a.user_id for rows in idx.values() for a in rows}
+    noc = [u for u in technicians if u.id not in with_area]
+    out = {}
+    for alert in alerts:
+        routed = route_alert(alert, idx, eligible)
+        alert['assigned_user_ids'] = [u.id for u in routed]
+        targets = list(routed)
+        for u in noc:
+            if u not in targets:
+                targets.append(u)
+        if not targets:
+            targets = list(technicians)
+        for u in targets:
+            out.setdefault(u, []).append(alert)
+    return out
+
+
 def _send_technician_alerts(alerts):
     """Send alert notifications to technician users (role has 'receive_alerts' perm) with phone numbers."""
     try:
-        from models import User, Role
-        users = User.query.filter(User.phone != None, User.phone != '', User.is_super_admin == False).all()
-
-        technicians = []
-        for u in users:
-            if u.role and u.role.has_permission('receive_alerts'):
-                technicians.append(u)
-
-        if not technicians:
+        by_user = _technician_recipients(alerts)
+        if not by_user:
             logger.info("[ALERT] No technicians with phone found")
             return
 
-        logger.info(f"[ALERT] Sending to {len(technicians)} technician(s)")
+        logger.info(f"[ALERT] Sending to {len(by_user)} technician(s)")
 
-        from models import BotConfig
+        from models import BotConfig, User
         from services_wa import send_whatsapp_gateway
         wa_gw = BotConfig.query.filter_by(bot_type='whatsapp', enabled=True).first()
         wa_native = BotConfig.query.filter_by(bot_type='whatsapp_native', enabled=True).first()
         gateway_url = (wa_native.api_url if wa_native and wa_native.api_url else 'http://localhost:3000').rstrip('/')
-        text = "\n\n━━━━━━━━━━━\n\n".join(a['message'] for a in alerts)
 
-        for tech in technicians:
-            phone = tech.phone.strip()
+        names = {}
+
+        def _assignee_line(a):
+            ids = a.get('assigned_user_ids') or []
+            if not ids:
+                return ''
+            for uid in ids:
+                if uid not in names:
+                    u = db_get_user(uid)
+                    names[uid] = (u.full_name or u.username) if u else f'#{uid}'
+            return "\n👷 Penanggung jawab: " + ", ".join(names[i] for i in ids)
+
+        def db_get_user(uid):
+            from models import db
+            return db.session.get(User, uid)
+
+        for tech, tech_alerts in by_user.items():
+            phone = (tech.phone or '').strip()
             if not phone:
                 continue
+            text = "\n\n━━━━━━━━━━━\n\n".join(a['message'] + _assignee_line(a) for a in tech_alerts)
             try:
                 if wa_gw and wa_gw.api_url:
                     ok, detail = send_whatsapp_gateway(wa_gw, text, phone_override=phone)

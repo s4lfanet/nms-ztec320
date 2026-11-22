@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Notifikasi gangguan Fase 2: wilayah teknisi
+
+#### Ditambahkan
+- **Wilayah teknisi** (Pengaturan Alert → Aturan → kartu "Wilayah teknisi"): tugaskan teknisi ke OLT, OTB, JC, ODC, atau ODP sebagai *utama* atau *cadangan*.
+- **Alert WA ke teknisi diarahkan per wilayah**: teknisi yang ditugaskan ke ONU itu → teknisi utama ODP → ODC/JC → OTB → OLT (yang paling dekat dulu). Pesan menyebut "👷 Penanggung jawab".
+- Teknisi tanpa wilayah (admin/NOC) tetap menerima semua alert, jadi tanpa data wilayah perilakunya sama seperti sebelumnya. Alert yang tidak cocok dengan wilayah mana pun dan tidak ada NOC tetap dikirim ke semua teknisi supaya tidak hilang.
+- API `GET/POST /api/technician-areas`, `DELETE /api/technician-areas/<id>`, `GET /api/technician-areas/nodes` (ubah butuh izin `manage_users`). Tabel baru `technician_areas`.
+
 ### 2026-11-22 — Notifikasi gangguan Fase 1: korelasi bertingkat
 
 #### Ditambahkan

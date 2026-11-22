@@ -235,6 +235,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 25. **Korelasi gangguan (`alerts._check_odp_outages`, `ftth_topology.py`)** — naik dari ODP → ODP induk → ODC/JC → OTB memakai kolom topologi FTTH (`feed_source`, `odc_id`, `jc_id`, `parent_odp_port_id`, `otb_id`, `parent_type/parent_id`). ODP: ≥ `odp_outage_threshold` ONU mati di port-nya sendiri (perilaku lama). ODC/JC/OTB (dan ODP induk): juga ≥ `outage_ratio_threshold`% dari semua ONU hilirnya. Yang dikirim hanya node tertinggi yang lolos. `outage_correlation_enabled=0` = perilaku lama persis. Notifikasi `odp_outage`/`outage` di-dedupe per `target_type/target_id` dengan `resolved=False`, di-resolve otomatis saat pulih (kirim pesan pulih) atau saat digantikan node di atasnya (tanpa pesan). Hanya baca DB, tanpa Telnet. `_deep_link_url` memakai rute SPA `/dashboard/...` (bukan `#/...`).
 
+26. **Wilayah teknisi (`TechnicianArea`, `alert_routing.py`)** — `_send_technician_alerts` memakai `_technician_recipients()`: per alert cari teknisi `primary` terdekat (ONU.technician_id bila alert 1 ONU → node gangguan/ODP ONU → naik topologi → OLT). Alert butuh `olt_id`/`onu_ids`/`target_type`+`target_id` — builder alert baru wajib mengisinya. Teknisi tanpa wilayah = NOC, selalu terima semua. Hasil routing di `alert['assigned_user_ids']` (dipakai insiden/eskalasi). `backup` hanya untuk eskalasi.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |
