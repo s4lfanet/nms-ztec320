@@ -6,7 +6,7 @@ import { collectOdpPortOptions } from '../lib/ftthTree';
 import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { PortMapEditor, type PortMapRow } from '../components/PortMapEditor';
-import { Button, Input, Select } from '../components/ui';
+import { Button, Input, Select, Stepper, StickyActionBar } from '../components/ui';
 import {
   ArrowLeft, ArrowRight, Server, Radio, Search, Check, Loader2,
   Settings, FileText, Zap, Copy, Plus, Trash2, Wrench
@@ -39,10 +39,10 @@ interface WizardData {
 }
 
 const STEPS = [
-  { id: 1, label: 'Select OLT', icon: <Server size={16} /> },
-  { id: 2, label: 'Scan ONUs', icon: <Search size={16} /> },
-  { id: 3, label: 'Configure', icon: <Settings size={16} /> },
-  { id: 4, label: 'Review & Register', icon: <Check size={16} /> },
+  { id: 1, label: 'Pilih OLT' },
+  { id: 2, label: 'Pindai ONU' },
+  { id: 3, label: 'Konfigurasi' },
+  { id: 4, label: 'Tinjau & daftarkan' },
 ];
 
 function generateRegisterScript(d: WizardData): string {
@@ -784,29 +784,16 @@ export function RegisterWizard() {
         </div>
       </div>
 
-      {/* Step Indicator */}
+      {/* Penanda langkah (redesign Fase 3): bernomor + berjudul di desktop,
+          "Langkah n dari 4" + progress bar di HP. */}
       {step <= 4 && (
-        <div className="flex items-center gap-1 md:gap-2 overflow-x-auto scrollbar-thin pb-1">
-          {STEPS.map((s, i) => (
-            <div key={s.id} className="flex items-center gap-1 md:gap-2 flex-shrink-0">
-              <button
-                onClick={() => { if (s.id < step) setStep(s.id); }}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 md:px-3 py-2 rounded-xl text-[11px] md:text-xs font-medium transition-all whitespace-nowrap',
-                  step === s.id ? 'bg-accent text-white' : step > s.id ? 'bg-success/15 text-success' : 'bg-glass text-tx3',
-                )}
-              >
-                {step > s.id ? <Check size={14} /> : s.icon}
-                <span className="hidden sm:inline">{s.label}</span>
-                <span className="sm:hidden">{s.id}</span>
-              </button>
-              {i < STEPS.length - 1 && <div className={cn('w-3 md:w-8 h-0.5 rounded', step > s.id ? 'bg-success' : 'bg-glass')} />}
-            </div>
-          ))}
-        </div>
+        <Stepper
+          steps={STEPS.map(s => ({ label: s.label }))}
+          current={step - 1}
+          onStepClick={i => setStep(i + 1)}
+        />
       )}
 
-      {/* Step 1: Select OLT */}
       {step === 1 && (
         <div className="glass-card p-4 md:p-6 space-y-4">
           <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Server size={18} /> Select OLT Device</h2>
@@ -2415,12 +2402,12 @@ export function RegisterWizard() {
             </div>
           )}
 
-          <div className="flex justify-end gap-2 md:gap-3">
-            <Button variant="secondary" onClick={() => setStep(3)}>Back</Button>
+          <StickyActionBar>
+            <Button variant="secondary" onClick={() => setStep(3)} disabled={registering}>Kembali</Button>
             <Button onClick={registerOnus} disabled={registering || !data.tcontProfile} loading={registering} icon={<Zap size={14} />}>
-              {registering ? 'Registering...' : `Register ${data.selectedOnus.length} ONU(s)`}
+              {registering ? 'Mendaftarkan…' : `Daftarkan ${data.selectedOnus.length} ONU`}
             </Button>
-          </div>
+          </StickyActionBar>
         </div>
       )}
 
@@ -2468,11 +2455,12 @@ export function RegisterWizard() {
 
       {/* Navigation */}
       {step >= 1 && step <= 3 && (
-        <div className="flex justify-end gap-2 md:gap-3">
+        <StickyActionBar>
+          {step > 1 && <Button variant="secondary" onClick={() => setStep(step - 1)}>Kembali</Button>}
           <Button onClick={() => setStep(step + 1)} disabled={!canNext()}>
-            Next <ArrowRight size={14} />
+            Lanjut <ArrowRight size={14} />
           </Button>
-        </div>
+        </StickyActionBar>
       )}
     </div>
   );
