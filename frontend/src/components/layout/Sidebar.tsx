@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Radio,
-  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart, Siren
+  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart, Siren, BarChart3, LayoutTemplate, History
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
@@ -14,12 +14,20 @@ interface NavItem {
   path?: string;
   permission?: string;
   children?: { labelKey: string; path: string; permission?: string }[];
+  /** kunci i18n judul kelompok menu */
+  section?: string;
 }
 
+// Dikelompokkan per kebutuhan: pantau → kelola jaringan → alat/log → pengaturan.
+// `section` hanya ditulis pada item pertama tiap kelompok; judul kelompok
+// tampil di atas item pertama yang terlihat (sesuai izin user).
 const navItems: NavItem[] = [
-  { labelKey: 'nav.dashboard', icon: <LayoutDashboard size={20} />, path: '/dashboard', permission: 'view_dashboard' },
+  { section: 'nav.secMonitor', labelKey: 'nav.dashboard', icon: <LayoutDashboard size={20} />, path: '/dashboard', permission: 'view_dashboard' },
+  { section: 'nav.secMonitor', labelKey: 'nav.incidents', icon: <Siren size={20} />, path: '/dashboard/incidents', permission: 'view_dashboard' },
+  { section: 'nav.secMonitor', labelKey: 'nav.traffic', icon: <Activity size={20} />, path: '/dashboard/traffic', permission: 'view_dashboard' },
+  { section: 'nav.secMonitor', labelKey: 'nav.reports', icon: <BarChart3 size={20} />, path: '/dashboard/reports', permission: 'view_onus' },
   {
-    labelKey: 'nav.onu', icon: <Radio size={20} />, permission: 'view_dashboard',
+    section: 'nav.secNetwork', labelKey: 'nav.onu', icon: <Radio size={20} />, permission: 'view_dashboard',
     children: [
       { labelKey: 'nav.allOnus', path: '/dashboard/onus' },
       { labelKey: 'nav.unconfigured', path: '/dashboard/onus/unconfigured', permission: 'add_onu' },
@@ -29,42 +37,39 @@ const navItems: NavItem[] = [
     ],
   },
   {
-    labelKey: 'nav.templates', icon: <FileText size={20} />, permission: 'manage_templates',
+    section: 'nav.secNetwork', labelKey: 'nav.infrastructure', icon: <Server size={20} />, permission: 'view_dashboard',
     children: [
-      { labelKey: 'nav.templates', path: '/dashboard/templates', permission: 'manage_templates' },
-      { labelKey: 'nav.tr069Profile', path: '/dashboard/templates/tr069-profile', permission: 'manage_tr069' },
-    ],
-  },
-  { labelKey: 'nav.traffic', icon: <Activity size={20} />, path: '/dashboard/traffic', permission: 'view_dashboard' },
-  { labelKey: 'nav.incidents', icon: <Siren size={20} />, path: '/dashboard/incidents', permission: 'view_dashboard' },
-  {
-    labelKey: 'nav.infrastructure', icon: <Server size={20} />, permission: 'view_dashboard',
-    children: [
-      { labelKey: 'nav.oltSettings', path: '/dashboard/settings/olts', permission: 'settings_ip_olts' },
-      { labelKey: 'nav.mikrotik', path: '/dashboard/settings/mikrotik', permission: 'settings_ip_olts' },
-      { labelKey: 'nav.autoProvision', path: '/dashboard/settings/auto-provision', permission: 'settings_ip_olts' },
       // PON/OTB/JC/ODC/ODP ada di tab halaman FTTH — sidebar cukup pintu masuknya.
       { labelKey: 'nav.ftthOverview', path: '/dashboard/ftth', permission: 'view_dashboard' },
       { labelKey: 'nav.ftthMap', path: '/dashboard/ftth?tab=map', permission: 'view_dashboard' },
+      { labelKey: 'nav.oltSettings', path: '/dashboard/settings/olts', permission: 'settings_ip_olts' },
+      { labelKey: 'nav.mikrotik', path: '/dashboard/settings/mikrotik', permission: 'settings_ip_olts' },
+      { labelKey: 'nav.autoProvision', path: '/dashboard/settings/auto-provision', permission: 'settings_ip_olts' },
     ],
   },
   {
-    labelKey: 'nav.system', icon: <Sliders size={20} />, permission: undefined,
+    section: 'nav.secNetwork', labelKey: 'nav.templates', icon: <LayoutTemplate size={20} />, permission: 'manage_templates',
     children: [
-      { labelKey: 'nav.customization', path: '/dashboard/customization', permission: 'customization' },
-      { labelKey: 'nav.users', path: '/dashboard/users', permission: 'manage_users' },
-      { labelKey: 'nav.alertSettings', path: '/dashboard/settings/alerts', permission: 'customization' },
-      { labelKey: 'nav.cloudflare', path: '/dashboard/settings/cloudflare', permission: 'super_admin' },
-      { labelKey: 'nav.aiAgent', path: '/dashboard/settings/ai', permission: 'super_admin' },
-      { labelKey: 'nav.systemUpdate', path: '/dashboard/settings/update', permission: 'super_admin' },
-      { labelKey: 'nav.alertHistory', path: '/dashboard/alerts/history', permission: 'view_dashboard' },
+      { labelKey: 'nav.onuTemplates', path: '/dashboard/templates', permission: 'manage_templates' },
+      { labelKey: 'nav.tr069Profile', path: '/dashboard/templates/tr069-profile', permission: 'manage_tr069' },
     ],
   },
-  { labelKey: 'nav.guide', icon: <BookOpen size={20} />, path: '/dashboard/guide' },
-  { labelKey: 'nav.activityLog', icon: <ScrollText size={20} />, path: '/dashboard/logs', permission: 'manage_users' },
-  { labelKey: 'nav.oltLogs', icon: <MonitorSmartphone size={20} />, path: '/dashboard/olt-logs', permission: 'view_dashboard' },
-  { labelKey: 'nav.reports', icon: <FileText size={20} />, path: '/dashboard/reports', permission: 'view_onus' },
-  { labelKey: 'nav.terminal', icon: <TerminalIcon size={20} />, path: '/dashboard/terminal', permission: 'olt_terminal' },
+  { section: 'nav.secTools', labelKey: 'nav.terminal', icon: <TerminalIcon size={20} />, path: '/dashboard/terminal', permission: 'olt_terminal' },
+  { section: 'nav.secTools', labelKey: 'nav.oltLogs', icon: <MonitorSmartphone size={20} />, path: '/dashboard/olt-logs', permission: 'view_dashboard' },
+  { section: 'nav.secTools', labelKey: 'nav.alertHistory', icon: <History size={20} />, path: '/dashboard/alerts/history', permission: 'view_dashboard' },
+  { section: 'nav.secTools', labelKey: 'nav.activityLog', icon: <ScrollText size={20} />, path: '/dashboard/logs', permission: 'manage_users' },
+  {
+    section: 'nav.secSettings', labelKey: 'nav.system', icon: <Sliders size={20} />, permission: undefined,
+    children: [
+      { labelKey: 'nav.alertSettings', path: '/dashboard/settings/alerts', permission: 'customization' },
+      { labelKey: 'nav.users', path: '/dashboard/users', permission: 'manage_users' },
+      { labelKey: 'nav.customization', path: '/dashboard/customization', permission: 'customization' },
+      { labelKey: 'nav.aiAgent', path: '/dashboard/settings/ai', permission: 'super_admin' },
+      { labelKey: 'nav.cloudflare', path: '/dashboard/settings/cloudflare', permission: 'super_admin' },
+      { labelKey: 'nav.systemUpdate', path: '/dashboard/settings/update', permission: 'super_admin' },
+    ],
+  },
+  { section: 'nav.secSettings', labelKey: 'nav.guide', icon: <BookOpen size={20} />, path: '/dashboard/guide' },
 ];
 
 function buildVisibleItems(user: { is_super_admin?: boolean; permissions?: string[] } | null): NavItem[] {
@@ -195,8 +200,15 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3">
-          {visibleItems.map(item => (
+          {visibleItems.map((item, idx) => (
             <div key={item.labelKey} className="mb-1">
+              {item.section && item.section !== visibleItems[idx - 1]?.section && (
+                isExpanded ? (
+                  <div className={cn('px-3 pb-1.5 text-[11px] font-semibold text-tx3', idx > 0 && 'pt-3')}>{t(item.section)}</div>
+                ) : (
+                  idx > 0 && <div className="mx-2 my-2 border-t border-brd" aria-hidden="true" />
+                )
+              )}
               {item.path ? (
                 <NavLink
                   to={item.path}

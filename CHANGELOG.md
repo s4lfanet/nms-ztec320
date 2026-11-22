@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Menu sidebar dikelompokkan
+
+#### Diubah
+- Sidebar kini dibagi empat kelompok berjudul: **Pantau** (Dashboard, Insiden Gangguan, Trafik, Laporan), **Jaringan** (ONU, Infrastruktur, Template), **Alat & log** (Terminal OLT, Log OLT, Riwayat Alert, Log Aktivitas), dan **Pengaturan** (Sistem, Panduan). Saat sidebar diciutkan, judul diganti garis pemisah.
+- Di **Infrastruktur**, Infrastruktur FTTH dan Peta FTTH di atas, lalu Pengaturan OLT, Mikrotik, Auto Provision. **Riwayat Alert** pindah dari Sistem ke kelompok Alat & log. Sistem diurutkan: Pengaturan Alert, Manajemen User, Kustomisasi, AI Agent, Cloudflare Tunnel, Update Sistem.
+- Ikon Template dan Laporan dibedakan (sebelumnya sama), sub-menu Template pertama bernama **Template ONU**.
+
 ### 2026-11-22 — Tampilan Infrastruktur FTTH dirapikan
 
 #### Diubah

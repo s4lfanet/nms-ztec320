@@ -80,7 +80,12 @@
     "problems": "Gangguan",
     "olt": "OLT",
     "more": "Lainnya",
-    "incidents": "Insiden Gangguan"
+    "incidents": "Insiden Gangguan",
+    "secMonitor": "Pantau",
+    "secNetwork": "Jaringan",
+    "secTools": "Alat & log",
+    "secSettings": "Pengaturan",
+    "onuTemplates": "Template ONU"
   },
   "topbar": {
     "alarms": "Alarm Jaringan",

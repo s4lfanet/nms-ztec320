@@ -80,7 +80,12 @@
     "problems": "Problems",
     "olt": "OLT",
     "more": "More",
-    "incidents": "Incidents"
+    "incidents": "Incidents",
+    "secMonitor": "Monitor",
+    "secNetwork": "Network",
+    "secTools": "Tools & logs",
+    "secSettings": "Settings",
+    "onuTemplates": "ONU templates"
   },
   "topbar": {
     "alarms": "Network Alarms",
