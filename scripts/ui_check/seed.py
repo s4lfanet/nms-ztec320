@@ -29,8 +29,9 @@ with app.app_context():
         u.must_change_password = False
         db.session.add(u)
     if not OLT.query.first():
+        # IP loopback: Telnet/SNMP ke OLT contoh langsung ditolak, tidak menunggu timeout
         for i, n in enumerate(['C320-PASKA', 'C320-RW04', 'HIOSO 1']):
-            o = OLT(name=n, ip_address=f'10.10.0.{i + 1}', vendor='hioso' if 'HIOSO' in n else 'zte',
+            o = OLT(name=n, ip_address=f'127.0.0.{i + 2}', vendor='hioso' if 'HIOSO' in n else 'zte',
                     model='HA7304' if 'HIOSO' in n else 'C320', is_online=(i != 2),
                     connection_status='connected' if i != 2 else 'offline', temperature=41 + i * 6)
             db.session.add(o)

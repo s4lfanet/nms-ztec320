@@ -43,17 +43,27 @@ def main():
     failures = []
     with sync_playwright() as p:
         browser = p.chromium.launch()
+        # Login sekali, sesi dipakai ulang di semua lebar layar. Server uji
+        # bisa lambat menjawab saat halaman memicu Telnet ke OLT contoh
+        # (IP fiktif → timeout), jadi tunggu login cukup lama.
+        login_ctx = browser.new_context()
+        lp = login_ctx.new_page()
+        lp.goto(BASE + '/login')
+        lp.wait_for_selector('input[type=password]')
+        lp.fill('input[type=text], input[name=username]', USER)
+        lp.fill('input[type=password]', PASSWORD)
+        lp.keyboard.press('Enter')
+        lp.wait_for_url('**/dashboard**', timeout=90000)
+        # sembunyikan prompt notifikasi push supaya tidak menutupi halaman
+        lp.evaluate("try { localStorage.setItem('nms-push-prompt-dismissed', String(Date.now())) } catch (e) {}")
+        state = login_ctx.storage_state()
+        login_ctx.close()
+
         for w in widths:
-            ctx = browser.new_context(viewport={'width': w, 'height': 900 if w >= 768 else 844})
+            ctx = browser.new_context(viewport={'width': w, 'height': 900 if w >= 768 else 844},
+                                      storage_state=state)
+            ctx.set_default_navigation_timeout(90000)
             page = ctx.new_page()
-            page.goto(BASE + '/login')
-            page.wait_for_selector('input[type=password]')
-            page.fill('input[type=text], input[name=username]', USER)
-            page.fill('input[type=password]', PASSWORD)
-            page.keyboard.press('Enter')
-            page.wait_for_url('**/dashboard**', timeout=15000)
-            # sembunyikan prompt notifikasi push supaya tidak menutupi halaman
-            page.evaluate("try { localStorage.setItem('nms-push-prompt-dismissed', String(Date.now())) } catch (e) {}")
             for r in ROUTES:
                 page.goto(BASE + r)
                 page.wait_for_timeout(1500)
