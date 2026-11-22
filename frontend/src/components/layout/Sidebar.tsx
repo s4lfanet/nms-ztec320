@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Radio,
   Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart, Siren
@@ -43,11 +43,8 @@ const navItems: NavItem[] = [
       { labelKey: 'nav.oltSettings', path: '/dashboard/settings/olts', permission: 'settings_ip_olts' },
       { labelKey: 'nav.mikrotik', path: '/dashboard/settings/mikrotik', permission: 'settings_ip_olts' },
       { labelKey: 'nav.autoProvision', path: '/dashboard/settings/auto-provision', permission: 'settings_ip_olts' },
+      // PON/OTB/JC/ODC/ODP ada di tab halaman FTTH — sidebar cukup pintu masuknya.
       { labelKey: 'nav.ftthOverview', path: '/dashboard/ftth', permission: 'view_dashboard' },
-      { labelKey: 'nav.ponPorts', path: '/dashboard/ftth?tab=pon', permission: 'view_dashboard' },
-      { labelKey: 'nav.otb', path: '/dashboard/ftth?tab=otb', permission: 'view_dashboard' },
-      { labelKey: 'nav.odc', path: '/dashboard/ftth?tab=odc', permission: 'view_dashboard' },
-      { labelKey: 'nav.odp', path: '/dashboard/ftth?tab=odp', permission: 'view_dashboard' },
       { labelKey: 'nav.ftthMap', path: '/dashboard/ftth?tab=map', permission: 'view_dashboard' },
     ],
   },
@@ -109,6 +106,20 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
     return userPerms.has(perm);
   };
   const visibleItems = buildVisibleItems(user);
+  const location = useLocation();
+  // Sub-menu dengan query (?tab=map) dan tanpa query berbagi pathname yang sama;
+  // NavLink mengabaikan query sehingga semuanya ikut aktif. Cocokkan query juga.
+  const isChildActive = (path: string, siblings: string[]): boolean => {
+    const [p, q] = path.split('?');
+    if (location.pathname !== p) return false;
+    const cur = new URLSearchParams(location.search);
+    if (q) {
+      const want = new URLSearchParams(q);
+      return [...want.entries()].every(([k, v]) => cur.get(k) === v);
+    }
+    // tanpa query: aktif bila tidak ada saudara ber-query yang cocok
+    return !siblings.some(sp => sp !== path && sp.split('?')[0] === p && sp.includes('?') && isChildActive(sp, []));
+  };
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => {
     // Auto-expand parent menu that contains current route
     const initial: Record<string, boolean> = {};
@@ -189,6 +200,7 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
               {item.path ? (
                 <NavLink
                   to={item.path}
+                  end={item.path === '/dashboard'}
                   onClick={onMobileClose}
                   title={!isExpanded ? t(item.labelKey) : undefined}
                   className={({ isActive }) => cn(
@@ -231,22 +243,26 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
                   </button>
                   {isExpanded && openMenus[item.labelKey] && item.children && (
                     <div className="ml-4 mt-1 space-y-0.5 animate-fade-in">
-                      {item.children.filter(c => hasPerm(c.permission)).map(child => (
-                        <NavLink
-                          key={child.path}
-                          to={child.path}
-                          onClick={onMobileClose}
-                          className={({ isActive }) => cn(
-                            'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
-                            isActive
-                              ? 'bg-accent/10 text-accent'
-                              : 'text-tx3 hover:text-tx2 hover:bg-glass',
-                          )}
-                        >
-                          <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
-                          <span>{t(child.labelKey)}</span>
-                        </NavLink>
-                      ))}
+                      {item.children.filter(c => hasPerm(c.permission)).map((child, _i, arr) => {
+                        const active = isChildActive(child.path, arr.map(c => c.path));
+                        return (
+                          <Link
+                            key={child.path}
+                            to={child.path}
+                            onClick={onMobileClose}
+                            aria-current={active ? 'page' : undefined}
+                            className={cn(
+                              'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
+                              active
+                                ? 'bg-accent/10 text-accent'
+                                : 'text-tx3 hover:text-tx2 hover:bg-glass',
+                            )}
+                          >
+                            <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+                            <span>{t(child.labelKey)}</span>
+                          </Link>
+                        );
+                      })}
                     </div>
                   )}
                 </>

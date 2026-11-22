@@ -481,7 +481,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Export & Import',
-        content: 'Tombol **Export/Import CSV** di header halaman untuk backup atau migrasi data infrastruktur FTTH secara massal.',
+        content: 'Di kanan atas halaman: tombol **Tambah …** (sesuai tab yang dibuka), **Refresh**, dan menu **⋯** berisi **Ekspor CSV** / **Impor CSV** untuk backup atau migrasi data infrastruktur FTTH secara massal. Tab daftar (PON, OTB/ODF, JC, ODC, ODP) punya kotak pencarian nama/induk/lokasi. Di Ringkasan, chip status ONU dan kartu OTB/ODC/ODP bisa diklik untuk membuka daftarnya.',
       },
     ],
     tips: [

@@ -4,6 +4,18 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Tampilan Infrastruktur FTTH dirapikan
+
+#### Diubah
+- **Header halaman**: tombol **Tambah …** sesuai tab, **Refresh**, dan menu **⋯** (Ekspor/Impor CSV) dipindah ke kanan atas — satu baris, tidak lagi turun ke baris kedua di HP. Tombol Impor kini bergaya sama dengan tombol lain.
+- **Urutan tab** mengikuti alur kerja: Ringkasan, Peta, Pohon, lalu rantai perangkat PON → OTB/ODF → JC → ODC → ODP. Ikon tab Pohon diganti (sebelumnya mirip lonceng).
+- **Ringkasan**: enam kartu status ONU diganti satu baris chip (sama seperti Dashboard) yang bisa diklik ke Semua ONU terfilter; kartu OTB/ODC/ODP bisa diklik ke tab-nya; label pemakaian port berbahasa Indonesia.
+- **Daftar PON/OTB/JC/ODC/ODP**: kotak pencarian nama/induk/lokasi; teks "ACTIVE/IDLE", "From", "Cores/Ports", "splices" diterjemahkan; pemisah titik (•) di awal baris dihapus agar teks yang terbungkus di HP tetap rapi.
+- Tombol peta (Gambar jalur fiber, Rute otomatis) dan teks "node tanpa induk" diperjelas.
+
+#### Diperbaiki
+- **Sidebar**: semua sub-menu FTTH (Overview, Port PON, OTB/ODF, ODC, ODP, Peta) menyala bersamaan di halaman FTTH, dan menu **Dashboard** ikut menyala di semua halaman. Sekarang hanya menu yang dibuka yang aktif. Sub-menu FTTH disederhanakan menjadi **Infrastruktur FTTH** dan **Peta FTTH** (PON/OTB/JC/ODC/ODP tetap ada sebagai tab di halaman).
+
 ### 2026-11-22 — Pemberitahuan update jadi dialog di tengah halaman
 
 #### Diubah

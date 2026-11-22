@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Map as MapIcon, TreePine, Plus, Edit2, Trash2, ChevronDown, ChevronRight,
+  Map as MapIcon, ListTree, Search, Plus, Edit2, Trash2, ChevronDown, ChevronRight,
   Server, Box, Network, Split, X, MapPin, Link2, Unlink, Phone, Download, Upload, Cable,
-  Activity, AlertTriangle, Wifi, WifiOff, Zap, CircleDashed, Gauge, RefreshCw,
+  AlertTriangle, Gauge, RefreshCw,
   UserX, LayoutGrid, List, GitMerge, Scissors, Users, Cpu, Home
 } from 'lucide-react';
 import { api, type FTTHItem, type FTTHOtb, type FTTHOtbPort, type FTTHOdc, type FTTHOdp, type FTTHOdpPort, type FTTHAvailableOnu, type FTTHPonPort, type FTTHStats, type FTTHFiberPath, type FTTHJc, type FTTHJcSplice, type FTTHOdcTree, type FTTHOdpTree, type FTTHJcTree } from '../lib/api';
@@ -19,7 +19,7 @@ import { useHasPerm } from '../hooks/useHasPerm';
 import { useDashboardWs } from '../hooks/useDashboardWs';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, EmptyState, Modal as SharedModal, Tabs, Notice } from '../components/ui';
+import { Button, EmptyState, Modal as SharedModal, Tabs, Notice, ActionMenu, StatusStrip } from '../components/ui';
 
 type Tab = 'overview' | 'tree' | 'map' | 'otb' | 'jc' | 'odc' | 'odp' | 'pon';
 type ModalType = 'otb' | 'jc' | 'odc' | 'odp' | 'port' | 'pon' | null;
@@ -34,7 +34,13 @@ export function FtthInfrastructure() {
   const canEdit = hasPerm('settings_ip_olts');
   const initialTab = (searchParams.get('tab') as Tab) || 'overview';
   const [tab, setTab] = useState<Tab>(initialTab);
-  const [countdown, setCountdown] = useState(FTTH_REFRESH_INTERVAL);
+  const [listQuery, setListQuery] = useState('');
+  const importRef = useRef<HTMLInputElement>(null);
+  const matchQ = (...xs: Array<string | null | undefined>) => {
+    const q = listQuery.trim().toLowerCase();
+    return !q || xs.some(x => (x || '').toLowerCase().includes(q));
+  };
+  const [, setCountdown] = useState(FTTH_REFRESH_INTERVAL);
   const countdownRef = useRef(FTTH_REFRESH_INTERVAL);
 
   useEffect(() => {
@@ -211,50 +217,60 @@ export function FtthInfrastructure() {
         icon={<Network size={20} />}
         title={t('pg_ftth.ftthInfrastructure')}
         description={t('pg_ftth.manageTheOtbOdf')}
-      />
-      <div className="flex items-center gap-2 flex-wrap">
-        <Tabs
-          className="max-w-full overflow-x-auto"
-          tabs={[
-            { key: 'overview', label: t('pg_ftth.overview'), icon: <Gauge size={14} /> },
-            { key: 'tree', label: t('pg_ftth.tree'), icon: <TreePine size={14} /> },
-            { key: 'pon', label: 'PON', icon: <Cable size={14} /> },
-            { key: 'otb', label: 'OTB', icon: <Server size={14} /> },
-            { key: 'jc', label: 'JC', icon: <GitMerge size={14} /> },
-            { key: 'odc', label: 'ODC', icon: <Box size={14} /> },
-            { key: 'odp', label: 'ODP', icon: <Split size={14} /> },
-            { key: 'map', label: t('pg_ftth.map'), icon: <MapIcon size={14} /> },
-          ]}
-          active={tab}
-          onChange={(key) => setTab(key as Tab)}
-        />
-        <div className="flex items-center gap-2 flex-wrap">
-          {canEdit && tabAdd && (
-            <Button variant="primary" className="text-xs md:text-sm" icon={<Plus size={14} />} onClick={() => openAdd(tabAdd.type)}>
-              {tabAdd.label}
+        action={
+          <div className="flex items-center gap-2">
+            {canEdit && tabAdd && (
+              <Button variant="primary" icon={<Plus size={15} />} onClick={() => openAdd(tabAdd.type)}>
+                {tabAdd.label}
+              </Button>
+            )}
+            <Button variant="secondary" icon={<RefreshCw size={15} className={statsFetching ? 'animate-spin' : ''} />}
+              title={t('pg_ftth.refreshData')} aria-label={t('pg_ftth.refreshData')} onClick={() => invalidate()}>
+              <span className="hidden sm:inline">{t('pg_ftth.refresh')}</span>
             </Button>
-          )}
-          <Button variant="secondary" className="text-xs md:text-sm" icon={<Download size={13} />} title="Export CSV" onClick={() => window.open(api.ftthExport(), '_blank')}>
-            Export
-          </Button>
-          {canEdit && <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass text-tx2 text-xs md:text-sm hover:text-tx1 transition-colors cursor-pointer" title={t('pg_ftth.importCsv')}>
-            <Upload size={13} /> Import
-            <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
+            <ActionMenu
+              iconOnly
+              title={t('pg_ftth.dataMenu')}
+              actions={[
+                { key: 'export', label: t('pg_ftth.exportCsv'), icon: <Download size={16} />, onClick: () => window.open(api.ftthExport(), '_blank') },
+                ...(canEdit ? [{ key: 'import', label: t('pg_ftth.importCsv'), icon: <Upload size={16} />, onClick: () => importRef.current?.click() }] : []),
+              ]}
+            />
+            <input ref={importRef} type="file" accept=".csv" className="hidden" onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
               try { const r = await api.ftthImport(file); toast.success(t('pg_ftth.imported', { detail: JSON.stringify(r.imported) })); invalidate(); }
               catch (err: any) { toast.error(err.message); }
               e.target.value = '';
             }} />
-          </label>}
-          <Button variant="secondary" className="text-xs md:text-sm" icon={<RefreshCw size={13} />} title={t('pg_ftth.refreshData')} onClick={() => invalidate()}>
-            Refresh
-          </Button>
+          </div>
+        }
+      />
+      <Tabs
+        className="max-w-full overflow-x-auto"
+        tabs={[
+          { key: 'overview', label: t('pg_ftth.overview'), icon: <Gauge size={14} /> },
+          { key: 'map', label: t('pg_ftth.map'), icon: <MapIcon size={14} /> },
+          { key: 'tree', label: t('pg_ftth.tree'), icon: <ListTree size={14} /> },
+          { key: 'pon', label: 'PON', icon: <Cable size={14} /> },
+          { key: 'otb', label: 'OTB/ODF', icon: <Server size={14} /> },
+          { key: 'jc', label: 'JC', icon: <GitMerge size={14} /> },
+          { key: 'odc', label: 'ODC', icon: <Box size={14} /> },
+          { key: 'odp', label: 'ODP', icon: <Split size={14} /> },
+        ]}
+        active={tab}
+        onChange={(key) => setTab(key as Tab)}
+      />
+      {['pon', 'otb', 'jc', 'odc', 'odp'].includes(tab) && (
+        <div className="relative max-w-sm">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-tx3 pointer-events-none" aria-hidden="true" />
+          <input className="input-field w-full pl-9" value={listQuery} onChange={e => setListQuery(e.target.value)}
+            placeholder={t('pg_ftth.searchList')} aria-label={t('pg_ftth.searchList')} />
         </div>
-      </div>
+      )}
 
       {/* Overview Tab */}
-      {tab === 'overview' && <OverviewTab stats={statsData} isFetching={statsFetching} countdown={countdown} onDrillDown={() => setTab('tree')} />}
+      {tab === 'overview' && <OverviewTab stats={statsData} onTab={(k) => setTab(k)} />}
 
       {/* Tree View */}
       {tab === 'tree' && (
@@ -286,7 +302,7 @@ export function FtthInfrastructure() {
             <EmptyState icon={Cable} title={t('pg_ftth.noPonPortsAdded')}
               action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('pon')}>{t('pg_ftth.addFirstPon')}</Button>} />
           )}
-          {(ponList?.items || []).map(p => {
+          {(ponList?.items || []).filter(p => matchQ(p.pon_name, p.olt_name, p.description)).map(p => {
             const onlinePct = p.total_onu > 0 ? Math.round((p.online_onu / p.total_onu) * 100) : 0;
             return (
             <div key={p.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
@@ -297,10 +313,10 @@ export function FtthInfrastructure() {
                     <span className="font-medium text-sm truncate">{p.pon_name || `PON ${p.frame}/${p.slot}/${p.port}`}</span>
                     {p.total_onu > 0 && <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', onlinePct > 80 ? 'bg-success/15 text-success' : onlinePct > 50 ? 'bg-warning/15 text-warning' : 'bg-danger/15 text-danger')}>{p.online_onu}/{p.total_onu} ONUs</span>}
                   </div>
-                  <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
-                    {p.olt_name && <span>• OLT: {p.olt_name}</span>}
-                    <span>• Frame {p.frame} / Slot {p.slot} / Port {p.port}</span>
-                    {p.otb_name && <span>• → OTB: {p.otb_name} (Core {p.otb_core_number})</span>}
+                  <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5">
+                    {p.olt_name && <span>OLT: {p.olt_name}</span>}
+                    <span>Frame {p.frame} / Slot {p.slot} / Port {p.port}</span>
+                    {p.otb_name && <span>→ OTB: {p.otb_name} (Core {p.otb_core_number})</span>}
                     {p.otb_name && <CoreColorTag coreNumber={p.otb_core_number} fibersPerTube={otbList?.items?.find(x => x.id === p.otb_id)?.fibers_per_tube} />}
                   </div>
                 </div>
@@ -333,7 +349,7 @@ export function FtthInfrastructure() {
             <EmptyState icon={Server} title={t('pg_ftth.noOtbOdfAdded')}
               action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('otb')}>{t('pg_ftth.addFirstOtbOdf')}</Button>} />
           )}
-          {(otbList?.items || []).map(o => {
+          {(otbList?.items || []).filter(o => matchQ(o.name, o.olt_name, o.pon_port, o.location)).map(o => {
             const util = o.total_cores > 0 ? Math.round((o.used_cores / o.total_cores) * 100) : 0;
             return (
             <div key={o.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
@@ -342,12 +358,12 @@ export function FtthInfrastructure() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">{o.name}</span>
-                    <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? 'ACTIVE' : 'IDLE'}</span>
+                    <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? t('pg_ftth.stActive') : t('pg_ftth.stIdle')}</span>
                   </div>
-                  <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
+                  <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5">
                     <span className="uppercase">{o.type}</span>
-                    {o.olt_name && <span>• OLT: {o.olt_name}</span>}
-                    {o.pon_port && <span>• PON: {o.pon_port}</span>}
+                    {o.olt_name && <span>OLT: {o.olt_name}</span>}
+                    {o.pon_port && <span>PON: {o.pon_port}</span>}
                     {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
                   </div>
                 </div>
@@ -358,7 +374,7 @@ export function FtthInfrastructure() {
                 </div>
               </div>
               <div className="mt-2">
-                <div className="flex justify-between text-[10px] text-tx3 mb-1"><span>Cores: {o.used_cores}/{o.total_cores}</span><span className={cn('font-bold', util > 80 ? 'text-danger' : util > 60 ? 'text-warning' : 'text-success')}>{util}%</span></div>
+                <div className="flex justify-between text-[10px] text-tx3 mb-1"><span>{t('pg_ftth.coresUsed', { used: o.used_cores, total: o.total_cores })}</span><span className={cn('font-bold', util > 80 ? 'text-danger' : util > 60 ? 'text-warning' : 'text-success')}>{util}%</span></div>
                 <div className="h-1.5 rounded-full bg-glass overflow-hidden"><div className={cn('h-full rounded-full transition-all', util > 80 ? 'bg-danger' : util > 60 ? 'bg-warning' : 'bg-success')} style={{ width: `${util}%` }} /></div>
               </div>
             </div>
@@ -375,7 +391,7 @@ export function FtthInfrastructure() {
               description={t('pg_ftth.optionalSplicePointsAlong')}
               action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('jc')}>{t('pg_ftth.addFirstJc')}</Button>} />
           )}
-          {(jcList?.items || []).map(j => (
+          {(jcList?.items || []).filter(j => matchQ(j.name, j.parent_name, j.location)).map(j => (
             <div key={j.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
               <div className="flex items-center gap-3">
                 <GitMerge size={18} className="text-purple-400 flex-shrink-0" />
@@ -384,10 +400,10 @@ export function FtthInfrastructure() {
                     <span className="font-medium text-sm truncate">{j.name}</span>
                     <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0 bg-glass text-tx3 uppercase">{j.closure_type}</span>
                   </div>
-                  <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
-                    {j.parent_name && <span>• From: {j.parent_name} ({j.parent_type?.toUpperCase()})</span>}
-                    <span>• {j.splice_count} splice{j.splice_count === 1 ? '' : 's'}</span>
-                    <span>• {j.total_cores} cores</span>
+                  <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5">
+                    {j.parent_name && <span>{t('pg_ftth.fromNode', { name: `${j.parent_name} (${j.parent_type?.toUpperCase()})` })}</span>}
+                    <span>{t('pg_ftth.spliceCount', { n: j.splice_count })}</span>
+                    <span>{t('pg_ftth.coreCount', { n: j.total_cores })}</span>
                     {j.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {j.latitude.toFixed(4)}, {j.longitude?.toFixed(4)}</span>}
                   </div>
                 </div>
@@ -408,7 +424,7 @@ export function FtthInfrastructure() {
             <EmptyState icon={Box} title={t('pg_ftth.noOdcAddedYet')}
               action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('odc')}>{t('pg_ftth.addFirstOdc')}</Button>} />
           )}
-          {(odcList?.items || []).map(o => {
+          {(odcList?.items || []).filter(o => matchQ(o.name, o.otb_name, o.jc_name, o.location)).map(o => {
             const util = o.total_cores > 0 ? Math.round((o.used_cores / o.total_cores) * 100) : 0;
             return (
             <div key={o.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
@@ -417,13 +433,13 @@ export function FtthInfrastructure() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">{o.name}</span>
-                    <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? 'ACTIVE' : 'IDLE'}</span>
+                    <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? t('pg_ftth.stActive') : t('pg_ftth.stIdle')}</span>
                   </div>
-                  <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
-                    {o.feed_source === 'jc' && o.jc_name && <span>• From JC: {o.jc_name} (core {o.jc_core_number})</span>}
-                    {o.feed_source !== 'jc' && o.otb_name && <span>• From: {o.otb_name} (Core {o.otb_core_number})</span>}
+                  <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5">
+                    {o.feed_source === 'jc' && o.jc_name && <span>{t('pg_ftth.fromNode', { name: `JC ${o.jc_name} (core ${o.jc_core_number})` })}</span>}
+                    {o.feed_source !== 'jc' && o.otb_name && <span>{t('pg_ftth.fromNode', { name: `${o.otb_name} (core ${o.otb_core_number})` })}</span>}
                     {o.feed_source !== 'jc' && o.otb_name && <CoreColorTag coreNumber={o.otb_core_number} fibersPerTube={otbList?.items?.find(x => x.id === o.otb_id)?.fibers_per_tube} />}
-                    {o.splitter_model && <span>• Splitter: {o.splitter_model}</span>}
+                    {o.splitter_model && <span>Splitter: {o.splitter_model}</span>}
                     {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
                   </div>
                 </div>
@@ -433,7 +449,7 @@ export function FtthInfrastructure() {
                 </div>
               </div>
               <div className="mt-2">
-                <div className="flex justify-between text-[10px] text-tx3 mb-1"><span>Cores: {o.used_cores}/{o.total_cores}</span><span className={cn('font-bold', util > 80 ? 'text-danger' : util > 60 ? 'text-warning' : 'text-success')}>{util}%</span></div>
+                <div className="flex justify-between text-[10px] text-tx3 mb-1"><span>{t('pg_ftth.coresUsed', { used: o.used_cores, total: o.total_cores })}</span><span className={cn('font-bold', util > 80 ? 'text-danger' : util > 60 ? 'text-warning' : 'text-success')}>{util}%</span></div>
                 <div className="h-1.5 rounded-full bg-glass overflow-hidden"><div className={cn('h-full rounded-full transition-all', util > 80 ? 'bg-danger' : util > 60 ? 'bg-warning' : 'bg-success')} style={{ width: `${util}%` }} /></div>
               </div>
             </div>
@@ -449,7 +465,7 @@ export function FtthInfrastructure() {
             <EmptyState icon={Split} title={t('pg_ftth.noOdpAddedYet')}
               action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('odp')}>{t('pg_ftth.addFirstOdp')}</Button>} />
           )}
-          {(odpList?.items || []).map(o => {
+          {(odpList?.items || []).filter(o => matchQ(o.name, o.odc_name, o.jc_name, o.parent_odp_name, o.location)).map(o => {
             const util = o.total_ports > 0 ? Math.round((o.used_ports / o.total_ports) * 100) : 0;
             return (
             <div key={o.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
@@ -458,13 +474,13 @@ export function FtthInfrastructure() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">{o.name}</span>
-                    <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? 'ACTIVE' : 'IDLE'}</span>
+                    <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? t('pg_ftth.stActive') : t('pg_ftth.stIdle')}</span>
                   </div>
-                  <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap mt-0.5">
-                    {o.feed_source === 'jc' && o.jc_name && <span>• From JC: {o.jc_name} (core {o.jc_core_number})</span>}
-                    {o.feed_source === 'odp' && o.parent_odp_name && <span>• From ODP: {o.parent_odp_name} (Port {o.parent_odp_port_number})</span>}
-                    {o.feed_source === 'odc' && o.odc_name && <span>• From: {o.odc_name} (Core {o.odc_core_number})</span>}
-                    {o.splitter_model && <span>• Splitter: {o.splitter_model}</span>}
+                  <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5">
+                    {o.feed_source === 'jc' && o.jc_name && <span>{t('pg_ftth.fromNode', { name: `JC ${o.jc_name} (core ${o.jc_core_number})` })}</span>}
+                    {o.feed_source === 'odp' && o.parent_odp_name && <span>{t('pg_ftth.fromNode', { name: `ODP ${o.parent_odp_name} (port ${o.parent_odp_port_number})` })}</span>}
+                    {o.feed_source === 'odc' && o.odc_name && <span>{t('pg_ftth.fromNode', { name: `${o.odc_name} (core ${o.odc_core_number})` })}</span>}
+                    {o.splitter_model && <span>Splitter: {o.splitter_model}</span>}
                     {o.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {o.latitude.toFixed(4)}, {o.longitude?.toFixed(4)}</span>}
                   </div>
                 </div>
@@ -475,7 +491,7 @@ export function FtthInfrastructure() {
                 </div>
               </div>
               <div className="mt-2">
-                <div className="flex justify-between text-[10px] text-tx3 mb-1"><span>Ports: {o.used_ports}/{o.total_ports}</span><span className={cn('font-bold', util > 80 ? 'text-danger' : util > 60 ? 'text-warning' : 'text-success')}>{util}%</span></div>
+                <div className="flex justify-between text-[10px] text-tx3 mb-1"><span>{t('pg_ftth.portsUsedOf', { used: o.used_ports, total: o.total_ports })}</span><span className={cn('font-bold', util > 80 ? 'text-danger' : util > 60 ? 'text-warning' : 'text-success')}>{util}%</span></div>
                 <div className="h-1.5 rounded-full bg-glass overflow-hidden"><div className={cn('h-full rounded-full transition-all', util > 80 ? 'bg-danger' : util > 60 ? 'bg-warning' : 'bg-success')} style={{ width: `${util}%` }} /></div>
               </div>
             </div>
@@ -490,12 +506,12 @@ export function FtthInfrastructure() {
           <div className="flex items-center gap-2 mb-2">
             {canEdit && (
               <button onClick={() => { setDrawMode(!drawMode); setAutoRouteMode(false); }} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors', drawMode ? 'bg-warning text-white' : 'bg-glass text-tx2 hover:text-tx1')}>
-                <Cable size={14} /> {drawMode ? 'Exit Draw Mode' : 'Draw Fiber Path'}
+                <Cable size={14} /> {drawMode ? t('pg_ftth.exitDraw') : t('pg_ftth.drawPath')}
               </button>
             )}
             {canEdit && (
               <button onClick={() => { setAutoRouteMode(!autoRouteMode); setDrawMode(false); setAutoRouteStart(null); }} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors', autoRouteMode ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1')}>
-                <MapIcon size={14} /> {autoRouteMode ? 'Exit Auto Route' : 'Auto Route (OSRM)'}
+                <MapIcon size={14} /> {autoRouteMode ? t('pg_ftth.exitAutoRoute') : t('pg_ftth.autoRoute')}
               </button>
             )}
             {drawMode && <span className="text-xs text-tx3">{t('pg_ftth.clickTheMapTo')}</span>}
@@ -573,42 +589,32 @@ export function FtthInfrastructure() {
 }
 
 // ─── Overview Tab ───
-function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTTHStats | undefined; isFetching: boolean; countdown: number; onDrillDown: () => void }) {
+function OverviewTab({ stats, onTab }: { stats: FTTHStats | undefined; onTab: (tab: Tab) => void }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const onDrillDown = () => onTab('tree');
   if (!stats) return <div className="text-center py-8 text-tx3 text-sm">{t('pg_ftth.loadingStats')}</div>;
   const s = stats.onu_stats;
   const infra = stats.infrastructure;
   const orphans = stats.orphans;
 
-  const statCards = [
-    { label: 'Total ONU', value: s.total, icon: <Activity size={18} />, color: 'text-tx1', bg: 'bg-glass' },
-    { label: 'Online', value: s.online, icon: <Wifi size={18} />, color: 'text-success', bg: 'bg-success/10' },
-    { label: 'Offline', value: s.offline, icon: <WifiOff size={18} />, color: 'text-tx3', bg: 'bg-glass' },
-    { label: 'LOS', value: s.los, icon: <AlertTriangle size={18} />, color: 'text-danger', bg: 'bg-danger/10' },
-    { label: 'Dying Gasp', value: s.dyinggasp, icon: <Zap size={18} />, color: 'text-warning', bg: 'bg-warning/10' },
-    { label: t('pg_ftth.unregistered'), value: s.unregister, icon: <CircleDashed size={18} />, color: 'text-tx3', bg: 'bg-glass' },
-  ];
-
   const portUtil = infra.total_odp_ports > 0 ? Math.round((infra.used_odp_ports / infra.total_odp_ports) * 100) : 0;
 
   return (
     <div className="space-y-4">
-      {/* Auto-refresh indicator */}
-      <div className="flex items-center justify-end gap-1.5 text-[10px] text-tx3">
-        {isFetching ? <><RefreshCw size={10} className="animate-spin" /> {t('pg_ftth.updating')}</> : <>{t('pg_ftth.refreshIn')} <span className={countdown <= 3 ? 'text-warning font-semibold' : 'text-tx2'}>{countdown}s</span></>}
-      </div>
-      {/* ONU Status Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
-        {statCards.map((c, i) => (
-          <div key={i} className={cn('rounded-xl p-3 md:p-4 border border-brd', c.bg)}>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] md:text-xs text-tx3 font-medium uppercase tracking-wider">{c.label}</span>
-              <span className={c.color}>{c.icon}</span>
-            </div>
-            <div className={cn('text-xl md:text-2xl font-extrabold', c.color)}>{c.value}</div>
-          </div>
-        ))}
-      </div>
+      {/* Status ONU: satu baris chip (sama seperti Dashboard), klik = buka Semua ONU terfilter */}
+      <StatusStrip
+        aria-label={t('pg_ftth.onuStatus')}
+        onSelect={(k) => navigate(k === 'total' ? '/dashboard/onus' : k === 'unregister' ? '/dashboard/onus/unconfigured' : `/dashboard/onus?filter=${k}`)}
+        items={[
+          { key: 'total', label: t('pg_ftth.totalOnu'), count: s.total, tone: 'idle' },
+          { key: 'online', label: 'Online', count: s.online, tone: 'ok' },
+          { key: 'offline', label: 'Offline', count: s.offline, tone: 'idle' },
+          { key: 'los', label: 'LOS', count: s.los, tone: 'crit' },
+          { key: 'dyinggasp', label: 'Dying Gasp', count: s.dyinggasp, tone: 'warn' },
+          { key: 'unregister', label: t('pg_ftth.unregistered'), count: s.unregister, tone: 'info' },
+        ]}
+      />
 
       {/* Kelengkapan data (redesign Fase 3): satu pemberitahuan, bukan 3 banner
           bertumpuk. Bisa ditutup; muncul lagi bila jumlahnya berubah. */}
@@ -650,24 +656,25 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
         </Notice>
       )}
 
-      {/* Infrastructure Summary */}
+      {/* Infrastructure Summary — klik untuk membuka tab-nya */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-        <div className="glass-card p-3 md:p-4 flex items-center gap-3">
-          <Server size={20} className="text-accent flex-shrink-0" />
-          <div><div className="text-lg font-bold">{infra.total_otb}</div><div className="text-[10px] text-tx3 uppercase">OTB/ODF</div></div>
-        </div>
-        <div className="glass-card p-3 md:p-4 flex items-center gap-3">
-          <Box size={20} className="text-warning flex-shrink-0" />
-          <div><div className="text-lg font-bold">{infra.total_odc}</div><div className="text-[10px] text-tx3 uppercase">ODC</div></div>
-        </div>
-        <div className="glass-card p-3 md:p-4 flex items-center gap-3">
-          <Split size={20} className="text-success flex-shrink-0" />
-          <div><div className="text-lg font-bold">{infra.total_odp}</div><div className="text-[10px] text-tx3 uppercase">ODP</div></div>
-        </div>
-        <div className="glass-card p-3 md:p-4 flex items-center gap-3">
+        {([
+          { key: 'otb', value: infra.total_otb, label: 'OTB/ODF', icon: <Server size={20} className="text-accent" /> },
+          { key: 'odc', value: infra.total_odc, label: 'ODC', icon: <Box size={20} className="text-warning" /> },
+          { key: 'odp', value: infra.total_odp, label: 'ODP', icon: <Split size={20} className="text-success" /> },
+        ] as const).map(c => (
+          <button key={c.key} type="button" onClick={() => onTab(c.key)}
+            className="glass-card p-3 md:p-4 flex items-center gap-3 text-left hover:border-accent/40 transition-colors">
+            <span className="flex-shrink-0">{c.icon}</span>
+            <span><span className="block text-lg font-bold text-tx1">{c.value}</span><span className="block text-xs text-tx3">{c.label}</span></span>
+          </button>
+        ))}
+        <button type="button" onClick={() => onTab('odp')}
+          className="glass-card p-3 md:p-4 flex items-center gap-3 text-left hover:border-accent/40 transition-colors">
           <Network size={20} className="text-accent flex-shrink-0" />
-          <div><div className="text-lg font-bold">{infra.used_odp_ports}<span className="text-tx3 text-sm font-normal">/{infra.total_odp_ports}</span></div><div className="text-[10px] text-tx3 uppercase">{t('pg_ftth.odpPortsUsed')}</div></div>
-        </div>
+          <span><span className="block text-lg font-bold text-tx1">{infra.used_odp_ports}<span className="text-tx3 text-sm font-normal">/{infra.total_odp_ports}</span></span>
+            <span className="block text-xs text-tx3">{t('pg_ftth.odpPortsUsed')}</span></span>
+        </button>
       </div>
 
       {/* ODP Port Utilization Bar */}
@@ -681,8 +688,8 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
             <div className={cn('h-full rounded-full transition-all', portUtil > 80 ? 'bg-danger' : portUtil > 60 ? 'bg-warning' : 'bg-success')} style={{ width: `${portUtil}%` }} />
           </div>
           <div className="flex justify-between mt-1 text-[10px] text-tx3">
-            <span>{infra.used_odp_ports} used</span>
-            <span>{infra.available_odp_ports} available</span>
+            <span>{t('pg_ftth.portsUsed', { n: infra.used_odp_ports })}</span>
+            <span>{t('pg_ftth.portsFree', { n: infra.available_odp_ports })}</span>
           </div>
         </div>
       )}
@@ -704,7 +711,7 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
                     <span className={cn('text-xs font-bold flex-shrink-0', oltUtil > 80 ? 'text-success' : oltUtil > 50 ? 'text-warning' : 'text-danger')}>{oltUtil}%</span>
                   </div>
                   <div className="flex items-center gap-3 md:gap-4 text-xs">
-                    <span className="text-tx3">Total: <strong className="text-tx1">{olt.total}</strong></span>
+                    <span className="text-tx3">{t('pg_ftth.lblTotal')} <strong className="text-tx1">{olt.total}</strong></span>
                     <span className="text-success">Online: <strong>{olt.online}</strong></span>
                     <span className="text-tx3">Offline: <strong>{olt.offline}</strong></span>
                     {olt.los > 0 && <span className="text-danger">LOS: <strong>{olt.los}</strong></span>}
@@ -792,18 +799,18 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
         <Server size={18} className="text-accent" />
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate">{otb.name}</div>
-          <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
+          <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
             <span className="uppercase">{otb.type}</span>
             {otb.feed_source === 'jc' ? (
-              <span className="flex items-center gap-1 text-purple-400"><GitMerge size={10} /> Fed by JC: {otb.jc_name || '—'}{otb.jc_core_number ? ` (Core ${otb.jc_core_number})` : ''}</span>
+              <span className="flex items-center gap-1 text-purple-400"><GitMerge size={10} /> {t('pg_ftth.fedByJc')} {otb.jc_name || '—'}{otb.jc_core_number ? ` (Core ${otb.jc_core_number})` : ''}</span>
             ) : (
               <>
-                {otb.olt_name && <span>• OLT: {otb.olt_name}</span>}
-                {otb.pon_port && <span>• PON: {otb.pon_port}</span>}
+                {otb.olt_name && <span>OLT: {otb.olt_name}</span>}
+                {otb.pon_port && <span>PON: {otb.pon_port}</span>}
               </>
             )}
-            <span>• {otb.total_cores} cores</span>
-            <span>• {otb.odc_count} ODCs</span>
+            <span>{t('pg_ftth.coreCount', { n: otb.total_cores })}</span>
+            <span>{otb.odc_count} ODC</span>
             {otb.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {otb.latitude.toFixed(4)}, {otb.longitude?.toFixed(4)}</span>}
           </div>
         </div>
@@ -847,11 +854,11 @@ function OdcRow({ odc, fibersPerTube, sourceLabel, expanded, toggleExpand, canEd
         <Box size={16} className="text-warning" />
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate">{odc.name}</div>
-          <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
+          <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
             <span>{sourceLabel}</span>
             {odc.feed_source !== 'jc' && <CoreColorTag coreNumber={odc.otb_core_number} fibersPerTube={fibersPerTube} />}
-            {odc.splitter_model && <span>• Splitter: {odc.splitter_model}</span>}
-            <span>• {odc.odp_count} ODPs</span>
+            {odc.splitter_model && <span>Splitter: {odc.splitter_model}</span>}
+            <span>{odc.odp_count} ODPs</span>
             {odc.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {odc.latitude.toFixed(4)}, {odc.longitude?.toFixed(4)}</span>}
           </div>
         </div>
@@ -897,11 +904,11 @@ function OdpRow({ odp, sourceLabel, expanded, toggleExpand, canEdit, onAddOdp, o
         <Split size={16} className="text-success" />
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate">{odp.name}</div>
-          <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
+          <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
             <span>{sourceLabel}</span>
-            {odp.splitter_model && <span>• Splitter: {odp.splitter_model}</span>}
-            <span>• {odp.used_ports}/{odp.total_ports} ports used</span>
-            {hasChildren && <span>• {odp.odps.length} ODP cascade</span>}
+            {odp.splitter_model && <span>Splitter: {odp.splitter_model}</span>}
+            <span>{odp.used_ports}/{odp.total_ports} ports used</span>
+            {hasChildren && <span>{odp.odps.length} ODP cascade</span>}
             {odp.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {odp.latitude.toFixed(4)}, {odp.longitude?.toFixed(4)}</span>}
           </div>
         </div>
@@ -945,8 +952,8 @@ function JcRow({ jc, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDel
             {jc.name}
             <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-glass text-tx3 uppercase">{jc.closure_type}</span>
           </div>
-          <div className="text-xs text-tx3 flex items-center gap-2 flex-wrap">
-            <span>• {jc.splice_count} splice{jc.splice_count === 1 ? '' : 's'}</span>
+          <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
+            <span>{jc.splice_count} splice{jc.splice_count === 1 ? '' : 's'}</span>
             {jc.latitude && <span className="flex items-center gap-0.5"><MapPin size={10} /> {jc.latitude.toFixed(4)}, {jc.longitude?.toFixed(4)}</span>}
           </div>
         </div>
