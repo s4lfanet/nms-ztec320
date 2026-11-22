@@ -243,6 +243,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 29. **Peta & laporan insiden (Fase 5)** — `LeafletMap` prop `outages` (lapisan sendiri, kelas `.outage-pulse` di `motion.css`); FTTH tab peta mengambil `/api/incidents?status=active` (ringkasan insiden membawa `lat/lng` node). `/api/incidents/report?days=N`: MTTR hanya dari insiden yang ditutup manusia (`resolved_by` terisi), `merged` dikecualikan. Info pelanggan = template + link `wa.me` (nomor dari `FTTHODPPort.customer_phone`), tidak dikirim otomatis.
 
+30. **Role teknisi** — default `view_dashboard,view_onus,receive_alerts`: bisa melihat & menangani insiden (`_can_handle` = receive_alerts / manage_users / super admin), tidak bisa membuka Pengaturan Alert (`customization`). Kategori notifikasi `odp_outage`/`outage` termasuk `ALARM_CATEGORIES`; API notifikasi mengirim `incident_id` untuk link lonceng. Panduan teknisi ada di `data/guides.ts` (`technician-field`) — perbarui bila alur insiden berubah.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

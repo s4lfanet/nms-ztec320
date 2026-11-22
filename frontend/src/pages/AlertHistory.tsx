@@ -36,6 +36,8 @@ const alertTypeConfig: Record<string, { label: string; icon: React.ReactNode; co
   olt_mem_high: { label: 'MEM HIGH', icon: <Activity size={14} />, color: 'text-warning', bg: 'bg-warning/15' },
   olt_temp_high: { label: 'TEMP HIGH', icon: <Thermometer size={14} />, color: 'text-danger', bg: 'bg-danger/15' },
   sync_stale: { label: 'SYNC_STALE', icon: <Clock size={14} />, color: 'text-warning', bg: 'bg-warning/15' },
+  odp_outage: { label: 'GANGGUAN ODP', icon: <Radio size={14} />, color: 'text-danger', bg: 'bg-danger/15' },
+  outage: { label: 'GANGGUAN ODC/JC/OTB', icon: <Radio size={14} />, color: 'text-danger', bg: 'bg-danger/15' },
 };
 
 function getTypeConfig(type: string) {

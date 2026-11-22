@@ -32,10 +32,24 @@ bp = Blueprint('notifications', __name__)
 
 ALARM_CATEGORIES = {'offline', 'dyinggasp', 'los', 'olt_offline', 'signal', 'signal_drop',
                     'offline_batch', 'dyinggasp_batch', 'los_batch', 'signal_drop_batch',
-                    'olt_cpu_high', 'olt_mem_high', 'olt_temp_high', 'olt_backup_failed'}
+                    'olt_cpu_high', 'olt_mem_high', 'olt_temp_high', 'olt_backup_failed',
+                    'odp_outage', 'outage'}
 
 
 UNREGISTER_CATEGORIES = {'unconfig', 'unconfigured'}
+
+
+def _incident_for(n):
+    """Insiden terbaru untuk notifikasi gangguan ODP/ODC/JC/OTB (link dari lonceng)."""
+    if n.category not in ('odp_outage', 'outage') or not n.target_id:
+        return None
+    try:
+        from models import Incident
+        inc = (Incident.query.filter_by(node_type=n.target_type, node_id=n.target_id)
+               .order_by(Incident.id.desc()).first())
+        return inc.id if inc else None
+    except Exception:
+        return None
 
 
 def _notif_type(category):
@@ -92,6 +106,8 @@ def get_notifications():
             'acknowledged_at': utc_iso(n.acknowledged_at),
             'resolved': n.resolved, 'resolved_at': utc_iso(n.resolved_at),
             'olt_id': n.olt_id, 'onu_id': n.onu_id,
+            'target_type': n.target_type or '', 'target_id': n.target_id,
+            'incident_id': _incident_for(n),
             'created_at': utc_iso(n.created_at),
         } for n in notifications],
         'unread_count': unread_count,

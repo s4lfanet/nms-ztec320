@@ -161,7 +161,10 @@
     "someSyncFailed": "Beberapa OLT gagal di-sync",
     "allSynced": "Semua OLT berhasil di-sync!",
     "startingSync": "Memulai sync...",
-    "sec": "d"
+    "sec": "d",
+    "activeIncidents": "{{n}} gangguan aktif",
+    "activeIncidentsHint": "Ada insiden yang belum selesai. Buka untuk melihat titik, pelanggan terdampak, dan siapa yang menangani.",
+    "openIncidents": "Buka insiden"
   },
   "allOnus": {
     "title": "Semua ONU",
@@ -361,7 +364,12 @@
     "langEn": "English",
     "allAccess": "Semua akses (Super Admin)",
     "logoBadFormat": "Format tidak didukung. Gunakan PNG, JPG, WEBP, atau GIF.",
-    "logoTooBig": "Ukuran file maksimal 2MB."
+    "logoTooBig": "Ukuran file maksimal 2MB.",
+    "myAreas": "Wilayah & notifikasi saya",
+    "noPhone": "Nomor WA belum diisi — Anda tidak akan menerima alert/insiden lewat WhatsApp. Minta admin mengisinya di Manajemen User.",
+    "alertPhone": "Alert & insiden dikirim ke WA {{phone}}.",
+    "noAreas": "Belum ada wilayah — Anda menerima semua alert seperti NOC.",
+    "areaBackup": "cadangan"
   },
   "error": {
     "invalid_credentials": "Username atau password salah",

@@ -58,9 +58,19 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - **Dedup recovery** — notifikasi recovery tidak duplikat (update existing jika ada)
 - **OLT health auto-resolve** — alert CPU/mem/temp auto-resolve saat nilai kembali normal
 - **OLT health config** — threshold CPU/memory/temperature dapat dikonfigurasi per rule via Alert Settings UI
-- Maintenance window untuk suppress alerts
+- Maintenance window untuk suppress alerts — untuk semua OLT, satu OLT, atau satu titik FTTH (OTB/JC/ODC/ODP: hanya pelanggan di bawahnya yang ditahan)
 - OLT health check via SNMP (CPU, memory, temperature)
 - Real-time push via WebSocket (bell icon update tanpa refresh)
+
+### Gangguan Massal, Insiden & Teknisi Lapangan
+- **Korelasi gangguan bertingkat**: ONU yang mati bersamaan dikelompokkan per titik topologi FTTH. ≥ N ONU mati di satu ODP → alert ODP; sebagian besar (default 80%) ONU di bawah satu ODC/JC/OTB mati → **satu** alert untuk titik tertinggi, bukan puluhan alert per ODP. Hanya membaca DB (tanpa perintah ke OLT); bisa dimatikan untuk kembali ke perilaku lama
+- **Dugaan penyebab**: mayoritas Dying Gasp → listrik padam, mayoritas LOS → kabel putus; pesan WA menyertakan link Google Maps titik gangguan dan pesan "pulih" saat ONU kembali online
+- **Wilayah teknisi**: teknisi ditugaskan ke OLT/OTB/JC/ODC/ODP (utama/cadangan). Alert WA dikirim ke penanggung jawab terdekat (teknisi ONU → ODP → ODC/JC → OTB → OLT); teknisi tanpa wilayah (admin/NOC) tetap menerima semua
+- **Insiden**: dibuat otomatis per titik gangguan, digabung bila gangguan meluas ke titik di atasnya, ditutup otomatis bila pulih sebelum diterima. Alur teknisi di HP: **Terima → Berangkat → Sampai di lokasi → Selesaikan** (penyebab wajib), catatan, dan foto lapangan
+- **Eskalasi**: insiden yang belum diterima dalam N menit (default 15) dikirim ke teknisi cadangan lalu admin; pengingat sekali saat melewati target TTR (default 3 jam)
+- **Peta gangguan & laporan**: titik insiden aktif berdenyut di peta FTTH; laporan MTTA/MTTR, pelanggaran TTR, penyebab, titik paling sering gangguan, dan kinerja per teknisi
+- **Info ke pelanggan**: template pesan + link WhatsApp per pelanggan terdampak (nomor dari port ODP), dikirim manual oleh admin
+- Teknisi melihat nomor WA & wilayahnya di Profil Saya; banner "gangguan aktif" di Dashboard; lonceng langsung membuka insidennya; AI agent menjawab `/insiden`
 
 ### Security & Reliability
 - **WebSocket auth**: WS connection memerlukan session cookie
@@ -81,7 +91,8 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - ODP port management dan assignment ke ONU
 - Diagram port visual ala NetBox untuk OTB/ODF dan ODP — tiap core/port bisa diberi nama sendiri, grid diagram atau tabel (toggle)
 - Warna tube/core otomatis mengikuti standar industri TIA-598 (12 warna, berulang tiap tube) — tampil di diagram, list, tree view, dan form tambah/edit
-- Koordinat lokasi dengan tampilan peta
+- Koordinat lokasi dengan tampilan peta (plus lapisan insiden gangguan aktif)
+- Topologi dipakai untuk korelasi gangguan massal dan routing alert ke teknisi wilayah
 - Tree view navigasi infrastruktur
 
 ### Traffic Monitoring
@@ -95,8 +106,8 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - **Link state & ping**: Status link per ONU dari sesi PPPoE + ping ke IP client langsung dari View ONU
 
 ### AI Agent (baca-saja)
-- **Tanya status jaringan lewat WhatsApp/Telegram/web**: ringkasan OLT, cari pelanggan, detail ONU, ONU bermasalah/redaman lemah, alert terbaru — data langsung dari DB NMS via tool calling, tanpa perintah ke OLT
-- **Perintah cepat tanpa AI**: `/ringkasan`, `/gangguan`, `/redaman`, `/alert`, `/cari`, `/onu`, `/menu` dijawab langsung dari DB (0 token); teks bebas baru diteruskan ke AI
+- **Tanya status jaringan lewat WhatsApp/Telegram/web**: ringkasan OLT, cari pelanggan, detail ONU, ONU bermasalah/redaman lemah, alert terbaru, insiden gangguan aktif — data langsung dari DB NMS via tool calling, tanpa perintah ke OLT
+- **Perintah cepat tanpa AI**: `/ringkasan`, `/gangguan`, `/redaman`, `/alert`, `/insiden`, `/cari`, `/onu`, `/menu` dijawab langsung dari DB (0 token); teks bebas baru diteruskan ke AI
 - **Multi-provider**: Claude API (Anthropic) atau endpoint OpenAI-compatible (OpenAI, Gemini, OpenRouter, Ollama lokal, dll.); API key terenkripsi; halaman Sistem → AI Agent dengan kotak uji
 - **Akses terbatas**: whitelist nomor WA / chat ID Telegram, atau nomor HP user aktif ber-izin `ai_agent`; pengirim lain diabaikan; setiap pertanyaan di audit log. Gateway WA meneruskan pesan masuk ke `/api/internal/ai/wa-inbound` (header `X-Internal-Key`)
 
@@ -108,7 +119,7 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - Role-based access control dengan 18 granular permissions
 - 4 default roles: Full Access, Viewer, Limited, Technician
 - Super admin bypass: `is_super_admin` → `all_olt` → specific permission
-- Technician assignment untuk ONU
+- Technician assignment untuk ONU, plus wilayah teknisi (OLT/OTB/JC/ODC/ODP) untuk routing alert & eskalasi
 - ONU custom columns
 - **Sidebar menu disederhanakan**: Menu ONU dari 8 ke 5 item (All ONUs, Unconfigured, Provision ONU, Pre-config ONT, Register Wizard). Route wizard tetap aktif, diakses dari halaman Unconfigured
 - **Dark/Light/System theme + i18n (id/en)**: Tema per user (kolom `users.theme`) dengan fallback localStorage, quick-toggle di Topbar, CSS variables Tailwind v4 — peta Leaflet & grafik Recharts ikut tema otomatis. Ganti tema serempak lewat View Transitions (crossfade satu timing). Dwibahasa Indonesia/Inggris per user (`users.language`, react-i18next) — login, layout, Dashboard, All ONUs, View ONU, dan pesan error (`error_code`) sudah diterjemahkan
@@ -118,7 +129,7 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 
 ### Centralized Guide System
 - **Panduan page** (`/dashboard/guide`): Pusat panduan penggunaan dengan search dan category filter
-- 17 guides terorganisir dalam 7 kategori (Dashboard, ONU Management, Templates, Traffic, Infrastructure, System, Activity)
+- 29 panduan dalam 9 kategori (Dashboard, Gangguan & Teknisi, ONU Management, Templates, Traffic, Infrastructure, Auto Provisioning, System, Activity) — termasuk **Panduan Teknisi Lapangan** (dari notifikasi WA sampai insiden selesai)
 - Accordion UI dengan rich text (bold), prerequisites, dan tips per guide
 - `TutorialBanner` di setiap halaman terhubung ke centralized data via `guideId` — single source of truth
 - Quick-access "Panduan" link button di TutorialBanner untuk navigasi ke guide center
@@ -509,6 +520,13 @@ WantedBy=multi-user.target
 | `/api/alert-rules/recheck` | POST | Manual alert re-check |
 | `/api/bot-config/*` | GET/PUT | Telegram/WA bot config |
 | `/api/ftth/*` | GET/POST | FTTH infrastructure |
+| `/api/incidents` | GET | Insiden gangguan (`status=active\|closed\|all`) |
+| `/api/incidents/<id>` | GET | Detail insiden + riwayat + ONU terdampak |
+| `/api/incidents/<id>/status` | POST | Terima / berangkat / sampai / selesai |
+| `/api/incidents/<id>/notes`, `/photos` | POST | Catatan & foto lapangan |
+| `/api/incidents/report` | GET | MTTA/MTTR, TTR, penyebab, titik rawan, teknisi |
+| `/api/technician-areas` | GET/POST/DELETE | Wilayah teknisi (utama/cadangan) |
+| `/api/maintenance` | GET/POST/DELETE | Jadwal maintenance (OLT / titik FTTH) |
 | `/api/metrics/history` | GET | Historical metrics |
 | `/api/olt/<id>/logs` | GET | OLT device logs (show log) |
 | `/api/olt/<id>/onu-status-history` | GET | ONU status change history |

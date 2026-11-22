@@ -39,6 +39,7 @@ def api_me():
         'must_change_password': bool(current_user.must_change_password),
         'theme': current_user.theme or 'system',
         'language': current_user.language or 'id',
+        'phone': current_user.phone or '',
     }})
 
 

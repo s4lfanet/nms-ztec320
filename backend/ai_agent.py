@@ -192,6 +192,32 @@ def tool_recent_alerts(args):
          'title': n.title, 'message': (n.message or '')[:300]} for n in rows]}
 
 
+def tool_incidents(args):
+    """Insiden gangguan massal (ODP/ODC/JC/OTB) — aktif, atau yang baru selesai."""
+    import json as _json
+    from models import Incident, User
+    status = str(args.get('status') or 'active')
+    q = Incident.query
+    if status == 'active':
+        q = q.filter(Incident.status.in_(('open', 'acknowledged', 'en_route', 'on_site')))
+    rows = q.order_by(Incident.opened_at.desc()).limit(max(1, min(int(args.get('limit') or 10), 25))).all()
+    out = []
+    for i in rows:
+        names = []
+        for part in (i.assigned_user_ids or '').split(','):
+            if part.strip().isdigit():
+                u = db.session.get(User, int(part))
+                if u:
+                    names.append(u.full_name or u.username)
+        out.append({'id': i.id, 'titik': f'{i.node_type.upper()} {i.node_name}', 'status': i.status,
+                    'dugaan_penyebab': {'power': 'listrik padam', 'fiber': 'kabel putus'}.get(i.cause, 'campuran'),
+                    'terdampak': i.affected_count, 'dibuka': _iso(i.opened_at),
+                    'diterima_oleh': i.acknowledged_by or None, 'penanggung_jawab': names or None,
+                    'selesai': _iso(i.resolved_at), 'penyebab_akhir': i.resolution_note or None,
+                    'jumlah_onu_tercatat': len(_json.loads(i.affected_onu_ids or '[]'))})
+    return {'incidents': out}
+
+
 TOOLS = [
     ('nms_summary', 'Ringkasan semua OLT: status OLT, suhu, jumlah ONU online/offline/LOS/dying-gasp.',
      {'type': 'object', 'properties': {}}, tool_summary),
@@ -206,6 +232,10 @@ TOOLS = [
                                        'include_weak_signal': {'type': 'boolean'}}}, tool_problem_onus),
     ('recent_alerts', 'Alert/gangguan terbaru dalam N jam terakhir (default 24).',
      {'type': 'object', 'properties': {'hours': {'type': 'integer'}}}, tool_recent_alerts),
+    ('incidents', 'Insiden gangguan massal (ODP/ODC/JC/OTB): titik, status penanganan, dugaan penyebab, '
+                  'jumlah pelanggan terdampak, teknisi. status=active (default) atau all.',
+     {'type': 'object', 'properties': {'status': {'type': 'string', 'enum': ['active', 'all']},
+                                       'limit': {'type': 'integer'}}}, tool_incidents),
 ]
 _TOOL_FN = {t[0]: t[3] for t in TOOLS}
 
@@ -335,6 +365,7 @@ def _cmd_menu(_arg):
             '/gangguan [nama OLT] — ONU offline/LOS/dying gasp\n'
             '/redaman [nama OLT] — ONU online dengan RX < -27 dBm\n'
             '/alert [jam] — alert terbaru (default 6 jam)\n'
+            '/insiden — gangguan massal yang sedang ditangani\n'
             '/reset — mulai percakapan AI baru\n\n'
             'Pertanyaan bebas (tanpa /) dijawab oleh AI.')
 
@@ -426,6 +457,20 @@ def _cmd_alerts(arg):
         f"- {a['time']} [{a['severity']}] {a['title']}" for a in r['alerts'][:15]])
 
 
+def _cmd_incidents(_arg):
+    rows = tool_incidents({'status': 'active', 'limit': 15})['incidents']
+    if not rows:
+        return 'Tidak ada insiden gangguan aktif.'
+    label = {'open': 'belum diterima', 'acknowledged': 'diterima', 'en_route': 'menuju lokasi',
+             'on_site': 'di lokasi'}
+    out = [f'*{len(rows)} insiden aktif*']
+    for i in rows:
+        who = i.get('diterima_oleh') or ', '.join(i.get('penanggung_jawab') or []) or '-'
+        out.append(f"#{i['id']} {i['titik']} — {i['terdampak']} plg, {i['dugaan_penyebab']}, "
+                   f"{label.get(i['status'], i['status'])} ({who})")
+    return '\n'.join(out)
+
+
 QUICK_COMMANDS = {
     'menu': _cmd_menu, 'bantuan': _cmd_menu, 'help': _cmd_menu, 'start': _cmd_menu,
     'ringkasan': _cmd_summary, 'status': _cmd_summary,
@@ -434,6 +479,7 @@ QUICK_COMMANDS = {
     'gangguan': _cmd_problems, 'down': _cmd_problems, 'los': _cmd_problems,
     'redaman': _cmd_weak,
     'alert': _cmd_alerts,
+    'insiden': _cmd_incidents, 'incident': _cmd_incidents,
 }
 
 

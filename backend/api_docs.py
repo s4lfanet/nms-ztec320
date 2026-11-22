@@ -191,10 +191,28 @@ class SystemConfigUpdate(BaseModel):
     maintenance_mode: Optional[bool] = None
 
 class MaintenanceWindow(BaseModel):
-    title: str
-    description: Optional[str] = None
     start_time: str
     end_time: str
+    reason: Optional[str] = None
+    olt_id: Optional[int] = None  # kosong + node_type kosong = semua OLT
+    node_type: Optional[str] = None  # otb | jc | odc | odp
+    node_id: Optional[int] = None
+
+
+class TechnicianAreaBody(BaseModel):
+    user_id: int
+    node_type: str  # olt | otb | jc | odc | odp
+    node_id: int
+    role: Optional[str] = 'primary'  # primary | backup
+
+
+class IncidentStatusBody(BaseModel):
+    status: str  # acknowledged | en_route | on_site | resolved
+    note: Optional[str] = None  # wajib untuk resolved
+
+
+class IncidentNoteBody(BaseModel):
+    note: str
 
 class RoleCreate(BaseModel):
     name: str
@@ -1019,6 +1037,55 @@ def register_flask_api_docs(app: FastAPI):
 
     @app.delete("/api/maintenance/{window_id}", tags=["Maintenance"], summary="Delete maintenance window")
     def delete_maintenance(window_id: int):
+        pass
+
+    # ======================================================================
+    # INCIDENTS & TECHNICIAN AREAS (notifikasi gangguan Fase 1–5)
+    # ======================================================================
+    @app.get("/api/incidents", tags=["Incidents"], summary="List incidents",
+             description="Query: status=active|closed|all, limit. Insiden dibuat otomatis dari korelasi gangguan.")
+    def list_incidents():
+        pass
+
+    @app.get("/api/incidents/{incident_id}", tags=["Incidents"], summary="Incident detail",
+             description="Detail + riwayat (status, catatan, foto) + ONU terdampak.")
+    def incident_detail(incident_id: int):
+        pass
+
+    @app.post("/api/incidents/{incident_id}/status", tags=["Incidents"], summary="Advance incident status",
+              description="Status hanya maju: open → acknowledged → en_route → on_site → resolved. Perlu izin receive_alerts.")
+    def incident_status(incident_id: int, body: IncidentStatusBody):
+        pass
+
+    @app.post("/api/incidents/{incident_id}/notes", tags=["Incidents"], summary="Add incident note")
+    def incident_note(incident_id: int, body: IncidentNoteBody):
+        pass
+
+    @app.post("/api/incidents/{incident_id}/photos", tags=["Incidents"], summary="Upload field photo",
+              description="multipart/form-data: photo (JPG/PNG ≤ 8 MB), note opsional.")
+    def incident_photo(incident_id: int):
+        pass
+
+    @app.get("/api/incidents/report", tags=["Incidents"], summary="Incident report",
+             description="Query days=N: MTTA, MTTR, lewat target TTR, penyebab, titik rawan, kinerja teknisi.")
+    def incident_report():
+        pass
+
+    @app.get("/api/technician-areas", tags=["Incidents"], summary="List technician areas")
+    def list_technician_areas():
+        pass
+
+    @app.get("/api/technician-areas/nodes", tags=["Incidents"], summary="Selectable OLT/OTB/JC/ODC/ODP nodes")
+    def list_area_nodes():
+        pass
+
+    @app.post("/api/technician-areas", tags=["Incidents"], summary="Assign technician to area",
+              description="Perlu izin manage_users. Pasangan user+node yang sama hanya memperbarui peran.")
+    def set_technician_area(body: TechnicianAreaBody):
+        pass
+
+    @app.delete("/api/technician-areas/{area_id}", tags=["Incidents"], summary="Remove technician area")
+    def delete_technician_area(area_id: int):
         pass
 
     # ======================================================================
