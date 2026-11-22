@@ -13,7 +13,7 @@ import {
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PortMapEditor, type PortMapRow } from '../components/PortMapEditor';
-import { Button, Card, EmptyState, Select, Input } from '../components/ui';
+import { Button, Card, EmptyState, Select, Input, Stepper, StickyActionBar } from '../components/ui';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -114,11 +114,11 @@ const newService = (overrides?: Partial<ServiceEntry>): ServiceEntry => ({
 });
 
 const STEPS = [
-  { id: 1, label: 'OLT', icon: <Server size={15} /> },
-  { id: 2, label: 'ONUs', icon: <Search size={15} /> },
-  { id: 3, label: 'Services', icon: <Radio size={15} /> },
-  { id: 4, label: 'WiFi & TR069', icon: <Wifi size={15} /> },
-  { id: 5, label: 'Review', icon: <Check size={15} /> },
+  { id: 1, label: 'Pilih OLT' },
+  { id: 2, label: 'Pilih ONU' },
+  { id: 3, label: 'Layanan' },
+  { id: 4, label: 'WiFi & TR069' },
+  { id: 5, label: 'Tinjau' },
 ];
 
 // ─── Script Generator ───────────────────────────────────────────────────────
@@ -647,22 +647,9 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
         description={manualMode ? 'Manual SN input — no OLT scan needed' : 'Unified wizard — all vendors, dynamic services'}
       />
 
-      {/* Step Indicator */}
+      {/* Penanda langkah (redesign Fase 3) */}
       {step <= 5 && (
-        <div className="flex items-center gap-1 md:gap-2 overflow-x-auto scrollbar-thin pb-1">
-          {STEPS.map((s, i) => (
-            <div key={s.id} className="flex items-center gap-1 md:gap-2 flex-shrink-0">
-              <button onClick={() => { if (s.id < step) setStep(s.id); }}
-                className={cn('flex items-center gap-1.5 px-2.5 md:px-3 py-2 rounded-xl text-[11px] md:text-xs font-medium transition-all whitespace-nowrap',
-                  step === s.id ? 'bg-accent text-white' : step > s.id ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>
-                {step > s.id ? <Check size={14} /> : s.icon}
-                <span className="hidden sm:inline">{s.label}</span>
-                <span className="sm:hidden">{s.id}</span>
-              </button>
-              {i < STEPS.length - 1 && <div className={cn('w-3 md:w-8 h-0.5 rounded', step > s.id ? 'bg-success' : 'bg-glass')} />}
-            </div>
-          ))}
-        </div>
+        <Stepper steps={STEPS.map(s => ({ label: s.label }))} current={step - 1} onStepClick={i => setStep(i + 1)} />
       )}
 
       {/* ═══ Step 1: Select OLT ═══ */}
@@ -1396,20 +1383,23 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
         </Card>
       )}
 
-      {/* Navigation buttons */}
-      {step >= 1 && step <= 5 && (
-        <div className="flex justify-between">
+      {/* Navigation buttons — menempel di bawah layar HP */}
+      {step >= 1 && step <= 4 && (
+        <StickyActionBar>
           <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => step > 1 ? setStep(step - 1) : navigate('/dashboard/onus')}>
-            Back
+            Kembali
           </Button>
-          {step < 5 ? (
-            <Button variant="primary" disabled={!canNext()}
-              onClick={() => { if (step === 2 && manualMode) handleStep2Next(); else if (canNext()) setStep(step + 1); }}>
-              Next <ArrowRight size={16} />
-            </Button>
-          ) : (
-            <div /> /* provision button is inside step 5 */
-          )}
+          <Button variant="primary" disabled={!canNext()}
+            onClick={() => { if (step === 2 && manualMode) handleStep2Next(); else if (canNext()) setStep(step + 1); }}>
+            Lanjut <ArrowRight size={16} />
+          </Button>
+        </StickyActionBar>
+      )}
+      {step === 5 && (
+        <div className="flex">
+          <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => setStep(4)}>
+            Kembali
+          </Button>
         </div>
       )}
     </PageContainer>

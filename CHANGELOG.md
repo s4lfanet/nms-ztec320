@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Redesign Fase 3: wizard ONU
+
+#### Diubah
+- **Register Wizard, Provision ONU, dan wizard Register/Provision/Pre-config dari Unconfigured** memakai penanda langkah baru: bernomor dan berjudul di desktop, "Langkah n dari N" + progress bar di HP. Judul langkah berbahasa Indonesia.
+- Tombol **Kembali / Lanjut** (dan **Daftarkan N ONU** di langkah tinjau) menempel di bawah layar HP, tepat di atas navigasi bawah; di desktop tetap di bawah konten. Logika tiap langkah tidak berubah.
+
+#### Diperbaiki
+- Animasi transisi halaman menyisakan `transform` pada pembungkus halaman, sehingga elemen `position: fixed` di dalam halaman ikut tergulung. Kini animasi memakai `fill-mode: backwards`.
+
 ### 2026-11-22 — Redesign Fase 2: Dashboard
 
 #### Diubah

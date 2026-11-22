@@ -12,7 +12,7 @@ import {
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PortMapEditor, type PortMapRow } from '../components/PortMapEditor';
-import { Button, Card, EmptyState, Select, Input } from '../components/ui';
+import { Button, Card, EmptyState, Select, Input, Stepper, StickyActionBar } from '../components/ui';
 
 // ==================== Types ====================
 
@@ -100,22 +100,22 @@ type WizardMode = 'register' | 'provision' | 'preconfig';
 
 const STEPS_BY_MODE: Record<WizardMode, { id: number; label: string; icon: React.ReactNode }[]> = {
   register: [
-    { id: 1, label: 'Select OLT', icon: <Server size={16} /> },
-    { id: 2, label: 'Scan & Select', icon: <Search size={16} /> },
-    { id: 3, label: 'Configure', icon: <Settings size={16} /> },
-    { id: 4, label: 'Review', icon: <Check size={16} /> },
+    { id: 1, label: 'Pilih OLT', icon: <Server size={16} /> },
+    { id: 2, label: 'Pindai & pilih', icon: <Search size={16} /> },
+    { id: 3, label: 'Konfigurasi', icon: <Settings size={16} /> },
+    { id: 4, label: 'Tinjau', icon: <Check size={16} /> },
   ],
   provision: [
-    { id: 1, label: 'Select OLT', icon: <Server size={16} /> },
-    { id: 2, label: 'Select ONUs', icon: <Radio size={16} /> },
-    { id: 3, label: 'Configure', icon: <Settings size={16} /> },
-    { id: 4, label: 'Review', icon: <Check size={16} /> },
+    { id: 1, label: 'Pilih OLT', icon: <Server size={16} /> },
+    { id: 2, label: 'Pilih ONU', icon: <Radio size={16} /> },
+    { id: 3, label: 'Konfigurasi', icon: <Settings size={16} /> },
+    { id: 4, label: 'Tinjau', icon: <Check size={16} /> },
   ],
   preconfig: [
-    { id: 1, label: 'Select OLT', icon: <Server size={16} /> },
-    { id: 2, label: 'ONU Details', icon: <Cpu size={16} /> },
-    { id: 3, label: 'Configure', icon: <Settings size={16} /> },
-    { id: 4, label: 'Review', icon: <Check size={16} /> },
+    { id: 1, label: 'Pilih OLT', icon: <Server size={16} /> },
+    { id: 2, label: 'Detail ONU', icon: <Cpu size={16} /> },
+    { id: 3, label: 'Konfigurasi', icon: <Settings size={16} /> },
+    { id: 4, label: 'Tinjau', icon: <Check size={16} /> },
   ],
 };
 
@@ -672,26 +672,9 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
         }
       />
 
-      {/* Step Indicator */}
+      {/* Penanda langkah (redesign Fase 3) */}
       {step <= 4 && (
-        <div className="flex items-center gap-1 md:gap-2 overflow-x-auto scrollbar-thin pb-1">
-          {steps.map((s, i) => (
-            <div key={s.id} className="flex items-center gap-1 md:gap-2 flex-shrink-0">
-              <button
-                onClick={() => { if (s.id < step) setStep(s.id); }}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 md:px-3 py-2 rounded-xl text-[11px] md:text-xs font-medium transition-all whitespace-nowrap',
-                  step === s.id ? 'bg-accent text-white' : step > s.id ? 'bg-success/15 text-success' : 'bg-glass text-tx3',
-                )}
-              >
-                {step > s.id ? <Check size={14} /> : s.icon}
-                <span className="hidden sm:inline">{s.label}</span>
-                <span className="sm:hidden">{s.id}</span>
-              </button>
-              {i < steps.length - 1 && <div className={cn('w-3 md:w-8 h-0.5 rounded', step > s.id ? 'bg-success' : 'bg-glass')} />}
-            </div>
-          ))}
-        </div>
+        <Stepper steps={steps.map(s => ({ label: s.label }))} current={step - 1} onStepClick={i => setStep(i + 1)} />
       )}
 
       {/* Step 1: Select OLT */}
@@ -1274,14 +1257,14 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
 
       {/* Navigation */}
       {step < 4 && (
-        <div className="flex justify-end gap-2">
+        <StickyActionBar>
           <Button variant="secondary" onClick={() => step > 1 ? setStep(step - 1) : navigate('/dashboard/onus/unconfigured')}>
-            Back
+            Kembali
           </Button>
           <Button variant="primary" disabled={!canNext()} onClick={() => canNext() && setStep(step + 1)}>
-            Next <ArrowRight size={14} />
+            Lanjut <ArrowRight size={14} />
           </Button>
-        </div>
+        </StickyActionBar>
       )}
     </PageContainer>
   );
