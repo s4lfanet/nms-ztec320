@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Redesign Fase 2: Detail ONU
+
+#### Diubah
+- **Detail ONU**: ringkasan baru di paling atas — nama, status, rangkaian OLT · port · SN, dan RX ONU/RX OLT berukuran besar — dengan tombol aksi tepat di bawahnya, jadi terlihat di layar pertama HP.
+- 12 tombol aksi berwarna diringkas: **Get Status, Reboot, Lihat Config** tetap terlihat; aksi lain masuk menu **Lainnya**, dengan aksi merusak (Reset+Reconfig, Disable, Clear Config, Reset Factory, Hapus) dipisah di bagian bawah. Izin, dialog konfirmasi, dan perintah ke OLT tidak berubah.
+
 ### 2026-11-22 — Redesign Fase 2: Semua ONU
 
 #### Diubah
