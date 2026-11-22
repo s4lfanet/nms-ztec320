@@ -21,6 +21,8 @@ def client(monkeypatch):
     app.config['TESTING'] = True
     app.config['SESSION_COOKIE_SECURE'] = False
     monkeypatch.setenv('INTERNAL_API_KEY', FAKE_KEY)
+    # tahap 1 tes koneksi (daftar model) dilewati secara default: endpoint 404
+    monkeypatch.setattr(ai_agent.httpx, 'get', lambda *a, **k: _Resp({}, 404))
     tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
     tmp.close()
     eng = create_engine(f'sqlite:///{tmp.name}')
@@ -279,3 +281,45 @@ def test_gemini_low_reasoning_and_timeout(client, monkeypatch):
     assert not r['success'] and 'tidak membalas dalam' in r['message']
     with app.app_context():
         assert 'tidak membalas dalam' in ai_agent.ask('g2', 'halo')
+
+
+def test_connection_diagnoses_models_stage(client, monkeypatch):
+    posts = []
+    monkeypatch.setattr(ai_agent.httpx, 'post',
+                        lambda *a, **k: posts.append(1) or _Resp({'choices': [{'message': {'content': 'OK'}}]}))
+    _enable('openai', ai_base_url='https://generativelanguage.googleapis.com/v1beta/openai', ai_model='gemini-3.8-flash')
+    _login(client, 'boss')
+    models = {'data': [{'id': 'models/gemini-3.5-flash-lite'}, {'id': 'models/gemini-3.5-flash'},
+                       {'id': 'models/gemini-3.8-pro'}]}
+
+    # model tidak ada di daftar key → berhenti sebelum chat, beri saran flash
+    monkeypatch.setattr(ai_agent.httpx, 'get', lambda *a, **k: _Resp(models))
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert not r['success'] and 'tidak tersedia' in r['message'] and 'gemini-3.5-flash-lite' in r['message']
+    assert not posts
+
+    # model ada → lanjut chat, sukses
+    models['data'].append({'id': 'models/gemini-3.8-flash'})
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert r['success'] and posts
+
+    # key salah terdeteksi di tahap 1
+    monkeypatch.setattr(ai_agent.httpx, 'get', lambda *a, **k: _Resp({'error': {'message': 'API key not valid'}}, 400 + 1))
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert not r['success'] and 'API key' in r['message']
+
+    # jaringan VPS tidak menjangkau penyedia
+    def to(*a, **k):
+        raise ai_agent.httpx.ConnectTimeout('timed out')
+    monkeypatch.setattr(ai_agent.httpx, 'get', to)
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert not r['success'] and 'jaringan VPS' in r['message']
+
+    # daftar model OK tapi chat lambat → pesan menyebut jaringan & key OK
+    monkeypatch.setattr(ai_agent.httpx, 'get', lambda *a, **k: _Resp(models))
+
+    def slow(*a, **k):
+        raise ai_agent.httpx.ReadTimeout('slow')
+    monkeypatch.setattr(ai_agent.httpx, 'post', slow)
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert not r['success'] and 'Jaringan & API key OK' in r['message']

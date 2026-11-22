@@ -25,6 +25,7 @@ HISTORY_TURNS = 8
 HISTORY_TTL = 30 * 60
 REQUEST_TIMEOUT = 90
 TEST_TIMEOUT = 60
+MODELS_TIMEOUT = 15  # tahap 1 tes koneksi: daftar model (cepat, tanpa generate)
 
 DEFAULTS = {
     'ai_enabled': '0',
@@ -378,37 +379,96 @@ def _api_error(label, r):
     return f'{label} {r.status_code}: {msg}{hint}'
 
 
+def _auth_headers(cfg):
+    if cfg['ai_provider'] == 'anthropic':
+        return {'x-api-key': cfg.get('api_key') or '', 'anthropic-version': '2023-06-01',
+                'content-type': 'application/json'}
+    h = {'content-type': 'application/json'}
+    if cfg.get('api_key'):
+        h['authorization'] = f"Bearer {cfg['api_key']}"
+    return h
+
+
+def _suggest_models(ids, model):
+    """Pilih beberapa model dari daftar untuk disarankan (utamakan 'flash')."""
+    fam = (model or '').split('-')[0]
+    same = [i for i in ids if fam and i.startswith(fam)] or list(ids)
+    flash = [i for i in same if 'flash' in i] or same
+    return sorted(flash, key=lambda i: ('lite' not in i, i))[:4]
+
+
+def _check_models(cfg):
+    """Tahap 1 tes koneksi: GET daftar model (cepat). Memisahkan masalah
+    jaringan VPS, API key, dan nama model SEBELUM panggilan chat yang lama.
+    Return (ok, pesan_error_atau_None, detik). Endpoint yang tidak mendukung
+    daftar model (status selain 401/403) dilewati — tidak dianggap gagal."""
+    base = cfg['ai_base_url']
+    url = f"{base}/v1/models" if cfg['ai_provider'] == 'anthropic' else f"{base}/models"
+    host = httpx.URL(base).host or base
+    t0 = time.monotonic()
+    try:
+        r = httpx.get(url, timeout=MODELS_TIMEOUT, headers=_auth_headers(cfg))
+    except httpx.TimeoutException:
+        return False, (f'Server NMS tidak mendapat jawaban dari {host} dalam {MODELS_TIMEOUT} detik '
+                       f'(bahkan untuk daftar model). Masalahnya di jaringan VPS → cek DNS, firewall, '
+                       f'atau proxy keluar; bukan di API key/model.'), 0
+    except httpx.HTTPError as e:
+        return False, f'Server NMS tidak bisa menjangkau {host}: {e}. Cek DNS/internet VPS.', 0
+    secs = time.monotonic() - t0
+    if r.status_code in (401, 403):
+        return False, _api_error('AI API', r), secs
+    if r.status_code >= 400:
+        return True, None, secs
+    try:
+        data = r.json()
+        items = data.get('data') if isinstance(data, dict) else None
+        ids = [str(m.get('id') or '').removeprefix('models/') for m in items or [] if isinstance(m, dict)]
+        ids = [i for i in ids if i]
+    except Exception:
+        ids = []
+    model = (cfg.get('ai_model') or '').removeprefix('models/')
+    if ids and model not in ids:
+        sug = ', '.join(_suggest_models(ids, model))
+        return False, (f'API key valid, tetapi model "{model}" tidak tersedia untuk key ini. '
+                       f'Ganti kolom Model, mis.: {sug}.'), secs
+    return True, None, secs
+
+
 def test_connection():
-    """Panggilan kecil tanpa tool untuk mengecek API key, base URL, dan model
-    yang TERSIMPAN. Return (ok, pesan)."""
+    """Tes 2 tahap untuk konfigurasi yang TERSIMPAN: (1) daftar model — cepat,
+    mengecek jaringan, API key, dan nama model; (2) panggilan chat kecil tanpa
+    tool. Return (ok, pesan)."""
     cfg = get_config(include_key=True)
     if cfg['ai_provider'] == 'anthropic' and not cfg.get('api_key'):
         return False, 'API key belum diisi.'
+    ok, err, list_secs = _check_models(cfg)
+    if not ok:
+        return False, err
+    t0 = time.monotonic()
     try:
         if cfg['ai_provider'] == 'anthropic':
             r = httpx.post(f"{cfg['ai_base_url']}/v1/messages", timeout=TEST_TIMEOUT, json={
                 'model': cfg['ai_model'], 'max_tokens': 64,
                 'messages': [{'role': 'user', 'content': 'Balas satu kata: OK'}],
-            }, headers={'x-api-key': cfg['api_key'], 'anthropic-version': '2023-06-01',
-                        'content-type': 'application/json'})
+            }, headers=_auth_headers(cfg))
             if r.status_code >= 400:
                 return False, _api_error('Claude API', r)
             text = ''.join(c.get('text', '') for c in r.json().get('content') or [])
         else:
-            headers = {'content-type': 'application/json'}
-            if cfg.get('api_key'):
-                headers['authorization'] = f"Bearer {cfg['api_key']}"
             r = httpx.post(f"{cfg['ai_base_url']}/chat/completions", timeout=TEST_TIMEOUT, json={
                 **_extra_params(cfg),
                 'model': cfg['ai_model'], 'max_tokens': 256,
                 'messages': [{'role': 'user', 'content': 'Balas satu kata: OK'}],
-            }, headers=headers)
+            }, headers=_auth_headers(cfg))
             if r.status_code >= 400:
                 return False, _api_error('AI API', r)
             text = ((r.json().get('choices') or [{}])[0].get('message') or {}).get('content') or ''
-        return True, f"Terhubung ke {cfg['ai_model']} — balasan: {text.strip()[:60] or '(kosong)'}"
+        secs = time.monotonic() - t0
+        return True, (f"Terhubung ke {cfg['ai_model']} — balasan: {text.strip()[:60] or '(kosong)'} "
+                      f"({secs:.1f} dtk)")
     except httpx.TimeoutException:
-        return False, _timeout_message(cfg, TEST_TIMEOUT)
+        return False, (f"Jaringan & API key OK (daftar model terjawab dalam {list_secs:.1f} dtk), tetapi "
+                       + _timeout_message(cfg, TEST_TIMEOUT))
     except httpx.HTTPError as e:
         return False, f'Tidak bisa terhubung ke {cfg["ai_base_url"]}: {e}'
 
