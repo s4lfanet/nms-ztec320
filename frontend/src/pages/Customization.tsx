@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type RxColorRange } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -38,6 +39,7 @@ function getCellValue(key: string, row: typeof PREVIEW_DATA[0]) {
 }
 
 export function Customization() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'desktop' | 'mobile' | 'signal' | 'rxcolors' | 'timezone' | 'tokens'>('desktop');
   const [localColumns, setLocalColumns] = useState<Column[]>([]);
@@ -67,14 +69,14 @@ export function Customization() {
         credentials: 'include',
         body: JSON.stringify({ columns: columns.map((c, i) => ({ name: c.column_name, key: c.column_key, desktop: c.visible_desktop, mobile: c.visible_mobile, sort_order: i })) }),
       });
-      if (!res.ok) throw new Error('Save failed');
+      if (!res.ok) throw new Error(t('pg_cust.saveFailed'));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customization'] });
-      toast.success('Column settings saved');
+      toast.success(t('pg_cust.columnSettingsSaved'));
       setHasChanges(false);
     },
-    onError: () => toast.error('Failed to save'),
+    onError: () => toast.error(t('pg_cust.failedToSave')),
   });
 
   const toggleVisibility = (id: string, field: 'visible_desktop' | 'visible_mobile') => {
@@ -111,7 +113,7 @@ export function Customization() {
 
   return (
     <PageContainer className="animate-fade-in">
-      <PageHeader title="Kustomisasi" description="Atur kolom, filter sinyal, dan warna RX di halaman Semua ONU" />
+      <PageHeader title={t('pg_cust.customization')} description={t('pg_cust.setColumnsSignalFilter')} />
 
       {/* Tabs */}
       <Card bodyClassName="p-0">
@@ -152,7 +154,7 @@ export function Customization() {
         {activeTab === 'desktop' && (
           <div className="p-4 md:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-              <h3 className="text-sm font-semibold flex items-center gap-2"><Monitor size={16} className="text-accent" /> Desktop ONUs Table</h3>
+              <h3 className="text-sm font-semibold flex items-center gap-2"><Monitor size={16} className="text-accent" /> {t('pg_cust.desktopOnuTable')}</h3>
               <Button variant="primary" icon={<Save size={14} />} onClick={handleSave} disabled={!hasChanges} loading={saveMutation.isPending}>
                 Save Changes
               </Button>
@@ -161,9 +163,9 @@ export function Customization() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-brd">
-                    <th className="px-3 py-2 text-left text-xs font-medium text-tx3 uppercase">Column</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-tx3 uppercase">Visible</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-tx3 uppercase">Order</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-tx3 uppercase">{t('pg_cust.column')}</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-tx3 uppercase">{t('pg_cust.visible')}</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-tx3 uppercase">{t('pg_cust.order')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -196,7 +198,7 @@ export function Customization() {
 
             {/* Preview Table */}
             <div className="mt-6">
-              <div className="text-xs text-tx3 mb-2 font-medium uppercase tracking-wide">Preview</div>
+              <div className="text-xs text-tx3 mb-2 font-medium uppercase tracking-wide">{t('pg_cust.preview')}</div>
               <div className="overflow-x-auto rounded-lg border border-brd">
                 <table className="w-full text-xs">
                   <thead>
@@ -204,7 +206,7 @@ export function Customization() {
                       {desktopColumns.map(c => (
                         <th key={c.id} className="px-3 py-2 text-left font-medium text-tx3">{c.column_name}</th>
                       ))}
-                      <th className="px-3 py-2 text-left font-medium text-tx3">Action</th>
+                      <th className="px-3 py-2 text-left font-medium text-tx3">{t('pg_cust.action')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -224,7 +226,7 @@ export function Customization() {
                           }
                           return <td key={c.id} className="px-3 py-2 text-tx2">{val}</td>;
                         })}
-                        <td className="px-3 py-2"><span className="text-accent text-[10px]">Setting</span></td>
+                        <td className="px-3 py-2"><span className="text-accent text-[10px]">{t('pg_cust.setting')}</span></td>
                       </tr>
                     ))}
                   </tbody>
@@ -238,7 +240,7 @@ export function Customization() {
         {activeTab === 'mobile' && (
           <div className="p-4 md:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-              <h3 className="text-sm font-semibold flex items-center gap-2"><Smartphone size={16} className="text-accent" /> Mobile ONUs Table</h3>
+              <h3 className="text-sm font-semibold flex items-center gap-2"><Smartphone size={16} className="text-accent" /> {t('pg_cust.mobileOnuTable')}</h3>
               <Button variant="primary" icon={<Save size={14} />} onClick={handleSave} disabled={!hasChanges} loading={saveMutation.isPending}>
                 Save Changes
               </Button>
@@ -247,9 +249,9 @@ export function Customization() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-brd">
-                    <th className="px-3 py-2 text-left text-xs font-medium text-tx3 uppercase">Column</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-tx3 uppercase">Visible</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-tx3 uppercase">Order</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-tx3 uppercase">{t('pg_cust.column')}</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-tx3 uppercase">{t('pg_cust.visible')}</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-tx3 uppercase">{t('pg_cust.order')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -282,7 +284,7 @@ export function Customization() {
 
             {/* Mobile Preview Cards */}
             <div className="mt-6">
-              <div className="text-xs text-tx3 mb-2 font-medium uppercase tracking-wide">Preview (Mobile Cards)</div>
+              <div className="text-xs text-tx3 mb-2 font-medium uppercase tracking-wide">{t('pg_cust.previewMobileCards')}</div>
               <div className="space-y-2 md:max-w-sm">
                 {PREVIEW_DATA.map((row, i) => (
                   <div key={i} className="glass-card p-3 rounded-lg border border-brd/50">
@@ -334,6 +336,7 @@ export function Customization() {
 }
 
 function SignalFilterTab() {
+  const { t } = useTranslation();
   const MIN_VAL = -32;
   const MAX_VAL = -20;
   const DEFAULT_CRITICAL = -28.0;
@@ -370,10 +373,10 @@ function SignalFilterTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.message || 'Save failed');
+        throw new Error(err.message || t('pg_cust.saveFailed'));
       }
     },
-    onSuccess: () => { toast.success('Signal filter thresholds saved'); setHasChanges(false); },
+    onSuccess: () => { toast.success(t('pg_cust.signalFilterThresholdsSaved')); setHasChanges(false); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -389,7 +392,7 @@ function SignalFilterTab() {
   return (
     <div className="p-4 md:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
-        <h3 className="text-sm font-semibold flex items-center gap-2"><Signal size={16} className="text-accent" /> ONU Signal Filter</h3>
+        <h3 className="text-sm font-semibold flex items-center gap-2"><Signal size={16} className="text-accent" /> {t('pg_cust.onuSignalFilter')}</h3>
         <div className="flex items-center gap-2">
           <Button variant="secondary" icon={<RotateCcw size={14} />}
             onClick={() => { setCritical(DEFAULT_CRITICAL); setGood(DEFAULT_GOOD); setHasChanges(true); }}>
@@ -432,8 +435,8 @@ function SignalFilterTab() {
 
         {/* Drag labels */}
         <div className="flex justify-between mt-2 text-[10px] text-tx3">
-          <span>Drag to adjust Critical threshold</span>
-          <span>Drag to adjust Good threshold</span>
+          <span>{t('pg_cust.dragToAdjustThe')}</span>
+          <span>{t('pg_cust.dragToAdjustThe2')}</span>
         </div>
 
         {/* Scale */}
@@ -445,11 +448,11 @@ function SignalFilterTab() {
         <div className="flex justify-center gap-4 md:gap-8 mt-4">
           <div className="text-center">
             <div className="text-xl md:text-2xl font-bold text-danger">{critical.toFixed(1)} dBm</div>
-            <div className="text-[10px] text-tx3 mt-0.5">Critical threshold</div>
+            <div className="text-[10px] text-tx3 mt-0.5">{t('pg_cust.criticalThreshold')}</div>
           </div>
           <div className="text-center">
             <div className="text-xl md:text-2xl font-bold text-success">{good.toFixed(1)} dBm</div>
-            <div className="text-[10px] text-tx3 mt-0.5">Good threshold</div>
+            <div className="text-[10px] text-tx3 mt-0.5">{t('pg_cust.goodThreshold')}</div>
           </div>
         </div>
       </div>
@@ -457,13 +460,13 @@ function SignalFilterTab() {
       {/* Range inputs for precise control */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div>
-          <label className="text-xs text-tx3 mb-1 block">Critical Threshold (dBm)</label>
+          <label className="text-xs text-tx3 mb-1 block">{t('pg_cust.criticalThresholdDbm')}</label>
           <input type="number" step="0.5" value={critical} min={MIN_VAL} max={good - 0.5}
             onChange={e => { setCritical(parseFloat(e.target.value)); setHasChanges(true); }}
             className="w-full px-3 py-2 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none" />
         </div>
         <div>
-          <label className="text-xs text-tx3 mb-1 block">Good Threshold (dBm)</label>
+          <label className="text-xs text-tx3 mb-1 block">{t('pg_cust.goodThresholdDbm')}</label>
           <input type="number" step="0.5" value={good} min={critical + 0.5} max={MAX_VAL}
             onChange={e => { setGood(parseFloat(e.target.value)); setHasChanges(true); }}
             className="w-full px-3 py-2 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none" />
@@ -499,6 +502,7 @@ function SignalFilterTab() {
 }
 
 function RxColorsTab() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['rx-colors'], queryFn: api.getRxColors });
   const [ranges, setRanges] = useState<RxColorRange[]>([]);
@@ -510,7 +514,7 @@ function RxColorsTab() {
 
   const saveMutation = useMutation({
     mutationFn: () => api.saveRxColors(ranges),
-    onSuccess: () => { toast.success('RX color ranges saved'); queryClient.invalidateQueries({ queryKey: ['rx-colors'] }); setHasChanges(false); },
+    onSuccess: () => { toast.success(t('pg_cust.rxColourRangesSaved')); queryClient.invalidateQueries({ queryKey: ['rx-colors'] }); setHasChanges(false); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -540,14 +544,14 @@ function RxColorsTab() {
     setHasChanges(true);
   };
 
-  if (isLoading) return <div className="p-6 text-tx3 text-sm">Loading...</div>;
+  if (isLoading) return <div className="p-6 text-tx3 text-sm">{t('pg_cust.loading')}</div>;
 
   return (
     <div className="p-4 md:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
-        <h3 className="text-sm font-semibold flex items-center gap-2"><Palette size={16} className="text-accent" /> RX Power Color Ranges</h3>
+        <h3 className="text-sm font-semibold flex items-center gap-2"><Palette size={16} className="text-accent" /> {t('pg_cust.rxPowerColourRanges')}</h3>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" icon={<Plus size={14} />} onClick={addRange}>Add Range</Button>
+          <Button variant="secondary" icon={<Plus size={14} />} onClick={addRange}>{t('pg_cust.addRange')}</Button>
           <Button variant="primary" icon={<Save size={14} />} onClick={() => saveMutation.mutate()}
             disabled={!hasChanges} loading={saveMutation.isPending}>
             Save
@@ -555,7 +559,7 @@ function RxColorsTab() {
         </div>
       </div>
 
-      <p className="text-xs text-tx3 mb-4">Set color ranges for RX ONU power values. Each range defines a min and max dBm value with a color. Values within that range will be displayed with the corresponding color in the All ONUs table.</p>
+      <p className="text-xs text-tx3 mb-4">{t('pg_cust.setColourRangesFor')}</p>
 
       <div className="space-y-3">
         {ranges.map((r, i) => {
@@ -580,7 +584,7 @@ function RxColorsTab() {
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-tx3 block mb-0.5">Color</label>
+                <label className="text-[10px] text-tx3 block mb-0.5">{t('pg_cust.colour')}</label>
                 <select value={r.color} onChange={e => updateRange(i, 'color', e.target.value)}
                   className="px-2 py-1.5 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none">
                   {colorOptions.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -588,7 +592,7 @@ function RxColorsTab() {
               </div>
               <div>
                 <label className="text-[10px] text-tx3 block mb-0.5">Label</label>
-                <input type="text" value={r.label || ''} placeholder="e.g. Good"
+                <input type="text" value={r.label || ''} placeholder={t('pg_cust.eGGood')}
                   onChange={e => updateRange(i, 'label', e.target.value)}
                   className="w-24 px-2 py-1.5 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none" />
               </div>
@@ -603,7 +607,7 @@ function RxColorsTab() {
 
       {/* Preview */}
       <div className="mt-6">
-        <h4 className="text-xs font-semibold text-tx3 uppercase mb-3">Preview</h4>
+        <h4 className="text-xs font-semibold text-tx3 uppercase mb-3">{t('pg_cust.preview')}</h4>
         <div className="flex flex-wrap gap-2">
           {[-15, -18, -20, -22, -24, -25, -26, -27, -28, -29, -30, -32].map(val => {
             let colorClass = 'bg-rx-gray/10 text-rx-gray';
@@ -648,6 +652,7 @@ const COMMON_TIMEZONES = [
 ];
 
 function TimezoneTab() {
+  const { t } = useTranslation();
   const [timezone, setTimezone] = useState('Asia/Jakarta');
   const [saving, setSaving] = useState(false);
   const [serverTime, setServerTime] = useState('');
@@ -689,14 +694,14 @@ function TimezoneTab() {
       });
       const d = await res.json();
       if (d.success) {
-        toast.success('Timezone saved. All times will now use ' + timezone);
+        toast.success(t('pg_cust.timezoneSaved', { tz: timezone }));
         const { setSystemTimezone } = await import('../lib/utils');
         setSystemTimezone(timezone);
       } else {
-        toast.error(d.message || 'Failed to save timezone');
+        toast.error(d.message || t('pg_cust.failedToSaveTimezone'));
       }
     } catch {
-      toast.error('Failed to save timezone');
+      toast.error(t('pg_cust.failedToSaveTimezone'));
     }
     setSaving(false);
   };
@@ -705,8 +710,8 @@ function TimezoneTab() {
     <div className="p-4 md:p-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold flex items-center gap-2"><Clock size={16} className="text-accent" /> System Timezone</h3>
-          <p className="text-xs text-tx3 mt-1">Set timezone used for auto-backup scheduling, timestamps, and UI display.</p>
+          <h3 className="text-sm font-semibold flex items-center gap-2"><Clock size={16} className="text-accent" /> {t('pg_cust.systemTimezone')}</h3>
+          <p className="text-xs text-tx3 mt-1">{t('pg_cust.timezoneUsedForAuto')}</p>
         </div>
         <Button variant="primary" icon={<Save size={14} />} onClick={handleSave} loading={saving}>
           Save Timezone
@@ -717,7 +722,7 @@ function TimezoneTab() {
       <Card bodyClassName="p-4 space-y-4">
         <div>
           <Select
-            label="Select Timezone"
+            label={t('pg_cust.selectTimezone')}
             value={timezone}
             onChange={e => setTimezone(e.target.value)}
             options={COMMON_TIMEZONES}
@@ -727,26 +732,26 @@ function TimezoneTab() {
         {/* Live time preview */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
           <div className="p-3 rounded-lg bg-glass/50 border border-brd/50">
-            <div className="text-xs text-tx3 mb-1 flex items-center gap-1.5"><Globe size={12} /> Selected Timezone</div>
+            <div className="text-xs text-tx3 mb-1 flex items-center gap-1.5"><Globe size={12} /> {t('pg_cust.selectedTimezone')}</div>
             <div className="text-lg font-mono font-semibold text-accent">{serverTime || '...'}</div>
             <div className="text-xs text-tx3 mt-1">{timezone}</div>
           </div>
           <div className="p-3 rounded-lg bg-glass/50 border border-brd/50">
             <div className="text-xs text-tx3 mb-1 flex items-center gap-1.5"><Clock size={12} /> VPS (UTC)</div>
             <div className="text-lg font-mono font-semibold text-tx3">{vpsTime || '...'}</div>
-            <div className="text-xs text-tx3 mt-1">Server time</div>
+            <div className="text-xs text-tx3 mt-1">{t('pg_cust.serverTime')}</div>
           </div>
         </div>
       </Card>
 
       {/* Info */}
       <Card className="border-accent/20 bg-accent/5" bodyClassName="p-4">
-        <h4 className="text-xs font-semibold text-accent mb-2 flex items-center gap-1.5"><AlertCircle size={14} /> How Timezone Affects the System</h4>
+        <h4 className="text-xs font-semibold text-accent mb-2 flex items-center gap-1.5"><AlertCircle size={14} /> {t('pg_cust.howTheTimezoneAffects')}</h4>
         <ul className="text-xs text-tx3 space-y-1.5 pl-4 list-disc">
-          <li><strong>Auto-Backup</strong>: The "At time" setting in OLT backup config uses this timezone. E.g. "02:00" means 02:00 in the selected timezone.</li>
-          <li><strong>UI Display</strong>: All timestamps (sync time, backup history, logs) are converted from UTC to this timezone for display.</li>
-          <li><strong>Database</strong>: All timestamps remain stored in UTC in the database for consistency. Only display is converted.</li>
-          <li><strong>VPS Time</strong>: The VPS server runs in UTC. NTP should be enabled to keep server time accurate.</li>
+          <li><strong>Auto-Backup</strong>{t('pg_cust.theAtTimeSetting')}</li>
+          <li><strong>{t('pg_cust.uiDisplay')}</strong>{t('pg_cust.allTimestampsSyncTime')}</li>
+          <li><strong>Database</strong>{t('pg_cust.allTimestampsStayStored')}</li>
+          <li><strong>{t('pg_cust.vpsTime')}</strong>{t('pg_cust.theVpsRunsIn')}</li>
         </ul>
       </Card>
     </div>
@@ -755,6 +760,7 @@ function TimezoneTab() {
 
 /* ─── API Tokens Tab (Fase 5) ─── */
 function ApiTokensTab() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const hasPerm = useHasPerm();
   const canManage = hasPerm('manage_api_tokens');
@@ -778,34 +784,34 @@ function ApiTokensTab() {
       setCreatedToken(r.data.token);
       setNewName(''); setNewExpiry('');
       qc.invalidateQueries({ queryKey: ['api-tokens'] });
-      toast.success('Token dibuat — salin sekarang, tidak akan tampil lagi');
+      toast.success(t('pg_cust.tokenCreatedCopyIt'));
     },
-    onError: () => toast.error('Gagal membuat token'),
+    onError: () => toast.error(t('pg_cust.failedToCreateToken')),
   });
 
   const revokeMut = useMutation({
     mutationFn: (id: number) => api.apiTokenRevoke(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['api-tokens'] }); toast.success('Token dicabut'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['api-tokens'] }); toast.success(t('pg_cust.tokenRevoked')); },
   });
 
-  if (!canManage) return <div className="p-4 text-xs text-tx3">Anda tidak punya izin manage_api_tokens.</div>;
+  if (!canManage) return <div className="p-4 text-xs text-tx3">{t('pg_cust.youDonTHave')}</div>;
 
   return (
     <div className="p-4 md:p-6 space-y-4">
       <div>
         <h3 className="text-sm font-semibold flex items-center gap-2 mb-1"><Key size={16} className="text-accent" /> API Tokens (REST v1)</h3>
-        <p className="text-xs text-tx3 mb-3">Token untuk integrasi eksternal (billing, bot, dashboard). Format: <code className="text-accent">Bearer snms_...</code></p>
+        <p className="text-xs text-tx3 mb-3">{t('pg_cust.tokensForExternalIntegrations')} <code className="text-accent">Bearer snms_...</code></p>
       </div>
 
       {/* Create form */}
       <div className="p-3 rounded-lg bg-glass space-y-2">
-        <div className="text-xs font-semibold">Buat Token Baru</div>
+        <div className="text-xs font-semibold">{t('pg_cust.createNewToken')}</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nama (mis: billing-bot)"
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={t('pg_cust.nameEGBilling')}
             className="px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none" />
-          <input value={newAbilities} onChange={e => setNewAbilities(e.target.value)} placeholder="Abilities (* = semua)"
+          <input value={newAbilities} onChange={e => setNewAbilities(e.target.value)} placeholder={t('pg_cust.abilitiesAll')}
             className="px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none" />
-          <input value={newExpiry} onChange={e => setNewExpiry(e.target.value)} placeholder="Expire (hari, kosong=permanent)"
+          <input value={newExpiry} onChange={e => setNewExpiry(e.target.value)} placeholder={t('pg_cust.expiresDaysEmptyPermanent')}
             type="number" className="px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none" />
         </div>
         <Button variant="primary" icon={<Plus size={14} />} onClick={() => createMut.mutate()} disabled={!newName || createMut.isPending}>
@@ -813,51 +819,51 @@ function ApiTokensTab() {
         </Button>
         {createdToken && (
           <div className="p-2 rounded bg-success/10 border border-success/30">
-            <div className="text-xs text-success font-semibold mb-1">Token dibuat — salin SEKARANG:</div>
+            <div className="text-xs text-success font-semibold mb-1">{t('pg_cust.tokenCreatedCopyIt2')}</div>
             <code className="text-xs text-tx1 break-all font-mono">{createdToken}</code>
-            <button onClick={() => { navigator.clipboard.writeText(createdToken); toast.success('Disalin'); }} className="ml-2 text-xs text-accent">Salin</button>
+            <button onClick={() => { navigator.clipboard.writeText(createdToken); toast.success(t('pg_cust.copied')); }} className="ml-2 text-xs text-accent">{t('pg_cust.copy')}</button>
           </div>
         )}
       </div>
 
       {/* Token list */}
-      {isLoading ? <div className="text-xs text-tx3">Memuat…</div> : (
+      {isLoading ? <div className="text-xs text-tx3">{t('pg_cust.loading2')}</div> : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-tx3 border-b border-brd">
-                <th className="text-left py-2 px-2">Nama</th>
+                <th className="text-left py-2 px-2">{t('pg_cust.name')}</th>
                 <th className="text-left py-2 px-2">Prefix</th>
                 <th className="text-left py-2 px-2">Abilities</th>
                 <th className="text-left py-2 px-2">User</th>
-                <th className="text-left py-2 px-2">Last Used</th>
-                <th className="text-left py-2 px-2">Expires</th>
+                <th className="text-left py-2 px-2">{t('pg_cust.lastUsed')}</th>
+                <th className="text-left py-2 px-2">{t('pg_cust.expires')}</th>
                 <th className="text-left py-2 px-2">Status</th>
-                <th className="text-right py-2 px-2">Aksi</th>
+                <th className="text-right py-2 px-2">{t('pg_cust.actions')}</th>
               </tr>
             </thead>
             <tbody>
-              {(tokens?.data || []).map(t => (
-                <tr key={t.id} className="border-b border-brd/50 hover:bg-glass/50">
-                  <td className="py-2 px-2 font-medium">{t.name}</td>
-                  <td className="py-2 px-2 font-mono text-tx3">{t.prefix}…</td>
-                  <td className="py-2 px-2"><code className="text-tx3">{t.abilities}</code></td>
-                  <td className="py-2 px-2">{t.user}</td>
-                  <td className="py-2 px-2 text-tx3">{t.last_used_at ? new Date(t.last_used_at).toLocaleString('id-ID') : '—'}</td>
-                  <td className="py-2 px-2 text-tx3">{t.expires_at ? new Date(t.expires_at).toLocaleString('id-ID') : 'permanent'}</td>
+              {(tokens?.data || []).map(tok => (
+                <tr key={tok.id} className="border-b border-brd/50 hover:bg-glass/50">
+                  <td className="py-2 px-2 font-medium">{tok.name}</td>
+                  <td className="py-2 px-2 font-mono text-tx3">{tok.prefix}…</td>
+                  <td className="py-2 px-2"><code className="text-tx3">{tok.abilities}</code></td>
+                  <td className="py-2 px-2">{tok.user}</td>
+                  <td className="py-2 px-2 text-tx3">{tok.last_used_at ? new Date(tok.last_used_at).toLocaleString('id-ID') : '—'}</td>
+                  <td className="py-2 px-2 text-tx3">{tok.expires_at ? new Date(tok.expires_at).toLocaleString('id-ID') : 'permanent'}</td>
                   <td className="py-2 px-2">
-                    {t.revoked ? <span className="text-danger">Dicabut</span> : <span className="text-success">Aktif</span>}
+                    {tok.revoked ? <span className="text-danger">{t('pg_cust.revoked')}</span> : <span className="text-success">{t('pg_cust.active')}</span>}
                   </td>
                   <td className="py-2 px-2 text-right">
-                    {!t.revoked && (
-                      <button onClick={() => { if (confirm(`Cabut token "${t.name}"?`)) revokeMut.mutate(t.id); }}
-                        className="text-danger hover:underline text-xs">Cabut</button>
+                    {!tok.revoked && (
+                      <button onClick={() => { if (confirm(`Cabut token "${tok.name}"?`)) revokeMut.mutate(tok.id); }}
+                        className="text-danger hover:underline text-xs">{t('pg_cust.revoke')}</button>
                     )}
                   </td>
                 </tr>
               ))}
               {(tokens?.data || []).length === 0 && (
-                <tr><td colSpan={8} className="py-4 text-center text-tx3">Belum ada token</td></tr>
+                <tr><td colSpan={8} className="py-4 text-center text-tx3">{t('pg_cust.noTokensYet')}</td></tr>
               )}
             </tbody>
           </table>
@@ -866,14 +872,14 @@ function ApiTokensTab() {
 
       {/* API docs hint */}
       <div className="p-3 rounded-lg bg-glass text-xs text-tx3">
-        <div className="font-semibold mb-1">Endpoint tersedia:</div>
+        <div className="font-semibold mb-1">{t('pg_cust.availableEndpoints')}</div>
         <code className="block text-tx2">GET /api/v1/onus?olt_id=&status=&search=&page=&per_page=</code>
         <code className="block text-tx2">GET /api/v1/onus/{`<id>`}</code>
         <code className="block text-tx2">GET /api/v1/olts</code>
         <code className="block text-tx2">GET /api/v1/olts/{`<id>`}</code>
         <code className="block text-tx2">GET /api/v1/alerts?limit=</code>
         <code className="block text-tx2">GET /api/v1/link-states?olt_id=</code>
-        <div className="mt-1">Abilities: <code>onus:read</code>, <code>olts:read</code>, <code>alerts:read</code>, atau <code>*</code></div>
+        <div className="mt-1">Abilities: <code>onus:read</code>, <code>olts:read</code>, <code>alerts:read</code>{t('pg_cust.or')} <code>*</code></div>
       </div>
     </div>
   );

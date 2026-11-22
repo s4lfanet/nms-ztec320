@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Terjemahan kelompok 4b: FTTH, Pengaturan Alert, Kustomisasi, Tambah ONU
+
+#### Diubah
+- **Infrastruktur FTTH** (semua tab dan dialog OTB/ODC/ODP/JC/PON, splice, port, dampak), **Pengaturan Alert & Notifikasi** (aturan, Telegram, WA Gateway, WA Native, scheduler), **Kustomisasi** (kolom, filter sinyal, warna RX, zona waktu, API token), dan **Tambah ONU** kini mengikuti pilihan bahasa. Panduan per penyedia WA Gateway (21 provider) masih berbahasa Indonesia; pratinjau perintah CLI tidak diubah.
+
 ### 2026-11-22 — Terjemahan kelompok 4a: halaman sistem & alat
 
 #### Diubah

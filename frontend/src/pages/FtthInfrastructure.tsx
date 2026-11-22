@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -27,6 +28,7 @@ type ParentKind = 'otb' | 'odc' | 'jc' | 'odp' | null;
 const FTTH_REFRESH_INTERVAL = 10;
 
 export function FtthInfrastructure() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const hasPerm = useHasPerm();
   const canEdit = hasPerm('settings_ip_olts');
@@ -152,7 +154,7 @@ export function FtthInfrastructure() {
       if (type === 'odp') return api.ftthOdpDelete(id);
       if (type === 'pon') return api.ftthPonDelete(id);
     },
-    onSuccess: () => { toast.success('Deleted'); invalidate(); },
+    onSuccess: () => { toast.success(t('pg_ftth.deleted')); invalidate(); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -172,19 +174,19 @@ export function FtthInfrastructure() {
   };
 
   const handleDelete = async (type: ModalType, id: number, name: string) => {
-    const ok = await confirm({ title: `Delete ${name}`, message: `Are you sure you want to delete "${name}"? This will also delete all child items.`, confirmLabel: 'Delete', variant: 'danger' });
+    const ok = await confirm({ title: t('pg_ftth.deleteTitle', { name }), message: t('pg_ftth.deleteMsg', { name }), confirmLabel: t('pg_ftth.delete'), variant: 'danger' });
     if (ok) delMut.mutate({ type, id });
   };
 
   const tree = treeData?.tree || [];
 
   const TAB_ADD: Partial<Record<Tab, { label: string; type: ModalType }>> = {
-    tree: { label: 'Add OTB', type: 'otb' },
-    pon: { label: 'Add PON', type: 'pon' },
-    otb: { label: 'Add OTB', type: 'otb' },
-    jc: { label: 'Add JC', type: 'jc' },
-    odc: { label: 'Add ODC', type: 'odc' },
-    odp: { label: 'Add ODP', type: 'odp' },
+    tree: { label: t('pg_ftth.addOtb'), type: 'otb' },
+    pon: { label: t('pg_ftth.addPon'), type: 'pon' },
+    otb: { label: t('pg_ftth.addOtb'), type: 'otb' },
+    jc: { label: t('pg_ftth.addJc'), type: 'jc' },
+    odc: { label: t('pg_ftth.addOdc'), type: 'odc' },
+    odp: { label: t('pg_ftth.addOdp'), type: 'odp' },
   };
   const tabAdd = TAB_ADD[tab];
 
@@ -192,21 +194,21 @@ export function FtthInfrastructure() {
     <PageContainer className="space-y-3 md:space-y-4">
       <PageHeader
         icon={<Network size={20} />}
-        title="Infrastruktur FTTH"
-        description="Kelola rantai OTB/ODF → ODC → ODP → ONU beserta koordinat peta"
+        title={t('pg_ftth.ftthInfrastructure')}
+        description={t('pg_ftth.manageTheOtbOdf')}
       />
       <div className="flex items-center gap-2 flex-wrap">
         <Tabs
           className="max-w-full overflow-x-auto"
           tabs={[
-            { key: 'overview', label: 'Overview', icon: <Gauge size={14} /> },
-            { key: 'tree', label: 'Tree', icon: <TreePine size={14} /> },
+            { key: 'overview', label: t('pg_ftth.overview'), icon: <Gauge size={14} /> },
+            { key: 'tree', label: t('pg_ftth.tree'), icon: <TreePine size={14} /> },
             { key: 'pon', label: 'PON', icon: <Cable size={14} /> },
             { key: 'otb', label: 'OTB', icon: <Server size={14} /> },
             { key: 'jc', label: 'JC', icon: <GitMerge size={14} /> },
             { key: 'odc', label: 'ODC', icon: <Box size={14} /> },
             { key: 'odp', label: 'ODP', icon: <Split size={14} /> },
-            { key: 'map', label: 'Map', icon: <MapIcon size={14} /> },
+            { key: 'map', label: t('pg_ftth.map'), icon: <MapIcon size={14} /> },
           ]}
           active={tab}
           onChange={(key) => setTab(key as Tab)}
@@ -220,17 +222,17 @@ export function FtthInfrastructure() {
           <Button variant="secondary" className="text-xs md:text-sm" icon={<Download size={13} />} title="Export CSV" onClick={() => window.open(api.ftthExport(), '_blank')}>
             Export
           </Button>
-          {canEdit && <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass text-tx2 text-xs md:text-sm hover:text-tx1 transition-colors cursor-pointer" title="Import CSV">
+          {canEdit && <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-glass text-tx2 text-xs md:text-sm hover:text-tx1 transition-colors cursor-pointer" title={t('pg_ftth.importCsv')}>
             <Upload size={13} /> Import
             <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
-              try { const r = await api.ftthImport(file); toast.success(`Imported: ${JSON.stringify(r.imported)}`); invalidate(); }
+              try { const r = await api.ftthImport(file); toast.success(t('pg_ftth.imported', { detail: JSON.stringify(r.imported) })); invalidate(); }
               catch (err: any) { toast.error(err.message); }
               e.target.value = '';
             }} />
           </label>}
-          <Button variant="secondary" className="text-xs md:text-sm" icon={<RefreshCw size={13} />} title="Refresh data" onClick={() => invalidate()}>
+          <Button variant="secondary" className="text-xs md:text-sm" icon={<RefreshCw size={13} />} title={t('pg_ftth.refreshData')} onClick={() => invalidate()}>
             Refresh
           </Button>
         </div>
@@ -242,10 +244,10 @@ export function FtthInfrastructure() {
       {/* Tree View */}
       {tab === 'tree' && (
         <div className="space-y-2">
-          {isLoading && <div className="text-center py-8 text-tx3 text-sm">Loading...</div>}
+          {isLoading && <div className="text-center py-8 text-tx3 text-sm">{t('pg_ftth.loading')}</div>}
           {!isLoading && tree.length === 0 && (
-            <EmptyState icon={Server} title="No OTB/ODF added yet"
-              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('otb')}>Add First OTB/ODF</Button>} />
+            <EmptyState icon={Server} title={t('pg_ftth.noOtbOdfAdded')}
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('otb')}>{t('pg_ftth.addFirstOtbOdf')}</Button>} />
           )}
           {tree.map(otb => (
             <OtbNode key={otb.id} otb={otb} expanded={expanded} toggleExpand={toggleExpand} canEdit={canEdit}
@@ -266,8 +268,8 @@ export function FtthInfrastructure() {
       {tab === 'pon' && (
         <div className="space-y-2">
           {(ponList?.items || []).length === 0 && (
-            <EmptyState icon={Cable} title="No PON ports added yet"
-              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('pon')}>Add First PON</Button>} />
+            <EmptyState icon={Cable} title={t('pg_ftth.noPonPortsAdded')}
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('pon')}>{t('pg_ftth.addFirstPon')}</Button>} />
           )}
           {(ponList?.items || []).map(p => {
             const onlinePct = p.total_onu > 0 ? Math.round((p.online_onu / p.total_onu) * 100) : 0;
@@ -289,7 +291,7 @@ export function FtthInfrastructure() {
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {canEdit && <button onClick={() => openEdit('pon', p)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-                  {canEdit && <button onClick={() => handleDelete('pon', p.id, p.pon_name || 'PON')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+                  {canEdit && <button onClick={() => handleDelete('pon', p.id, p.pon_name || 'PON')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title={t('pg_ftth.delete')}><Trash2 size={15} /></button>}
                 </div>
               </div>
               {p.total_onu > 0 && (
@@ -313,8 +315,8 @@ export function FtthInfrastructure() {
       {tab === 'otb' && (
         <div className="space-y-2">
           {(otbList?.items || []).length === 0 && (
-            <EmptyState icon={Server} title="No OTB/ODF added yet"
-              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('otb')}>Add First OTB/ODF</Button>} />
+            <EmptyState icon={Server} title={t('pg_ftth.noOtbOdfAdded')}
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('otb')}>{t('pg_ftth.addFirstOtbOdf')}</Button>} />
           )}
           {(otbList?.items || []).map(o => {
             const util = o.total_cores > 0 ? Math.round((o.used_cores / o.total_cores) * 100) : 0;
@@ -335,9 +337,9 @@ export function FtthInfrastructure() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <button onClick={() => setSelectedOtb(o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Port Diagram"><Cable size={15} /></button>
+                  <button onClick={() => setSelectedOtb(o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.portDiagram')}><Cable size={15} /></button>
                   {canEdit && <button onClick={() => openEdit('otb', o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-                  {canEdit && <button onClick={() => handleDelete('otb', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+                  {canEdit && <button onClick={() => handleDelete('otb', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title={t('pg_ftth.delete')}><Trash2 size={15} /></button>}
                 </div>
               </div>
               <div className="mt-2">
@@ -354,9 +356,9 @@ export function FtthInfrastructure() {
       {tab === 'jc' && (
         <div className="space-y-2">
           {(jcList?.items || []).length === 0 && (
-            <EmptyState icon={GitMerge} title="No JC (Joint Closure) added yet"
-              description="Titik sambungan opsional di sepanjang jalur OTB → ODC → ODP"
-              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('jc')}>Add First JC</Button>} />
+            <EmptyState icon={GitMerge} title={t('pg_ftth.noJcJointClosure')}
+              description={t('pg_ftth.optionalSplicePointsAlong')}
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('jc')}>{t('pg_ftth.addFirstJc')}</Button>} />
           )}
           {(jcList?.items || []).map(j => (
             <div key={j.id} className="glass-card p-3 hover:bg-glass/50 transition-colors">
@@ -375,8 +377,8 @@ export function FtthInfrastructure() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  {canEdit && <button onClick={() => openEdit('jc', j)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit / Manage Splices"><Edit2 size={15} /></button>}
-                  {canEdit && <button onClick={() => handleDelete('jc', j.id, j.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+                  {canEdit && <button onClick={() => openEdit('jc', j)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title={t('pg_ftth.editManageSplices')}><Edit2 size={15} /></button>}
+                  {canEdit && <button onClick={() => handleDelete('jc', j.id, j.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title={t('pg_ftth.delete')}><Trash2 size={15} /></button>}
                 </div>
               </div>
             </div>
@@ -388,8 +390,8 @@ export function FtthInfrastructure() {
       {tab === 'odc' && (
         <div className="space-y-2">
           {(odcList?.items || []).length === 0 && (
-            <EmptyState icon={Box} title="No ODC added yet"
-              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('odc')}>Add First ODC</Button>} />
+            <EmptyState icon={Box} title={t('pg_ftth.noOdcAddedYet')}
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('odc')}>{t('pg_ftth.addFirstOdc')}</Button>} />
           )}
           {(odcList?.items || []).map(o => {
             const util = o.total_cores > 0 ? Math.round((o.used_cores / o.total_cores) * 100) : 0;
@@ -412,7 +414,7 @@ export function FtthInfrastructure() {
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {canEdit && <button onClick={() => openEdit('odc', o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-                  {canEdit && <button onClick={() => handleDelete('odc', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+                  {canEdit && <button onClick={() => handleDelete('odc', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title={t('pg_ftth.delete')}><Trash2 size={15} /></button>}
                 </div>
               </div>
               <div className="mt-2">
@@ -429,8 +431,8 @@ export function FtthInfrastructure() {
       {tab === 'odp' && (
         <div className="space-y-2">
           {(odpList?.items || []).length === 0 && (
-            <EmptyState icon={Split} title="No ODP added yet"
-              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('odp')}>Add First ODP</Button>} />
+            <EmptyState icon={Split} title={t('pg_ftth.noOdpAddedYet')}
+              action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => openAdd('odp')}>{t('pg_ftth.addFirstOdp')}</Button>} />
           )}
           {(odpList?.items || []).map(o => {
             const util = o.total_ports > 0 ? Math.round((o.used_ports / o.total_ports) * 100) : 0;
@@ -452,9 +454,9 @@ export function FtthInfrastructure() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  {canEdit && <button onClick={() => setSelectedOdp(o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Manage Ports"><Network size={15} /></button>}
+                  {canEdit && <button onClick={() => setSelectedOdp(o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.managePorts')}><Network size={15} /></button>}
                   {canEdit && <button onClick={() => openEdit('odp', o)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-                  {canEdit && <button onClick={() => handleDelete('odp', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+                  {canEdit && <button onClick={() => handleDelete('odp', o.id, o.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title={t('pg_ftth.delete')}><Trash2 size={15} /></button>}
                 </div>
               </div>
               <div className="mt-2">
@@ -481,13 +483,13 @@ export function FtthInfrastructure() {
                 <MapIcon size={14} /> {autoRouteMode ? 'Exit Auto Route' : 'Auto Route (OSRM)'}
               </button>
             )}
-            {drawMode && <span className="text-xs text-tx3">Click on map to add waypoints, then Save Path</span>}
+            {drawMode && <span className="text-xs text-tx3">{t('pg_ftth.clickTheMapTo')}</span>}
             {autoRouteMode && <span className="text-xs text-tx3">{autoRouteStart ? `Start selected: ${autoRouteStart.name}. Click end marker...` : 'Click a marker to set start point'}</span>}
           </div>
           <MapView markers={mapData?.markers || []} lines={mapData?.lines || []} fiberPaths={fiberPaths?.paths || []} drawMode={drawMode} onDrawComplete={async (coords) => {
             try {
               await api.ftthPathCreate({ from_type: 'otb', from_id: 0, to_type: 'odp', to_id: 0, coordinates: coords, path_type: 'manual' });
-              toast.success('Fiber path saved');
+              toast.success(t('pg_ftth.fiberPathSaved'));
               setDrawMode(false);
               qc.invalidateQueries({ queryKey: ['ftth-paths'] });
             } catch (e: any) { toast.error(e.message); }
@@ -496,7 +498,7 @@ export function FtthInfrastructure() {
               setAutoRouteStart(marker);
             } else {
               if (autoRouteStart.id === marker.id && autoRouteStart.type === marker.type) {
-                toast.error('Start and end must be different');
+                toast.error(t('pg_ftth.startAndEndMust'));
                 return;
               }
               try {
@@ -506,7 +508,7 @@ export function FtthInfrastructure() {
                   from_type: autoRouteStart.type, from_id: autoRouteStart.id,
                   to_type: marker.type, to_id: marker.id,
                 });
-                toast.success('Auto route created');
+                toast.success(t('pg_ftth.autoRouteCreated'));
                 setAutoRouteMode(false);
                 setAutoRouteStart(null);
                 qc.invalidateQueries({ queryKey: ['ftth-paths'] });
@@ -552,7 +554,8 @@ export function FtthInfrastructure() {
 
 // ─── Overview Tab ───
 function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTTHStats | undefined; isFetching: boolean; countdown: number; onDrillDown: () => void }) {
-  if (!stats) return <div className="text-center py-8 text-tx3 text-sm">Loading stats...</div>;
+  const { t } = useTranslation();
+  if (!stats) return <div className="text-center py-8 text-tx3 text-sm">{t('pg_ftth.loadingStats')}</div>;
   const s = stats.onu_stats;
   const infra = stats.infrastructure;
   const orphans = stats.orphans;
@@ -563,7 +566,7 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
     { label: 'Offline', value: s.offline, icon: <WifiOff size={18} />, color: 'text-tx3', bg: 'bg-glass' },
     { label: 'LOS', value: s.los, icon: <AlertTriangle size={18} />, color: 'text-danger', bg: 'bg-danger/10' },
     { label: 'Dying Gasp', value: s.dyinggasp, icon: <Zap size={18} />, color: 'text-warning', bg: 'bg-warning/10' },
-    { label: 'Unregister', value: s.unregister, icon: <CircleDashed size={18} />, color: 'text-tx3', bg: 'bg-glass' },
+    { label: t('pg_ftth.unregistered'), value: s.unregister, icon: <CircleDashed size={18} />, color: 'text-tx3', bg: 'bg-glass' },
   ];
 
   const portUtil = infra.total_odp_ports > 0 ? Math.round((infra.used_odp_ports / infra.total_odp_ports) * 100) : 0;
@@ -572,7 +575,7 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
     <div className="space-y-4">
       {/* Auto-refresh indicator */}
       <div className="flex items-center justify-end gap-1.5 text-[10px] text-tx3">
-        {isFetching ? <><RefreshCw size={10} className="animate-spin" /> Updating...</> : <>refresh dalam <span className={countdown <= 3 ? 'text-warning font-semibold' : 'text-tx2'}>{countdown}s</span></>}
+        {isFetching ? <><RefreshCw size={10} className="animate-spin" /> {t('pg_ftth.updating')}</> : <>{t('pg_ftth.refreshIn')} <span className={countdown <= 3 ? 'text-warning font-semibold' : 'text-tx2'}>{countdown}s</span></>}
       </div>
       {/* ONU Status Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
@@ -592,7 +595,7 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
       {(orphans.total > 0 || orphans.onus_without_technician > 0 || orphans.onus_without_coordinates > 0) && (
         <Notice
           tone="warn"
-          title="Data infrastruktur belum lengkap"
+          title={t('pg_ftth.infrastructureDataIncomplete')}
           dismissKey={`ftth-completeness:${orphans.total}:${orphans.onus_without_technician}:${orphans.onus_without_coordinates}`}
         >
           <ul className="mt-1 space-y-1 text-xs">
@@ -600,13 +603,13 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
               <li className="flex items-start gap-1.5">
                 <AlertTriangle size={13} className="text-warning mt-0.5 shrink-0" aria-hidden="true" />
                 <span>
-                  <strong className="text-tx1">{orphans.total} node tanpa induk</strong>
+                  <strong className="text-tx1">{t('pg_ftth.orphanNodes', { n: orphans.total })}</strong>
                   {' — '}
                   {[
-                    orphans.onus_without_odp > 0 && `${orphans.onus_without_odp} ONU tanpa ODP`,
-                    orphans.odps_without_odc > 0 && `${orphans.odps_without_odc} ODP tanpa ODC`,
-                    orphans.odcs_without_otb > 0 && `${orphans.odcs_without_otb} ODC tanpa OTB`,
-                    orphans.otbs_without_olt > 0 && `${orphans.otbs_without_olt} OTB tanpa OLT`,
+                    orphans.onus_without_odp > 0 && t('pg_ftth.onuNoOdp', { n: orphans.onus_without_odp }),
+                    orphans.odps_without_odc > 0 && t('pg_ftth.odpNoOdc', { n: orphans.odps_without_odc }),
+                    orphans.odcs_without_otb > 0 && t('pg_ftth.odcNoOtb', { n: orphans.odcs_without_otb }),
+                    orphans.otbs_without_olt > 0 && t('pg_ftth.otbNoOlt', { n: orphans.otbs_without_olt }),
                   ].filter(Boolean).join(' · ')}
                 </span>
               </li>
@@ -614,13 +617,13 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
             {orphans.onus_without_technician > 0 && (
               <li className="flex items-start gap-1.5">
                 <UserX size={13} className="text-warning mt-0.5 shrink-0" aria-hidden="true" />
-                <span><strong className="text-tx1">{orphans.onus_without_technician} ONU tanpa teknisi</strong> — atur di halaman Semua ONU.</span>
+                <span><strong className="text-tx1">{t('pg_ftth.onuNoTech', { n: orphans.onus_without_technician })}</strong> {t('pg_ftth.setItOnThe')}</span>
               </li>
             )}
             {orphans.onus_without_coordinates > 0 && (
               <li className="flex items-start gap-1.5">
                 <MapPin size={13} className="text-warning mt-0.5 shrink-0" aria-hidden="true" />
-                <span><strong className="text-tx1">{orphans.onus_without_coordinates} ONU tanpa koordinat GPS</strong> — atur di halaman Semua ONU.</span>
+                <span><strong className="text-tx1">{t('pg_ftth.onuNoGps', { n: orphans.onus_without_coordinates })}</strong> {t('pg_ftth.setItOnThe')}</span>
               </li>
             )}
           </ul>
@@ -643,7 +646,7 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
         </div>
         <div className="glass-card p-3 md:p-4 flex items-center gap-3">
           <Network size={20} className="text-accent flex-shrink-0" />
-          <div><div className="text-lg font-bold">{infra.used_odp_ports}<span className="text-tx3 text-sm font-normal">/{infra.total_odp_ports}</span></div><div className="text-[10px] text-tx3 uppercase">ODP Ports Used</div></div>
+          <div><div className="text-lg font-bold">{infra.used_odp_ports}<span className="text-tx3 text-sm font-normal">/{infra.total_odp_ports}</span></div><div className="text-[10px] text-tx3 uppercase">{t('pg_ftth.odpPortsUsed')}</div></div>
         </div>
       </div>
 
@@ -651,7 +654,7 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
       {infra.total_odp_ports > 0 && (
         <div className="glass-card p-3 md:p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-tx2">ODP Port Utilization</span>
+            <span className="text-xs font-semibold text-tx2">{t('pg_ftth.odpPortUtilization')}</span>
             <span className={cn('text-xs font-bold', portUtil > 80 ? 'text-danger' : portUtil > 60 ? 'text-warning' : 'text-success')}>{portUtil}%</span>
           </div>
           <div className="h-2 rounded-full bg-glass overflow-hidden">
@@ -667,7 +670,7 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
       {/* Per-OLT Breakdown */}
       {stats.per_olt.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2"><Server size={16} /> Per OLT Breakdown</h3>
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2"><Server size={16} /> {t('pg_ftth.perOltBreakdown')}</h3>
           <div className="space-y-2">
             {stats.per_olt.map(olt => {
               const oltUtil = olt.total > 0 ? Math.round((olt.online / olt.total) * 100) : 0;
@@ -701,7 +704,7 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
       {/* Per-PON Port Breakdown */}
       {stats.per_pon.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2"><Cable size={16} /> Per PON Port</h3>
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2"><Cable size={16} /> {t('pg_ftth.perPonPort')}</h3>
           <div className="glass-card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -756,6 +759,7 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
   otb: FTTHItem;
   onEditOtb: () => void; onDeleteOtb: () => void;
 } & TreeCallbacks) {
+  const { t } = useTranslation();
   const key = `otb-${otb.id}`;
   const isOpen = expanded[key] ?? false;
   const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact };
@@ -784,16 +788,16 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => onShowImpact('otb', otb.id, otb.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Lihat dampak (pelanggan downstream)"><Users size={15} /></button>
-          {canEdit && <button onClick={() => onAddJc(otb, 'otb')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title="Add JC (Joint Closure)"><GitMerge size={15} /></button>}
-          {canEdit && <button onClick={() => onAddOdc(otb, 'otb')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODC"><Plus size={15} /></button>}
+          <button onClick={() => onShowImpact('otb', otb.id, otb.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.seeImpactDownstreamCustomers')}><Users size={15} /></button>
+          {canEdit && <button onClick={() => onAddJc(otb, 'otb')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title={t('pg_ftth.addJcJointClosure')}><GitMerge size={15} /></button>}
+          {canEdit && <button onClick={() => onAddOdc(otb, 'otb')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.addOdc')}><Plus size={15} /></button>}
           {canEdit && <button onClick={onEditOtb} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-          {canEdit && <button onClick={onDeleteOtb} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+          {canEdit && <button onClick={onDeleteOtb} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title={t('pg_ftth.delete')}><Trash2 size={15} /></button>}
         </div>
       </div>
       {isOpen && (
         <div className="ml-4 md:ml-6 border-l border-brd/50">
-          {otb.odcs.length === 0 && otb.jcs.length === 0 && <div className="p-3 text-xs text-tx3">No ODCs or JCs yet. Click + to add one.</div>}
+          {otb.odcs.length === 0 && otb.jcs.length === 0 && <div className="p-3 text-xs text-tx3">{t('pg_ftth.noOdcsOrJcs')}</div>}
           {otb.odcs.map(odc => (
             <OdcRow key={`odc-${odc.id}`} odc={odc} fibersPerTube={otb.fibers_per_tube} sourceLabel={`Core ${odc.otb_core_number} from ${odc.otb_name}`} {...cb} />
           ))}
@@ -810,6 +814,7 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
 function OdcRow({ odc, fibersPerTube, sourceLabel, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact }: {
   odc: FTTHOdcTree; fibersPerTube?: number; sourceLabel: string;
 } & TreeCallbacks) {
+  const { t } = useTranslation();
   const odcKey = `odc-${odc.id}`;
   const odcOpen = expanded[odcKey] ?? false;
   const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact };
@@ -831,16 +836,16 @@ function OdcRow({ odc, fibersPerTube, sourceLabel, expanded, toggleExpand, canEd
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => onShowImpact('odc', odc.id, odc.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Lihat dampak (pelanggan downstream)"><Users size={15} /></button>
-          {canEdit && <button onClick={() => onAddJc(odc, 'odc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title="Add JC (Joint Closure)"><GitMerge size={15} /></button>}
-          {canEdit && <button onClick={() => onAddOdp(odc, 'odc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODP"><Plus size={15} /></button>}
+          <button onClick={() => onShowImpact('odc', odc.id, odc.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.seeImpactDownstreamCustomers')}><Users size={15} /></button>
+          {canEdit && <button onClick={() => onAddJc(odc, 'odc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title={t('pg_ftth.addJcJointClosure')}><GitMerge size={15} /></button>}
+          {canEdit && <button onClick={() => onAddOdp(odc, 'odc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.addOdp')}><Plus size={15} /></button>}
           {canEdit && <button onClick={() => onEditOdc(odc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={15} /></button>}
-          {canEdit && <button onClick={() => onDeleteOdc(odc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+          {canEdit && <button onClick={() => onDeleteOdc(odc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title={t('pg_ftth.delete')}><Trash2 size={15} /></button>}
         </div>
       </div>
       {odcOpen && (
         <div className="ml-4 md:ml-6 border-l border-brd/50">
-          {odc.odps.length === 0 && odc.jcs.length === 0 && <div className="p-2.5 text-xs text-tx3">No ODPs or JCs yet. Click + to add one.</div>}
+          {odc.odps.length === 0 && odc.jcs.length === 0 && <div className="p-2.5 text-xs text-tx3">{t('pg_ftth.noOdpsOrJcs')}</div>}
           {odc.odps.map(odp => (
             <OdpRow key={`odp-${odp.id}`} odp={odp} sourceLabel={`Core ${odp.odc_core_number} from ${odp.odc_name}`} {...cb} />
           ))}
@@ -857,6 +862,7 @@ function OdcRow({ odc, fibersPerTube, sourceLabel, expanded, toggleExpand, canEd
 function OdpRow({ odp, sourceLabel, expanded, toggleExpand, canEdit, onAddOdp, onEditOdp, onDeleteOdp, onShowImpact }: {
   odp: FTTHOdpTree; sourceLabel: string;
 } & Pick<TreeCallbacks, 'expanded' | 'toggleExpand' | 'canEdit' | 'onAddOdp' | 'onEditOdp' | 'onDeleteOdp' | 'onShowImpact'>) {
+  const { t } = useTranslation();
   const hasChildren = odp.odps.length > 0;
   const odpKey = `odp-${odp.id}`;
   const odpOpen = expanded[odpKey] ?? false;
@@ -880,10 +886,10 @@ function OdpRow({ odp, sourceLabel, expanded, toggleExpand, canEdit, onAddOdp, o
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => onShowImpact('odp', odp.id, odp.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Lihat pelanggan di ODP ini"><Users size={15} /></button>
-          {canEdit && <button onClick={() => onAddOdp(odp, 'odp')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-success" title="Add ODP cascade fed from a port of this ODP"><Split size={15} /></button>}
-          {canEdit && <button onClick={() => onEditOdp(odp)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Manage Ports"><Network size={15} /></button>}
-          {canEdit && <button onClick={() => onDeleteOdp(odp)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+          <button onClick={() => onShowImpact('odp', odp.id, odp.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.seeCustomersOnThis')}><Users size={15} /></button>
+          {canEdit && <button onClick={() => onAddOdp(odp, 'odp')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-success" title={t('pg_ftth.addACascadedOdp')}><Split size={15} /></button>}
+          {canEdit && <button onClick={() => onEditOdp(odp)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.managePorts')}><Network size={15} /></button>}
+          {canEdit && <button onClick={() => onDeleteOdp(odp)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title={t('pg_ftth.delete')}><Trash2 size={15} /></button>}
         </div>
       </div>
       {odpOpen && hasChildren && (
@@ -902,6 +908,7 @@ function OdpRow({ odp, sourceLabel, expanded, toggleExpand, canEdit, onAddOdp, o
 function JcRow({ jc, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact }: {
   jc: FTTHJcTree;
 } & TreeCallbacks) {
+  const { t } = useTranslation();
   const jcKey = `jc-${jc.id}`;
   const jcOpen = expanded[jcKey] ?? false;
   const cb: TreeCallbacks = { expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDeleteOdc, onAddOdp, onEditOdp, onDeleteOdp, onAddJc, onEditJc, onDeleteJc, onShowImpact };
@@ -924,17 +931,17 @@ function JcRow({ jc, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDel
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => onShowImpact('jc', jc.id, jc.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Lihat dampak (pelanggan downstream)"><Users size={15} /></button>
-          {canEdit && <button onClick={() => onAddJc(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title="Chain another JC"><GitMerge size={15} /></button>}
-          {canEdit && <button onClick={() => onAddOdc(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Add ODC fed from this JC"><Box size={15} /></button>}
-          {canEdit && <button onClick={() => onAddOdp(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-success" title="Add ODP fed from this JC"><Split size={15} /></button>}
-          {canEdit && <button onClick={() => onEditJc(jc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit / Manage Splices"><Edit2 size={15} /></button>}
-          {canEdit && <button onClick={() => onDeleteJc(jc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title="Delete"><Trash2 size={15} /></button>}
+          <button onClick={() => onShowImpact('jc', jc.id, jc.name)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.seeImpactDownstreamCustomers')}><Users size={15} /></button>
+          {canEdit && <button onClick={() => onAddJc(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-purple-400" title={t('pg_ftth.chainAnotherJc')}><GitMerge size={15} /></button>}
+          {canEdit && <button onClick={() => onAddOdc(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.addOdcFedFrom')}><Box size={15} /></button>}
+          {canEdit && <button onClick={() => onAddOdp(jc, 'jc')} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-success" title={t('pg_ftth.addOdpFedFrom')}><Split size={15} /></button>}
+          {canEdit && <button onClick={() => onEditJc(jc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title={t('pg_ftth.editManageSplices')}><Edit2 size={15} /></button>}
+          {canEdit && <button onClick={() => onDeleteJc(jc)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-danger" title={t('pg_ftth.delete')}><Trash2 size={15} /></button>}
         </div>
       </div>
       {jcOpen && (
         <div className="ml-4 md:ml-6 border-l border-brd/50">
-          {childCount === 0 && <div className="p-2.5 text-xs text-tx3">Nothing fed from this JC yet. Click an icon above to add an ODC, ODP, or chained JC.</div>}
+          {childCount === 0 && <div className="p-2.5 text-xs text-tx3">{t('pg_ftth.nothingFedFromThis')}</div>}
           {jc.odcs.map(odc => (
             <OdcRow key={`odc-${odc.id}`} odc={odc} sourceLabel={`Core ${odc.jc_core_number} from JC ${jc.name}`} {...cb} />
           ))}
@@ -956,8 +963,9 @@ function MapView({ markers, lines, fiberPaths, drawMode, onDrawComplete, onMarke
   onDrawComplete: (coords: [number, number][]) => void;
   onMarkerClick?: (marker: any) => void;
 }) {
+  const { t } = useTranslation();
   if (markers.length === 0) {
-    return <EmptyState icon={MapIcon} title="No coordinates set" description="Add latitude/longitude to OTB/ODF, ODC, or ODP to see them on map." />;
+    return <EmptyState icon={MapIcon} title={t('pg_ftth.noCoordinatesSet')} description={t('pg_ftth.addLatitudeLongitudeTo')} />;
   }
   return (
     <LeafletMap
@@ -977,6 +985,7 @@ function MapView({ markers, lines, fiberPaths, drawMode, onDrawComplete, onMarke
 function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }: {
   odp: FTTHOdp; ports: FTTHOdpPort[]; availableOnus: FTTHAvailableOnu[]; jcList: FTTHJc[]; onClose: () => void; onUpdated: () => void;
 }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [editingPort, setEditingPort] = useState<FTTHOdpPort | null>(null);
   const [portFeed, setPortFeed] = useState({
@@ -1002,7 +1011,7 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
 
   const saveMut = useMutation({
     mutationFn: (data: Partial<FTTHOdpPort> & { id: number; latitude?: number | null; longitude?: number | null }) => api.ftthOdpPortUpdate(data.id, data),
-    onSuccess: () => { toast.success('Port updated'); qc.invalidateQueries({ queryKey: ['ftth-odp-ports', odp.id] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); setEditingPort(null); setShowLink(null); onUpdated(); },
+    onSuccess: () => { toast.success(t('pg_ftth.portUpdated')); qc.invalidateQueries({ queryKey: ['ftth-odp-ports', odp.id] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); setEditingPort(null); setShowLink(null); onUpdated(); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -1014,7 +1023,7 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
     mutationFn: () => api.ftthOdpSeedOnuCoords(odp.id),
     onSuccess: (d) => {
       if (d.updated > 0) toast.success(d.message);
-      else toast.success('Semua pelanggan sudah punya koordinat');
+      else toast.success(t('pg_ftth.everyCustomerAlreadyHas'));
       qc.invalidateQueries({ queryKey: ['ftth-odp-ports', odp.id] });
       qc.invalidateQueries({ queryKey: ['ftth-map'] });
       onUpdated();
@@ -1038,15 +1047,15 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
               <button
                 onClick={() => seedCoordsMut.mutate()}
                 disabled={seedCoordsMut.isPending}
-                title="Isi lokasi pelanggan dari posisi ODP (untuk ONU yang belum punya koordinat)"
+                title={t('pg_ftth.fillCustomerLocationsFrom')}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
               >
                 <MapPin size={12} /> {seedCoordsMut.isPending ? 'Mengisi…' : 'Lokasi dari ODP'}
               </button>
             )}
             <div className="hidden md:flex items-center rounded-lg bg-glass/60 p-0.5 mr-1">
-              <button onClick={() => setViewMode('diagram')} className={cn('p-1.5 rounded-md transition-colors', viewMode === 'diagram' ? 'bg-surface text-accent shadow-sm' : 'text-tx3 hover:text-tx1')} title="Diagram view"><LayoutGrid size={14} /></button>
-              <button onClick={() => setViewMode('list')} className={cn('p-1.5 rounded-md transition-colors', viewMode === 'list' ? 'bg-surface text-accent shadow-sm' : 'text-tx3 hover:text-tx1')} title="List view"><List size={14} /></button>
+              <button onClick={() => setViewMode('diagram')} className={cn('p-1.5 rounded-md transition-colors', viewMode === 'diagram' ? 'bg-surface text-accent shadow-sm' : 'text-tx3 hover:text-tx1')} title={t('pg_ftth.diagramView')}><LayoutGrid size={14} /></button>
+              <button onClick={() => setViewMode('list')} className={cn('p-1.5 rounded-md transition-colors', viewMode === 'list' ? 'bg-surface text-accent shadow-sm' : 'text-tx3 hover:text-tx1')} title={t('pg_ftth.listView')}><List size={14} /></button>
             </div>
             <button onClick={onClose} className="text-tx3 hover:text-tx1"><X size={18} /></button>
           </div>
@@ -1056,9 +1065,9 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
           {viewMode === 'diagram' && (
             <div className="hidden md:block">
               <div className="flex items-center gap-4 mb-4 text-[11px] text-tx3">
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-brd bg-glass inline-block" /> Available</span>
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-success bg-success/15 inline-block" /> Used</span>
-                <span className="ml-auto italic">Click a port to edit • use the corner icon to link/unlink</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-brd bg-glass inline-block" /> {t('pg_ftth.available')}</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-success bg-success/15 inline-block" /> {t('pg_ftth.used')}</span>
+                <span className="ml-auto italic">{t('pg_ftth.clickAPortTo')}</span>
               </div>
               <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
                 {ports.map(p => (
@@ -1074,14 +1083,14 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
                     <button onClick={() => openEditPort(p)} className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 p-1">
                       <span className="text-[10px] font-mono text-tx3 leading-none">#{p.port_number}</span>
                       <span className={cn('text-[11px] font-semibold leading-tight text-center line-clamp-2 px-0.5', p.customer_name ? 'text-tx1' : 'text-tx3 italic font-normal')}>
-                        {p.customer_name || 'Available'}
+                        {p.customer_name || t('pg_ftth.available')}
                       </span>
                       {p.onu_id && <span className="text-[9px] text-success leading-none truncate w-full text-center px-0.5">{p.onu_name}</span>}
                     </button>
                     <button
                       onClick={() => p.onu_id ? unlink(p) : setShowLink(p.id)}
                       className="absolute top-0.5 right-0.5 p-0.5 rounded hover:bg-glass text-tx3 hover:text-accent"
-                      title={p.onu_id ? 'Unlink ONU' : 'Link ONU'}
+                      title={p.onu_id ? t('pg_ftth.unlinkOnu') : t('pg_ftth.linkOnu')}
                     >
                       {p.onu_id ? <Unlink size={11} /> : <Link2 size={11} />}
                     </button>
@@ -1095,9 +1104,9 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
             <thead><tr className="border-b border-brd">
               <th className="px-2 py-2 text-left text-xs text-tx3 uppercase">Port</th>
               <th className="px-2 py-2 text-left text-xs text-tx3 uppercase">Status</th>
-              <th className="px-2 py-2 text-left text-xs text-tx3 uppercase">Customer</th>
+              <th className="px-2 py-2 text-left text-xs text-tx3 uppercase">{t('pg_ftth.customer')}</th>
               <th className="px-2 py-2 text-left text-xs text-tx3 uppercase">ONU</th>
-              <th className="px-2 py-2 text-right text-xs text-tx3 uppercase">Actions</th>
+              <th className="px-2 py-2 text-right text-xs text-tx3 uppercase">{t('pg_ftth.actions')}</th>
             </tr></thead>
             <tbody>
               {ports.map(p => (
@@ -1116,9 +1125,9 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
                   <td className="px-2 py-2.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {p.onu_id ? (
-                        <button onClick={() => unlink(p)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-warning" title="Unlink ONU"><Unlink size={14} /></button>
+                        <button onClick={() => unlink(p)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-warning" title={t('pg_ftth.unlinkOnu')}><Unlink size={14} /></button>
                       ) : (
-                        <button onClick={() => setShowLink(p.id)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title="Link ONU"><Link2 size={14} /></button>
+                        <button onClick={() => setShowLink(p.id)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-accent" title={t('pg_ftth.linkOnu')}><Link2 size={14} /></button>
                       )}
                       <button onClick={() => openEditPort(p)} className="p-1.5 rounded hover:bg-glass text-tx3 hover:text-tx1" title="Edit"><Edit2 size={14} /></button>
                     </div>
@@ -1140,7 +1149,7 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
                 </div>
                 {p.customer_name && (
                   <div className="text-xs">
-                    <span className="text-tx3">Customer:</span> <span className="font-medium">{p.customer_name}</span>
+                    <span className="text-tx3">{t('pg_ftth.customer2')}</span> <span className="font-medium">{p.customer_name}</span>
                     {p.customer_phone && <span className="text-tx3 flex items-center gap-1 mt-0.5"><Phone size={10} /> {p.customer_phone}</span>}
                   </div>
                 )}
@@ -1152,9 +1161,9 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
                 )}
                 <div className="flex items-center gap-2 pt-1">
                   {p.onu_id ? (
-                    <button onClick={() => unlink(p)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-glass text-xs text-tx2 hover:text-warning transition-colors"><Unlink size={12} /> Unlink</button>
+                    <button onClick={() => unlink(p)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-glass text-xs text-tx2 hover:text-warning transition-colors"><Unlink size={12} /> {t('pg_ftth.unlink')}</button>
                   ) : (
-                    <button onClick={() => setShowLink(p.id)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-glass text-xs text-tx2 hover:text-accent transition-colors"><Link2 size={12} /> Link</button>
+                    <button onClick={() => setShowLink(p.id)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-glass text-xs text-tx2 hover:text-accent transition-colors"><Link2 size={12} /> {t('pg_ftth.link')}</button>
                   )}
                   <button onClick={() => openEditPort(p)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-glass text-xs text-tx2 hover:text-tx1 transition-colors ml-auto"><Edit2 size={12} /> Edit</button>
                 </div>
@@ -1168,32 +1177,32 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
               <div className="modal-overlay" onClick={() => setEditingPort(null)} />
               <div className="relative glass-card w-full max-w-md p-4 md:p-5 space-y-3 rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in" onClick={e => e.stopPropagation()}>
                 <h3 className="text-sm font-semibold">Edit Port {editingPort.port_number}</h3>
-                <FormField label="Customer Name"><input className="input-field" defaultValue={editingPort.customer_name} onChange={e => editingPort.customer_name = e.target.value} /></FormField>
-                <FormField label="Customer Phone"><input className="input-field" defaultValue={editingPort.customer_phone} onChange={e => editingPort.customer_phone = e.target.value} /></FormField>
-                <FormField label="Description"><input className="input-field" defaultValue={editingPort.description} onChange={e => editingPort.description = e.target.value} /></FormField>
-                <FormField label="Kabel Drop">
+                <FormField label={t('pg_ftth.customerName')}><input className="input-field" defaultValue={editingPort.customer_name} onChange={e => editingPort.customer_name = e.target.value} /></FormField>
+                <FormField label={t('pg_ftth.customerPhone')}><input className="input-field" defaultValue={editingPort.customer_phone} onChange={e => editingPort.customer_phone = e.target.value} /></FormField>
+                <FormField label={t('pg_ftth.description')}><input className="input-field" defaultValue={editingPort.description} onChange={e => editingPort.description = e.target.value} /></FormField>
+                <FormField label={t('pg_ftth.dropCable')}>
                   <FeedSourceToggle value={portFeed.feed_source} directValue="direct" onChange={v => setPortFeed({ ...portFeed, feed_source: v as 'direct' | 'jc' })} directLabel="Langsung" directIcon={<Home size={14} className={portFeed.feed_source !== 'jc' ? 'text-accent' : 'text-tx3'} />} />
                 </FormField>
                 {portFeed.feed_source === 'jc' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <FormField label="JC (Joint Closure)"><select className="input-field" value={portFeed.jc_id} onChange={e => setPortFeed({ ...portFeed, jc_id: e.target.value, jc_core_number: '' })}><option value="">— Select JC —</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
-                    <FormField label="Core from JC">
+                    <FormField label="JC (Joint Closure)"><select className="input-field" value={portFeed.jc_id} onChange={e => setPortFeed({ ...portFeed, jc_id: e.target.value, jc_core_number: '' })}><option value="">{t('pg_ftth.selectJc')}</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
+                    <FormField label={t('pg_ftth.coreFromJc')}>
                       <select className="input-field" value={portFeed.jc_core_number} onChange={e => setPortFeed({ ...portFeed, jc_core_number: e.target.value })}>
-                        <option value="">— Select splice —</option>
+                        <option value="">{t('pg_ftth.selectSplice')}</option>
                         {(selectedPortJc?.splices || []).map(s => <option key={s.id} value={s.core_out}>Core {s.core_out} (in: {s.core_in}{s.label ? ` — ${s.label}` : ''})</option>)}
                       </select>
                     </FormField>
-                    {selectedPortJc && selectedPortJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">This JC has no splices yet — add one first (Edit JC → Splices) so there's a core to feed from.</p>}
+                    {selectedPortJc && selectedPortJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">{t('pg_ftth.thisJcHasNo')}</p>}
                     {selectedPortJc && portFeed.jc_core_number !== '' && <p className="text-xs col-span-full"><CoreColorTag coreNumber={Number(portFeed.jc_core_number)} fibersPerTube={selectedPortJc.fibers_per_tube} /></p>}
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-3">
-                  <FormField label="Panjang Drop Cable (m, opsional)"><input className="input-field" type="number" step="1" value={portFeed.cable_length_meters} onChange={e => setPortFeed({ ...portFeed, cable_length_meters: e.target.value })} placeholder="mis. 50" /></FormField>
-                  <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={portFeed.cable_attenuation_per_km} onChange={e => setPortFeed({ ...portFeed, cable_attenuation_per_km: e.target.value })} /></FormField>
+                  <FormField label={t('pg_ftth.dropCableLengthM')}><input className="input-field" type="number" step="1" value={portFeed.cable_length_meters} onChange={e => setPortFeed({ ...portFeed, cable_length_meters: e.target.value })} placeholder={t('pg_ftth.eG50')} /></FormField>
+                  <FormField label={t('pg_ftth.attenuationDbKm')}><input className="input-field" type="number" step="0.01" value={portFeed.cable_attenuation_per_km} onChange={e => setPortFeed({ ...portFeed, cable_attenuation_per_km: e.target.value })} /></FormField>
                 </div>
                 {editingPort.onu_id && (
                   <div className="pt-3 border-t border-brd">
-                    <div className="flex items-center gap-1.5 text-sm font-medium mb-2"><MapPin size={14} className="text-accent" /> Koordinat Pelanggan (ONU) — tampil di peta</div>
+                    <div className="flex items-center gap-1.5 text-sm font-medium mb-2"><MapPin size={14} className="text-accent" /> {t('pg_ftth.customerOnuCoordinatesShown')}</div>
                     <LocationPicker
                       latitude={portCoords.latitude}
                       longitude={portCoords.longitude}
@@ -1202,7 +1211,7 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
                   </div>
                 )}
                 <div className="flex justify-end gap-2 pt-2">
-                  <button onClick={() => setEditingPort(null)} className="btn-cancel text-sm">Cancel</button>
+                  <button onClick={() => setEditingPort(null)} className="btn-cancel text-sm">{t('pg_ftth.cancel')}</button>
                   <button onClick={() => saveMut.mutate({
                     id: editingPort.id, customer_name: editingPort.customer_name, customer_phone: editingPort.customer_phone, description: editingPort.description,
                     feed_source: portFeed.feed_source,
@@ -1214,7 +1223,7 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
                       latitude: portCoords.latitude === '' ? null : Number(portCoords.latitude),
                       longitude: portCoords.longitude === '' ? null : Number(portCoords.longitude),
                     } : {}),
-                  })} className="btn-primary text-sm">Save</button>
+                  })} className="btn-primary text-sm">{t('pg_ftth.save')}</button>
                 </div>
               </div>
             </div>
@@ -1225,18 +1234,18 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
             <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
               <div className="modal-overlay" onClick={() => setShowLink(null)} />
               <div className="relative glass-card w-full max-w-md p-4 md:p-5 space-y-3 rounded-t-2xl md:rounded-2xl animate-slide-up md:animate-fade-in" onClick={e => e.stopPropagation()}>
-                <h3 className="text-sm font-semibold">Link ONU to Port</h3>
+                <h3 className="text-sm font-semibold">{t('pg_ftth.linkOnuToPort')}</h3>
                 {availableOnus.length === 0 ? (
-                  <p className="text-tx3 text-sm">No available ONUs. All ONUs are already linked to ODP ports.</p>
+                  <p className="text-tx3 text-sm">{t('pg_ftth.noAvailableOnusAll')}</p>
                 ) : (
                   <select className="input-field" id="onu-select" defaultValue="">
-                    <option value="" disabled>Select an ONU...</option>
+                    <option value="" disabled>{t('pg_ftth.selectAnOnu')}</option>
                     {availableOnus.map(o => <option key={o.id} value={o.id}>{o.name} — {o.serial} ({o.onu_id_str})</option>)}
                   </select>
                 )}
                 <div className="flex justify-end gap-2 pt-2">
-                  <button onClick={() => setShowLink(null)} className="btn-cancel text-sm">Cancel</button>
-                  <button onClick={() => { const sel = document.getElementById('onu-select') as HTMLSelectElement; const val = sel?.value; if (val) saveMut.mutate({ id: showLink, onu_id: parseInt(val) }); }} className="btn-primary text-sm" disabled={availableOnus.length === 0}>Link</button>
+                  <button onClick={() => setShowLink(null)} className="btn-cancel text-sm">{t('pg_ftth.cancel')}</button>
+                  <button onClick={() => { const sel = document.getElementById('onu-select') as HTMLSelectElement; const val = sel?.value; if (val) saveMut.mutate({ id: showLink, onu_id: parseInt(val) }); }} className="btn-primary text-sm" disabled={availableOnus.length === 0}>{t('pg_ftth.link')}</button>
                 </div>
               </div>
             </div>
@@ -1251,6 +1260,7 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
 function OtbPortDiagram({ otb, ports, canEdit, onClose, onUpdated }: {
   otb: FTTHOtb; ports: FTTHOtbPort[]; canEdit: boolean; onClose: () => void; onUpdated: () => void;
 }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [editingPort, setEditingPort] = useState<FTTHOtbPort | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
@@ -1259,7 +1269,7 @@ function OtbPortDiagram({ otb, ports, canEdit, onClose, onUpdated }: {
   const saveMut = useMutation({
     mutationFn: (data: Partial<FTTHOtbPort> & { id: number }) => api.ftthOtbPortUpdate(data.id, data),
     onSuccess: () => {
-      toast.success('Port updated');
+      toast.success(t('pg_ftth.portUpdated'));
       qc.invalidateQueries({ queryKey: ['ftth-otb-ports', otb.id] });
       setEditingPort(null);
       onUpdated();
@@ -1293,14 +1303,14 @@ function OtbPortDiagram({ otb, ports, canEdit, onClose, onUpdated }: {
 
         <div className="p-4 md:p-5 overflow-y-auto flex-1">
           {ports.length === 0 ? (
-            <p className="text-tx3 text-sm text-center py-8">No cores configured.</p>
+            <p className="text-tx3 text-sm text-center py-8">{t('pg_ftth.noCoresConfigured')}</p>
           ) : (
             <>
               <div className="flex items-center gap-4 mb-4 text-[11px] text-tx3 flex-wrap">
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-brd bg-glass inline-block" /> Available</span>
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-success bg-success/15 inline-block" /> Connected</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-brd bg-glass inline-block" /> {t('pg_ftth.available')}</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border-2 border-success bg-success/15 inline-block" /> {t('pg_ftth.connected')}</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-tx3 inline-block" /> Warna tube/core (TIA-598, {otb.fibers_per_tube}/tube)</span>
-                {canEdit && <span className="ml-auto italic">Click a core to name it</span>}
+                {canEdit && <span className="ml-auto italic">{t('pg_ftth.clickACoreTo')}</span>}
               </div>
               <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
                 {ports.map(p => {
@@ -1345,13 +1355,13 @@ function OtbPortDiagram({ otb, ports, canEdit, onClose, onUpdated }: {
               <h3 className="text-sm font-semibold">Name Core #{editingPort.port_number}</h3>
               <p className="text-xs"><CoreColorTag coreNumber={editingPort.port_number} fibersPerTube={otb.fibers_per_tube} /></p>
               {editingPort.status === 'used' && (
-                <p className="text-xs text-tx3">Connected to ODC: <span className="font-medium text-tx1">{editingPort.odc_name}</span></p>
+                <p className="text-xs text-tx3">{t('pg_ftth.connectedToOdc')} <span className="font-medium text-tx1">{editingPort.odc_name}</span></p>
               )}
-              <FormField label="Label"><input className="input-field" placeholder="e.g. Ruko Blok A" value={labelDraft} onChange={e => setLabelDraft(e.target.value)} autoFocus /></FormField>
-              <FormField label="Description"><input className="input-field" value={descDraft} onChange={e => setDescDraft(e.target.value)} /></FormField>
+              <FormField label="Label"><input className="input-field" placeholder={t('pg_ftth.eGShophouseBlock')} value={labelDraft} onChange={e => setLabelDraft(e.target.value)} autoFocus /></FormField>
+              <FormField label={t('pg_ftth.description')}><input className="input-field" value={descDraft} onChange={e => setDescDraft(e.target.value)} /></FormField>
               <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setEditingPort(null)} className="btn-cancel text-sm">Cancel</button>
-                <button onClick={() => saveMut.mutate({ id: editingPort.id, label: labelDraft, description: descDraft })} className="btn-primary text-sm" disabled={saveMut.isPending}>Save</button>
+                <button onClick={() => setEditingPort(null)} className="btn-cancel text-sm">{t('pg_ftth.cancel')}</button>
+                <button onClick={() => saveMut.mutate({ id: editingPort.id, label: labelDraft, description: descDraft })} className="btn-primary text-sm" disabled={saveMut.isPending}>{t('pg_ftth.save')}</button>
               </div>
             </div>
           </div>
@@ -1391,6 +1401,7 @@ const CORE_STATUS_STYLE: Record<string, string> = {
 };
 
 function CoreStatusPanel({ ownerType, ownerId, totalCores }: { ownerType: 'otb' | 'odc' | 'jc'; ownerId: number; totalCores: number }) {
+  const { t } = useTranslation();
   const { data } = useQuery({
     queryKey: ['ftth-cores', ownerType, ownerId],
     queryFn: () => api.ftthCores(ownerType, ownerId),
@@ -1409,7 +1420,7 @@ function CoreStatusPanel({ ownerType, ownerId, totalCores }: { ownerType: 'otb' 
 
   return (
     <div>
-      <p className="label-sm mb-1.5">Status Core (dari penggunaan tercatat)</p>
+      <p className="label-sm mb-1.5">{t('pg_ftth.coreStatusFromRecorded')}</p>
       <div className="flex flex-wrap gap-1">
         {Array.from({ length: totalCores }, (_, i) => i + 1).map(n => {
           const core = coreByNumber.get(n);
@@ -1434,7 +1445,7 @@ function CoreStatusPanel({ ownerType, ownerId, totalCores }: { ownerType: 'otb' 
             <button type="button" onClick={() => setHistoryForId(null)} className="text-tx3 hover:text-tx1"><X size={12} /></button>
           </div>
           {(historyData?.history || []).length === 0 ? (
-            <p className="text-tx3">Belum ada riwayat perubahan status.</p>
+            <p className="text-tx3">{t('pg_ftth.noStatusChangeHistory')}</p>
           ) : (
             <div className="space-y-1.5 max-h-32 overflow-y-auto">
               {(historyData?.history || []).map(h => (
@@ -1455,6 +1466,7 @@ function CoreStatusPanel({ ownerType, ownerId, totalCores }: { ownerType: 'otb' 
 
 // ─── PON Modal ───
 function PonModal({ item, otbList, olts, onClose, onSaved }: { item: FTTHPonPort | null; otbList: FTTHOtb[]; olts: { olt_id: number; olt_name: string }[]; onClose: () => void; onSaved: () => void }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     olt_id: item?.olt_id || '', olt_name: item?.olt_name || '', frame: item?.frame || 1, slot: item?.slot || 1,
     port: item?.port || 1, pon_name: item?.pon_name || '',
@@ -1494,12 +1506,12 @@ function PonModal({ item, otbList, olts, onClose, onSaved }: { item: FTTHPonPort
           const olt = olts.find(o => o.olt_id === Number(e.target.value));
           setForm({ ...form, olt_id: e.target.value, olt_name: olt?.olt_name || '' });
         }}>
-          <option value="">— Pilih OLT (opsional, manual di bawah) —</option>
+          <option value="">{t('pg_ftth.selectOltOptionalManual')}</option>
           {olts.map(o => <option key={o.olt_id} value={o.olt_id}>{o.olt_name}</option>)}
         </select>
       </FormField>
       {form.olt_id !== '' && (
-        <FormField label="PON Port (dari OLT nyata)">
+        <FormField label={t('pg_ftth.ponPortFromThe')}>
           <select className="input-field" value="" onChange={e => pickRealPort(e.target.value)} disabled={realPortsLoading}>
             <option value="">{realPortsLoading ? 'Memuat port...' : (realPortsData?.ports.length ? '— Pilih port —' : 'Tidak ada port terdeteksi dari sync OLT ini')}</option>
             {(realPortsData?.ports || []).map(p => (
@@ -1508,28 +1520,29 @@ function PonModal({ item, otbList, olts, onClose, onSaved }: { item: FTTHPonPort
               </option>
             ))}
           </select>
-          <p className="text-[11px] text-tx3 mt-1">Pilih untuk isi otomatis PON Name/Frame/Slot/Port di bawah dari data sync OLT — atau isi manual kalau OLT/port-nya belum ada/belum sync.</p>
+          <p className="text-[11px] text-tx3 mt-1">{t('pg_ftth.pickOneToAuto')}</p>
         </FormField>
       )}
       <FormField label="PON Name"><input className="input-field" value={form.pon_name} onChange={e => setForm({ ...form, pon_name: e.target.value })} placeholder="gpon-olt_1/1/1" /></FormField>
-      {form.olt_id === '' && <FormField label="OLT Name (manual)"><input className="input-field" value={form.olt_name} onChange={e => setForm({ ...form, olt_name: e.target.value })} placeholder="OLT-01" /></FormField>}
+      {form.olt_id === '' && <FormField label={t('pg_ftth.oltNameManual')}><input className="input-field" value={form.olt_name} onChange={e => setForm({ ...form, olt_name: e.target.value })} placeholder="OLT-01" /></FormField>}
       <div className="grid grid-cols-3 gap-2 md:gap-3">
         <FormField label="Frame"><input className="input-field" type="number" value={form.frame} onChange={e => setForm({ ...form, frame: parseInt(e.target.value) || 1 })} /></FormField>
         <FormField label="Slot"><input className="input-field" type="number" value={form.slot} onChange={e => setForm({ ...form, slot: parseInt(e.target.value) || 1 })} /></FormField>
         <FormField label="Port"><input className="input-field" type="number" value={form.port} onChange={e => setForm({ ...form, port: parseInt(e.target.value) || 1 })} /></FormField>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <FormField label="OTB/ODF (connected core)"><select className="input-field" value={form.otb_id} onChange={e => setForm({ ...form, otb_id: e.target.value })}><option value="">— None —</option>{otbList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
-        <FormField label="Core Number in OTB"><input className="input-field" type="number" value={form.otb_core_number} onChange={e => setForm({ ...form, otb_core_number: parseInt(e.target.value) || 1 })} /></FormField>
+        <FormField label={t('pg_ftth.otbOdfConnectedCore')}><select className="input-field" value={form.otb_id} onChange={e => setForm({ ...form, otb_id: e.target.value })}><option value="">{t('pg_ftth.none')}</option>{otbList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
+        <FormField label={t('pg_ftth.coreNumberInOtb')}><input className="input-field" type="number" value={form.otb_core_number} onChange={e => setForm({ ...form, otb_core_number: parseInt(e.target.value) || 1 })} /></FormField>
       </div>
       {selectedOtb && <p className="text-xs -mt-1"><CoreColorTag coreNumber={form.otb_core_number} fibersPerTube={selectedOtb.fibers_per_tube} /></p>}
-      <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
+      <FormField label={t('pg_ftth.description')}><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
 }
 
 // ─── OTB Modal ───
 function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jcList: FTTHJc[]; onClose: () => void; onSaved: () => void }) {
+  const { t } = useTranslation();
   const initialFeedSource: 'pon' | 'jc' = item?.feed_source || 'pon';
   const [form, setForm] = useState({
     name: item?.name || '', type: item?.type || 'otb', model: item?.model || '',
@@ -1562,48 +1575,48 @@ function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jc
   const selectedJc = jcList.find(x => x.id === Number(form.jc_id));
   return (
     <Modal title={item ? 'Edit OTB/ODF' : 'Add OTB/ODF'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
-      <FormField label="Name"><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="OTB-01" /></FormField>
+      <FormField label={t('pg_ftth.name')}><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="OTB-01" /></FormField>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <FormField label="Type"><select className="input-field" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="otb">OTB</option><option value="odf">ODF</option></select></FormField>
-        <FormField label="Model"><input className="input-field" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} placeholder="e.g. 12 port" /></FormField>
+        <FormField label={t('pg_ftth.type')}><select className="input-field" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="otb">OTB</option><option value="odf">ODF</option></select></FormField>
+        <FormField label="Model"><input className="input-field" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} placeholder={t('pg_ftth.eG12Port')} /></FormField>
       </div>
-      <FormField label="Location"><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Server room, rack 1" /></FormField>
-      <FormField label="Coordinates (GPS / Map)">
+      <FormField label={t('pg_ftth.location')}><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder={t('pg_ftth.serverRoomRack1')} /></FormField>
+      <FormField label={t('pg_ftth.coordinatesGpsMap')}>
         <LocationPicker
           latitude={form.latitude}
           longitude={form.longitude}
           onChange={(lat, lng) => setForm({ ...form, latitude: lat, longitude: lng })}
         />
       </FormField>
-      <FormField label="Fed From">
+      <FormField label={t('pg_ftth.fedFrom')}>
         <FeedSourceToggle value={form.feed_source} directValue="pon" onChange={v => setForm({ ...form, feed_source: v as 'pon' | 'jc' })} directLabel="PON Langsung" directIcon={<Cpu size={14} className={form.feed_source !== 'jc' ? 'text-accent' : 'text-tx3'} />} />
       </FormField>
       {form.feed_source === 'jc' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormField label="JC (Joint Closure)"><select className="input-field" value={form.jc_id} onChange={e => setForm({ ...form, jc_id: e.target.value, jc_core_number: '' })}><option value="">— Select JC —</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
-          <FormField label="Core from JC">
+          <FormField label="JC (Joint Closure)"><select className="input-field" value={form.jc_id} onChange={e => setForm({ ...form, jc_id: e.target.value, jc_core_number: '' })}><option value="">{t('pg_ftth.selectJc')}</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
+          <FormField label={t('pg_ftth.coreFromJc')}>
             <select className="input-field" value={form.jc_core_number} onChange={e => setForm({ ...form, jc_core_number: e.target.value })}>
-              <option value="">— Select splice —</option>
+              <option value="">{t('pg_ftth.selectSplice')}</option>
               {(selectedJc?.splices || []).map(s => <option key={s.id} value={s.core_out}>Core {s.core_out} (in: {s.core_in}{s.label ? ` — ${s.label}` : ''})</option>)}
             </select>
           </FormField>
-          {selectedJc && selectedJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">This JC has no splices yet — add one first (Edit JC → Splices) so there's a core to feed from.</p>}
+          {selectedJc && selectedJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">{t('pg_ftth.thisJcHasNo')}</p>}
         </div>
       ) : (
-        <p className="text-[11px] text-tx3 -mt-1">Sambungan langsung ke port PON diatur dari tab "PON Ports" (pilih OTB ini sebagai tujuan core).</p>
+        <p className="text-[11px] text-tx3 -mt-1">{t('pg_ftth.directConnectionsToA')}</p>
       )}
       {form.feed_source === 'jc' && selectedJc && form.jc_core_number !== '' && <p className="text-xs -mt-1"><CoreColorTag coreNumber={Number(form.jc_core_number)} fibersPerTube={selectedJc.fibers_per_tube} /></p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
-        <FormField label="Fibers per Tube"><input className="input-field" type="number" min={1} value={form.fibers_per_tube} onChange={e => setForm({ ...form, fibers_per_tube: parseInt(e.target.value) || 12 })} /></FormField>
+        <FormField label={t('pg_ftth.totalCores')}><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
+        <FormField label={t('pg_ftth.fibersPerTube')}><input className="input-field" type="number" min={1} value={form.fibers_per_tube} onChange={e => setForm({ ...form, fibers_per_tube: parseInt(e.target.value) || 12 })} /></FormField>
       </div>
-      <p className="text-[11px] text-tx3 -mt-1">Warna tube/core mengikuti standar TIA-598 (12 warna), dihitung otomatis dari nomor core — biasanya 12 per tube.</p>
+      <p className="text-[11px] text-tx3 -mt-1">{t('pg_ftth.tubeCoreColoursFollow')}</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 850" /></FormField>
-        <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
+        <FormField label={t('pg_ftth.incomingCableLengthM')}><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder={t('pg_ftth.eG850')} /></FormField>
+        <FormField label={t('pg_ftth.attenuationDbKm')}><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
       {item && <CoreStatusPanel ownerType="otb" ownerId={item.id} totalCores={parseInt(String(form.total_cores)) || 0} />}
-      <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
+      <FormField label={t('pg_ftth.description')}><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
 }
@@ -1641,6 +1654,7 @@ function FeedSourceToggle({ value, directValue, onChange, directLabel, directIco
 function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved }: {
   item: FTTHOdc | null; parent: any; parentKind?: ParentKind; otbList: FTTHOtb[]; jcList: FTTHJc[]; onClose: () => void; onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const initialFeedSource: 'otb' | 'jc' = item?.feed_source || (parentKind === 'jc' ? 'jc' : 'otb');
   const [form, setForm] = useState({
     name: item?.name || '', model: item?.model || '',
@@ -1681,60 +1695,60 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
   const selectedOtb = otbList.find(x => x.id === Number(form.otb_id));
   const selectedJc = jcList.find(x => x.id === Number(form.jc_id));
   return (
-    <Modal title={item ? 'Edit ODC' : 'Add ODC'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
-      <FormField label="Name"><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="ODC-01" /></FormField>
+    <Modal title={item ? 'Edit ODC' : t('pg_ftth.addOdc')} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
+      <FormField label={t('pg_ftth.name')}><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="ODC-01" /></FormField>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Model"><input className="input-field" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} /></FormField>
         <FormField label="Splitter Model"><input className="input-field" value={form.splitter_model} onChange={e => setForm({ ...form, splitter_model: e.target.value })} placeholder="1:8, 1:16" /></FormField>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <FormField label="Ratio Splitter">
+        <FormField label={t('pg_ftth.splitterRatio')}>
           <select className="input-field" value={form.splitter_ratio_type} onChange={e => setForm({ ...form, splitter_ratio_type: e.target.value as 'even' | 'uneven' })}>
-            <option value="even">Even (rata)</option>
-            <option value="uneven">Uneven (tidak rata)</option>
+            <option value="even">{t('pg_ftth.even')}</option>
+            <option value="uneven">{t('pg_ftth.uneven')}</option>
           </select>
         </FormField>
-        <FormField label="Tap Loss (dB, opsional)"><input className="input-field" type="number" step="0.1" value={form.splitter_tap_loss_db} onChange={e => setForm({ ...form, splitter_tap_loss_db: e.target.value })} placeholder="mis. 10.5" /></FormField>
-        <FormField label="Through Loss (dB, opsional)"><input className="input-field" type="number" step="0.1" value={form.splitter_through_loss_db} onChange={e => setForm({ ...form, splitter_through_loss_db: e.target.value })} placeholder="mis. 1.2" /></FormField>
+        <FormField label={t('pg_ftth.tapLossDbOptional')}><input className="input-field" type="number" step="0.1" value={form.splitter_tap_loss_db} onChange={e => setForm({ ...form, splitter_tap_loss_db: e.target.value })} placeholder={t('pg_ftth.eG105')} /></FormField>
+        <FormField label={t('pg_ftth.throughLossDbOptional')}><input className="input-field" type="number" step="0.1" value={form.splitter_through_loss_db} onChange={e => setForm({ ...form, splitter_through_loss_db: e.target.value })} placeholder={t('pg_ftth.eG12')} /></FormField>
       </div>
-      <FormField label="Location"><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Street address or landmark" /></FormField>
-      <FormField label="Coordinates (GPS / Map)">
+      <FormField label={t('pg_ftth.location')}><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder={t('pg_ftth.streetAddressOrLandmark')} /></FormField>
+      <FormField label={t('pg_ftth.coordinatesGpsMap')}>
         <LocationPicker
           latitude={form.latitude}
           longitude={form.longitude}
           onChange={(lat, lng) => setForm({ ...form, latitude: lat, longitude: lng })}
         />
       </FormField>
-      <FormField label="Fed From">
+      <FormField label={t('pg_ftth.fedFrom')}>
         <FeedSourceToggle value={form.feed_source} directValue="otb" onChange={v => setForm({ ...form, feed_source: v as 'otb' | 'jc' })} directLabel="OTB/ODF" directIcon={<Server size={14} className={form.feed_source !== 'jc' ? 'text-accent' : 'text-tx3'} />} />
       </FormField>
       {form.feed_source === 'jc' ? (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <FormField label="JC (Joint Closure)"><select className="input-field" value={form.jc_id} onChange={e => setForm({ ...form, jc_id: e.target.value, jc_core_number: '' })}><option value="">— Select JC —</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
-          <FormField label="Core from JC">
+          <FormField label="JC (Joint Closure)"><select className="input-field" value={form.jc_id} onChange={e => setForm({ ...form, jc_id: e.target.value, jc_core_number: '' })}><option value="">{t('pg_ftth.selectJc')}</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
+          <FormField label={t('pg_ftth.coreFromJc')}>
             <select className="input-field" value={form.jc_core_number} onChange={e => setForm({ ...form, jc_core_number: e.target.value })}>
-              <option value="">— Select splice —</option>
+              <option value="">{t('pg_ftth.selectSplice')}</option>
               {(selectedJc?.splices || []).map(s => <option key={s.id} value={s.core_out}>Core {s.core_out} (in: {s.core_in}{s.label ? ` — ${s.label}` : ''})</option>)}
             </select>
           </FormField>
-          <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
-          {selectedJc && selectedJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">This JC has no splices yet — add one first (Edit JC → Splices) so there's a core to feed from.</p>}
+          <FormField label={t('pg_ftth.totalCores')}><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
+          {selectedJc && selectedJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">{t('pg_ftth.thisJcHasNo')}</p>}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <FormField label="OTB/ODF"><select className="input-field" value={form.otb_id} onChange={e => setForm({ ...form, otb_id: e.target.value })}><option value="">— None —</option>{otbList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
-          <FormField label="Core from OTB"><input className="input-field" type="number" value={form.otb_core_number} onChange={e => setForm({ ...form, otb_core_number: parseInt(e.target.value) || 1 })} /></FormField>
-          <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
+          <FormField label="OTB/ODF"><select className="input-field" value={form.otb_id} onChange={e => setForm({ ...form, otb_id: e.target.value })}><option value="">{t('pg_ftth.none')}</option>{otbList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
+          <FormField label={t('pg_ftth.coreFromOtb')}><input className="input-field" type="number" value={form.otb_core_number} onChange={e => setForm({ ...form, otb_core_number: parseInt(e.target.value) || 1 })} /></FormField>
+          <FormField label={t('pg_ftth.totalCores')}><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
         </div>
       )}
       {form.feed_source === 'jc' && selectedJc && form.jc_core_number !== '' && <p className="text-xs -mt-1"><CoreColorTag coreNumber={Number(form.jc_core_number)} fibersPerTube={selectedJc.fibers_per_tube} /></p>}
       {form.feed_source !== 'jc' && selectedOtb && <p className="text-xs -mt-1"><CoreColorTag coreNumber={form.otb_core_number} fibersPerTube={selectedOtb.fibers_per_tube} /></p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 300" /></FormField>
-        <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
+        <FormField label={t('pg_ftth.incomingCableLengthM')}><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder={t('pg_ftth.eG300')} /></FormField>
+        <FormField label={t('pg_ftth.attenuationDbKm')}><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
       {item && <CoreStatusPanel ownerType="odc" ownerId={item.id} totalCores={parseInt(String(form.total_cores)) || 0} />}
-      <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
+      <FormField label={t('pg_ftth.description')}><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
 }
@@ -1743,6 +1757,7 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
 function OdpModal({ item, parent, parentKind, odcList, jcList, odpList, onClose, onSaved }: {
   item: FTTHOdp | null; parent: any; parentKind?: ParentKind; odcList: FTTHOdc[]; jcList: FTTHJc[]; odpList: FTTHOdp[]; onClose: () => void; onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const initialFeedSource: 'odc' | 'jc' | 'odp' = item?.feed_source || (parentKind === 'jc' ? 'jc' : parentKind === 'odp' ? 'odp' : 'odc');
   const [selectedParentOdp, setSelectedParentOdp] = useState(
@@ -1797,76 +1812,76 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, odpList, onClose,
   const parentOdpOptions = odpList.filter(o => o.id !== item?.id);
   const availableParentPorts = (parentOdpPorts?.ports || []).filter(p => !p.onu_id && p.status !== 'used' && (!p.fed_odp_id || p.fed_odp_id === item?.id));
   return (
-    <Modal title={item ? 'Edit ODP' : 'Add ODP'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
-      <FormField label="Name"><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="ODP-01" /></FormField>
+    <Modal title={item ? 'Edit ODP' : t('pg_ftth.addOdp')} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
+      <FormField label={t('pg_ftth.name')}><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="ODP-01" /></FormField>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormField label="Model"><input className="input-field" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} /></FormField>
         <FormField label="Splitter Model"><input className="input-field" value={form.splitter_model} onChange={e => setForm({ ...form, splitter_model: e.target.value })} placeholder="1:4, 1:8, 1:16, 1:32" /></FormField>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <FormField label="Ratio Splitter">
+        <FormField label={t('pg_ftth.splitterRatio')}>
           <select className="input-field" value={form.splitter_ratio_type} onChange={e => setForm({ ...form, splitter_ratio_type: e.target.value as 'even' | 'uneven' })}>
-            <option value="even">Even (rata)</option>
-            <option value="uneven">Uneven (tidak rata)</option>
+            <option value="even">{t('pg_ftth.even')}</option>
+            <option value="uneven">{t('pg_ftth.uneven')}</option>
           </select>
         </FormField>
-        <FormField label="Tap Loss (dB, opsional)"><input className="input-field" type="number" step="0.1" value={form.splitter_tap_loss_db} onChange={e => setForm({ ...form, splitter_tap_loss_db: e.target.value })} placeholder="mis. 10.5" /></FormField>
-        <FormField label="Through Loss (dB, opsional)"><input className="input-field" type="number" step="0.1" value={form.splitter_through_loss_db} onChange={e => setForm({ ...form, splitter_through_loss_db: e.target.value })} placeholder="mis. 1.2" /></FormField>
+        <FormField label={t('pg_ftth.tapLossDbOptional')}><input className="input-field" type="number" step="0.1" value={form.splitter_tap_loss_db} onChange={e => setForm({ ...form, splitter_tap_loss_db: e.target.value })} placeholder={t('pg_ftth.eG105')} /></FormField>
+        <FormField label={t('pg_ftth.throughLossDbOptional')}><input className="input-field" type="number" step="0.1" value={form.splitter_through_loss_db} onChange={e => setForm({ ...form, splitter_through_loss_db: e.target.value })} placeholder={t('pg_ftth.eG12')} /></FormField>
       </div>
-      <FormField label="Location"><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Pole number, address" /></FormField>
-      <FormField label="Coordinates (GPS / Map)">
+      <FormField label={t('pg_ftth.location')}><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder={t('pg_ftth.poleNumberAddress')} /></FormField>
+      <FormField label={t('pg_ftth.coordinatesGpsMap')}>
         <LocationPicker
           latitude={form.latitude}
           longitude={form.longitude}
           onChange={(lat, lng) => setForm({ ...form, latitude: lat, longitude: lng })}
         />
       </FormField>
-      <FormField label="Fed From">
+      <FormField label={t('pg_ftth.fedFrom')}>
         <FeedSourceToggle value={form.feed_source} directValue="odc" onChange={v => setForm({ ...form, feed_source: v as 'odc' | 'jc' | 'odp' })} directLabel="ODC" directIcon={<Box size={14} className={form.feed_source === 'odc' ? 'text-accent' : 'text-tx3'} />}
-          extraOptions={[{ value: 'odp', label: 'ODP Lain (Cascade)', icon: <Split size={14} className={form.feed_source === 'odp' ? 'text-accent' : 'text-tx3'} /> }]} />
+          extraOptions={[{ value: 'odp', label: t('pg_ftth.anotherOdpCascade'), icon: <Split size={14} className={form.feed_source === 'odp' ? 'text-accent' : 'text-tx3'} /> }]} />
       </FormField>
       {form.feed_source === 'jc' ? (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <FormField label="JC (Joint Closure)"><select className="input-field" value={form.jc_id} onChange={e => setForm({ ...form, jc_id: e.target.value, jc_core_number: '' })}><option value="">— Select JC —</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
-          <FormField label="Core from JC">
+          <FormField label="JC (Joint Closure)"><select className="input-field" value={form.jc_id} onChange={e => setForm({ ...form, jc_id: e.target.value, jc_core_number: '' })}><option value="">{t('pg_ftth.selectJc')}</option>{jcList.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}</select></FormField>
+          <FormField label={t('pg_ftth.coreFromJc')}>
             <select className="input-field" value={form.jc_core_number} onChange={e => setForm({ ...form, jc_core_number: e.target.value })}>
-              <option value="">— Select splice —</option>
+              <option value="">{t('pg_ftth.selectSplice')}</option>
               {(selectedJc?.splices || []).map(s => <option key={s.id} value={s.core_out}>Core {s.core_out} (in: {s.core_in}{s.label ? ` — ${s.label}` : ''})</option>)}
             </select>
           </FormField>
-          <FormField label="Total Ports"><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
-          {selectedJc && selectedJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">This JC has no splices yet — add one first (Edit JC → Splices) so there's a core to feed from.</p>}
+          <FormField label={t('pg_ftth.totalPorts')}><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
+          {selectedJc && selectedJc.splices.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">{t('pg_ftth.thisJcHasNo')}</p>}
         </div>
       ) : form.feed_source === 'odp' ? (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <FormField label="ODP Parent">
             <select className="input-field" value={selectedParentOdp} onChange={e => { setSelectedParentOdp(e.target.value); setForm({ ...form, parent_odp_port_id: '' }); }}>
-              <option value="">— Select ODP —</option>
+              <option value="">{t('pg_ftth.selectOdp')}</option>
               {parentOdpOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </FormField>
-          <FormField label="Port dari ODP Parent">
+          <FormField label={t('pg_ftth.portOnParentOdp')}>
             <select className="input-field" value={form.parent_odp_port_id} onChange={e => setForm({ ...form, parent_odp_port_id: e.target.value })} disabled={!selectedParentOdp}>
-              <option value="">— Select port —</option>
+              <option value="">{t('pg_ftth.selectPort')}</option>
               {availableParentPorts.map(p => <option key={p.id} value={p.id}>Port {p.port_number}</option>)}
             </select>
           </FormField>
-          <FormField label="Total Ports"><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
-          {selectedParentOdp && availableParentPorts.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">ODP ini tidak punya port yang tersedia (semua sudah dipakai pelanggan atau ODP lain).</p>}
+          <FormField label={t('pg_ftth.totalPorts')}><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
+          {selectedParentOdp && availableParentPorts.length === 0 && <p className="text-xs text-warning -mt-1 col-span-full">{t('pg_ftth.thisOdpHasNo')}</p>}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <FormField label="ODC"><select className="input-field" value={form.odc_id} onChange={e => setForm({ ...form, odc_id: e.target.value })}><option value="">— None —</option>{odcList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
-          <FormField label="Core from ODC"><input className="input-field" type="number" value={form.odc_core_number} onChange={e => setForm({ ...form, odc_core_number: parseInt(e.target.value) || 1 })} /></FormField>
-          <FormField label="Total Ports"><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
+          <FormField label="ODC"><select className="input-field" value={form.odc_id} onChange={e => setForm({ ...form, odc_id: e.target.value })}><option value="">{t('pg_ftth.none')}</option>{odcList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></FormField>
+          <FormField label={t('pg_ftth.coreFromOdc')}><input className="input-field" type="number" value={form.odc_core_number} onChange={e => setForm({ ...form, odc_core_number: parseInt(e.target.value) || 1 })} /></FormField>
+          <FormField label={t('pg_ftth.totalPorts')}><input className="input-field" type="number" value={form.total_ports} onChange={e => setForm({ ...form, total_ports: parseInt(e.target.value) || 0 })} /></FormField>
         </div>
       )}
       {form.feed_source === 'jc' && selectedJc && form.jc_core_number !== '' && <p className="text-xs -mt-1"><CoreColorTag coreNumber={Number(form.jc_core_number)} fibersPerTube={selectedJc.fibers_per_tube} /></p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 100" /></FormField>
-        <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
+        <FormField label={t('pg_ftth.incomingCableLengthM')}><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder={t('pg_ftth.eG100')} /></FormField>
+        <FormField label={t('pg_ftth.attenuationDbKm')}><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
-      <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
+      <FormField label={t('pg_ftth.description')}><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
 }
@@ -1875,6 +1890,7 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, odpList, onClose,
 function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, odpList, onClose, onSaved }: {
   item: FTTHJc | null; parent: any; parentKind?: ParentKind; otbList: FTTHOtb[]; odcList: FTTHOdc[]; jcList: FTTHJc[]; ponList: FTTHPonPort[]; odpList: FTTHOdp[]; onClose: () => void; onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [selectedOdpForPort, setSelectedOdpForPort] = useState('');
   const { data: odpPortsForPicker } = useQuery({
@@ -1945,51 +1961,51 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
   });
   const deleteSpliceMut = useMutation({
     mutationFn: (spliceId: number) => api.ftthJcSpliceDelete(item!.id, spliceId),
-    onSuccess: () => { toast.success('Splice removed'); if (editingSpliceId) cancelEditSplice(); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
+    onSuccess: () => { toast.success(t('pg_ftth.spliceRemoved')); if (editingSpliceId) cancelEditSplice(); qc.invalidateQueries({ queryKey: ['ftth-jc'] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   return (
-    <Modal title={item ? 'Edit JC (Joint Closure)' : 'Add JC (Joint Closure)'} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
-      <FormField label="Name"><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="JC-01" /></FormField>
+    <Modal title={item ? 'Edit JC (Joint Closure)' : t('pg_ftth.addJcJointClosure')} onClose={onClose} onSubmit={submit} loading={mut.isPending}>
+      <FormField label={t('pg_ftth.name')}><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="JC-01" /></FormField>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <FormField label="Closure Type">
+        <FormField label={t('pg_ftth.closureType')}>
           <select className="input-field" value={form.closure_type} onChange={e => setForm({ ...form, closure_type: e.target.value })}>
             <option value="inline">Inline</option>
             <option value="dome">Dome</option>
             <option value="dead-end">Dead-end</option>
           </select>
         </FormField>
-        <FormField label="Total Cores"><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
+        <FormField label={t('pg_ftth.totalCores')}><input className="input-field" type="number" value={form.total_cores} onChange={e => setForm({ ...form, total_cores: parseInt(e.target.value) || 0 })} /></FormField>
       </div>
-      <FormField label="Fibers per Tube (optional)"><input className="input-field" type="number" min={1} value={form.fibers_per_tube} onChange={e => setForm({ ...form, fibers_per_tube: parseInt(e.target.value) || 12 })} /></FormField>
-      <p className="text-[11px] text-tx3 -mt-1">Kalau closure ini terdiri dari beberapa tube (mis. 2 tube × 12 core), isi jumlah core per tube di sini — warna tube/core pada splice di bawah dihitung otomatis dari ini (standar TIA-598).</p>
-      <FormField label="Location"><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Pole number, manhole, address" /></FormField>
-      <FormField label="Coordinates (GPS / Map)">
+      <FormField label={t('pg_ftth.fibersPerTubeOptional')}><input className="input-field" type="number" min={1} value={form.fibers_per_tube} onChange={e => setForm({ ...form, fibers_per_tube: parseInt(e.target.value) || 12 })} /></FormField>
+      <p className="text-[11px] text-tx3 -mt-1">{t('pg_ftth.ifThisClosureHas')}</p>
+      <FormField label={t('pg_ftth.location')}><input className="input-field" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder={t('pg_ftth.poleNumberManholeAddress')} /></FormField>
+      <FormField label={t('pg_ftth.coordinatesGpsMap')}>
         <LocationPicker latitude={form.latitude} longitude={form.longitude} onChange={(lat, lng) => setForm({ ...form, latitude: lat, longitude: lng })} />
       </FormField>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <FormField label="Fed From (parent)">
+        <FormField label={t('pg_ftth.fedFromParent')}>
           <select className="input-field" value={form.parent_type} onChange={e => { setForm({ ...form, parent_type: e.target.value, parent_id: '' }); setSelectedOdpForPort(''); }}>
-            <option value="">— None —</option>
+            <option value="">{t('pg_ftth.none')}</option>
             <option value="pon">PON Port (OLT)</option>
             <option value="otb">OTB/ODF</option>
             <option value="odc">ODC</option>
-            <option value="odp_port">ODP Port (Drop Cable)</option>
-            <option value="jc">Another JC</option>
+            <option value="odp_port">{t('pg_ftth.odpPortDropCable')}</option>
+            <option value="jc">{t('pg_ftth.anotherJc')}</option>
           </select>
         </FormField>
         {form.parent_type === 'odp_port' ? (
           <FormField label="ODP">
             <select className="input-field" value={selectedOdpForPort} onChange={e => { setSelectedOdpForPort(e.target.value); setForm({ ...form, parent_id: '' }); }}>
-              <option value="">— Select ODP —</option>
+              <option value="">{t('pg_ftth.selectOdp')}</option>
               {odpList.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
           </FormField>
         ) : (
           <FormField label="Parent">
             <select className="input-field" value={form.parent_id} onChange={e => setForm({ ...form, parent_id: e.target.value })} disabled={!form.parent_type}>
-              <option value="">— Select —</option>
+              <option value="">{t('pg_ftth.select')}</option>
               {parentOptions.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </FormField>
@@ -1998,7 +2014,7 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
       {form.parent_type === 'odp_port' && (
         <FormField label="Port">
           <select className="input-field" value={form.parent_id} onChange={e => setForm({ ...form, parent_id: e.target.value })} disabled={!selectedOdpForPort}>
-            <option value="">— Select Port —</option>
+            <option value="">{t('pg_ftth.selectPort2')}</option>
             {odpPortOptions.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           {!selectedOdpForPort && item?.parent_type === 'odp_port' && item.parent_name && (
@@ -2007,11 +2023,11 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
         </FormField>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <FormField label="Panjang Kabel Masuk (m, opsional)"><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder="mis. 150" /></FormField>
-        <FormField label="Redaman (dB/km)"><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
+        <FormField label={t('pg_ftth.incomingCableLengthM')}><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder={t('pg_ftth.eG150')} /></FormField>
+        <FormField label={t('pg_ftth.attenuationDbKm')}><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
       {item && <CoreStatusPanel ownerType="jc" ownerId={item.id} totalCores={parseInt(String(form.total_cores)) || 0} />}
-      <FormField label="Description"><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
+      <FormField label={t('pg_ftth.description')}><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
 
       {item && (
         <div className="pt-3 border-t border-brd">
@@ -2026,8 +2042,8 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
                   <span className="text-tx3 flex-shrink-0">→ Out:</span>
                   <CoreColorTag coreNumber={s.core_out} fibersPerTube={ownFibersPerTube} tubeLabel={s.tube_out_label} />
                   {s.label && <span className="text-tx3 truncate flex-1">{s.label}</span>}
-                  <button onClick={() => startEditSplice(s)} className="p-1 rounded hover:bg-glass text-tx3 hover:text-accent flex-shrink-0 ml-auto" title="Edit splice"><Edit2 size={12} /></button>
-                  <button onClick={() => deleteSpliceMut.mutate(s.id)} className="p-1 rounded hover:bg-danger/15 text-tx3 hover:text-danger flex-shrink-0" title="Remove splice"><Trash2 size={12} /></button>
+                  <button onClick={() => startEditSplice(s)} className="p-1 rounded hover:bg-glass text-tx3 hover:text-accent flex-shrink-0 ml-auto" title={t('pg_ftth.editSplice')}><Edit2 size={12} /></button>
+                  <button onClick={() => deleteSpliceMut.mutate(s.id)} className="p-1 rounded hover:bg-danger/15 text-tx3 hover:text-danger flex-shrink-0" title={t('pg_ftth.removeSplice')}><Trash2 size={12} /></button>
                 </div>
               ))}
             </div>
@@ -2036,55 +2052,56 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
             <div>
               <span className="text-[10px] text-tx3 font-medium block mb-1">Core In — dari {form.parent_type ? `${form.parent_type.toUpperCase()}${parentNode ? ` (${parentNode.name})` : ''}` : 'parent'}</span>
               <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 items-center">
-                <input className="input-field !text-xs" type="number" min={1} placeholder="Tube" title="Nomor tube — isi bebas, mis. untuk drop core / kabel non-tube bisa dibiarkan 1" value={spliceForm.tubeIn} onChange={e => setSpliceForm({ ...spliceForm, tubeIn: parseInt(e.target.value) || 1 })} />
-                <input className="input-field !text-xs" type="number" min={1} placeholder="Core in tube" value={spliceForm.posIn} onChange={e => setSpliceForm({ ...spliceForm, posIn: parseInt(e.target.value) || 1 })} />
+                <input className="input-field !text-xs" type="number" min={1} placeholder="Tube" title={t('pg_ftth.tubeNumberFreeForm')} value={spliceForm.tubeIn} onChange={e => setSpliceForm({ ...spliceForm, tubeIn: parseInt(e.target.value) || 1 })} />
+                <input className="input-field !text-xs" type="number" min={1} placeholder={t('pg_ftth.coreInTube')} value={spliceForm.posIn} onChange={e => setSpliceForm({ ...spliceForm, posIn: parseInt(e.target.value) || 1 })} />
                 <CoreColorTag coreNumber={spliceCoreIn} fibersPerTube={parentFibersPerTube} tubeLabel={spliceForm.tubeInLabel} />
               </div>
-              <input className="input-field !text-xs mt-1.5" placeholder="Nama/warna tube manual (opsional, mis. Drop Core)" value={spliceForm.tubeInLabel} onChange={e => setSpliceForm({ ...spliceForm, tubeInLabel: e.target.value })} />
+              <input className="input-field !text-xs mt-1.5" placeholder={t('pg_ftth.manualTubeNameColour')} value={spliceForm.tubeInLabel} onChange={e => setSpliceForm({ ...spliceForm, tubeInLabel: e.target.value })} />
             </div>
             <div>
-              <span className="text-[10px] text-tx3 font-medium block mb-1">Core Out — ke downstream (JC ini)</span>
+              <span className="text-[10px] text-tx3 font-medium block mb-1">{t('pg_ftth.coreOutDownstreamThis')}</span>
               <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 items-center">
-                <input className="input-field !text-xs" type="number" min={1} placeholder="Tube" title="Nomor tube — isi bebas, mis. untuk drop core / kabel non-tube bisa dibiarkan 1" value={spliceForm.tubeOut} onChange={e => setSpliceForm({ ...spliceForm, tubeOut: parseInt(e.target.value) || 1 })} />
-                <input className="input-field !text-xs" type="number" min={1} placeholder="Core in tube" value={spliceForm.posOut} onChange={e => setSpliceForm({ ...spliceForm, posOut: parseInt(e.target.value) || 1 })} />
+                <input className="input-field !text-xs" type="number" min={1} placeholder="Tube" title={t('pg_ftth.tubeNumberFreeForm')} value={spliceForm.tubeOut} onChange={e => setSpliceForm({ ...spliceForm, tubeOut: parseInt(e.target.value) || 1 })} />
+                <input className="input-field !text-xs" type="number" min={1} placeholder={t('pg_ftth.coreInTube')} value={spliceForm.posOut} onChange={e => setSpliceForm({ ...spliceForm, posOut: parseInt(e.target.value) || 1 })} />
                 <CoreColorTag coreNumber={spliceCoreOut} fibersPerTube={ownFibersPerTube} tubeLabel={spliceForm.tubeOutLabel} />
               </div>
-              <input className="input-field !text-xs mt-1.5" placeholder="Nama/warna tube manual (opsional, mis. Drop Core)" value={spliceForm.tubeOutLabel} onChange={e => setSpliceForm({ ...spliceForm, tubeOutLabel: e.target.value })} />
+              <input className="input-field !text-xs mt-1.5" placeholder={t('pg_ftth.manualTubeNameColour')} value={spliceForm.tubeOutLabel} onChange={e => setSpliceForm({ ...spliceForm, tubeOutLabel: e.target.value })} />
             </div>
-            {editingSpliceId && <p className="text-[11px] text-accent">Mengedit splice — ubah tube/core di atas lalu simpan, atau batal.</p>}
+            {editingSpliceId && <p className="text-[11px] text-accent">{t('pg_ftth.editingSpliceChangeTube')}</p>}
             <div className={cn('grid gap-1.5', editingSpliceId ? 'grid-cols-[1fr_auto_auto]' : 'grid-cols-[1fr_auto]')}>
-              <input className="input-field !text-xs" placeholder="Label (optional)" value={spliceForm.label} onChange={e => setSpliceForm({ ...spliceForm, label: e.target.value })} />
-              {editingSpliceId && <button type="button" onClick={cancelEditSplice} className="btn-cancel text-xs">Cancel</button>}
+              <input className="input-field !text-xs" placeholder={t('pg_ftth.labelOptional')} value={spliceForm.label} onChange={e => setSpliceForm({ ...spliceForm, label: e.target.value })} />
+              {editingSpliceId && <button type="button" onClick={cancelEditSplice} className="btn-cancel text-xs">{t('pg_ftth.cancel')}</button>}
               <button type="button" onClick={() => spliceMut.mutate()} disabled={spliceMut.isPending}
                 className="btn-primary text-xs disabled:opacity-50">{editingSpliceId ? 'Save Changes' : '+ Add Splice'}</button>
             </div>
           </div>
         </div>
       )}
-      {!item && <p className="text-[11px] text-tx3">Save this JC first, then reopen it to add splices (core in → core out).</p>}
+      {!item && <p className="text-[11px] text-tx3">{t('pg_ftth.saveThisJcFirst')}</p>}
     </Modal>
   );
 }
 
 // ─── Impact Modal — "if this breaks, who's affected" downstream customer list ───
 function ImpactModal({ target, onClose }: { target: { type: 'otb' | 'jc' | 'odc' | 'odp'; id: number; name: string }; onClose: () => void }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['ftth-impact', target.type, target.id],
     queryFn: () => api.ftthImpact(target.type, target.id),
   });
   return (
-    <SharedModal open onClose={onClose} icon={<Users size={16} />} title={`Dampak: ${target.name}`} size="sm">
-      {isLoading && <div className="text-center py-8 text-tx3 text-sm">Menghitung...</div>}
+    <SharedModal open onClose={onClose} icon={<Users size={16} />} title={t('pg_ftth.impactTitle', { name: target.name })} size="sm">
+      {isLoading && <div className="text-center py-8 text-tx3 text-sm">{t('pg_ftth.calculating')}</div>}
       {data && (
         <>
-          <p className="text-xs text-tx3">Kalau titik ini putus/bermasalah, pelanggan berikut akan terdampak:</p>
+          <p className="text-xs text-tx3">{t('pg_ftth.ifThisPointBreaks')}</p>
           <div className="grid grid-cols-3 gap-2 text-center mt-3">
             <div className="p-2.5 rounded-lg bg-glass"><div className="text-lg font-bold">{data.total}</div><div className="text-[10px] text-tx3 uppercase">Total</div></div>
             <div className="p-2.5 rounded-lg bg-success/10"><div className="text-lg font-bold text-success">{data.online}</div><div className="text-[10px] text-tx3 uppercase">Online</div></div>
             <div className="p-2.5 rounded-lg bg-danger/10"><div className="text-lg font-bold text-danger">{data.offline}</div><div className="text-[10px] text-tx3 uppercase">Offline</div></div>
           </div>
           {data.total === 0 ? (
-            <p className="text-xs text-tx3 text-center py-4">Belum ada pelanggan downstream dari titik ini.</p>
+            <p className="text-xs text-tx3 text-center py-4">{t('pg_ftth.noDownstreamCustomersFrom')}</p>
           ) : (
             <div className="space-y-1 max-h-64 overflow-y-auto mt-3">
               {data.customers.map(c => (
@@ -2105,9 +2122,10 @@ function ImpactModal({ target, onClose }: { target: { type: 'otb' | 'jc' | 'odc'
 
 // ─── Generic Modal wrapper ───
 function Modal({ title, onClose, onSubmit, loading, children }: { title: string; onClose: () => void; onSubmit: () => void; loading: boolean; children: React.ReactNode }) {
+  const { t } = useTranslation();
   return (
     <SharedModal open onClose={onClose} title={title} size="md"
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" loading={loading} onClick={onSubmit}>Save</Button></>}
+      footer={<><Button variant="secondary" onClick={onClose}>{t('pg_ftth.cancel')}</Button><Button variant="primary" loading={loading} onClick={onSubmit}>{t('pg_ftth.save')}</Button></>}
     >
       <div className="space-y-3">{children}</div>
     </SharedModal>
