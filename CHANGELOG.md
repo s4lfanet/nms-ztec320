@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Halaman AI Agent lebih jelas
+
+#### Diubah
+- Kartu **Koneksi AI**: dua dropdown yang membingungkan ("Preset penyedia" dan "Format API") diganti satu pilihan **Penyedia AI**. Kolom **API key** langsung di bawahnya dengan status (tersimpan / belum ada) dan link **Buat API key** ke halaman penyedia. Untuk Ollama kolom key disembunyikan karena tidak diperlukan.
+- **Format API**, **Alamat API**, dan **Maks. token** dipindah ke **Pengaturan lanjutan** (terbuka otomatis untuk penyedia "Lainnya"); Format API diatur otomatis sesuai penyedia.
+- Teks yang masih campur bahasa dirapikan.
+
+#### Ditambahkan
+- Tombol **Tes koneksi** (`POST /api/ai/test`, super admin): mengirim satu pesan pendek memakai pengaturan tersimpan dan menampilkan hasil atau pesan error dari penyedia.
+
 ### 2026-11-22 — Semua tab terlihat di HP
 
 #### Diubah

@@ -128,6 +128,7 @@ export const api = {
   onuTr069: (id: number) => request<{ success: boolean; connected: boolean; match_method?: string; pinned?: boolean; last_synced?: string; params: Tr069Params | null }>(`/api/onu/${id}/tr069`),
   aiSettings: () => request<{ success: boolean; config: Record<string, unknown> }>('/api/ai/settings'),
   aiSaveSettings: (data: Record<string, unknown>) => request<{ success: boolean; config: Record<string, unknown> }>('/api/ai/settings', { method: 'POST', body: JSON.stringify(data) }),
+  aiTest: () => request<{ success: boolean; message: string }>('/api/ai/test', { method: 'POST' }),
   aiAsk: (question: string) => request<{ success: boolean; answer: string }>('/api/ai/ask', { method: 'POST', body: JSON.stringify({ question }) }),
   onuTr069Reboot: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/reboot`, { method: 'POST' }),
   onuTr069Refresh: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/refresh`, { method: 'POST' }),

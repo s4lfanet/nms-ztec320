@@ -312,6 +312,38 @@ def _call_anthropic(cfg, messages):
     return 'Maaf, pertanyaan ini butuh terlalu banyak langkah. Coba persempit pertanyaannya.'
 
 
+def test_connection():
+    """Panggilan kecil tanpa tool untuk mengecek API key, base URL, dan model
+    yang TERSIMPAN. Return (ok, pesan)."""
+    cfg = get_config(include_key=True)
+    if cfg['ai_provider'] == 'anthropic' and not cfg.get('api_key'):
+        return False, 'API key belum diisi.'
+    try:
+        if cfg['ai_provider'] == 'anthropic':
+            r = httpx.post(f"{cfg['ai_base_url']}/v1/messages", timeout=30, json={
+                'model': cfg['ai_model'], 'max_tokens': 16,
+                'messages': [{'role': 'user', 'content': 'Balas satu kata: OK'}],
+            }, headers={'x-api-key': cfg['api_key'], 'anthropic-version': '2023-06-01',
+                        'content-type': 'application/json'})
+            if r.status_code >= 400:
+                return False, f'Claude API {r.status_code}: {r.text[:200]}'
+            text = ''.join(c.get('text', '') for c in r.json().get('content') or [])
+        else:
+            headers = {'content-type': 'application/json'}
+            if cfg.get('api_key'):
+                headers['authorization'] = f"Bearer {cfg['api_key']}"
+            r = httpx.post(f"{cfg['ai_base_url']}/chat/completions", timeout=30, json={
+                'model': cfg['ai_model'], 'max_tokens': 16,
+                'messages': [{'role': 'user', 'content': 'Balas satu kata: OK'}],
+            }, headers=headers)
+            if r.status_code >= 400:
+                return False, f'AI API {r.status_code}: {r.text[:200]}'
+            text = ((r.json().get('choices') or [{}])[0].get('message') or {}).get('content') or ''
+        return True, f"Terhubung ke {cfg['ai_model']} — balasan: {text.strip()[:60] or '(kosong)'}"
+    except httpx.HTTPError as e:
+        return False, f'Tidak bisa terhubung ke {cfg["ai_base_url"]}: {e}'
+
+
 def _call_openai(cfg, messages):
     tools = [{'type': 'function', 'function': {'name': n, 'description': d, 'parameters': s}}
              for n, d, s, _ in TOOLS]

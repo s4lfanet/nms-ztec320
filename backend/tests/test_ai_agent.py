@@ -190,3 +190,37 @@ def test_quick_commands_no_ai_call(client, monkeypatch):
 
 def test_compact_tool_json():
     assert ai_agent._compact({'a': None, 'b': '', 'c': [1, {'d': None, 'e': 2}]}) == '{"c":[1,{"e":2}]}'
+
+
+def test_connection_check(client, monkeypatch):
+    sent = []
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        sent.append((url, json, headers))
+        if 'messages' in url:
+            return _Resp({'content': [{'type': 'text', 'text': 'OK'}]})
+        return _Resp({'choices': [{'message': {'content': 'OK'}}]})
+
+    monkeypatch.setattr(ai_agent.httpx, 'post', fake_post)
+    _login(client, 'boss')
+    # Anthropic tanpa key → ditolak tanpa memanggil API
+    with app.app_context():
+        ai_agent.save_config({'ai_provider': 'anthropic'})
+        from models import SystemConfig, db
+        SystemConfig.query.filter_by(key='ai_api_key_enc').delete(); db.session.commit()
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert not r['success'] and sent == []
+    _enable('anthropic')
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert r['success'] and 'OK' in r['message'] and sent[-1][1]['max_tokens'] == 16
+    # Ollama: OpenAI-compatible tanpa key tetap boleh
+    with app.app_context():
+        ai_agent.save_config({'ai_provider': 'openai', 'ai_base_url': 'http://127.0.0.1:11434/v1'})
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert r['success'] and sent[-1][0].endswith('/chat/completions')
+    monkeypatch.setattr(ai_agent.httpx, 'post', lambda *a, **k: _Resp({'error': 'bad key'}, 401))
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert not r['success'] and '401' in r['message']
+    client.post('/api/auth/logout', headers=H)
+    _login(client, 'tech')
+    assert client.post('/api/ai/test', headers=H).status_code == 403

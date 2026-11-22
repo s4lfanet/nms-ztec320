@@ -31,6 +31,13 @@ def save_settings():
     return jsonify({'success': True, 'config': ai_agent.get_config()})
 
 
+@bp.route('/api/ai/test', methods=['POST'])
+@super_admin_required
+def test_connection():
+    ok, message = ai_agent.test_connection()
+    return jsonify({'success': ok, 'message': message})
+
+
 @bp.route('/api/ai/ask', methods=['POST'])
 @login_required
 def ask():
