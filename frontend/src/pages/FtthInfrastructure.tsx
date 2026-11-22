@@ -18,7 +18,7 @@ import { useHasPerm } from '../hooks/useHasPerm';
 import { useDashboardWs } from '../hooks/useDashboardWs';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, EmptyState, Modal as SharedModal, Tabs } from '../components/ui';
+import { Button, EmptyState, Modal as SharedModal, Tabs, Notice } from '../components/ui';
 
 type Tab = 'overview' | 'tree' | 'map' | 'otb' | 'jc' | 'odc' | 'odp' | 'pon';
 type ModalType = 'otb' | 'jc' | 'odc' | 'odp' | 'port' | 'pon' | null;
@@ -587,48 +587,44 @@ function OverviewTab({ stats, isFetching, countdown, onDrillDown }: { stats: FTT
         ))}
       </div>
 
-      {/* Orphan Alert */}
-      {orphans.total > 0 && (
-        <div className="rounded-xl p-3 md:p-4 border border-warning/30 bg-warning/10 flex items-center gap-3">
-          <AlertTriangle size={20} className="text-warning flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-warning">Orphaned Nodes Detected ({orphans.total})</div>
-            <div className="text-xs text-tx3 mt-0.5">
-              {orphans.onus_without_odp > 0 && <span>{orphans.onus_without_odp} ONUs without ODP · </span>}
-              {orphans.odps_without_odc > 0 && <span>{orphans.odps_without_odc} ODPs without ODC · </span>}
-              {orphans.odcs_without_otb > 0 && <span>{orphans.odcs_without_otb} ODCs without OTB · </span>}
-              {orphans.otbs_without_olt > 0 && <span>{orphans.otbs_without_olt} OTBs without OLT</span>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Data Completeness Alerts */}
-      {(orphans.onus_without_technician > 0 || orphans.onus_without_coordinates > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
-          {orphans.onus_without_technician > 0 && (
-            <div className="rounded-xl p-3 md:p-4 border border-warning/30 bg-warning/10 flex items-center gap-3">
-              <UserX size={20} className="text-warning flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-warning">Technician Not Assigned ({orphans.onus_without_technician})</div>
-                <div className="text-xs text-tx3 mt-0.5">
-                  {orphans.onus_without_technician} ONU{orphans.onus_without_technician > 1 ? 's' : ''} belum memiliki teknisi yang melakukan aktivasi. Set teknisi di halaman All ONU.
-                </div>
-              </div>
-            </div>
-          )}
-          {orphans.onus_without_coordinates > 0 && (
-            <div className="rounded-xl p-3 md:p-4 border border-warning/30 bg-warning/10 flex items-center gap-3">
-              <MapPin size={20} className="text-warning flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-warning">Location Coordinates Not Set ({orphans.onus_without_coordinates})</div>
-                <div className="text-xs text-tx3 mt-0.5">
-                  {orphans.onus_without_coordinates} ONU{orphans.onus_without_coordinates > 1 ? 's' : ''} belum memiliki koordinat lokasi (GPS). Set koordinat di halaman All ONU.
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Kelengkapan data (redesign Fase 3): satu pemberitahuan, bukan 3 banner
+          bertumpuk. Bisa ditutup; muncul lagi bila jumlahnya berubah. */}
+      {(orphans.total > 0 || orphans.onus_without_technician > 0 || orphans.onus_without_coordinates > 0) && (
+        <Notice
+          tone="warn"
+          title="Data infrastruktur belum lengkap"
+          dismissKey={`ftth-completeness:${orphans.total}:${orphans.onus_without_technician}:${orphans.onus_without_coordinates}`}
+        >
+          <ul className="mt-1 space-y-1 text-xs">
+            {orphans.total > 0 && (
+              <li className="flex items-start gap-1.5">
+                <AlertTriangle size={13} className="text-warning mt-0.5 shrink-0" aria-hidden="true" />
+                <span>
+                  <strong className="text-tx1">{orphans.total} node tanpa induk</strong>
+                  {' — '}
+                  {[
+                    orphans.onus_without_odp > 0 && `${orphans.onus_without_odp} ONU tanpa ODP`,
+                    orphans.odps_without_odc > 0 && `${orphans.odps_without_odc} ODP tanpa ODC`,
+                    orphans.odcs_without_otb > 0 && `${orphans.odcs_without_otb} ODC tanpa OTB`,
+                    orphans.otbs_without_olt > 0 && `${orphans.otbs_without_olt} OTB tanpa OLT`,
+                  ].filter(Boolean).join(' · ')}
+                </span>
+              </li>
+            )}
+            {orphans.onus_without_technician > 0 && (
+              <li className="flex items-start gap-1.5">
+                <UserX size={13} className="text-warning mt-0.5 shrink-0" aria-hidden="true" />
+                <span><strong className="text-tx1">{orphans.onus_without_technician} ONU tanpa teknisi</strong> — atur di halaman Semua ONU.</span>
+              </li>
+            )}
+            {orphans.onus_without_coordinates > 0 && (
+              <li className="flex items-start gap-1.5">
+                <MapPin size={13} className="text-warning mt-0.5 shrink-0" aria-hidden="true" />
+                <span><strong className="text-tx1">{orphans.onus_without_coordinates} ONU tanpa koordinat GPS</strong> — atur di halaman Semua ONU.</span>
+              </li>
+            )}
+          </ul>
+        </Notice>
       )}
 
       {/* Infrastructure Summary */}

@@ -15,7 +15,7 @@ import { RackDiagramRouter } from '../components/rack/RackDiagramRouter';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { api } from '../lib/api';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
-import { Button, EmptyState, Input, Modal, Select, Tabs } from '../components/ui';
+import { Button, EmptyState, Input, Modal, Select, Tabs, Notice } from '../components/ui';
 
 const TABS = [
   { id: 'uplinks', label: 'Uplinks', icon: <Network size={15} /> },
@@ -69,6 +69,13 @@ export function OltConfiguration() {
           </div>
         </div>
       </div>
+
+      {/* Belum pernah sync: jelaskan kenapa angka N/A & port map kosong (redesign Fase 3) */}
+      {!olt.last_sync && (
+        <Notice tone="info" title="OLT ini belum pernah disinkronkan">
+          Kartu, port, CPU, memori, dan peta port masih kosong sampai sinkronisasi pertama selesai. Jalankan <strong>Sync</strong> di halaman Pengaturan OLT.
+        </Notice>
+      )}
 
       {/* Stats Row */}
       {(() => {

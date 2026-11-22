@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Redesign Fase 3: Riwayat Alert, FTTH, Konfigurasi OLT
+
+#### Diubah
+- **Riwayat Alert** (dulu "Alert History"): 14 tombol filter jenis alert kini satu baris geser di HP (sebelumnya 4 baris), membungkus di desktop.
+- **FTTH Infrastructure**: tiga banner peringatan bertumpuk (node tanpa induk, ONU tanpa teknisi, ONU tanpa koordinat) digabung jadi satu pemberitahuan berisi daftar, bisa ditutup, dan muncul lagi bila jumlahnya berubah.
+- **Konfigurasi OLT**: OLT yang belum pernah disinkronkan menampilkan penjelasan kenapa kartu, port, CPU, dan memori masih N/A/kosong, beserta langkah berikutnya.
+
 ### 2026-11-22 — Redesign Fase 3: wizard ONU
 
 #### Diubah
