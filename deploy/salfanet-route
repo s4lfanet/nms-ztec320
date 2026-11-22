@@ -1,0 +1,118 @@
+#!/usr/bin/python3 -I
+"""salfanet-route — helper root yang SEMPIT untuk NMS: kelola rute statis dari
+server NMS ke jaringan pelanggan PPPoE (via router MikroTik), tanpa memberi
+user aplikasi akses root lain.
+
+Dipasang oleh deploy/setup_routes.sh ke /usr/local/sbin/salfanet-route
+(milik root, 0755) dan diizinkan lewat sudoers hanya untuk file ini.
+
+Pemakaian:
+  salfanet-route check                 → keluar 0 (tanda terpasang)
+  salfanet-route list                  → JSON rute yang dikelola NMS
+  salfanet-route add <CIDR> <GATEWAY>  → ip route replace … proto 186
+  salfanet-route del <CIDR> <GATEWAY>  → hapus (hanya rute proto 186)
+
+Aturan keamanan (ditolak dengan exit 2):
+  - hanya IPv4 privat (10/8, 172.16/12, 192.168/16) atau CGNAT 100.64/10
+  - prefix /8 sampai /32; tidak ada default route
+  - CIDR tidak boleh beririsan dengan jaringan yang terhubung langsung ke
+    server (agar akses ke VPS/LAN tidak terputus)
+  - gateway harus berada di jaringan yang terhubung langsung dan bukan
+    alamat server sendiri
+Rute ditandai `proto 186` sehingga helper tidak pernah mengubah/menghapus
+rute lain di server.
+"""
+import ipaddress
+import json
+import subprocess
+import sys
+
+PROTO = '186'
+IP = '/sbin/ip'
+ALLOWED = [ipaddress.ip_network(n) for n in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10')]
+
+
+def fail(msg, code=2):
+    print(msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def ip_cmd(*args):
+    for exe in (IP, '/usr/sbin/ip', '/usr/bin/ip', '/bin/ip'):
+        try:
+            return subprocess.run([exe, *args], capture_output=True, text=True, timeout=10)
+        except FileNotFoundError:
+            continue
+    fail('perintah ip tidak ditemukan', 3)
+
+
+def connected():
+    """(alamat server, jaringan terhubung langsung) IPv4."""
+    r = ip_cmd('-4', '-j', 'addr', 'show')
+    addrs, nets = set(), []
+    for link in json.loads(r.stdout or '[]'):
+        for a in link.get('addr_info', []):
+            if a.get('family') != 'inet':
+                continue
+            iface = ipaddress.ip_interface(f"{a['local']}/{a['prefixlen']}")
+            addrs.add(iface.ip)
+            if not iface.ip.is_loopback:
+                nets.append(iface.network)
+    return addrs, nets
+
+
+def parse(cidr, gw):
+    try:
+        net = ipaddress.ip_network(cidr, strict=False)
+        gwa = ipaddress.ip_address(gw)
+    except ValueError as e:
+        fail(f'format tidak valid: {e}')
+    if net.version != 4 or gwa.version != 4:
+        fail('hanya IPv4')
+    if not 8 <= net.prefixlen <= 32:
+        fail('prefix harus /8 sampai /32')
+    if not any(net.subnet_of(a) for a in ALLOWED):
+        fail('hanya jaringan privat (10/8, 172.16/12, 192.168/16) atau CGNAT 100.64/10')
+    addrs, nets = connected()
+    for n in nets:
+        if net.overlaps(n):
+            fail(f'{net} beririsan dengan jaringan server {n} — ditolak agar akses ke server tidak terputus')
+    if gwa in addrs:
+        fail('gateway tidak boleh alamat server sendiri')
+    if not any(gwa in n for n in nets):
+        fail(f'gateway {gwa} tidak berada di jaringan yang terhubung langsung ke server')
+    if gwa in net:
+        fail('gateway tidak boleh berada di dalam jaringan tujuan')
+    return str(net), str(gwa)
+
+
+def main(argv):
+    if not argv:
+        fail(__doc__)
+    cmd = argv[0]
+    if cmd == 'check':
+        print('ok')
+        return
+    if cmd == 'list':
+        r = ip_cmd('-4', '-j', 'route', 'show', 'proto', PROTO)
+        rows = json.loads(r.stdout or '[]')
+        print(json.dumps([{'cidr': x.get('dst'), 'gateway': x.get('gateway'), 'dev': x.get('dev')} for x in rows]))
+        return
+    if cmd in ('add', 'del') and len(argv) == 3:
+        net, gw = parse(argv[1], argv[2])
+        if cmd == 'add':
+            r = ip_cmd('route', 'replace', net, 'via', gw, 'proto', PROTO)
+        else:
+            r = ip_cmd('route', 'del', net, 'via', gw, 'proto', PROTO)
+            if r.returncode != 0 and 'No such process' in (r.stderr or ''):
+                print('tidak ada (sudah terhapus)')
+                return
+        if r.returncode != 0:
+            fail((r.stderr or r.stdout or 'gagal').strip(), 1)
+        print('ok')
+        return
+    fail(__doc__)
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])

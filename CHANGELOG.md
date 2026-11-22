@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-23 — Rute server NMS ke pelanggan PPPoE dari web
+
+#### Ditambahkan
+- Kartu **Rute server NMS ke pelanggan** di halaman MikroTik (super admin): tambah/hapus rute statis dari server NMS ke jaringan pool PPPoE lewat router MikroTik, **saran rute otomatis** dari IP PPPoE yang terlihat poller (gateway = IP router), status aktif/gagal, dan **tes ping** dari server ke IP mana pun. Diperlukan agar sumber ping "Dari server NMS" bisa menjangkau pelanggan.
+- Rute disimpan di database dan **dipasang ulang otomatis** saat service start (rute kernel hilang setelah reboot).
+- Keamanan: aplikasi tetap tanpa root. Perubahan rute hanya lewat helper sempit `/usr/local/sbin/salfanet-route` (izin sudo khusus file itu) yang menolak rute publik, default route, prefix < /8, rute yang beririsan dengan jaringan server, dan gateway yang tidak on-link; helper hanya mengelola rute bertanda `proto 186`.
+- Pemasangan helper sekali sebagai root: `bash /opt/salfanet-nms/deploy/setup_routes.sh` (juga otomatis dijalankan `deploy/update_vps.sh` dan `vps-setup.sh`).
+
 ### 2026-11-23 — PWA: tampilan baru tidak lagi tertahan di HP
 
 #### Diperbaiki

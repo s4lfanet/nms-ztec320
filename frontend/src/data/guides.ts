@@ -207,6 +207,7 @@ export const guides: Guide[] = [
       'Export CSV include semua ONU (tidak terfilter by pagination)',
       'Match MAC butuh MikroTik yang sudah ditambahkan di menu Mikrotik — mulai dari mode Selisih ±1, naikkan bila banyak yang tidak cocok',
       'Kolom Kesehatan di halaman MikroTik menampilkan CPU, RAM, suhu, dan versi RouterOS; NMS mengirim alert bila router tidak terjangkau > 5 menit, CPU ≥ 85% berturut-turut, atau suhu ≥ 70°C',
+      'Server NMS tidak bisa ping IP PPPoE pelanggan? Tambahkan rute di kartu "Rute server NMS ke pelanggan" (halaman MikroTik, super admin) — pakai tombol Pasang pada saran rute, lalu uji dengan Tes ping. Helper rute dipasang sekali sebagai root: bash /opt/salfanet-nms/deploy/setup_routes.sh',
       'Sumber ping "Dari server NMS" mem-ping semua pelanggan paralel tiap siklus (status lambat/putus selalu segar) — pastikan server NMS bisa menjangkau IP PPPoE klien; bila tidak, pakai "Dari MikroTik"',
       'Untuk MikroTik buat user khusus NMS dengan group policy read,api,test saja (cukup untuk /ppp/active dan ping), dan pakai api-ssl (port 8729) agar login tidak lewat jaringan tanpa enkripsi',
     ],

@@ -16,6 +16,11 @@ git pull origin main
 if id salfanet >/dev/null 2>&1; then
     chown -R salfanet:salfanet /opt/salfanet-nms
 fi
+# Helper rute (halaman MikroTik → Rute server NMS ke pelanggan): pasang/perbarui
+# salinan milik root + izin sudo khususnya. Script ini berjalan sebagai root.
+if [ -f deploy/setup_routes.sh ] && id salfanet >/dev/null 2>&1; then
+    bash deploy/setup_routes.sh || echo "WARN: setup_routes.sh gagal (rute dari web tidak aktif)"
+fi
 echo "=== Frontend ==="
 # The committed dist is the source of truth: no Node/npm needed on the server.
 # Build only if dist is missing, or when forced: FORCE_FRONTEND_BUILD=1 bash update_vps.sh

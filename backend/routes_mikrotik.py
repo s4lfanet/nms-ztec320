@@ -16,7 +16,7 @@ from datetime import datetime, timezone, timedelta
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
-from helpers import log_action, permission_required
+from helpers import log_action, permission_required, super_admin_required
 from models import db, MikrotikDevice, ONU, OLT, OnuLinkState
 from routeros_client import RouterOSClient
 
@@ -373,3 +373,95 @@ def ping_onu_client(onu_id):
         _broadcast_state(s)
     return jsonify({'success': True, 'source': source, 'ip': s.pppoe_ip,
                     'ping': ping, 'state': _state_to_dict(s)})
+
+
+# ─── Rute server NMS → jaringan pelanggan PPPoE (vps_routes.py) ───
+
+@bp.route('/api/vps-routes', methods=['GET'])
+@super_admin_required
+def vps_routes_list():
+    import vps_routes as vr
+    from models import VpsRoute
+    status = vr.helper_status()
+    kernel = {(k.get('cidr'), k.get('gateway')) for k in vr.kernel_routes()} if status == 'ok' else set()
+    rows = []
+    for r in VpsRoute.query.order_by(VpsRoute.cidr).all():
+        d = vr.route_dict(r)
+        d['active'] = (r.cidr, r.gateway) in kernel if status == 'ok' else None
+        rows.append(d)
+    return jsonify({'success': True, 'helper': status, 'setup_cmd': vr.SETUP_CMD, 'routes': rows,
+                    'suggestions': vr.suggestions()})
+
+
+@bp.route('/api/vps-routes', methods=['POST'])
+@super_admin_required
+def vps_routes_add():
+    import vps_routes as vr
+    from models import VpsRoute
+    data = request.get_json(silent=True) or {}
+    cidr, gw, err = vr.validate(data.get('cidr', ''), data.get('gateway', ''))
+    if err:
+        return jsonify({'success': False, 'message': err}), 400
+    if VpsRoute.query.filter_by(cidr=cidr).first():
+        return jsonify({'success': False, 'message': f'Rute {cidr} sudah ada'}), 409
+    if vr.helper_status() != 'ok':
+        return jsonify({'success': False, 'message': 'Helper rute belum terpasang di server. Jalankan sekali '
+                                                     f'sebagai root: {vr.SETUP_CMD}'}), 412
+    r = VpsRoute(cidr=cidr, gateway=gw, note=(data.get('note') or '')[:120],
+                 mikrotik_id=data.get('mikrotik_id') or None)
+    ok, out = vr.apply(r)
+    if not ok:  # rute ditolak helper/kernel → jangan disimpan
+        return jsonify({'success': False, 'message': f'Rute ditolak: {out}'}), 400
+    db.session.add(r)
+    db.session.commit()
+    log_action('vps_route_add', 'settings', target=cidr, detail=f'via {gw}')
+    return jsonify({'success': True, 'route': vr.route_dict(r)})
+
+
+@bp.route('/api/vps-routes/<int:rid>', methods=['DELETE'])
+@super_admin_required
+def vps_routes_delete(rid):
+    import vps_routes as vr
+    from models import VpsRoute
+    r = db.session.get(VpsRoute, rid)
+    if not r:
+        return jsonify({'success': False, 'message': 'Rute tidak ditemukan'}), 404
+    ok, out = vr.remove(r)
+    if not ok and vr.helper_status() == 'ok':
+        return jsonify({'success': False, 'message': f'Gagal menghapus rute: {out}'}), 400
+    cidr, gw = r.cidr, r.gateway
+    db.session.delete(r)
+    db.session.commit()
+    log_action('vps_route_delete', 'settings', target=cidr, detail=f'via {gw}')
+    return jsonify({'success': True})
+
+
+@bp.route('/api/vps-routes/<int:rid>/apply', methods=['POST'])
+@super_admin_required
+def vps_routes_apply(rid):
+    import vps_routes as vr
+    from models import VpsRoute
+    r = db.session.get(VpsRoute, rid)
+    if not r:
+        return jsonify({'success': False, 'message': 'Rute tidak ditemukan'}), 404
+    ok, out = vr.apply(r)
+    db.session.commit()
+    return jsonify({'success': ok, 'message': out, 'route': vr.route_dict(r)})
+
+
+@bp.route('/api/vps-routes/test', methods=['POST'])
+@super_admin_required
+def vps_routes_test():
+    """Ping dari server NMS ke satu IP (mis. IP PPPoE pelanggan) untuk menguji rute."""
+    import ipaddress
+    from link_state_poller import ping_from_vps
+    ip = str((request.get_json(silent=True) or {}).get('ip') or '').strip()
+    try:
+        if ipaddress.ip_address(ip).version != 4:
+            raise ValueError
+    except ValueError:
+        return jsonify({'success': False, 'message': 'IP tidak valid'}), 400
+    res = ping_from_vps(ip, count=3, timeout_s=1)
+    if res is None:
+        return jsonify({'success': False, 'message': 'Ping tidak bisa dijalankan di server'}), 500
+    return jsonify({'success': True, 'ip': ip, 'ping': res, 'reachable': res.get('received', 0) > 0})

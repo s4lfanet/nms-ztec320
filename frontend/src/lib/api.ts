@@ -133,6 +133,11 @@ export const api = {
   acsBulkJobs: () => request<{ success: boolean; jobs: AcsBulkJob[] }>('/api/genieacs/bulk/jobs'),
   acsBulkJob: (id: number) => request<{ success: boolean; job: AcsBulkJob }>(`/api/genieacs/bulk/jobs/${id}`),
   acsBulkCancel: (id: number) => request<{ success: boolean }>(`/api/genieacs/bulk/jobs/${id}/cancel`, { method: 'POST' }),
+  vpsRoutes: () => request<{ success: boolean; helper: 'ok' | 'missing' | 'no_sudo'; setup_cmd: string; routes: VpsRoute[]; suggestions: { cidr: string; gateway: string; mikrotik_id: number | null; router: string | null; clients: number; covered: boolean }[] }>('/api/vps-routes'),
+  vpsRouteAdd: (data: { cidr: string; gateway: string; note?: string; mikrotik_id?: number | null }) => request<{ success: boolean; message?: string; route: VpsRoute }>('/api/vps-routes', { method: 'POST', body: JSON.stringify(data) }),
+  vpsRouteDelete: (id: number) => request<{ success: boolean; message?: string }>(`/api/vps-routes/${id}`, { method: 'DELETE' }),
+  vpsRouteApply: (id: number) => request<{ success: boolean; message: string }>(`/api/vps-routes/${id}/apply`, { method: 'POST' }),
+  vpsRouteTest: (ip: string) => request<{ success: boolean; message?: string; reachable: boolean; ping: { sent: number; received: number; loss_pct: number; avg_rtt_ms: number | null } }>('/api/vps-routes/test', { method: 'POST', body: JSON.stringify({ ip }) }),
   genieacsSync: () => request<{ success: boolean; matched: number; total: number; errors: string[] }>('/api/genieacs/sync', { method: 'POST' }),
   onuTr069: (id: number) => request<{ success: boolean; connected: boolean; match_method?: string; pinned?: boolean; last_synced?: string; params: Tr069Params | null; faults?: AcsFault[] }>(`/api/onu/${id}/tr069`),
   aiSettings: () => request<{ success: boolean; config: Record<string, unknown> }>('/api/ai/settings'),
@@ -364,6 +369,11 @@ export interface RxHistoryPoint {
   tx_avg?: number | null;
   onu_rx_avg?: number | null;
   samples?: number;
+}
+
+export interface VpsRoute {
+  id: number; cidr: string; gateway: string; mikrotik_id: number | null; note: string; enabled: boolean;
+  status: 'pending' | 'ok' | 'error'; last_error: string; applied_at: string | null; active?: boolean | null;
 }
 
 export interface AcsBulkFilters { olt_id?: number; model?: string; node_type?: string; node_id?: number; status?: string }
