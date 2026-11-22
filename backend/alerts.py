@@ -594,6 +594,7 @@ def _check_onus_for_tenant(force_send=False):
     # Collect events grouped by (olt_id, slot, port)
     pon_groups = {}
     recovery_groups = {}
+    maint_onus, _maint_nodes = _node_maintenance_scope(now)
 
     for olt in olts:
         # ─── Maintenance Window Check ───
@@ -601,6 +602,8 @@ def _check_onus_for_tenant(force_send=False):
         in_maintenance = MaintenanceWindow.query.filter(
             MaintenanceWindow.start_time <= now,
             MaintenanceWindow.end_time >= now,
+        ).filter(
+            (MaintenanceWindow.node_type.is_(None)) | (MaintenanceWindow.node_type == '')
         ).filter(
             (MaintenanceWindow.olt_id == olt.id) | (MaintenanceWindow.olt_id.is_(None))
         ).first()
@@ -621,6 +624,8 @@ def _check_onus_for_tenant(force_send=False):
         onus = ONU.query.filter_by(olt_id=olt.id).all()
 
         for onu in onus:
+            if onu.id in maint_onus:
+                continue  # Fase 4: ONU di bawah ODP/ODC/JC/OTB yang sedang maintenance
             pon_key = (olt.id, onu.frame, onu.slot, onu.port)
 
             if pon_key not in pon_groups:
@@ -878,6 +883,13 @@ def _check_onus_for_tenant(force_send=False):
 
     if recovery_to_send:
         _send_external_alerts(recovery_to_send, rule)
+
+    # ─── Fase 4: eskalasi insiden yang belum diterima + pengingat TTR ───
+    try:
+        from escalation import check_escalations
+        check_escalations({o.id for o in olts}, now)
+    except Exception as e:
+        logger.warning(f"[ALERT] escalation check failed: {e}")
 
 
 # ─── Batch builders ───
@@ -1377,6 +1389,30 @@ def _maps_link(node):
     return f"https://maps.google.com/?q={lat},{lng}"
 
 
+def _node_maintenance_scope(now=None):
+    """(onu_ids, nodes) under an active node-level maintenance window
+    (OTB/JC/ODC/ODP). OLT-wide windows are handled in the main loop."""
+    from models import MaintenanceWindow
+    from ftth_topology import collect_downstream_onus, NODE_MODELS
+    if now is None:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+    onu_ids, nodes = set(), set()
+    try:
+        rows = MaintenanceWindow.query.filter(
+            MaintenanceWindow.start_time <= now, MaintenanceWindow.end_time >= now,
+            MaintenanceWindow.node_type.in_(list(NODE_MODELS.keys())),
+        ).all()
+    except Exception as e:
+        logger.debug(f"[ALERT] node maintenance lookup failed: {e}")
+        return onu_ids, nodes
+    for w in rows:
+        if not w.node_id:
+            continue
+        nodes.add((w.node_type, w.node_id))
+        onu_ids |= {u.id for u in collect_downstream_onus(w.node_type, w.node_id)}
+    return onu_ids, nodes
+
+
 def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force_send=False):
     """Root-cause correlation for mass outages.
 
@@ -1400,6 +1436,9 @@ def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force
         ONU.olt_id.in_(list(olt_by_id.keys())),
         ONU.status.in_(_DOWN_STATUSES)
     ).all()
+    maint_onus, maint_nodes = _node_maintenance_scope(now if now.tzinfo is None else now.replace(tzinfo=None))
+    if maint_onus:
+        down_onus = [o for o in down_onus if o.id not in maint_onus]
 
     anc_cache = {}
     direct_odp = {}   # odp_id -> [onu]  (ONUs on the ODP's own ports)
@@ -1563,6 +1602,8 @@ def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force
         key = (n.target_type or '', n.target_id)
         if key in root_set:
             continue
+        if maint_nodes and (key in maint_nodes or ancestors(key[0], key[1], anc_cache) & maint_nodes):
+            continue  # under maintenance: keep as is, no "pulih" message
         n.resolved = True
         n.resolved_at = now
         still_down = len(covered.get(key, {})) or (len(direct_odp.get(key[1], [])) if key[0] == 'odp' else 0)
@@ -1601,7 +1642,10 @@ def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force
 
     try:
         from incidents import close_stale_incidents
-        close_stale_incidents(set(olt_by_id), root_set, _still_down, threshold, _parent_root, now)
+        def _maintained(key):
+            return bool(maint_nodes) and (key in maint_nodes or bool(ancestors(key[0], key[1], anc_cache) & maint_nodes))
+        close_stale_incidents(set(olt_by_id), root_set, _still_down, threshold, _parent_root, now,
+                              skip=_maintained)
     except Exception as e:
         logger.warning(f"[ALERT] incident update failed: {e}")
 
@@ -1811,6 +1855,39 @@ def _record_incident_assignees(alerts):
         logger.warning(f"[ALERT] incident assignee update failed: {e}")
 
 
+def _wa_send(phone, text, label='', wa_gw=None, gateway_url=None):
+    """Kirim satu pesan WA ke satu nomor: WA Gateway (pihak ketiga) dulu,
+    lalu WA Native. Return True bila terkirim."""
+    from models import BotConfig
+    from services_wa import send_whatsapp_gateway
+    if wa_gw is None:
+        wa_gw = BotConfig.query.filter_by(bot_type='whatsapp', enabled=True).first()
+    if gateway_url is None:
+        wa_native = BotConfig.query.filter_by(bot_type='whatsapp_native', enabled=True).first()
+        gateway_url = (wa_native.api_url if wa_native and wa_native.api_url else 'http://localhost:3000').rstrip('/')
+    phone = (phone or '').strip()
+    if not phone:
+        return False
+    try:
+        if wa_gw and wa_gw.api_url:
+            ok, detail = send_whatsapp_gateway(wa_gw, text, phone_override=phone)
+            if ok:
+                logger.info(f"[ALERT] Technician WA (gateway) sent: {label} -> {phone} ({detail})")
+                return True
+            logger.warning(f"[ALERT] Technician WA (gateway) failed: {label} -> {phone}: {detail}")
+        payload = json.dumps({'phone': phone, 'message': text}).encode('utf-8')
+        req = urllib.request.Request(f'{gateway_url}/send', data=payload,
+                                     headers={'Content-Type': 'application/json'})
+        resp = urllib.request.urlopen(req, timeout=15)
+        if resp.status in (200, 201):
+            logger.info(f"[ALERT] Technician WA sent: {label} -> {phone}, status={resp.status}")
+            return True
+        logger.error(f"[ALERT] Technician WA error: {label} -> {phone}, status={resp.status}")
+    except Exception as e:
+        logger.error(f"[ALERT] Technician WA failed: {label} -> {phone}, error={e}")
+    return False
+
+
 def _send_technician_alerts(alerts):
     """Send alert notifications to technician users (role has 'receive_alerts' perm) with phone numbers."""
     try:
@@ -1822,7 +1899,6 @@ def _send_technician_alerts(alerts):
         logger.info(f"[ALERT] Sending to {len(by_user)} technician(s)")
 
         from models import BotConfig, User
-        from services_wa import send_whatsapp_gateway
         wa_gw = BotConfig.query.filter_by(bot_type='whatsapp', enabled=True).first()
         wa_native = BotConfig.query.filter_by(bot_type='whatsapp_native', enabled=True).first()
         gateway_url = (wa_native.api_url if wa_native and wa_native.api_url else 'http://localhost:3000').rstrip('/')
@@ -1848,27 +1924,7 @@ def _send_technician_alerts(alerts):
             if not phone:
                 continue
             text = "\n\n━━━━━━━━━━━\n\n".join(a['message'] + _assignee_line(a) for a in tech_alerts)
-            try:
-                if wa_gw and wa_gw.api_url:
-                    ok, detail = send_whatsapp_gateway(wa_gw, text, phone_override=phone)
-                    if ok:
-                        logger.info(f"[ALERT] Technician WA (gateway) sent: {tech.username} -> {phone} ({detail})")
-                        continue
-                    logger.warning(f"[ALERT] Technician WA (gateway) failed: {tech.username} -> {phone}: {detail}")
-                payload = json.dumps({'phone': phone, 'message': text}).encode('utf-8')
-                headers = {'Content-Type': 'application/json'}
-                req = urllib.request.Request(
-                    f'{gateway_url}/send',
-                    data=payload,
-                    headers=headers,
-                )
-                resp = urllib.request.urlopen(req, timeout=15)
-                if resp.status in (200, 201):
-                    logger.info(f"[ALERT] Technician WA sent: {tech.username} -> {phone}, status={resp.status}")
-                else:
-                    logger.error(f"[ALERT] Technician WA error: {tech.username} -> {phone}, status={resp.status}")
-            except Exception as e:
-                logger.error(f"[ALERT] Technician WA failed: {tech.username} -> {phone}, error={e}")
+            _wa_send(phone, text, label=tech.username, wa_gw=wa_gw, gateway_url=gateway_url)
     except Exception as e:
         logger.error(f"[ALERT] _send_technician_alerts failed: {e}")
 

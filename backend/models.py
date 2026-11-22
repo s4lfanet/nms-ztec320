@@ -690,6 +690,8 @@ class MaintenanceWindow(db.Model):
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime, nullable=False)
     reason = db.Column(db.Text, default='')
+    node_type = db.Column(db.String(10), default='')  # '' = OLT/semua; otb/jc/odc/odp = node FTTH
+    node_id = db.Column(db.Integer, nullable=True)
     created_by = db.Column(db.String(100), default='')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     olt = db.relationship('OLT', backref=db.backref('maintenance_windows', lazy=True))

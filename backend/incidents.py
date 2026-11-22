@@ -40,7 +40,7 @@ def upsert_incident(node_type, node_id, node_name, category, cause, title, olt_i
     return inc, True
 
 
-def close_stale_incidents(olt_ids, root_set, still_down, threshold, parent_root, now):
+def close_stale_incidents(olt_ids, root_set, still_down, threshold, parent_root, now, skip=None):
     """Active incidents whose node is no longer a root: merged (a node above
     took over) or recovered (ONUs back online)."""
     if not olt_ids:
@@ -49,7 +49,7 @@ def close_stale_incidents(olt_ids, root_set, still_down, threshold, parent_root,
                                  Incident.olt_id.in_(list(olt_ids))).all()
     for inc in rows:
         key = (inc.node_type, inc.node_id)
-        if key in root_set:
+        if key in root_set or (skip and skip(key)):
             continue
         if still_down(key) >= threshold:
             parent = parent_root(key)

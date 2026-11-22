@@ -459,6 +459,9 @@ def migrate_schema():
 
     # AlertHistory table - add first_seen_at for debounce
     add_col('alert_history', 'first_seen_at', 'DATETIME', None)
+    # Fase 4: maintenance per node FTTH (otb/jc/odc/odp)
+    add_col('maintenance_windows', 'node_type', 'VARCHAR(10)', "''")
+    add_col('maintenance_windows', 'node_id', 'INTEGER', None)
 
     # AlertRule table - add notify_whatsapp_native + OLT health fields
     add_col('alert_rules', 'notify_whatsapp_native', 'BOOLEAN', '0')

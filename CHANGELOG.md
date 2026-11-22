@@ -4,6 +4,17 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Notifikasi gangguan Fase 4: eskalasi & maintenance
+
+#### Ditambahkan
+- **Eskalasi insiden**: insiden yang belum diterima dalam 15 menit (bisa diubah) dikirim ke teknisi **cadangan** wilayahnya; bila 15 menit lagi masih belum, ke **admin** (super admin / izin kelola user yang punya nomor WA). Tanpa cadangan langsung ke admin. Setiap eskalasi tercatat di riwayat insiden.
+- **Pengingat target TTR**: insiden yang belum selesai setelah 3 jam (bisa diubah) mendapat satu pengingat ke penanggung jawab + admin.
+- **Mode maintenance per titik**: jadwal maintenance kini bisa untuk satu OTB/JC/ODC/ODP (selain semua OLT / satu OLT). Pelanggan di bawahnya tidak memicu alert/insiden, dan insiden yang sedang berjalan tidak dianggap "pulih". Kelola di Pengaturan Alert → Aturan → "Mode maintenance".
+- Kartu pengaturan "Eskalasi insiden" (sakelar, batas menit, target TTR).
+
+#### Diubah
+- Jadwal maintenance tanpa OLT kini hanya berarti "semua OLT" bila tidak menunjuk node FTTH.
+
 ### 2026-11-22 — Notifikasi gangguan Fase 3: insiden
 
 #### Ditambahkan

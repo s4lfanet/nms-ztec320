@@ -425,7 +425,8 @@ def update_system_config():
     outage-correlation keys."""
     data = request.get_json() or {}
     allowed_keys = {'alert_check_interval', 'timezone',
-                    'odp_outage_threshold', 'outage_correlation_enabled', 'outage_ratio_threshold'}
+                    'odp_outage_threshold', 'outage_correlation_enabled', 'outage_ratio_threshold',
+                    'escalation_enabled', 'escalation_ack_minutes', 'escalation_ttr_hours'}
     if not current_user.is_super_admin:
         for key in data:
             if key not in allowed_keys:
