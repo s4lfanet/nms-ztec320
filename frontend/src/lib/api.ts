@@ -228,6 +228,7 @@ export const api = {
   mikrotikPollNow: () => request<{ success: boolean; devices: { name: string; ok: boolean; sessions?: number; error?: string }[]; states: Record<string, number>; reconciled: number; message?: string }>('/api/mikrotik/poll-now', { method: 'POST' }),
   mikrotikMacMatch: (strip = 0, offset = 0) => request<{ success: boolean; matches: MacMatchResult[]; collisions: number; sessions: number; onus_scanned: number; device_errors: string[] }>(`/api/mikrotik/mac-match?strip=${strip}&offset=${offset}`),
   mikrotikMacMatchApply: (pairs: { onu_id: number; name: string }[]) => request<{ success: boolean; updated: number; errors: string[] }>('/api/mikrotik/mac-match', { method: 'POST', body: JSON.stringify({ pairs }) }),
+  onuDiagnosis: (onuId: number) => request<{ success: boolean; diagnosis: OnuDiagnosis }>(`/api/onu/${onuId}/diagnosis`),
   onuLinkState: (onuId: number) => request<{ success: boolean; state: OnuLinkState | null }>(`/api/onu/${onuId}/link-state`),
   onuPingClient: (onuId: number) => request<{ success: boolean; source: string; ip: string; ping: { sent: number; received: number; loss_pct: number; avg_rtt_ms: number | null }; state: OnuLinkState; message?: string }>(`/api/onu/${onuId}/ping`, { method: 'POST' }),
   ftthImpact: (nodeType: 'otb' | 'jc' | 'odc' | 'odp', nodeId: number) => request<{ success: boolean; name?: string; total: number; online: number; offline: number; customers: Array<{ id: number; name: string; serial: string; status: string }>; truncated: boolean }>(`/api/ftth/impact/${nodeType}/${nodeId}`),
@@ -1017,6 +1018,7 @@ export interface MikrotikDevice {
   enabled: boolean;
   ping_enabled: boolean;
   ping_batch: number;
+  ping_source?: 'mikrotik' | 'vps';
   last_ok: boolean;
   last_error: string;
   last_polled_at: string | null;
@@ -1036,6 +1038,19 @@ export interface MacMatchResult {
   match: string;
   delta?: number;
   collision: boolean;
+}
+
+export type DiagLevel = 'ok' | 'info' | 'warning' | 'critical';
+export interface OnuDiagnosis {
+  level: DiagLevel;
+  code: string;
+  title: string;
+  action: string | null;
+  findings: { code: string; level: DiagLevel; text: string }[];
+  pppoe: { user: string | null; ip: string | null; session_up: boolean; uptime: string | null; link_state: string;
+           rtt_ms: number | null; loss_pct: number | null; router: string | null; checked_at: string | null } | null;
+  events_24h: { pppoe_drops: number; onu_drops: number };
+  recent_events: { event: 'up' | 'down' | 'reconnect'; at: string; ip: string | null; prev_uptime: string | null }[];
 }
 
 export interface OnuLinkState {

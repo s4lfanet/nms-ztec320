@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { cn } from '../lib/utils';
+import { cn, formatDate } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
@@ -9,6 +9,7 @@ import {
   FileText, Radio, Globe, Shield, Key, Plug, Database, Layers,
   Edit3, ArrowDown, ArrowUp, Activity, Plus, Save, Power, WifiOff, ChevronDown, Replace,
   Cable, Cpu, Server, GitMerge, Box, Split, Home, AlertTriangle, ChevronRight, MapPin, Lock, Unlock,
+  Stethoscope,
 } from 'lucide-react';
 import { LocationPicker } from '../components/LocationPicker';
 import { useState, useEffect, useRef } from 'react';
@@ -587,6 +588,9 @@ export function ViewOnu() {
             ) : (<div className="flex items-center gap-2 p-3 rounded-lg bg-glass text-xs text-tx3"><Clock size={14} /> {t('viewOnu.noEvents')} <strong>{t('viewOnu.getStatus')}</strong> {t('viewOnu.noEventsSuffix')}</div>)}
           </div>
       </Card>
+
+      {/* Diagnosis otomatis: optik + PPPoE + riwayat putus + insiden */}
+      <DiagnosisCard onuId={onuId} />
 
       {/* FTTH cable path — trace this customer back to the OLT */}
       <FtthPathCard onuId={onuId} />
@@ -1694,6 +1698,93 @@ const FTTH_HOP_COLOR: Record<string, string> = {
   olt: 'text-tx1 bg-glass', otb: 'text-accent bg-accent/10', jc: 'text-purple-400 bg-purple-500/10',
   odc: 'text-warning bg-warning/10', odp: 'text-success bg-success/10', onu: 'text-accent bg-accent/10',
 };
+
+const DIAG_STYLE: Record<string, string> = {
+  critical: 'bg-danger/10 border-danger/30 text-danger',
+  warning: 'bg-warning/10 border-warning/30 text-warning',
+  info: 'bg-accent/10 border-accent/30 text-accent',
+  ok: 'bg-success/10 border-success/30 text-success',
+};
+
+function DiagnosisCard({ onuId }: { onuId: number }) {
+  const { t } = useTranslation();
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['onu-diagnosis', onuId], queryFn: () => api.onuDiagnosis(onuId), enabled: !!onuId,
+    refetchInterval: 60_000,
+  });
+  const [pinging, setPinging] = useState(false);
+  const d = data?.diagnosis;
+  if (isLoading || !d) return null;
+  const [top, ...rest] = d.findings;
+  const p = d.pppoe;
+  const ping = () => {
+    setPinging(true);
+    api.onuPingClient(onuId)
+      .then(r => {
+        if (!r.success) { toast.error((r as { message?: string }).message || t('vo.diagPingFail')); return; }
+        toast.success(t('vo.diagPingResult', { loss: r.ping.loss_pct, rtt: r.ping.avg_rtt_ms ?? '-', src: r.source }));
+        refetch();
+      })
+      .catch(e => toast.error((e as Error).message))
+      .finally(() => setPinging(false));
+  };
+  return (
+    <Card title={t('vo.diagTitle')} icon={<Stethoscope size={16} />}>
+      <div className={cn('p-3 rounded-lg border text-sm', DIAG_STYLE[top.level])}>
+        <div className="font-medium text-tx1">{top.text}</div>
+        {d.action && <div className="text-xs text-tx2 mt-1">{t('vo.diagAction')}: {d.action}</div>}
+      </div>
+      {rest.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {rest.map(f => (
+            <li key={f.code} className="flex items-start gap-2 text-xs text-tx2">
+              <span className={cn('mt-1 w-2 h-2 rounded-full shrink-0', f.level === 'critical' ? 'bg-danger' : f.level === 'warning' ? 'bg-warning' : 'bg-accent')} />
+              {f.text}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
+        <div className="p-2 rounded-lg bg-glass">
+          <div className="text-tx3">PPPoE</div>
+          <div className="font-medium text-tx1">{!p ? '-' : p.session_up ? t('vo.diagConnected') : t('vo.diagNotLoggedIn')}</div>
+        </div>
+        <div className="p-2 rounded-lg bg-glass">
+          <div className="text-tx3">IP / uptime</div>
+          <div className="font-mono text-tx1 truncate">{p?.ip || '-'}{p?.uptime ? ` · ${p.uptime}` : ''}</div>
+        </div>
+        <div className="p-2 rounded-lg bg-glass">
+          <div className="text-tx3">Ping</div>
+          <div className="font-medium text-tx1">{p?.rtt_ms != null ? `${p.rtt_ms} ms` : '-'}{p?.loss_pct ? ` · loss ${p.loss_pct}%` : ''}</div>
+        </div>
+        <div className="p-2 rounded-lg bg-glass">
+          <div className="text-tx3">{t('vo.diag24h')}</div>
+          <div className="font-medium text-tx1">{t('vo.diagDrops', { p: d.events_24h.pppoe_drops, o: d.events_24h.onu_drops })}</div>
+        </div>
+      </div>
+      {d.recent_events.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs text-tx3 mb-1">{t('vo.diagHistory')}</div>
+          <div className="space-y-0.5">
+            {d.recent_events.map((e, i) => (
+              <div key={i} className="flex justify-between gap-2 text-xs">
+                <span className={e.event === 'up' ? 'text-success' : 'text-warning'}>{t(`vo.diagEv_${e.event}`)}{e.prev_uptime ? ` (${t('vo.diagAfter', { u: e.prev_uptime })})` : ''}</span>
+                <span className="text-tx3">{formatDate(e.at)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {p?.ip && (
+        <div className="mt-3">
+          <Button variant="ghost" onClick={ping} disabled={pinging}>
+            <Activity size={14} /> {pinging ? t('vo.diagPinging') : t('vo.diagPingNow')}
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function FtthPathCard({ onuId }: { onuId: number }) {
   const { t } = useTranslation();

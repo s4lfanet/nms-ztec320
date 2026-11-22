@@ -240,7 +240,7 @@ def delete_onu_dependents(onu_ids):
     history/link-state/RX-sample/genieacs-map rows are removed. Caller commits.
     """
     from models import (OnuLinkState, OnuStatusHistory, FTTHODPPort,
-                        GenieacsDeviceMap, OnuRxSample, OnuRxHourly)
+                        GenieacsDeviceMap, OnuRxSample, OnuRxHourly, PppoeSessionEvent)
     ids = list(onu_ids)
     if not ids:
         return
@@ -251,6 +251,7 @@ def delete_onu_dependents(onu_ids):
     OnuRxSample.query.filter(OnuRxSample.onu_id.in_(ids)).delete(synchronize_session=False)
     OnuRxHourly.query.filter(OnuRxHourly.onu_id.in_(ids)).delete(synchronize_session=False)
     GenieacsDeviceMap.query.filter(GenieacsDeviceMap.onu_id.in_(ids)).delete(synchronize_session=False)
+    PppoeSessionEvent.query.filter(PppoeSessionEvent.onu_id.in_(ids)).delete(synchronize_session=False)
 
 
 def delete_onu_row(onu):

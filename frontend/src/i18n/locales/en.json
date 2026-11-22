@@ -1008,7 +1008,22 @@
     "act_factory_msg": "ONU \"{{name}}\" will be reset to factory settings.",
     "act_delete_title": "Delete ONU?",
     "act_delete_msg": "ONU \"{{name}}\" will be deleted from the OLT and NMS. This cannot be undone.",
-    "acsQueued": "Command queued: the modem has not responded yet; it runs on the modem's next GenieACS inform."
+    "acsQueued": "Command queued: the modem has not responded yet; it runs on the modem's next GenieACS inform.",
+    "diagTitle": "Customer diagnosis",
+    "diagAction": "Suggested action",
+    "diagConnected": "Connected",
+    "diagNotLoggedIn": "Not logged in",
+    "diag24h": "Last 24 hours",
+    "diagDrops": "PPPoE drops {{p}}x · ONU drops {{o}}x",
+    "diagHistory": "PPPoE session history",
+    "diagEv_up": "PPPoE connected",
+    "diagEv_down": "PPPoE dropped",
+    "diagEv_reconnect": "Quick reconnect",
+    "diagAfter": "after {{u}}",
+    "diagPingNow": "Ping now",
+    "diagPinging": "Pinging…",
+    "diagPingFail": "Ping failed",
+    "diagPingResult": "Ping: loss {{loss}}%, {{rtt}} ms (from {{src}})"
   },
   "oc": {
     "notFound": "OLT not found",
@@ -1156,7 +1171,12 @@
     "testOk": "{{name}}: connected — \"{{identity}}\", {{n}} active PPPoE sessions",
     "failedWord": "failed",
     "syncDone": "Link sync done — {{ok}} ok, {{slow}} slow, {{down}} down, {{none}} without session",
-    "deleteMsg": "Delete \"{{name}}\"? Link-state monitoring for this PPPoE server will stop."
+    "deleteMsg": "Delete \"{{name}}\"? Link-state monitoring for this PPPoE server will stop.",
+    "pingSource": "Ping source",
+    "pingFromRouter": "From MikroTik (rotating per cycle)",
+    "pingFromVps": "From NMS server (parallel, all clients)",
+    "pingVpsHint": "Every client is pinged each cycle without loading the router. The NMS server needs a route to the PPPoE client IPs.",
+    "pingVpsShort": "all (VPS)"
   },
   "pg_users": {
     "userCreated": "User created",

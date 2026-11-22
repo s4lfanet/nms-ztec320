@@ -1162,6 +1162,9 @@ class MikrotikDevice(db.Model):
     enabled = db.Column(db.Boolean, default=True)
     ping_enabled = db.Column(db.Boolean, default=True)
     ping_batch = db.Column(db.Integer, default=25)  # max clients pinged per cycle
+    # 'mikrotik' = ping dari router (bergiliran ping_batch/siklus, perilaku lama)
+    # 'vps' = ping paralel dari server NMS, semua klien tiap siklus
+    ping_source = db.Column(db.String(10), default='mikrotik')
     last_ok = db.Column(db.Boolean, default=False)
     last_error = db.Column(db.String(300), default='')
     last_polled_at = db.Column(db.DateTime)
@@ -1208,6 +1211,21 @@ class OnuLinkState(db.Model):
         db.Index('ix_onu_link_states_onu_id', 'onu_id'),
         db.Index('ix_onu_link_states_link_state', 'link_state'),
     )
+
+
+class PppoeSessionEvent(db.Model):
+    """Riwayat sesi PPPoE per ONU dari poller MikroTik: up / down / reconnect
+    (reconnect = uptime sesi turun di antara dua siklus → putus-nyambung cepat)."""
+    __tablename__ = 'pppoe_session_events'
+    id = db.Column(db.Integer, primary_key=True)
+    onu_id = db.Column(db.Integer, db.ForeignKey('onus.id'), nullable=False, index=True)
+    mikrotik_id = db.Column(db.Integer, db.ForeignKey('mikrotik_devices.id'), nullable=True)
+    pppoe_user = db.Column(db.String(128), default='')
+    event = db.Column(db.String(12), nullable=False)  # up | down | reconnect
+    ip = db.Column(db.String(45), default='')
+    caller_id = db.Column(db.String(64), default='')
+    prev_uptime = db.Column(db.String(40), default='')  # uptime sesi sebelum putus
+    at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
 
 
 class OnuStatusHistory(db.Model):

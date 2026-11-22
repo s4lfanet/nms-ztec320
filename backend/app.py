@@ -462,6 +462,7 @@ def migrate_schema():
     # Fase 4: maintenance per node FTTH (otb/jc/odc/odp)
     add_col('maintenance_windows', 'node_type', 'VARCHAR(10)', "''")
     add_col('maintenance_windows', 'node_id', 'INTEGER', None)
+    add_col('mikrotik_devices', 'ping_source', 'VARCHAR(10)', "'mikrotik'")
 
     # AlertRule table - add notify_whatsapp_native + OLT health fields
     add_col('alert_rules', 'notify_whatsapp_native', 'BOOLEAN', '0')

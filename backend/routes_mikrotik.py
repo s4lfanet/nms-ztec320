@@ -11,7 +11,7 @@ Credentials are stored server-side only — the api_password is NEVER returned
 to the frontend (masked as '' / kept when left blank on update).
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
@@ -37,6 +37,7 @@ def _dev_to_dict(d):
         'enabled': bool(d.enabled),
         'ping_enabled': bool(d.ping_enabled),
         'ping_batch': d.ping_batch,
+        'ping_source': d.ping_source or 'mikrotik',
         'last_ok': bool(d.last_ok),
         'last_error': d.last_error or '',
         'last_polled_at': d.last_polled_at.isoformat() + 'Z' if d.last_polled_at else None,
@@ -68,6 +69,7 @@ def create_device():
         enabled=bool(data.get('enabled', True)),
         ping_enabled=bool(data.get('ping_enabled', True)),
         ping_batch=max(1, int(data.get('ping_batch') or 25)),
+        ping_source='vps' if data.get('ping_source') == 'vps' else 'mikrotik',
     )
     db.session.add(d)
     db.session.commit()
@@ -95,6 +97,8 @@ def update_device(dev_id):
             setattr(d, f, bool(data[f]))
     if 'ping_batch' in data:
         d.ping_batch = max(1, int(data['ping_batch'] or d.ping_batch))
+    if 'ping_source' in data:
+        d.ping_source = 'vps' if data['ping_source'] == 'vps' else 'mikrotik'
     # blank password = keep existing; explicit non-empty = replace
     if data.get('api_password'):
         d.api_password = data['api_password']
@@ -110,6 +114,8 @@ def delete_device(dev_id):
     if not d:
         return jsonify({'success': False, 'message': 'Device tidak ditemukan'}), 404
     OnuLinkState.query.filter_by(mikrotik_id=dev_id).update({'mikrotik_id': None})
+    from models import PppoeSessionEvent
+    PppoeSessionEvent.query.filter_by(mikrotik_id=dev_id).update({'mikrotik_id': None})
     db.session.delete(d)
     db.session.commit()
     log_action('mikrotik_delete', 'settings', target=d.name)
@@ -301,6 +307,31 @@ def link_states():
 def onu_link_state(onu_id):
     s = OnuLinkState.query.filter_by(onu_id=onu_id).first()
     return jsonify({'success': True, 'state': _state_to_dict(s) if s else None})
+
+
+@bp.route('/api/onu/<int:onu_id>/diagnosis', methods=['GET'])
+@login_required
+def onu_diagnosis(onu_id):
+    """Diagnosis otomatis pelanggan dari data tersimpan (OLT + PPPoE + insiden)."""
+    from models import ONU
+    from diagnosis import diagnose_onu
+    onu = db.session.get(ONU, onu_id)
+    if not onu:
+        return jsonify({'success': False, 'message': 'ONU tidak ditemukan'}), 404
+    return jsonify({'success': True, 'diagnosis': diagnose_onu(onu)})
+
+
+@bp.route('/api/onu/<int:onu_id>/pppoe-events', methods=['GET'])
+@login_required
+def onu_pppoe_events(onu_id):
+    from models import PppoeSessionEvent
+    days = min(30, max(1, request.args.get('days', 7, type=int)))
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    rows = (PppoeSessionEvent.query.filter(PppoeSessionEvent.onu_id == onu_id, PppoeSessionEvent.at >= since)
+            .order_by(PppoeSessionEvent.at.desc()).limit(100).all())
+    return jsonify({'success': True, 'events': [
+        {'event': e.event, 'at': e.at.isoformat() + 'Z', 'ip': e.ip, 'prev_uptime': e.prev_uptime,
+         'pppoe_user': e.pppoe_user} for e in rows]})
 
 
 @bp.route('/api/onu/<int:onu_id>/ping', methods=['POST'])

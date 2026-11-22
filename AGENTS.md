@@ -253,6 +253,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 34. **GenieACS (`genieacs_client.py`)** — `fetch_devices()` wajib pakai `projection` + paging (`_PAGE`); jangan ambil dokumen penuh semua modem. Data model per device (`data_model()`, cache `_DM_CACHE`): `tr098` = `InternetGatewayDevice.*`, `tr181` = `Device.*` — fungsi tulis harus memilih path sesuai model; yang belum didukung TR-181 mengembalikan `TR181_UNSUPPORTED`. Semua task lewat `_post_task()`: HTTP 202 = antre → pesan `QUEUED_MSG`, route mengirim `queued: true` (UI: toast info, bukan sukses). `_param()` hanya untuk leaf (`_value`); untuk objek (mis. Hosts.Host) pakai `_node()`.
 
+35. **Riwayat PPPoE & diagnosis (`link_state_poller.py`, `diagnosis.py`)** — poller mencatat `PppoeSessionEvent` (`up` hanya bila baris state sudah ada dan sebelumnya tidak login — jadi deploy pertama tidak membanjiri event; `down` saat sesi hilang; `reconnect` bila `uptime_seconds()` sesi turun). Prune per jam (`pppoe_event_days`, default 30). Tabel ini ONU-keyed → ikut dihapus di `helpers.delete_onu_dependents`. `MikrotikDevice.ping_source`: `mikrotik` (default, round-robin `ping_batch`) | `vps` (ThreadPoolExecutor `VPS_PING_WORKERS`, semua klien). `diagnose_onu()` hanya membaca DB (tanpa Telnet/API router) — dipakai `/api/onu/<id>/diagnosis`, AI tool `diagnose`, dan `/diagnosa`.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

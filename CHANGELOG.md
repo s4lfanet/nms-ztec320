@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-23 — Integrasi MikroTik & GenieACS: tahap 2 (ping paralel, riwayat PPPoE, diagnosis)
+
+#### Ditambahkan
+- **Sumber ping per MikroTik**: "Dari MikroTik" (bergiliran per siklus, perilaku lama) atau **"Dari server NMS"** — semua klien di-ping paralel tiap siklus tanpa membebani router (server NMS perlu rute ke IP klien).
+- **Riwayat sesi PPPoE** per pelanggan: tersambung, putus (dengan uptime sebelum putus), dan **putus-nyambung cepat** (terdeteksi dari uptime sesi yang turun di antara dua siklus). Disimpan 30 hari (`pppoe_event_days`).
+- **Diagnosis pelanggan otomatis** di Detail ONU: menggabungkan status optik, redaman, PPPoE & ping, jumlah putus 24 jam, dan gangguan massal di jalurnya, lalu memberi kesimpulan + saran tindakan (mis. "ONU menyala tetapi PPPoE tidak login → cek akun/isolir di billing"). Ada tombol **Ping sekarang**.
+- Perintah cepat WhatsApp/Telegram **/diagnosa <ID atau nama>** (tanpa AI, 0 token) dan tool AI `diagnose` yang dipakai pertama untuk keluhan pelanggan; tool `mikrotik` kini menyebut jumlah putus 24 jam.
+- Endpoint `GET /api/onu/<id>/diagnosis` dan `GET /api/onu/<id>/pppoe-events?days=N`.
+
 ### 2026-11-23 — Integrasi MikroTik & GenieACS: tahap 1 (keamanan & ketepatan data)
 
 #### Keamanan
