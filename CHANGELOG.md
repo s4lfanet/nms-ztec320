@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — AI Agent: jawaban rapi di WhatsApp & web
+
+#### Diperbaiki
+- Jawaban AI (terutama Gemini) yang memakai markdown — butir `*`, `**tebal**`, backtick, judul `#` — kini diubah ke format WhatsApp sebelum dikirim, sehingga tidak muncul simbol mentah atau satu baris tebal semua. Prompt sistem juga meminta format WhatsApp.
+
 ### 2026-11-22 — AI Agent: tes koneksi yang mendiagnosis
 
 #### Diperbaiki

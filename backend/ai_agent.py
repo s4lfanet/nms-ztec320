@@ -9,6 +9,7 @@ mengubah data). Pengirim WhatsApp/Telegram wajib terdaftar (whitelist atau
 nomor HP user aktif yang punya izin 'ai_agent').
 """
 import json
+import re
 import threading
 import time
 from collections import OrderedDict
@@ -290,9 +291,27 @@ def run_tool(name, args):
         return {'error': f'{type(e).__name__}: {str(e)[:200]}'}
 
 
+def wa_format(text):
+    """Ubah markdown umum (yang sering dipakai Gemini/GPT) ke format WhatsApp:
+    butir '* ' → '- ', **tebal** → *tebal*, judul '#' → *judul*, backtick dibuang.
+    Dipakai untuk jawaban WA/Telegram/web supaya tidak tampil simbol mentah."""
+    if not text:
+        return text
+    t = re.sub(r'```[a-zA-Z]*\n?', '', text)
+    t = t.replace('`', '')
+    t = re.sub(r'^(\s*)[*+•]\s+', r'\1- ', t, flags=re.M)
+    t = re.sub(r'^\s*#{1,6}\s*(.+?)\s*#*\s*$', r'*\1*', t, flags=re.M)
+    t = re.sub(r'\*\*(.+?)\*\*', r'*\1*', t)
+    t = re.sub(r'__(.+?)__', r'_\1_', t)
+    t = re.sub(r'\*{2,}', '*', t)
+    return t.strip()
+
+
 SYSTEM_PROMPT = (
     "Kamu asisten NOC untuk {nms}. Jawab dalam Bahasa Indonesia, singkat dan jelas "
     "(cocok dibaca di WhatsApp: tanpa tabel markdown, pakai daftar pendek bila perlu). "
+    "Format WhatsApp: tebal pakai *satu bintang*, butir daftar pakai '- ', tanpa backtick, "
+    "tanpa judul '#'. "
     "Selalu ambil data lewat tool sebelum menyebut angka atau status — jangan menebak. "
     "Kamu hanya bisa MEMBACA data NMS; jika diminta reboot/ubah konfigurasi, jelaskan "
     "bahwa itu harus dilakukan lewat aplikasi NMS. Redaman RX normal -8 s/d -27 dBm. "
@@ -720,7 +739,7 @@ def ask(conv_key, question):
     except Exception as e:
         logger.warning(f'[AI] {cfg["ai_provider"]} error: {e}')
         return f'Maaf, AI sedang tidak bisa dihubungi — {str(e)[:320]}'
-    answer = answer or '(tidak ada jawaban)'
+    answer = wa_format(answer) or '(tidak ada jawaban)'
     HISTORY.put(conv_key, messages + [{'role': 'assistant', 'content': answer}])
     return answer[:3500]
 
