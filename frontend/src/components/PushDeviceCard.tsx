@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bell, Send, Smartphone, CheckCircle2 } from 'lucide-react';
 import { toast } from './Toast';
 import { Button, Card } from './ui';
@@ -7,6 +8,7 @@ import { getPushState, enablePush, disablePush } from '../lib/push';
 
 /** Kartu aktif/nonaktif Web Push untuk perangkat ini (dipakai di Alert Settings & Profil). */
 export function PushDeviceCard() {
+  const { t } = useTranslation();
   const [state, setState] = useState<string>('unsubscribed');
   const [busy, setBusy] = useState(false);
 
@@ -18,12 +20,12 @@ export function PushDeviceCard() {
       if (state === 'subscribed') {
         await disablePush();
         setState('unsubscribed');
-        toast.success('Web Push dinonaktifkan di perangkat ini');
+        toast.success(t('cmp_push.webPushDisabledOn'));
       } else {
         const ok = await enablePush();
         setState(ok ? 'subscribed' : 'unsubscribed');
-        if (ok) toast.success('Web Push aktif — perangkat ini akan menerima alert');
-        else toast.error('Izin notifikasi ditolak browser');
+        if (ok) toast.success(t('cmp_push.webPushOnThis'));
+        else toast.error(t('cmp_push.notificationPermissionDeniedBy'));
       }
     } catch (e) {
       toast.error((e as Error).message || 'Gagal mengatur Web Push');
@@ -36,7 +38,7 @@ export function PushDeviceCard() {
     setBusy(true);
     try {
       await api.pushTest();
-      toast.success('Test push terkirim — cek notifikasi di perangkat ini');
+      toast.success(t('cmp_push.testPushSentCheck'));
     } catch (e) {
       toast.error((e as Error).message || 'Test push gagal');
     } finally {
@@ -47,20 +49,20 @@ export function PushDeviceCard() {
   return (
     <Card
       icon={<Smartphone size={16} />}
-      title="Web Push (Browser ini)"
+      title={t('cmp_push.webPushThisBrowser')}
       action={
         state === 'subscribed' ? (
-          <span className="badge badge-success inline-flex items-center gap-1"><CheckCircle2 size={12} /> Aktif</span>
+          <span className="badge badge-success inline-flex items-center gap-1"><CheckCircle2 size={12} /> {t('cmp_push.on')}</span>
         ) : state === 'unsupported' ? (
-          <span className="badge badge-neutral">Tidak didukung</span>
+          <span className="badge badge-neutral">{t('cmp_push.notSupported')}</span>
         ) : state === 'denied' ? (
-          <span className="badge badge-danger">Diblokir browser</span>
+          <span className="badge badge-danger">{t('cmp_push.blockedByBrowser')}</span>
         ) : (
-          <span className="badge badge-neutral">Nonaktif</span>
+          <span className="badge badge-neutral">{t('cmp_push.off')}</span>
         )
       }
     >
-      <p className="text-xs text-tx3 mb-3">Terima alert sebagai notifikasi sistem di perangkat ini — walau aplikasi sedang tidak dibuka. Nyalakan juga toggle 'Web Push' di aturan alert.</p>
+      <p className="text-xs text-tx3 mb-3">{t('cmp_push.receiveAlertsAsSystem')}</p>
       <div className="flex flex-wrap items-center gap-2">
         {state !== 'unsupported' && (
           <Button variant="primary" icon={<Bell size={14} />} onClick={toggle} loading={busy}>
@@ -73,7 +75,7 @@ export function PushDeviceCard() {
           </Button>
         )}
         {state === 'denied' && (
-          <p className="text-xs text-tx3">Buka pengaturan situs di browser (ikon gembok di address bar) → izinkan Notifications → refresh halaman.</p>
+          <p className="text-xs text-tx3">{t('cmp_push.openTheSiteSettings')}</p>
         )}
       </div>
     </Card>

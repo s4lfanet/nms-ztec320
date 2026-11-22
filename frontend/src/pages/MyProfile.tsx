@@ -64,10 +64,10 @@ export function MyProfile() {
   const uploadLogoMut = useMutation({
     mutationFn: async (file: File) => {
       if (!ALLOWED_LOGO_TYPES.includes(file.type)) {
-        throw new Error('Format tidak didukung. Gunakan PNG, JPG, WEBP, atau GIF.');
+        throw new Error(t('profile.logoBadFormat'));
       }
       if (file.size > MAX_LOGO_SIZE) {
-        throw new Error('Ukuran file maksimal 2MB.');
+        throw new Error(t('profile.logoTooBig'));
       }
       const formData = new FormData();
       formData.append('logo', file);

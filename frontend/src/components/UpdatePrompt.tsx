@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Download, X, Loader2 } from 'lucide-react';
 import { toast } from './Toast';
@@ -40,6 +41,7 @@ async function waitForRestart() {
 }
 
 export function UpdatePrompt() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -93,7 +95,7 @@ export function UpdatePrompt() {
       } catch { /* ignore */ }
       window.location.reload();
     } catch {
-      toast.error('Gagal memasang update — coba dari halaman Update Sistem');
+      toast.error(t('cmp_update.failedToApplyThe'));
       setPhase('idle');
     }
   };
@@ -104,7 +106,7 @@ export function UpdatePrompt() {
       <div className="bg-surface border border-brd rounded-2xl shadow-2xl p-4 flex gap-3 items-start">
         <Download size={20} className="text-accent shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-tx1">Update tersedia</p>
+          <p className="text-sm font-semibold text-tx1">{t('cmp_update.updateAvailable')}</p>
           <p className="text-xs text-tx3 mt-0.5">
             {commits.length} perubahan baru di GitHub ({info.local_sha} → {info.remote_sha}).
           </p>
@@ -118,9 +120,9 @@ export function UpdatePrompt() {
           )}
           {phase === 'idle' ? (
             <div className="flex flex-wrap gap-2 mt-3">
-              <button onClick={applyNow} className="btn-primary text-xs">Update sekarang</button>
+              <button onClick={applyNow} className="btn-primary text-xs">{t('cmp_update.updateNow')}</button>
               <button onClick={open} className="px-3 py-1.5 rounded-xl text-xs border border-brd text-tx2 hover:text-tx1">Detail</button>
-              <button onClick={later} className="px-3 py-1.5 rounded-xl text-xs text-tx3 hover:text-tx1">Nanti</button>
+              <button onClick={later} className="px-3 py-1.5 rounded-xl text-xs text-tx3 hover:text-tx1">{t('cmp_update.later')}</button>
             </div>
           ) : (
             <p className="flex items-center gap-2 mt-3 text-xs text-tx2">

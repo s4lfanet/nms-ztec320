@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/utils';
 import { RefreshCw, Zap, X, Wifi, WifiOff, Pause, Play, Activity, Cpu, HardDrive, Network } from 'lucide-react';
 
@@ -126,6 +127,7 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
   oltId: number; port: ChassisPort; slot: ChassisSlot;
   onClose: () => void; onRefresh: () => void;
 }) {
+  const { t } = useTranslation();
   const [toggling, setToggling] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [optical, setOptical] = useState<Record<string, string> | null>(null);
@@ -157,7 +159,7 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
       const j = await r.json();
       setMsg(j.success ? `✓ Port ${action}d` : `Error: ${j.message}`);
       if (j.success) { setTimeout(() => { onClose(); onRefresh(); }, 800); }
-    } catch (e) { setMsg('Network error'); }
+    } catch (e) { setMsg(t('cmp_rack.networkError')); }
     finally { setToggling(false); }
   };
 
@@ -216,7 +218,7 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
           {/* Avg RX */}
           {port.avgRxPower != null && (
             <div className="flex justify-between text-xs" style={{ color: 'var(--text-2)' }}>
-              <span>Avg RX Power</span>
+              <span>{t('cmp_rack.avgRxPower')}</span>
               <span className="font-mono text-success">{port.avgRxPower} dBm</span>
             </div>
           )}
@@ -238,12 +240,12 @@ function PonPortPanel({ oltId, port, slot, onClose, onRefresh }: {
                 {optical.serial && (<><span className="text-tx3">Serial</span><span className="text-tx1 font-mono text-right">{optical.serial}</span></>)}
                 {optical.wavelength && (<><span className="text-tx3">Wavelength</span><span className="text-tx1 font-mono text-right">{optical.wavelength} nm</span></>)}
                 {optical.connector && (<><span className="text-tx3">Connector</span><span className="text-tx1 font-mono text-right">{optical.connector}</span></>)}
-                {optical.distance && (<><span className="text-tx3">Trans. Distance</span><span className="text-tx1 font-mono text-right">{optical.distance} km</span></>)}
+                {optical.distance && (<><span className="text-tx3">{t('cmp_rack.transDistance')}</span><span className="text-tx1 font-mono text-right">{optical.distance} km</span></>)}
                 {optical.tx_power && (<><span className="text-tx3">TX Power</span><span className="text-success font-mono text-right">{optical.tx_power} dBm</span></>)}
                 {optical.rx_power && (<><span className="text-tx3">RX Power</span><span className="text-success font-mono text-right">{optical.rx_power} dBm</span></>)}
-                {optical.temperature && (<><span className="text-tx3">Temperature</span><span className="text-warning font-mono text-right">{optical.temperature} °C</span></>)}
-                {optical.voltage && (<><span className="text-tx3">Supply Voltage</span><span className="text-tx1 font-mono text-right">{optical.voltage} V</span></>)}
-                {optical.bias_current && (<><span className="text-tx3">Bias Current</span><span className="text-tx1 font-mono text-right">{optical.bias_current} mA</span></>)}
+                {optical.temperature && (<><span className="text-tx3">{t('cmp_rack.temperature')}</span><span className="text-warning font-mono text-right">{optical.temperature} °C</span></>)}
+                {optical.voltage && (<><span className="text-tx3">{t('cmp_rack.supplyVoltage')}</span><span className="text-tx1 font-mono text-right">{optical.voltage} V</span></>)}
+                {optical.bias_current && (<><span className="text-tx3">{t('cmp_rack.biasCurrent')}</span><span className="text-tx1 font-mono text-right">{optical.bias_current} mA</span></>)}
               </div>
             </div>
           )}
@@ -280,6 +282,7 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
   oltId: number; port: ChassisPort; slot: ChassisSlot;
   onClose: () => void; onRefresh: () => void;
 }) {
+  const { t } = useTranslation();
   const [toggling, setToggling] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const isEnabled = port.isEnabled !== false;
@@ -304,7 +307,7 @@ function UplinkPanel({ oltId, port, slot, onClose, onRefresh }: {
       const j = await r.json();
       setMsg(j.success ? `✓ Port ${action}d` : `Error: ${j.message}`);
       if (j.success) { setTimeout(() => { onClose(); onRefresh(); }, 800); }
-    } catch (e) { setMsg('Network error'); }
+    } catch (e) { setMsg(t('cmp_rack.networkError')); }
     finally { setToggling(false); }
   };
 
@@ -650,6 +653,7 @@ interface RackDiagramProps {
 }
 
 export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackDiagramProps) {
+  const { t, i18n } = useTranslation();
   const [data, setData] = useState<ChassisData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -666,7 +670,7 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
         setError(json.message || 'Failed to load chassis');
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Network error');
+      setError(e instanceof Error ? e.message : t('cmp_rack.networkError'));
     } finally {
       setLoading(false);
     }
@@ -741,7 +745,7 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
     { bg: 'rgba(251, 176, 64, 0.12)', border: 'var(--color-warning)', dot: 'var(--color-warning)', label: 'Admin UP / Port DOWN' },
     { bg: 'var(--color-danger)', border: 'var(--bg-surface)', dot: 'var(--text-1)', label: 'LOS', isBadge: true },
     { bg: '#7c3aed', border: 'var(--bg-surface)', dot: 'var(--text-1)', label: 'DyingGasp', isBadge: true },
-    { bg: 'rgba(251, 176, 64, 0.15)', border: 'var(--color-warning)', dot: 'var(--color-warning)', label: 'Unconfigured' },
+    { bg: 'rgba(251, 176, 64, 0.15)', border: 'var(--color-warning)', dot: 'var(--color-warning)', label: t('cmp_rack.unconfigured') },
   ];
 
   return (
@@ -770,7 +774,7 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
               {oltName && <span className="text-[10px] sm:text-xs text-tx2 ml-1 truncate">— {oltName}</span>}
             </div>
             <div className="text-[10px] sm:text-[11px] text-tx3 mt-0.5">
-              Sinkron: {lastSync ? new Date(lastSync).toLocaleTimeString('id-ID') : '—'}
+              {t('cmp_rack.syncedAt')} {lastSync ? new Date(lastSync).toLocaleTimeString(i18n.language === 'en' ? 'en-GB' : 'id-ID') : '—'}
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 mt-1.5 sm:mt-0">
@@ -779,7 +783,7 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
               className="inline-flex items-center justify-center gap-1 p-1.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs rounded-lg border text-tx2 hover:bg-glass-hover disabled:opacity-50"
               style={{ borderColor: 'var(--border-hover)' }}>
               <RefreshCw className={cn('w-3.5 h-3.5 sm:w-3 sm:h-3', loading && 'animate-spin')} />
-              <span className="hidden sm:inline">Refresh</span>
+              <span className="hidden sm:inline">{t('cmp_rack.refresh')}</span>
             </button>
           </div>
         </div>
@@ -849,7 +853,7 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
       {/* Detail Per Port PON */}
       {Object.keys(portStats).length > 0 && (
         <div className="glass-card p-3 md:p-4">
-          <h3 className="text-xs md:text-sm font-semibold mb-2 md:mb-3">Detail Per Port PON</h3>
+          <h3 className="text-xs md:text-sm font-semibold mb-2 md:mb-3">{t('cmp_rack.perPonPortDetail')}</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 md:gap-2">
             {Object.entries(portStats)
               .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
@@ -872,7 +876,7 @@ export function RackDiagram({ oltId, oltName, oltIp, isOnline, lastSync }: RackD
                       )}
                     </div>
                     {isEmpty ? (
-                      <div className="text-[9px] text-tx3 text-center py-1">No ONU</div>
+                      <div className="text-[9px] text-tx3 text-center py-1">{t('cmp_rack.noOnu')}</div>
                     ) : (
                       <>
                         <div className="w-full bg-glass rounded-full h-1.5 mb-1 overflow-hidden">

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { HelpCircle, ChevronUp, ChevronDown, BookOpen, Lightbulb, AlertTriangle } from 'lucide-react';
 import { getGuideById } from '../data/guides';
@@ -29,6 +30,7 @@ function renderRichText(text: string) {
 }
 
 export function TutorialBanner({ title, steps, prerequisites, tips, defaultOpen = false, guideId }: TutorialBannerProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);
   const guide = guideId ? getGuideById(guideId) : undefined;
 
@@ -39,7 +41,7 @@ export function TutorialBanner({ title, steps, prerequisites, tips, defaultOpen 
     ? <ul className="ml-4 space-y-0.5 list-disc">{guide.prerequisites.map((p, i) => <li key={i}>{renderRichText(p)}</li>)}</ul>
     : prerequisites;
   const renderedTips = guide?.tips?.length
-    ? <><strong className="text-tx2">Tips:</strong><ul className="mt-1 ml-4 space-y-0.5 list-disc">{guide.tips.map((t, i) => <li key={i}>{renderRichText(t)}</li>)}</ul></>
+    ? <><strong className="text-tx2">{t('cmp_tut.tip')}</strong><ul className="mt-1 ml-4 space-y-0.5 list-disc">{guide.tips.map((t, i) => <li key={i}>{renderRichText(t)}</li>)}</ul></>
     : tips;
 
   return (
@@ -49,7 +51,7 @@ export function TutorialBanner({ title, steps, prerequisites, tips, defaultOpen 
           <Link
             to="/dashboard/guide"
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-accent/10 border border-accent/20 text-xs text-accent hover:bg-accent/20 transition-all flex-shrink-0"
-            title="Lihat semua panduan"
+            title={t('cmp_tut.seeAllGuides')}
           >
             <BookOpen size={14} /> <span className="hidden sm:inline">Panduan</span>
           </Link>

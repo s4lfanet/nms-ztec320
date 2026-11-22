@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Terjemahan kelompok 5: komponen bersama
+
+#### Diubah
+- Komponen yang muncul di banyak halaman kini mengikuti pilihan bahasa: prompt notifikasi push & kartu Web Push, pop-up update, pencarian cepat (Ctrl+K), banner tips & offline, peta FTTH (legenda + popup status link), pemilih lokasi, diagram rak ZTE/EPON, editor VLAN port, serta pesan error unggah logo di Profil.
+
 ### 2026-11-22 — Terjemahan kelompok 4b: FTTH, Pengaturan Alert, Kustomisasi, Tambah ONU
 
 #### Diubah

@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import {
   Cpu, LockKeyhole, Shield, ArrowDownUp, ChevronsLeftRightEllipsis,
@@ -79,6 +80,7 @@ function PortToggleButton({ oltId, port, onClose, onRefresh }: {
 }
 
 export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDiagramProps) {
+  const { t } = useTranslation();
   const { data, loading, refreshing, error, reload, refresh } = useRackData(oltId);
   const metrics = useRackMetrics(data);
   const [hoveredSlot, setHoveredSlot] = useState<number | null>(null);
@@ -109,7 +111,7 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
     return (
       <div className="rounded-lg border border-danger bg-danger/10 p-4 text-sm text-danger">
         Gagal memuat: {error}
-        <button onClick={() => reload()} className="ml-3 underline">Coba lagi</button>
+        <button onClick={() => reload()} className="ml-3 underline">{t('cmp_zte.retry')}</button>
       </div>
     );
   }
@@ -164,9 +166,9 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
         <div className="font-bold text-accent mb-1">Port {slot.slotIndex}/{port.portIndex}</div>
         {isCardStatus ? (
           <>
-            <div>Kartu: <span className={slot.cardStatus === 'inservice' ? 'text-success' : 'text-danger'}>{slot.cardStatus?.toUpperCase()}</span></div>
+            <div>{t('cmp_zte.card')} <span className={slot.cardStatus === 'inservice' ? 'text-success' : 'text-danger'}>{slot.cardStatus?.toUpperCase()}</span></div>
             {slot.cardRole && <div>Role: <span className="text-warning">{slot.cardRole === 'main' ? 'Main (Aktif)' : 'Standby'}</span></div>}
-            <div className="text-[9px] text-tx3 mt-1">Port detail tidak tersedia via SNMP</div>
+            <div className="text-[9px] text-tx3 mt-1">{t('cmp_zte.portDetailNotAvailable')}</div>
           </>
         ) : (
           <>
@@ -496,9 +498,9 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
                   {port.sfpWavelength != null && (<><span className="text-tx3">Wavelength</span><span className="text-tx1 font-mono text-right">{port.sfpWavelength} nm</span></>)}
                   {port.sfpTxPower != null && (<><span className="text-tx3">TX Power</span><span className="text-success font-mono text-right">{port.sfpTxPower.toFixed(3)} dBm</span></>)}
                   {port.sfpRxPower != null && (<><span className="text-tx3">RX Power</span><span className="text-success font-mono text-right">{port.sfpRxPower.toFixed(3)} dBm</span></>)}
-                  {port.sfpTemperature != null && (<><span className="text-tx3">Temperature</span><span className="text-warning font-mono text-right">{port.sfpTemperature.toFixed(1)} °C</span></>)}
-                  {port.sfpBiasCurrent != null && (<><span className="text-tx3">Bias Current</span><span className="text-tx1 font-mono text-right">{port.sfpBiasCurrent.toFixed(1)} mA</span></>)}
-                  {port.sfpVoltage != null && (<><span className="text-tx3">Voltage</span><span className="text-tx1 font-mono text-right">{port.sfpVoltage.toFixed(3)} V</span></>)}
+                  {port.sfpTemperature != null && (<><span className="text-tx3">{t('cmp_zte.temperature')}</span><span className="text-warning font-mono text-right">{port.sfpTemperature.toFixed(1)} °C</span></>)}
+                  {port.sfpBiasCurrent != null && (<><span className="text-tx3">{t('cmp_zte.biasCurrent')}</span><span className="text-tx1 font-mono text-right">{port.sfpBiasCurrent.toFixed(1)} mA</span></>)}
+                  {port.sfpVoltage != null && (<><span className="text-tx3">{t('cmp_zte.voltage')}</span><span className="text-tx1 font-mono text-right">{port.sfpVoltage.toFixed(3)} V</span></>)}
                 </div>
               </div>
             )}
@@ -506,14 +508,14 @@ export default function ZteRackDiagram({ oltId, onPortClick, onMetrics }: RackDi
             {/* Card info (for card-status ports) */}
             {isCardStatus && (
               <div className="p-3 rounded-lg space-y-1.5 text-[10px]" style={{ background: 'var(--bg-glass)' }}>
-                <div className="text-tx2 font-semibold mb-1">Card Info</div>
+                <div className="text-tx2 font-semibold mb-1">{t('cmp_zte.cardInfo')}</div>
                 <div className="flex justify-between"><span className="text-tx3">Card Type</span><span className="text-tx1 font-mono">{slot.cardType}</span></div>
                 <div className="flex justify-between"><span className="text-tx3">Status</span><span className={slot.cardStatus === 'inservice' ? 'text-success' : 'text-danger'}>{slot.cardStatus?.toUpperCase()}</span></div>
                 {slot.cardRole && <div className="flex justify-between"><span className="text-tx3">Role</span><span className="text-warning">{slot.cardRole.toUpperCase()}</span></div>}
                 {slot.cpuUsage != null && <div className="flex justify-between"><span className="text-tx3">CPU</span><span className="text-tx1">{slot.cpuUsage}%</span></div>}
                 {slot.memoryUsage != null && <div className="flex justify-between"><span className="text-tx3">Memory</span><span className="text-tx1">{slot.memoryUsage}%</span></div>}
                 {slot.temperature != null && <div className="flex justify-between"><span className="text-tx3">Temp</span><span className="text-warning">{slot.temperature}°C</span></div>}
-                <div className="text-[9px] text-tx3 mt-1">Port detail not available via SNMP — showing card-level info</div>
+                <div className="text-[9px] text-tx3 mt-1">{t('cmp_zte.portDetailNotAvailable2')}</div>
               </div>
             )}
 

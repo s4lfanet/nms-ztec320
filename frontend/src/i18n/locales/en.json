@@ -358,7 +358,9 @@
     "language": "Language",
     "langId": "Indonesia",
     "langEn": "English",
-    "allAccess": "All access (Super Admin)"
+    "allAccess": "All access (Super Admin)",
+    "logoBadFormat": "Unsupported format. Use PNG, JPG, WEBP or GIF.",
+    "logoTooBig": "Maximum file size is 2MB."
   },
   "error": {
     "invalid_credentials": "Invalid username or password",
@@ -1765,5 +1767,114 @@
     "step3": "Configuration",
     "step4": "Review & provision",
     "selected": "Selected ONU {{sn}} on {{pon}}"
+  },
+  "cmp_push": {
+    "webPushDisabledOn": "Web Push disabled on this device",
+    "webPushOnThis": "Web Push on — this device will receive alerts",
+    "notificationPermissionDeniedBy": "Notification permission denied by the browser",
+    "testPushSentCheck": "Test push sent — check notifications on this device",
+    "webPushThisBrowser": "Web Push (this browser)",
+    "on": "On",
+    "notSupported": "Not supported",
+    "blockedByBrowser": "Blocked by browser",
+    "off": "Off",
+    "receiveAlertsAsSystem": "Receive alerts as system notifications on this device — even when the app isn't open. Also turn on the 'Web Push' toggle in alert rules.",
+    "openTheSiteSettings": "Open the site settings in your browser (padlock icon in the address bar) → allow Notifications → reload the page."
+  },
+  "cmp_pprompt": {
+    "problemNotificationsAreOn": "Problem notifications are on for this device",
+    "notificationPermissionDenied": "Notification permission denied",
+    "turnOnProblemNotifications": "Turn on problem notifications?",
+    "getOltOnuAlerts": "Get OLT/ONU alerts as notifications on this phone, even when the app is closed.",
+    "turnOn": "Turn on",
+    "later": "Later"
+  },
+  "cmp_update": {
+    "failedToApplyThe": "Failed to apply the update — try from the System Update page",
+    "updateAvailable": "Update available",
+    "updateNow": "Update now",
+    "later": "Later"
+  },
+  "cmp_search": {
+    "searchOnusOltsOdps": "Search ONUs, OLTs, ODPs, ODCs, users…",
+    "typeAtLeast2": "Type at least 2 characters…",
+    "searching": "Searching…",
+    "noResults": "No results.",
+    "navigate": "navigate",
+    "open": "open",
+    "close": "close"
+  },
+  "cmp_tut": {
+    "tip": "Tip:",
+    "seeAllGuides": "See all guides"
+  },
+  "cmp_off": {
+    "connectionLostDataCan": "Connection lost — data can't be refreshed"
+  },
+  "cmp_portmap": {
+    "emptyNoExplicitPort": "Empty = no explicit port config (ports keep ONT defaults / existing auto-tag)."
+  },
+  "cmp_map": {
+    "linkOkPppoePing": "Link OK (PPPoE + ping)",
+    "linkSlowLoss": "Link slow / loss",
+    "linkDownPingTimeout": "Link down (ping timeout)",
+    "noPppoeSession": "No PPPoE session",
+    "notCheckedYet": "Not checked yet",
+    "loadingMap": "Loading map…",
+    "unregistered": "Unregistered",
+    "linkSlow": "Link slow",
+    "noSession": "No session",
+    "highlightedPath": "Highlighted path",
+    "drawModeClickThe": "Draw mode: click the map to add waypoints",
+    "savePath": "Save path",
+    "clear": "Clear",
+    "linkOkFull": "Link OK (PPPoE + ping)",
+    "linkSlowFull": "Link slow / loss",
+    "linkDownFull": "Link down (ping timeout)",
+    "noPppoe": "No PPPoE session",
+    "notChecked": "Not checked yet"
+  },
+  "cmp_loc": {
+    "geolocationNotSupportedBy": "Geolocation not supported by this browser",
+    "locationDetected": "Location detected",
+    "failedToLoadMap": "Failed to load map. Check your internet connection.",
+    "locationNotFound": "Location not found",
+    "searchFailed": "Search failed",
+    "clickTheMapTo": "Click the map to set a location first",
+    "gpsLocationDetected": "GPS location detected",
+    "close": "Close",
+    "pickLocationOnMap": "Pick location on map",
+    "searchAddressOrPlace": "Search address or place…",
+    "loadingMap": "Loading map…",
+    "clickTheMapTo2": "Click the map to place a marker",
+    "cancel": "Cancel",
+    "confirmLocation": "Confirm location"
+  },
+  "cmp_rack": {
+    "avgRxPower": "Avg RX power",
+    "transDistance": "Trans. distance",
+    "temperature": "Temperature",
+    "supplyVoltage": "Supply voltage",
+    "biasCurrent": "Bias current",
+    "networkError": "Network error",
+    "unconfigured": "Unconfigured",
+    "refresh": "Refresh",
+    "perPonPortDetail": "Per-PON-port detail",
+    "noOnu": "No ONU",
+    "syncedAt": "Synced:"
+  },
+  "cmp_zte": {
+    "retry": "Retry",
+    "card": "Card:",
+    "portDetailNotAvailable": "Port detail not available via SNMP",
+    "temperature": "Temperature",
+    "biasCurrent": "Bias current",
+    "voltage": "Voltage",
+    "cardInfo": "Card info",
+    "portDetailNotAvailable2": "Port detail not available via SNMP — showing card-level info"
+  },
+  "cmp_epon": {
+    "retry": "Retry",
+    "refreshRackStatus": "Refresh rack status"
   }
 }
