@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../components/Toast';
 import { cn } from '../lib/utils';
@@ -17,6 +18,7 @@ import { PushDeviceCard } from '../components/PushDeviceCard';
 type SectionKey = 'whatsapp' | 'rules' | 'telegram' | 'whatsapp_native' | 'cronjob';
 
 export function AlertSettings() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const isSuperAdmin = !!user?.is_super_admin;
   const [activeSection, setActiveSection] = useState<SectionKey>('whatsapp');
@@ -54,10 +56,10 @@ export function AlertSettings() {
 
   const allTabs = [
     { key: 'whatsapp' as const, label: 'WA Gateway', icon: <MessageCircle size={15} />, superAdmin: false },
-    { key: 'rules' as const, label: 'Alert Rules', icon: <Shield size={15} />, superAdmin: false },
+    { key: 'rules' as const, label: t('pg_alerts.tabRules'), icon: <Shield size={15} />, superAdmin: false },
     { key: 'telegram' as const, label: 'Telegram Bot', icon: <Send size={15} />, superAdmin: false },
     { key: 'whatsapp_native' as const, label: 'WA Native (QR)', icon: <Smartphone size={15} />, superAdmin: true },
-    { key: 'cronjob' as const, label: 'Scheduler & Zona Waktu', icon: <Clock size={15} />, superAdmin: true },
+    { key: 'cronjob' as const, label: t('pg_alerts.schedulerTimezone'), icon: <Clock size={15} />, superAdmin: true },
   ];
   const visibleTabs = allTabs.filter(tab => !tab.superAdmin || isSuperAdmin);
 
@@ -65,8 +67,8 @@ export function AlertSettings() {
     <PageContainer>
       <PageHeader
         icon={<Bell size={20} className="text-accent" />}
-        title="Pengaturan Alert & Notifikasi"
-        description="Atur parameter deteksi gangguan optik OLT/ONU serta integrasi pengiriman pesan ke WhatsApp Gateway dan Telegram."
+        title={t('pg_alerts.alertNotificationSettings')}
+        description={t('pg_alerts.configureOltOnuOptical')}
       />
 
       {/* Channel Overview Strip — clickable to jump between sections */}
@@ -82,10 +84,10 @@ export function AlertSettings() {
           <div className="min-w-0">
             <div className="text-xs text-tx3 font-medium">WA Gateway</div>
             <div className="text-sm font-semibold text-tx1 mt-1 truncate">
-              {waCfg?.enabled ? activeWaProviderName : 'Nonaktif'}
+              {waCfg?.enabled ? activeWaProviderName : t('pg_alerts.off')}
             </div>
             <div className="text-[11px] text-tx3 mt-0.5 truncate font-mono">
-              {waCfg?.phone_number ? String(waCfg.phone_number) : 'Belum ada nomor tujuan'}
+              {waCfg?.phone_number ? String(waCfg.phone_number) : t('pg_alerts.noDest')}
             </div>
           </div>
           <span className={cn(
@@ -105,7 +107,7 @@ export function AlertSettings() {
           <div className="min-w-0">
             <div className="text-xs text-tx3 font-medium">Alert Rules</div>
             <div className="text-sm font-semibold text-tx1 mt-1 tabular-nums">
-              {activeRulesCount} dari {rules.length || 1} aktif
+              {t('pg_alerts.rulesActive', { n: activeRulesCount, total: rules.length || 1 })}
             </div>
             <div className="text-[11px] text-tx3 mt-0.5 truncate">
               LOS · DyingGasp · RX dBm · OLT
@@ -128,10 +130,10 @@ export function AlertSettings() {
           <div className="min-w-0">
             <div className="text-xs text-tx3 font-medium">Telegram Bot</div>
             <div className="text-sm font-semibold text-tx1 mt-1">
-              {tgCfg?.enabled ? 'Terhubung' : 'Nonaktif'}
+              {tgCfg?.enabled ? t('pg_alerts.connected') : t('pg_alerts.off')}
             </div>
             <div className="text-[11px] text-tx3 mt-0.5 truncate font-mono">
-              {tgCfg?.chat_id ? `Chat ${String(tgCfg.chat_id)}` : 'Chat ID belum diisi'}
+              {tgCfg?.chat_id ? `Chat ${String(tgCfg.chat_id)}` : t('pg_alerts.noChatId')}
             </div>
           </div>
           <span className={cn(
@@ -152,7 +154,7 @@ export function AlertSettings() {
             <div className="min-w-0">
               <div className="text-xs text-tx3 font-medium">WA Native (Baileys)</div>
               <div className="text-sm font-semibold text-tx1 mt-1">
-                {waNativeCfg?.enabled ? 'Diaktifkan' : 'Standby / Off'}
+                {waNativeCfg?.enabled ? t('pg_alerts.enabled') : t('pg_alerts.standby')}
               </div>
               <div className="text-[11px] text-tx3 mt-0.5 truncate">
                 Self-hosted QR Session
@@ -191,6 +193,7 @@ export function AlertSettings() {
 /* ─── Alert Rules Section ─── */
 
 function AlertRulesSection() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['alert-rules'],
@@ -208,7 +211,7 @@ function AlertRulesSection() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['alert-rules'] });
-      toast.success('Aturan alert berhasil disimpan');
+      toast.success(t('pg_alerts.alertRulesSaved'));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -223,8 +226,8 @@ function AlertRulesSection() {
       {rules.length === 0 && (
         <EmptyState
           icon={Bell}
-          title="Belum ada aturan alert"
-          description="Aturan alert dibuat otomatis saat inisialisasi sistem."
+          title={t('pg_alerts.noAlertRulesYet')}
+          description={t('pg_alerts.alertRulesAreCreated')}
         />
       )}
       {rules.map((rule) => (
@@ -243,6 +246,7 @@ function RuleCard({
   onSave: (r: Record<string, unknown>) => void;
   saving?: boolean;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(true);
   const [form, setForm] = useState({ ...rule });
 
@@ -281,7 +285,7 @@ function RuleCard({
                 : 'bg-glass border-brd text-tx3'
             )}
           >
-            {form.enabled ? 'Rule Aktif' : 'Nonaktif'}
+            {form.enabled ? t('pg_alerts.ruleActive') : t('pg_alerts.off')}
           </button>
           <button
             type="button"
@@ -297,9 +301,9 @@ function RuleCard({
       {!editing ? (
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-tx2">
           <div className="flex flex-wrap items-center gap-2">
-            <span>Ambang RX: <strong className="font-mono text-tx1 tabular-nums">{String(form.rx_threshold ?? -27)} dBm</strong></span>
+            <span>{t('pg_alerts.rxThreshold')} <strong className="font-mono text-tx1 tabular-nums">{String(form.rx_threshold ?? -27)} dBm</strong></span>
             <span className="text-tx3">·</span>
-            <span>Delta RX: <strong className="font-mono text-tx1 tabular-nums">{String(form.rx_change_threshold ?? 3)} dB</strong></span>
+            <span>{t('pg_alerts.rxDelta')} <strong className="font-mono text-tx1 tabular-nums">{String(form.rx_change_threshold ?? 3)} dB</strong></span>
             <span className="text-tx3">·</span>
             <span>CPU/Mem/Temp OLT: <strong className="font-mono text-tx1 tabular-nums">{String(form.olt_cpu_threshold ?? 80)}% / {String(form.olt_memory_threshold ?? 80)}% / {String(form.olt_temp_threshold ?? 60)}°C</strong></span>
           </div>
@@ -317,15 +321,15 @@ function RuleCard({
           <div className="lg:col-span-6 space-y-4">
             <div className="p-3.5 rounded-lg bg-glass/60 border border-brd space-y-3">
               <div>
-                <h4 className="text-xs font-semibold text-tx1"> Kondisi Gangguan ONU &amp; Optik</h4>
-                <p className="text-xs text-tx3 mt-0.5">Pilih kejadian status ONU yang memicu pengiriman notifikasi.</p>
+                <h4 className="text-xs font-semibold text-tx1"> {t('pg_alerts.onuOpticalFaultConditions')}</h4>
+                <p className="text-xs text-tx3 mt-0.5">{t('pg_alerts.chooseWhichOnuStatus')}</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {[
-                  { key: 'check_los', label: 'LOS (Putus Optik)', icon: <Radio size={14} /> },
-                  { key: 'check_dyinggasp', label: 'DyingGasp (Mati Listrik)', icon: <Zap size={14} /> },
+                  { key: 'check_los', label: t('pg_alerts.losOpticalCut'), icon: <Radio size={14} /> },
+                  { key: 'check_dyinggasp', label: t('pg_alerts.dyinggaspPowerLoss'), icon: <Zap size={14} /> },
                   { key: 'check_offline', label: 'ONU Offline', icon: <Wifi size={14} /> },
-                  { key: 'check_rx_power', label: 'Redaman RX Tinggi', icon: <AlertTriangle size={14} /> },
+                  { key: 'check_rx_power', label: t('pg_alerts.highRxAttenuation'), icon: <AlertTriangle size={14} /> },
                 ].map(item => (
                   <button
                     key={item.key}
@@ -347,7 +351,7 @@ function RuleCard({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-brd/70">
                 <Input
-                  label="Ambang Batas RX Power (dBm)"
+                  label={t('pg_alerts.rxPowerThresholdDbm')}
                   type="number"
                   step="0.5"
                   value={String(form.rx_threshold ?? -27)}
@@ -355,7 +359,7 @@ function RuleCard({
                   helperText="Contoh: -27 dBm (alert bila lebih rendah)"
                 />
                 <Input
-                  label="Lonjakan Redaman RX (dB)"
+                  label={t('pg_alerts.rxAttenuationJumpDb')}
                   type="number"
                   step="0.5"
                   value={String(form.rx_change_threshold ?? 3)}
@@ -370,15 +374,15 @@ function RuleCard({
           <div className="lg:col-span-6 space-y-4">
             <div className="p-3.5 rounded-lg bg-glass/60 border border-brd space-y-3">
               <div>
-                <h4 className="text-xs font-semibold text-tx1">Kesehatan Sasis &amp; Sistem OLT</h4>
-                <p className="text-xs text-tx3 mt-0.5">Deteksi dini gangguan perangkat OLT utama (keterjangkauan, beban CPU, RAM, suhu).</p>
+                <h4 className="text-xs font-semibold text-tx1">{t('pg_alerts.oltChassisSystemHealth')}</h4>
+                <p className="text-xs text-tx3 mt-0.5">{t('pg_alerts.earlyDetectionOfOlt')}</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {[
                   { key: 'check_olt_offline', label: 'OLT Unreachable / Down', icon: <Server size={14} /> },
-                  { key: 'check_olt_cpu', label: 'Beban CPU Tinggi', icon: <Activity size={14} /> },
-                  { key: 'check_olt_memory', label: 'Penggunaan RAM Tinggi', icon: <Cpu size={14} /> },
-                  { key: 'check_olt_temperature', label: 'Suhu Sasis Tinggi', icon: <Thermometer size={14} /> },
+                  { key: 'check_olt_cpu', label: t('pg_alerts.highCpuLoad'), icon: <Activity size={14} /> },
+                  { key: 'check_olt_memory', label: t('pg_alerts.highRamUsage'), icon: <Cpu size={14} /> },
+                  { key: 'check_olt_temperature', label: t('pg_alerts.highChassisTemperature'), icon: <Thermometer size={14} /> },
                 ].map(item => (
                   <button
                     key={item.key}
@@ -400,19 +404,19 @@ function RuleCard({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-brd/70">
                 <Input
-                  label="Batas CPU (%)"
+                  label={t('pg_alerts.cpuLimit')}
                   type="number"
                   value={String(form.olt_cpu_threshold ?? 80)}
                   onChange={e => setForm({ ...form, olt_cpu_threshold: parseFloat(e.target.value) })}
                 />
                 <Input
-                  label="Batas Memory (%)"
+                  label={t('pg_alerts.memoryLimit')}
                   type="number"
                   value={String(form.olt_memory_threshold ?? 80)}
                   onChange={e => setForm({ ...form, olt_memory_threshold: parseFloat(e.target.value) })}
                 />
                 <Input
-                  label="Batas Suhu (°C)"
+                  label={t('pg_alerts.temperatureLimitC')}
                   type="number"
                   value={String(form.olt_temp_threshold ?? 60)}
                   onChange={e => setForm({ ...form, olt_temp_threshold: parseFloat(e.target.value) })}
@@ -422,8 +426,8 @@ function RuleCard({
 
             <div className="p-3.5 rounded-lg bg-glass/60 border border-brd space-y-2.5">
               <div>
-                <h4 className="text-xs font-semibold text-tx1">Saluran Pengiriman Alert</h4>
-                <p className="text-xs text-tx3 mt-0.5">Pilih tujuan pengiriman saat aturan ini mendeteksi anomali.</p>
+                <h4 className="text-xs font-semibold text-tx1">{t('pg_alerts.alertDeliveryChannels')}</h4>
+                <p className="text-xs text-tx3 mt-0.5">{t('pg_alerts.chooseWhereToSend')}</p>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
@@ -470,6 +474,7 @@ function RuleCard({
 /* ─── Telegram Section ─── */
 
 function TelegramSection() {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['bot-config'],
     queryFn: async () => { const r = await fetch('/api/bot-config', { credentials: 'include' }); return r.json(); },
@@ -508,7 +513,7 @@ function TelegramSection() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['bot-config'] });
       qc.invalidateQueries({ queryKey: ['alert-rules'] });
-      toast.success('Konfigurasi Telegram berhasil disimpan');
+      toast.success(t('pg_alerts.telegramConfigurationSaved'));
       setEditing(false);
     },
   });
@@ -524,21 +529,21 @@ function TelegramSection() {
             <Send size={15} className="text-accent" />
           </div>
         }
-        title="Konfigurasi Telegram Bot"
+        title={t('pg_alerts.telegramBotConfiguration')}
         action={
           <span className={cn(
             'badge',
             tgConfig.enabled ? 'badge-success' : 'badge-neutral'
           )}>
-            {tgConfig.enabled ? 'Aktif' : 'Nonaktif'}
+            {tgConfig.enabled ? t('pg_alerts.active') : t('pg_alerts.off')}
           </span>
         }
       >
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-glass border border-brd">
             <div>
-              <div className="text-sm font-medium text-tx1">Aktifkan Notifikasi Telegram</div>
-              <div className="text-xs text-tx3">Teruskan alarm ONU/OLT ke grup atau chat pribadi Telegram</div>
+              <div className="text-sm font-medium text-tx1">{t('pg_alerts.enableTelegramNotifications')}</div>
+              <div className="text-xs text-tx3">{t('pg_alerts.forwardOnuOltAlarms')}</div>
             </div>
             <button
               type="button"
@@ -559,7 +564,7 @@ function TelegramSection() {
               <>
                 Bot Token{' '}
                 {Boolean(tgConfig.has_bot_token) && (
-                  <span className="text-success font-normal text-xs">(Tersimpan — isi baru jika ingin mengganti)</span>
+                  <span className="text-success font-normal text-xs">{t('pg_alerts.savedEnterANew')}</span>
                 )}
               </>
             }
@@ -574,7 +579,7 @@ function TelegramSection() {
             label="Chat ID / Group ID"
             value={form.chat_id}
             onChange={e => { setForm({ ...form, chat_id: e.target.value }); setEditing(true); }}
-            placeholder="-1001234567890 (grup/channel) atau 123456789 (personal)"
+            placeholder={t('pg_alerts.1001234567890GroupChannelOr')}
             helperText="Gunakan tanda minus (-100...) untuk Supergroup atau Channel"
           />
 
@@ -598,15 +603,15 @@ function TelegramSection() {
                 try {
                   const r = await fetch('/api/bot-config/telegram/test', { method: 'POST', credentials: 'include' });
                   const d = await r.json();
-                  if (d.success) toast.success('Pesan test terkirim ke Telegram!');
-                  else toast.error(d.message || 'Gagal mengirim pesan test');
+                  if (d.success) toast.success(t('pg_alerts.testMessageSentTo'));
+                  else toast.error(d.message || t('pg_alerts.failedToSendTest'));
                 } catch {
-                  toast.error('Gagal mengirim pesan test');
+                  toast.error(t('pg_alerts.failedToSendTest'));
                 }
                 setTesting(false);
               }}
             >
-              Kirim Pesan Test
+              {t('pg_alerts.sendTestMessage')}
             </Button>
           </div>
         </div>
@@ -614,14 +619,14 @@ function TelegramSection() {
 
       <Card
         className="lg:col-span-5"
-        title="Panduan Integrasi Telegram"
+        title={t('pg_alerts.telegramIntegrationGuide')}
       >
         <ol className="list-decimal ml-4 space-y-2.5 text-xs text-tx2 leading-relaxed">
-          <li>Buka aplikasi Telegram dan cari akun resmi <code className="font-mono text-tx1 bg-glass px-1.5 py-0.5 rounded">@BotFather</code>.</li>
-          <li>Kirim perintah <code className="font-mono text-tx1 bg-glass px-1.5 py-0.5 rounded">/newbot</code> lalu ikuti instruksi untuk mendapatkan <strong>Bot Token</strong>.</li>
-          <li>Undang bot yang baru dibuat ke grup NOC/Teknisi Anda dan kirimkan minimal satu pesan di grup.</li>
-          <li>Gunakan <code className="font-mono text-tx1 bg-glass px-1.5 py-0.5 rounded">@raw_data_bot</code> atau <code className="font-mono text-tx1 bg-glass px-1.5 py-0.5 rounded">@userinfobot</code> untuk mengetahui <strong>Chat ID</strong> grup tersebut.</li>
-          <li>Simpan konfigurasi terlebih dahulu, lalu tekan <strong>Kirim Pesan Test</strong> untuk memverifikasi.</li>
+          <li>{t('pg_alerts.openTelegramAndFind')} <code className="font-mono text-tx1 bg-glass px-1.5 py-0.5 rounded">@BotFather</code>.</li>
+          <li>{t('pg_alerts.sendTheCommand')} <code className="font-mono text-tx1 bg-glass px-1.5 py-0.5 rounded">/newbot</code> {t('pg_alerts.thenFollowTheInstructions')} <strong>Bot Token</strong>.</li>
+          <li>{t('pg_alerts.inviteTheNewBot')}</li>
+          <li>{t('pg_alerts.use')} <code className="font-mono text-tx1 bg-glass px-1.5 py-0.5 rounded">@raw_data_bot</code> {t('pg_alerts.or')} <code className="font-mono text-tx1 bg-glass px-1.5 py-0.5 rounded">@userinfobot</code> {t('pg_alerts.toFindThe')} <strong>Chat ID</strong> {t('pg_alerts.ofThatGroup')}</li>
+          <li>{t('pg_alerts.saveTheConfigurationFirst')} <strong>{t('pg_alerts.sendTestMessage')}</strong> {t('pg_alerts.toVerify')}</li>
         </ol>
       </Card>
     </div>
@@ -1070,6 +1075,7 @@ function WhatsAppSection({
   isSuperAdmin?: boolean;
   onSwitchToNative?: () => void;
 }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['bot-config'],
     queryFn: async () => { const r = await fetch('/api/bot-config', { credentials: 'include' }); return r.json(); },
@@ -1142,7 +1148,7 @@ function WhatsAppSection({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['bot-config'] });
       qc.invalidateQueries({ queryKey: ['alert-rules'] });
-      toast.success(`Konfigurasi WA Gateway (${selectedGateway.name}) disimpan`);
+      toast.success(t('pg_alerts.waSaved', { name: selectedGateway.name }));
       setEditing(false);
     },
     onError: (e: Error) => toast.error(e.message || 'Gagal menyimpan konfigurasi'),
@@ -1167,11 +1173,11 @@ function WhatsAppSection({
         body: JSON.stringify(payload),
       });
       const d = await r.json();
-      if (d.success) toast.success(d.message || 'Pesan test terkirim! Cek WhatsApp Anda.');
-      else toast.error(d.message || 'Gagal mengirim pesan test');
+      if (d.success) toast.success(d.message || t('pg_alerts.testMessageSentCheck'));
+      else toast.error(d.message || t('pg_alerts.failedToSendTest'));
       setTesting(false);
     },
-    onError: () => { toast.error('Gagal mengirim pesan test'); setTesting(false); },
+    onError: () => { toast.error(t('pg_alerts.failedToSendTest')); setTesting(false); },
   });
 
   if (isLoading) return <TabSkeleton />;
@@ -1190,7 +1196,7 @@ function WhatsAppSection({
             <MessageCircle size={15} className="text-success" />
           </div>
         }
-        title="Konfigurasi WhatsApp Gateway"
+        title={t('pg_alerts.whatsappGatewayConfiguration')}
         action={
           <div className="flex items-center gap-2 flex-wrap">
             {isSuperAdmin && onSwitchToNative && (
@@ -1199,11 +1205,11 @@ function WhatsAppSection({
                 onClick={onSwitchToNative}
                 className="px-2.5 py-1 rounded-md text-xs font-medium border border-brd bg-glass hover:border-accent/40 text-tx2 transition-colors"
               >
-                Beralih ke WA Native (QR)
+                {t('pg_alerts.switchNative')}
               </button>
             )}
             <span className={cn('badge', waConfig.enabled ? 'badge-success' : 'badge-neutral')}>
-              {waConfig.enabled ? `Aktif · ${selectedGateway.name}` : 'Nonaktif'}
+              {waConfig.enabled ? `${t('pg_alerts.active')} · ${selectedGateway.name}` : t('pg_alerts.off')}
             </span>
           </div>
         }
@@ -1211,8 +1217,8 @@ function WhatsAppSection({
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-glass border border-brd">
             <div>
-              <div className="text-sm font-medium text-tx1">Aktifkan Pengiriman WA Gateway</div>
-              <div className="text-xs text-tx3">Otomatis menyalakan saluran WA Gateway pada Alert Rules saat disimpan</div>
+              <div className="text-sm font-medium text-tx1">{t('pg_alerts.enableWaGatewayDelivery')}</div>
+              <div className="text-xs text-tx3">{t('pg_alerts.automaticallyEnablesTheWa')}</div>
             </div>
             <button
               type="button"
@@ -1230,7 +1236,7 @@ function WhatsAppSection({
 
           {/* Quick Provider Selector */}
           <div>
-            <label className="label-sm block">Pilih Cepat Penyedia Gateway</label>
+            <label className="label-sm block">{t('pg_alerts.quickPickAGateway')}</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {quickProviders.map(gw => {
                 const active = form.provider === gw.id;
@@ -1263,7 +1269,7 @@ function WhatsAppSection({
 
           {/* Full Provider Select */}
           <Select
-            label="Daftar Lengkap Penyedia WA Gateway (21 Provider)"
+            label={t('pg_alerts.fullListOfWa')}
             value={form.provider}
             onChange={e => handleSelectProvider(e.target.value)}
           >
@@ -1272,12 +1278,12 @@ function WhatsAppSection({
                 <option key={g.id} value={g.id}>{g.name}</option>
               ))}
             </optgroup>
-            <optgroup label="Self-Hosted / Open Source">
+            <optgroup label={t('pg_alerts.selfHostedOpenSource')}>
               {WA_GATEWAYS.filter(g => g.group === 'self').map(g => (
                 <option key={g.id} value={g.id}>{g.name}</option>
               ))}
             </optgroup>
-            <optgroup label="Internasional / Official Cloud API">
+            <optgroup label={t('pg_alerts.internationalOfficialCloudApi')}>
               {WA_GATEWAYS.filter(g => g.group === 'intl').map(g => (
                 <option key={g.id} value={g.id}>{g.name}</option>
               ))}
@@ -1297,7 +1303,7 @@ function WhatsAppSection({
               <>
                 {selectedGateway.tokenLabel}{' '}
                 {Boolean(waConfig.has_api_key) && (
-                  <span className="text-success font-normal text-xs">(Tersimpan — isi baru jika ingin mengganti)</span>
+                  <span className="text-success font-normal text-xs">{t('pg_alerts.savedEnterANew')}</span>
                 )}
               </>
             }
@@ -1318,7 +1324,7 @@ function WhatsAppSection({
           )}
 
           <Input
-            label="Nomor WA Tujuan / Group ID"
+            label={t('pg_alerts.destinationWaNumberGroup')}
             value={form.phone_number}
             onChange={e => { setForm({ ...form, phone_number: e.target.value }); setEditing(true); }}
             placeholder={selectedGateway.phonePlaceholder}
@@ -1342,7 +1348,7 @@ function WhatsAppSection({
               disabled={!form.api_url || !form.phone_number}
               onClick={() => testMut.mutate()}
             >
-              Kirim Pesan Test
+              {t('pg_alerts.sendTestMessage')}
             </Button>
           </div>
         </div>
@@ -1357,17 +1363,17 @@ function WhatsAppSection({
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div className="p-2.5 rounded-lg bg-glass border border-brd">
-                <div className="text-[11px] text-tx3">Metode &amp; Content-Type</div>
+                <div className="text-[11px] text-tx3">{t('pg_alerts.methodContentType')}</div>
                 <div className="font-mono text-tx1 mt-0.5 break-all">{selectedGateway.protocol}</div>
               </div>
               <div className="p-2.5 rounded-lg bg-glass border border-brd">
-                <div className="text-[11px] text-tx3">Skema Autentikasi</div>
+                <div className="text-[11px] text-tx3">{t('pg_alerts.authenticationScheme')}</div>
                 <div className="font-mono text-tx1 mt-0.5 break-all">{selectedGateway.authHeader}</div>
               </div>
             </div>
 
             <div>
-              <div className="text-[11px] text-tx3 mb-1">Format Payload yang Dikirim NMS</div>
+              <div className="text-[11px] text-tx3 mb-1">{t('pg_alerts.payloadFormatSentBy')}</div>
               <div className="code-block">
                 <pre>{selectedGateway.samplePayload}</pre>
               </div>
@@ -1391,6 +1397,7 @@ function WhatsAppSection({
 /* ─── WhatsApp Native (Baileys QR) Section ─── */
 
 function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () => void }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { data: botData } = useQuery({
     queryKey: ['bot-config'],
@@ -1464,7 +1471,7 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['bot-config'] });
       qc.invalidateQueries({ queryKey: ['alert-rules'] });
-      toast.success('Konfigurasi WA Native disimpan');
+      toast.success(t('pg_alerts.waNativeConfigurationSaved'));
       setEditing(false);
     },
   });
@@ -1473,18 +1480,18 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
     try {
       const r = await fetch('/api/bot-config/whatsapp-native/logout', { method: 'POST', credentials: 'include' });
       const d = await r.json();
-      if (d.success) { toast.success('Sesi WA di-logout. Silakan scan QR baru.'); setQrData(null); }
-      else toast.error(d.message || 'Logout gagal');
-    } catch { toast.error('Logout gagal'); }
+      if (d.success) { toast.success(t('pg_alerts.waSessionLoggedOut')); setQrData(null); }
+      else toast.error(d.message || t('pg_alerts.logoutFailed'));
+    } catch { toast.error(t('pg_alerts.logoutFailed')); }
   };
 
   const handleReconnect = async () => {
     try {
       const r = await fetch('/api/bot-config/whatsapp-native/reconnect', { method: 'POST', credentials: 'include' });
       const d = await r.json();
-      if (d.success) toast.success('Menghubungkan ulang...');
-      else toast.error(d.message || 'Reconnect gagal');
-    } catch { toast.error('Reconnect gagal'); }
+      if (d.success) toast.success(t('pg_alerts.reconnecting'));
+      else toast.error(d.message || t('pg_alerts.reconnectFailed'));
+    } catch { toast.error(t('pg_alerts.reconnectFailed')); }
   };
 
   const handleTest = async () => {
@@ -1492,9 +1499,9 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
     try {
       const r = await fetch('/api/bot-config/whatsapp-native/test', { method: 'POST', credentials: 'include' });
       const d = await r.json();
-      if (d.success) toast.success('Pesan test terkirim! Cek WhatsApp Anda.');
-      else toast.error(d.message || 'Gagal mengirim pesan test');
-    } catch { toast.error('Gagal mengirim pesan test'); }
+      if (d.success) toast.success(t('pg_alerts.testMessageSentCheck'));
+      else toast.error(d.message || t('pg_alerts.failedToSendTest'));
+    } catch { toast.error(t('pg_alerts.failedToSendTest')); }
     setTesting(false);
   };
 
@@ -1504,8 +1511,8 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
       const r = await fetch('/api/bot-config/whatsapp-native/qr', { credentials: 'include' });
       const d = await r.json();
       setQrData(d.qr);
-      if (!d.qr) toast.info(d.message || 'QR belum tersedia');
-    } catch { toast.error('Gagal memuat QR'); }
+      if (!d.qr) toast.info(d.message || t('pg_alerts.qrNotAvailableYet'));
+    } catch { toast.error(t('pg_alerts.failedToLoadQr')); }
     setQrLoading(false);
   };
 
@@ -1515,8 +1522,8 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
       const r = await fetch('/api/bot-config/whatsapp-native/start', { method: 'POST', credentials: 'include' });
       const d = await r.json();
       if (d.success) { toast.success(d.message || 'Service WA Native dijalankan'); refetchGw(); }
-      else toast.error(d.message || 'Gagal menjalankan service');
-    } catch { toast.error('Gagal menjalankan service'); }
+      else toast.error(d.message || t('pg_alerts.failedToStartThe'));
+    } catch { toast.error(t('pg_alerts.failedToStartThe')); }
     setGwAction(false);
   };
 
@@ -1526,8 +1533,8 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
       const r = await fetch('/api/bot-config/whatsapp-native/stop', { method: 'POST', credentials: 'include' });
       const d = await r.json();
       if (d.success) { toast.success(d.message || 'Service WA Native dihentikan'); refetchGw(); }
-      else toast.error(d.message || 'Gagal menghentikan service');
-    } catch { toast.error('Gagal menghentikan service'); }
+      else toast.error(d.message || t('pg_alerts.failedToStopThe'));
+    } catch { toast.error(t('pg_alerts.failedToStopThe')); }
     setGwAction(false);
   };
 
@@ -1572,7 +1579,7 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
             <div className="flex items-center gap-3 min-w-0">
               <Server size={16} className="text-accent flex-shrink-0" />
               <div className="min-w-0">
-                <div className="text-xs font-semibold text-tx1">Proses Service Lokal (PM2)</div>
+                <div className="text-xs font-semibold text-tx1">{t('pg_alerts.localServiceProcessPm2')}</div>
                 <div className="text-xs text-tx3 font-mono mt-0.5 truncate tabular-nums">
                   Port {gwData?.port || 3000} · PID {gwData?.pid || '—'} · Status: {gwData?.pm2_status || 'unknown'}
                 </div>
@@ -1619,8 +1626,8 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
           {/* Enable Toggle */}
           <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-glass border border-brd">
             <div>
-              <div className="text-sm font-medium text-tx1">Gunakan WA Native untuk Alert</div>
-              <div className="text-xs text-tx3">Kirim pesan alert melalui sesi WhatsApp lokal di atas</div>
+              <div className="text-sm font-medium text-tx1">{t('pg_alerts.useWaNativeFor')}</div>
+              <div className="text-xs text-tx3">{t('pg_alerts.sendAlertsThroughThe')}</div>
             </div>
             <button
               type="button"
@@ -1645,7 +1652,7 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
           />
 
           <Input
-            label="Nomor WA Tujuan / Group ID"
+            label={t('pg_alerts.destinationWaNumberGroup')}
             value={form.phone_number}
             onChange={e => { setForm({ ...form, phone_number: e.target.value }); setEditing(true); }}
             placeholder="6281234567890"
@@ -1669,7 +1676,7 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
               disabled={!form.phone_number}
               onClick={handleTest}
             >
-              Kirim Pesan Test
+              {t('pg_alerts.sendTestMessage')}
             </Button>
           </div>
         </div>
@@ -1678,14 +1685,14 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
       {/* Right column: QR Code Pairing */}
       <Card
         className="lg:col-span-5"
-        title="Tautkan Perangkat (QR Code)"
+        title={t('pg_alerts.linkDeviceQrCode')}
       >
         {status?.connected ? (
           <div className="py-8 flex flex-col items-center text-center gap-2">
             <div className="w-12 h-12 rounded-full bg-success/10 border border-success/30 flex items-center justify-center text-success">
               <CheckCircle2 size={24} />
             </div>
-            <div className="text-sm font-semibold text-tx1 mt-1">Perangkat Sudah Terhubung</div>
+            <div className="text-sm font-semibold text-tx1 mt-1">{t('pg_alerts.deviceConnected')}</div>
             <p className="text-xs text-tx3 max-w-xs">
               Sesi WhatsApp Native aktif dan siap mengirimkan pesan notifikasi.
             </p>
@@ -1693,7 +1700,7 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
         ) : (
           <div className="flex flex-col items-center gap-3">
             <p className="text-xs text-tx2 text-center leading-relaxed">
-              Buka WhatsApp di ponsel → <strong>Perangkat Tertaut</strong> → <strong>Tautkan Perangkat</strong> → arahkan kamera ke kode QR di bawah.
+              Buka WhatsApp di ponsel → <strong>{t('pg_alerts.linkedDevice')}</strong> → <strong>{t('pg_alerts.linkDevice')}</strong> → arahkan kamera ke kode QR di bawah.
             </p>
             {qrLoading ? (
               <div className="w-52 h-52 sm:w-60 sm:h-60 flex items-center justify-center bg-glass rounded-lg border border-brd">
@@ -1708,7 +1715,7 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
             ) : (
               <div className="w-52 h-52 sm:w-60 sm:h-60 flex flex-col items-center justify-center bg-glass rounded-lg border border-brd gap-2">
                 <QrCode size={40} className="text-tx3" />
-                <span className="text-xs text-tx3">QR belum tersedia</span>
+                <span className="text-xs text-tx3">{t('pg_alerts.qrNotAvailableYet')}</span>
               </div>
             )}
             <Button variant="secondary" icon={<RefreshCw size={14} />} loading={qrLoading} onClick={handleRefreshQR}>
@@ -1724,6 +1731,7 @@ function WhatsAppNativeSection({ onSwitchToGateway }: { onSwitchToGateway?: () =
 /* ─── Scheduler & Timezone Section ─── */
 
 function CronjobSection() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [rechecking, setRechecking] = useState(false);
   const { data, isLoading } = useQuery({
@@ -1751,9 +1759,9 @@ function CronjobSection() {
         credentials: 'include', body: JSON.stringify({ alert_check_interval: interval, timezone }),
       });
       const d = await r.json();
-      if (d.success) { toast.success('Pengaturan jadwal & zona waktu disimpan'); qc.invalidateQueries({ queryKey: ['system-config'] }); }
-      else toast.error(d.message || 'Gagal menyimpan');
-    } catch { toast.error('Gagal menyimpan'); }
+      if (d.success) { toast.success(t('pg_alerts.scheduleTimezoneSettingsSaved')); qc.invalidateQueries({ queryKey: ['system-config'] }); }
+      else toast.error(d.message || t('pg_alerts.failedToSave'));
+    } catch { toast.error(t('pg_alerts.failedToSave')); }
     setSaving(false);
   };
 
@@ -1763,8 +1771,8 @@ function CronjobSection() {
       const r = await fetch('/api/alert-rules/recheck', { method: 'POST', credentials: 'include' });
       const d = await r.json();
       if (d.success) toast.success(d.message);
-      else toast.error(d.message || 'Evaluasi ulang gagal');
-    } catch { toast.error('Evaluasi ulang gagal'); }
+      else toast.error(d.message || t('pg_alerts.reEvaluationFailed'));
+    } catch { toast.error(t('pg_alerts.reEvaluationFailed')); }
     setRechecking(false);
   };
 
@@ -1791,14 +1799,14 @@ function CronjobSection() {
             <Clock size={15} className="text-warning" />
           </div>
         }
-        title="Interval Evaluasi & Zona Waktu"
-        action={<span className="badge badge-success">Scheduler Aktif</span>}
+        title={t('pg_alerts.evaluationIntervalTimezone')}
+        action={<span className="badge badge-success">{t('pg_alerts.schedulerActive')}</span>}
       >
         <div className="space-y-4">
           <div className="p-3.5 rounded-lg bg-glass border border-brd space-y-3">
             <div>
-              <label className="text-xs font-semibold text-tx1 block">Interval Pengecekan Alert</label>
-              <p className="text-xs text-tx3 mt-0.5">Seberapa sering worker memeriksa perubahan status ONU dan metrik OLT (minimum 10 detik).</p>
+              <label className="text-xs font-semibold text-tx1 block">{t('pg_alerts.alertCheckInterval')}</label>
+              <p className="text-xs text-tx3 mt-0.5">{t('pg_alerts.howOftenTheWorker')}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="flex items-center gap-2">
@@ -1810,7 +1818,7 @@ function CronjobSection() {
                   onChange={e => setIntervalVal(e.target.value)}
                   className="input-field w-24 font-mono tabular-nums"
                 />
-                <span className="text-xs text-tx2">detik</span>
+                <span className="text-xs text-tx2">{t('pg_alerts.seconds')}</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {[30, 60, 120, 300, 600].map(sec => (
@@ -1833,7 +1841,7 @@ function CronjobSection() {
           </div>
 
           <Select
-            label="Zona Waktu Sistem"
+            label={t('pg_alerts.systemTimezone')}
             value={timezone}
             onChange={e => setTimezone(e.target.value)}
             helperText="Digunakan untuk seluruh stempel waktu pada notifikasi WA/Telegram dan log histori."
@@ -1862,16 +1870,16 @@ function CronjobSection() {
 
       <Card
         className="lg:col-span-5"
-        title="Mekanisme Anti-Spam &amp; Debounce"
+        title={t('pg_alerts.antiSpamDebounce')}
       >
         <div className="space-y-2.5 text-xs text-tx2 leading-relaxed">
           <p>
-            Mesin alert dilengkapi proteksi <strong>debounce 120 detik</strong> dan pengelompokan otomatis (batching) per PON port agar grup WhatsApp/Telegram tidak banjir pesan saat terjadi putus jalur distribusi.
+            Mesin alert dilengkapi proteksi <strong>{t('pg_alerts.120SecondDebounce')}</strong> dan pengelompokan otomatis (batching) per PON port agar grup WhatsApp/Telegram tidak banjir pesan saat terjadi putus jalur distribusi.
           </p>
           <ul className="list-disc ml-4 space-y-1.5 text-tx3">
-            <li><strong className="text-tx2">Batching otomatis</strong>: Jika banyak ONU pada satu port PON mengalami LOS bersamaan, pesan digabung menjadi satu laporan ringkas.</li>
-            <li><strong className="text-tx2">Auto-resolve</strong>: Ketika ONU kembali online dan stabil selama 2 siklus pengecekan, alarm ditandai selesai secara otomatis.</li>
-            <li><strong className="text-tx2">Retensi otomatis</strong>: Histori notifikasi yang sudah selesai lebih dari 7 hari dibersihkan otomatis.</li>
+            <li><strong className="text-tx2">{t('pg_alerts.automaticBatching')}</strong>{t('pg_alerts.whenManyOnusOn')}</li>
+            <li><strong className="text-tx2">Auto-resolve</strong>{t('pg_alerts.whenAnOnuIs')}</li>
+            <li><strong className="text-tx2">{t('pg_alerts.automaticRetention')}</strong>{t('pg_alerts.resolvedNotificationHistoryOlder')}</li>
           </ul>
         </div>
       </Card>

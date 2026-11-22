@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, type TechnicianData } from '../lib/api';
@@ -31,6 +32,7 @@ interface ProvisionResult {
 }
 
 export function AddOnu() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -113,7 +115,7 @@ export function AddOnu() {
   }, [vlanList]);
 
   const scanOnus = async () => {
-    if (!oltId) { toast.warning('Select an OLT first'); return; }
+    if (!oltId) { toast.warning(t('pg_addonu.selectAnOltFirst')); return; }
     setScanning(true);
     try {
       const res = await fetch('/api/scan-unconfigured', {
@@ -127,12 +129,12 @@ export function AddOnu() {
         setScannedOnus(d.onus || []);
         setRegisteredTypes(d.registered_types || []);
         setShowScan(true);
-        if ((d.onus || []).length === 0) toast.warning('No unconfigured ONUs found');
-        else toast.success(`Found ${d.onus.length} unconfigured ONU(s)`);
+        if ((d.onus || []).length === 0) toast.warning(t('pg_addonu.noUnconfiguredOnusFound'));
+        else toast.success(t('wiz.foundN', { count: d.onus.length }));
       } else {
-        toast.error(d.message || 'Scan failed');
+        toast.error(d.message || t('pg_addonu.scanFailed'));
       }
-    } catch { toast.error('Scan failed'); }
+    } catch { toast.error(t('pg_addonu.scanFailed')); }
     setScanning(false);
   };
 
@@ -157,7 +159,7 @@ export function AddOnu() {
       setPort(Number(parts[2]));
     }
     setShowScan(false);
-    toast.success(`Selected ONU ${onu.sn} on ${onu.pon_port}`);
+    toast.success(t('pg_addonu.selected', { sn: onu.sn, pon: onu.pon_port }));
   };
 
   const [profileList, setProfileList] = useState<string[]>([]);
@@ -225,7 +227,7 @@ export function AddOnu() {
       const d = await res.json();
       setResult(d);
       if (d.success && !dryRun) {
-        toast.success('ONU provisioned! Auto-syncing OLT...');
+        toast.success(t('pg_addonu.onuProvisionedAutoSyncing'));
         // Trigger OLT sync in background
         try {
           await fetch(`/api/olt/${oltId}/sync`, { method: 'POST', credentials: 'include' });
@@ -233,7 +235,7 @@ export function AddOnu() {
         setTimeout(() => navigate('/dashboard/onus'), 2000);
       }
       else if (!d.success) toast.error(d.message || 'Failed');
-    } catch { toast.error('Request failed'); }
+    } catch { toast.error(t('pg_addonu.requestFailed')); }
     setLoading(false);
   };
 
@@ -252,7 +254,7 @@ export function AddOnu() {
             <ArrowLeft size={18} />
           </button>
         }
-        title="Add New ONU"
+        title={t('pg_addonu.addNewOnu')}
         description="ZTE ONT provisioning"
       />
 
@@ -265,7 +267,7 @@ export function AddOnu() {
                 className={cn('flex items-center gap-1.5 px-2.5 md:px-3 py-2 rounded-xl text-[11px] md:text-xs font-medium transition-all whitespace-nowrap',
                   step === s.id ? 'bg-accent text-white' : step > s.id ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>
                 {step > s.id ? <Check size={14} /> : s.icon}
-                <span className="hidden sm:inline">{s.label}</span>
+                <span className="hidden sm:inline">{t(`pg_addonu.step${s.id}`)}</span>
                 <span className="sm:hidden">{s.id}</span>
               </button>
               {i < STEPS.length - 1 && <div className={cn('w-3 md:w-8 h-0.5 rounded', step > s.id ? 'bg-success' : 'bg-glass')} />}
@@ -279,7 +281,7 @@ export function AddOnu() {
         <Card icon={<Server size={18} />} title="Select OLT">
           <div className="grid gap-2 md:gap-3">
             {olts.length === 0 && (
-              <EmptyState icon={Server} title="No OLTs available" description="Add an OLT in OLT Settings first" />
+              <EmptyState icon={Server} title={t('pg_addonu.noOltsAvailable')} description={t('pg_addonu.addAnOltIn')} />
             )}
             {olts.map((olt: {id: number; name: string; ip_address: string; is_online?: boolean}) => (
               <button key={olt.id} onClick={() => setOltId(olt.id)}
@@ -302,7 +304,7 @@ export function AddOnu() {
 
       {/* Step 2: ONU Info */}
       {step === 2 && (
-        <Card icon={<Cpu size={18} />} title="ONU Information" bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
+        <Card icon={<Cpu size={18} />} title={t('pg_addonu.onuInformation')} bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
           {/* Scan Button */}
           <div className="flex items-center gap-2 md:gap-3 flex-wrap">
             <Button
@@ -371,12 +373,12 @@ export function AddOnu() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             <div>
-              <label className="label-sm mb-1">Name</label>
+              <label className="label-sm mb-1">{t('pg_addonu.name')}</label>
               <input type="text" value={name} onChange={e => setName(e.target.value)}
                 placeholder="ODP-RW03-03_USERNAME" className="input-field" />
             </div>
             <div>
-              <label className="label-sm mb-1">Description</label>
+              <label className="label-sm mb-1">{t('pg_addonu.description')}</label>
               <input type="text" value={description} onChange={e => setDescription(e.target.value)}
                 placeholder="ODP-RW03-03 | User Name" className="input-field" />
             </div>
@@ -400,7 +402,7 @@ export function AddOnu() {
                   <input type="number" value={slot} onChange={e => setSlot(Number(e.target.value))} className="input-field" placeholder="Auto" />
                 </>
               )}
-              {slots.length === 0 && oltId && <p className="text-[10px] text-tx3 mt-1">Sync OLT to load cards</p>}
+              {slots.length === 0 && oltId && <p className="text-[10px] text-tx3 mt-1">{t('pg_addonu.syncOltToLoad')}</p>}
             </div>
             <div>
               {slots.length > 0 ? (() => {
@@ -419,16 +421,16 @@ export function AddOnu() {
           </div>
           <div>
               <Select
-                label={<><Wrench size={12} className="inline mr-1.5" />Teknisi Lapangan</>}
+                label={<><Wrench size={12} className="inline mr-1.5" />{t('pg_addonu.fieldTechnician')}</>}
                 value={technicianId ?? ''}
                 onChange={e => setTechnicianId(e.target.value ? Number(e.target.value) : null)}
                 options={[
-                  { value: '', label: '— Tidak ada teknisi —' },
+                  { value: '', label: t('pg_addonu.noTechnician') },
                   ...technicians.map(t => ({ value: String(t.id), label: `${t.full_name}${t.phone ? ` (${t.phone})` : ''}` })),
                 ]}
               />
               {technicians.length === 0 && (
-                <p className="text-[10px] text-tx3 mt-1">Belum ada user dengan role Technician. Tambahkan di User Management.</p>
+                <p className="text-[10px] text-tx3 mt-1">{t('pg_addonu.noUsersWithThe')}</p>
               )}
             </div>
         </Card>
@@ -436,7 +438,7 @@ export function AddOnu() {
 
       {/* Step 3: Configuration */}
       {step === 3 && (
-        <Card icon={<Settings size={18} />} title="Configuration" bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
+        <Card icon={<Settings size={18} />} title={t('pg_addonu.configuration')} bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             <div>
               <Select
@@ -456,7 +458,7 @@ export function AddOnu() {
                 onChange={e => setTrafficProfile(e.target.value)}
                 helperText="Download bandwidth limit profile"
                 options={[
-                  { value: '', label: '— Same as TCONT —' },
+                  { value: '', label: t('pg_addonu.sameAsTcont') },
                   ...trafficList.map(p => ({ value: p, label: p })),
                   ...profileList.filter(p => !trafficList.includes(p)).map(p => ({ value: p, label: `${p} (from TCONT)` })),
                 ]}
@@ -468,14 +470,14 @@ export function AddOnu() {
                 value={serviceVlan}
                 onChange={e => setServiceVlan(Number(e.target.value))}
                 options={[
-                  { value: '0', label: '— Select VLAN —' },
+                  { value: '0', label: t('pg_addonu.selectVlan') },
                   ...vlanList.map(v => ({ value: String(v.vlan_id), label: `${v.vlan_id} — ${v.name}` })),
                   ...(!vlanList.find(v => v.vlan_id === serviceVlan) && serviceVlan > 0
                     ? [{ value: String(serviceVlan), label: `${serviceVlan} (custom)` }] : []),
                 ]}
               />
               <input type="number" value={serviceVlan || ''} onChange={e => setServiceVlan(Number(e.target.value))}
-                min={1} max={4094} className="input-field mt-1" placeholder="Custom VLAN ID" />
+                min={1} max={4094} className="input-field mt-1" placeholder={t('pg_addonu.customVlanId')} />
             </div>
           </div>
 
@@ -532,7 +534,7 @@ export function AddOnu() {
           <div>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={tr069Enabled} onChange={e => setTr069Enabled(e.target.checked)} />
-              <Wifi size={16} /><span className="text-sm font-medium">Enable TR-069</span>
+              <Wifi size={16} /><span className="text-sm font-medium">{t('pg_addonu.enableTr069')}</span>
             </label>
             <p className="text-xs text-tx3 mt-1 ml-6">
               TR069 commands are sent via OLT OMCI — ZTE supports TR069 via standard OMCI.
@@ -543,10 +545,10 @@ export function AddOnu() {
               <div className="md:col-span-2">
                 <label className="label-sm mb-1">TR069 Profile</label>
                 <select value={selectedTr069Profile} onChange={e => selectTr069Profile(e.target.value)} className="input-field">
-                  <option value="">Select Profile...</option>
+                  <option value="">{t('pg_addonu.selectProfile')}</option>
                   {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                 </select>
-                <p className="text-[10px] text-tx3 mt-1">Select a saved TR069 profile to auto-fill ACS settings, or fill manually below.</p>
+                <p className="text-[10px] text-tx3 mt-1">{t('pg_addonu.pickASavedTr069')}</p>
               </div>
               <div className="md:col-span-2"><label className="label-sm mb-1">ACS URL *</label>
                 <input type="text" value={acsUrl} onChange={e => setAcsUrl(e.target.value)} className="input-field"
@@ -571,7 +573,7 @@ export function AddOnu() {
                 <div>
                   <label className="label-sm mb-1">TR069 VLAN</label>
                   <select value={tr069Vlan} onChange={e => setTr069Vlan(Number(e.target.value))} className="input-field">
-                    <option value={0}>— Select VLAN —</option>
+                    <option value={0}>{t('pg_addonu.selectVlan')}</option>
                     {vlanList.map(v => (
                       <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name}</option>
                     ))}
@@ -579,13 +581,13 @@ export function AddOnu() {
                       <option value={tr069Vlan}>{tr069Vlan} (custom)</option>
                     )}
                   </select>
-                  <p className="text-[10px] text-tx3 mt-1">Select VLAN from OLT or type custom ID below</p>
+                  <p className="text-[10px] text-tx3 mt-1">{t('pg_addonu.selectAVlanFrom')}</p>
                   <input type="number" value={tr069Vlan} onChange={e => setTr069Vlan(Number(e.target.value))}
-                    min={1} max={4094} className="input-field mt-1" placeholder="Custom VLAN ID" />
+                    min={1} max={4094} className="input-field mt-1" placeholder={t('pg_addonu.customVlanId')} />
                 </div>
               )}
               <div>
-                <label className="label-sm mb-1">Preview Commands</label>
+                <label className="label-sm mb-1">{t('pg_addonu.previewCommands')}</label>
                 <div className="code-block text-xs space-y-0.5">
                   <div>tr069-mgmt 1 state unlock</div>
                   <div>tr069-mgmt 1 acs {acsUrl || '...'} validate basic username {acsUsername || '...'} password ***</div>
@@ -600,7 +602,7 @@ export function AddOnu() {
 
       {/* Step 4: Review */}
       {step === 4 && (
-        <Card icon={<Check size={18} />} title="Review & Provision" bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
+        <Card icon={<Check size={18} />} title={t('pg_addonu.reviewProvision')} bodyClassName="p-4 md:p-6 space-y-4 md:space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
             {[
               ['OLT', olts.find((o: {id:number}) => o.id === oltId)?.name || ''],
@@ -642,7 +644,7 @@ export function AddOnu() {
               )}
               {result['commands'] && (result['commands'] as string[]).length > 0 && (
                 <div className="mt-2">
-                  <div className="text-xs text-tx3 mb-1">Commands:</div>
+                  <div className="text-xs text-tx3 mb-1">{t('pg_addonu.commands')}</div>
                   <pre className="code-block text-xs overflow-auto max-h-40">
                     {(result['commands'] as string[]).map((c: string) => `> ${c}`).join('\n')}
                   </pre>
