@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Terjemahan kelompok 2: wizard ONU
+
+#### Diubah
+- **Register Wizard, Provision/Pre-config ONT, dan wizard dari Unconfigured** kini mengikuti pilihan bahasa: judul langkah, label form, petunjuk, tombol, notifikasi, dan ringkasan tinjau. **Skrip CLI yang dikirim ke OLT dan pratinjaunya tidak diubah** (fungsi pembuat skrip dibandingkan sebelum/sesudah dan identik). Istilah teknis (VLAN, PPPoE, TCONT, SSID, TR069, VEIP) tetap.
+
 ### 2026-11-22 — Terjemahan kelompok 1: Pengaturan OLT, ONU Belum Terkonfigurasi, Riwayat Alert
 
 #### Diubah

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, type TechnicianData } from '../lib/api';
@@ -114,11 +115,12 @@ const newService = (overrides?: Partial<ServiceEntry>): ServiceEntry => ({
 });
 
 const STEPS = [
-  { id: 1, label: 'Pilih OLT' },
-  { id: 2, label: 'Pilih ONU' },
-  { id: 3, label: 'Layanan' },
-  { id: 4, label: 'WiFi & TR069' },
-  { id: 5, label: 'Tinjau' },
+  // label = kunci terjemahan (diterjemahkan saat render)
+  { id: 1, label: 'wiz.stepSelectOlt' },
+  { id: 2, label: 'wiz.stepSelectOnu' },
+  { id: 3, label: 'wiz.stepServices' },
+  { id: 4, label: 'wiz.stepWifiTr069' },
+  { id: 5, label: 'wiz.stepReviewShort' },
 ];
 
 // ─── Script Generator ───────────────────────────────────────────────────────
@@ -336,6 +338,7 @@ function generateScript(d: WizardState): string {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -477,7 +480,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
 
   // Scan
   const scanOnus = async () => {
-    if (!data.oltId) { toast.warning('Select an OLT first'); return; }
+    if (!data.oltId) { toast.warning(t('wiz.selectOltFirst')); return; }
     setScanning(true);
     try {
       const res = await fetch('/api/scan-unconfigured', {
@@ -502,9 +505,9 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             return [...prev, ...types.filter((t: { type_name: string; pon_type: string }) => !seen.has(t.type_name))];
           });
         }
-        toast[d.onus.length ? 'success' : 'warning'](d.onus.length ? `Found ${d.onus.length} ONU(s)` : 'No unconfigured ONUs found');
-      } else toast.error(d.message || 'Scan failed');
-    } catch { toast.error('Scan failed'); }
+        toast[d.onus.length ? 'success' : 'warning'](d.onus.length ? t('wiz.foundN', { count: d.onus.length }) : t('wiz.noUnconfigured'));
+      } else toast.error(d.message || t('wiz.scanFailed'));
+    } catch { toast.error(t('wiz.scanFailed')); }
     setScanning(false);
   };
 
@@ -583,11 +586,11 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
         });
         const d = await r.json();
         res.push({ sn: onu.sn, success: d.success, message: d.message || '' });
-        if (d.success) toast.success(`ONU ${onu.sn} registered!`);
+        if (d.success) toast.success(t('wiz.onuRegistered', { sn: onu.sn }));
         else toast.error(`${onu.sn}: ${d.message}`);
       } catch (e: unknown) {
-        res.push({ sn: onu.sn, success: false, message: e instanceof Error ? e.message : 'Failed' });
-        toast.error(`${onu.sn}: failed`);
+        res.push({ sn: onu.sn, success: false, message: e instanceof Error ? e.message : t('wiz.failed') });
+        toast.error(t('wiz.onuFailed', { sn: onu.sn }));
       }
       if (i < data.selectedOnus.length - 1) await new Promise(r => setTimeout(r, 1000));
     }
@@ -597,7 +600,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
     setStep(6);
 
     if (res.some(r => r.success) && data.oltId) {
-      toast.info('Auto-syncing OLT...');
+      toast.info(t('wiz.autoSyncingShort'));
       try { await fetch(`/api/olt/${data.oltId}/sync`, { method: 'POST', credentials: 'include' }); } catch {}
     }
   };
@@ -644,20 +647,20 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           </button>
         }
         title={manualMode ? 'Pre-config ONT' : 'Provision ONU'}
-        description={manualMode ? 'Input SN manual — tanpa scan OLT' : 'Wizard terpadu — semua vendor, layanan dinamis'}
+        description={manualMode ? t('wiz.preconfigSubtitle') : t('wiz.provSubtitle')}
       />
 
       {/* Penanda langkah (redesign Fase 3) */}
       {step <= 5 && (
-        <Stepper steps={STEPS.map(s => ({ label: s.label }))} current={step - 1} onStepClick={i => setStep(i + 1)} />
+        <Stepper steps={STEPS.map(s => ({ label: t(s.label) }))} current={step - 1} onStepClick={i => setStep(i + 1)} />
       )}
 
       {/* ═══ Step 1: Select OLT ═══ */}
       {step === 1 && (
-        <Card icon={<Server size={18} />} title="Select OLT">
+        <Card icon={<Server size={18} />} title={t('wiz.stepSelectOlt')}>
           <div className="grid gap-2 md:gap-3">
             {olts.length === 0 && (
-              <EmptyState icon={Server} title="No OLTs available" />
+              <EmptyState icon={Server} title={t('wiz.noOlts')} />
             )}
             {olts.map((olt: { id: number; name: string; ip_address: string; is_online?: boolean }) => (
               <button key={olt.id} onClick={() => update('oltId', olt.id)}
@@ -679,7 +682,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           {/* Registration Mode */}
           {data.oltId > 0 && (
             <div className="pt-2">
-              <label className="label-sm mb-2">Registration Mode</label>
+              <label className="label-sm mb-2">{t('wiz.regMode')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => update('registerMode', 'cli')}
                   className={cn('flex items-center gap-2 p-2.5 rounded-lg border text-left transition',
@@ -687,7 +690,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                   <Wrench size={16} className={data.registerMode === 'cli' ? 'text-accent' : 'text-tx3'} />
                   <div>
                     <div className="text-sm font-medium">CLI (SSH/Telnet)</div>
-                    <div className="text-xs text-tx3">Full provisioning</div>
+                    <div className="text-xs text-tx3">{t('wiz.fullProvisioning')}</div>
                   </div>
                 </button>
                 <button type="button" onClick={() => update('registerMode', 'snmp')}
@@ -713,7 +716,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           action={!manualMode ? (
             <Button variant="primary" icon={scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
               loading={scanning} disabled={!data.oltId} onClick={scanOnus}>
-              Scan OLT
+              {t('wiz.scanOlt')}
             </Button>
           ) : undefined}
         >
@@ -721,7 +724,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             /* ─── Manual Entry Mode ─── */
             <div className="space-y-4">
               <div className="p-3 rounded-lg bg-accent/5 border border-accent/20 text-xs text-accent">
-                <strong>Pre-config Mode:</strong> Masukkan Serial Number ONU secara manual tanpa scan OLT. Pastikan SN benar dan ONU sudah terhubung ke PON port yang dituju.
+                <strong>{t('wiz.preconfigMode')}</strong> Masukkan Serial Number ONU secara manual tanpa scan OLT. Pastikan SN benar dan ONU sudah terhubung ke PON port yang dituju.
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Input label="Serial Number *" type="text" value={manualSn} onChange={e => setManualSn(e.target.value.toUpperCase())}
@@ -742,7 +745,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                   ) : (
                     <Input label="Slot (Card)" type="number" value={manualSlot} onChange={e => setManualSlot(Number(e.target.value))} min={1} />
                   )}
-                  {ponSlots.length === 0 && data.oltId && <p className="text-[10px] text-tx3 mt-1">Sync OLT to load cards</p>}
+                  {ponSlots.length === 0 && data.oltId && <p className="text-[10px] text-tx3 mt-1">{t('wiz.syncToLoadCards')}</p>}
                 </div>
                 {ponSlots.length > 0 ? (() => {
                   const currentSlot = ponSlots.find(s => s.card === manualSlot);
@@ -756,7 +759,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               </div>
               {manualSn.length >= 8 && (
                 <div className="flex items-center gap-2 p-2.5 rounded-lg bg-accent/5 border border-accent/20 text-xs text-accent">
-                  <Check size={14} /> ONU akan didaftarkan: <strong className="font-mono">{manualSn}</strong> pada PON {manualFrame}/{manualSlot}/{manualPort}:{manualOnuId}
+                  <Check size={14} /> {t('wiz.willRegister')} <strong className="font-mono">{manualSn}</strong> pada PON {manualFrame}/{manualSlot}/{manualPort}:{manualOnuId}
                 </div>
               )}
             </div>
@@ -814,7 +817,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                   value={data.onuType}
                   onChange={e => update('onuType', e.target.value)}
                   options={[
-                    { value: 'All', label: 'All (auto-detect)' },
+                    { value: 'All', label: t('wiz.allAutoDetect') },
                     ...(data.selectedOnus.length > 0 && (data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon === true)
                       ? onuTypes.filter(t => t.pon_type === 'epon')
                       : onuTypes.filter(t => t.pon_type === 'gpon')
@@ -825,20 +828,20 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                 <Input label="ONU Type" value={data.onuType} onChange={e => update('onuType', e.target.value)} />
               )}
             </div>
-            <Input label="ONU Name" value={data.namePrefix} onChange={e => update('namePrefix', e.target.value)} placeholder="salsa@rw04" />
-            <Input label="Description" value={data.description} onChange={e => update('description', e.target.value)} placeholder="ODP-RW03-03 | User" />
+            <Input label={t('wiz.onuName')} value={data.namePrefix} onChange={e => update('namePrefix', e.target.value)} placeholder="salsa@rw04" />
+            <Input label={t('wiz.description')} value={data.description} onChange={e => update('description', e.target.value)} placeholder="ODP-RW03-03 | User" />
             <div>
                 <Select
-                  label={<><Wrench size={11} className="inline mr-1" />Technician</>}
+                  label={<><Wrench size={11} className="inline mr-1" />{t('wiz.technician')}</>}
                   value={data.technicianId ?? ''}
                   onChange={e => update('technicianId', e.target.value ? Number(e.target.value) : null)}
                   options={[
-                    { value: '', label: '— Tidak ada teknisi —' },
+                    { value: '', label: t('wiz.noTech') },
                     ...technicians.map(t => ({ value: String(t.id), label: t.full_name })),
                   ]}
                 />
                 {technicians.length === 0 && (
-                  <p className="text-[10px] text-tx3 mt-1">Belum ada user dengan role Technician. Tambahkan di User Management.</p>
+                  <p className="text-[10px] text-tx3 mt-1">{t('wiz.noTechUsers')}</p>
                 )}
               </div>
           </div>
@@ -850,9 +853,9 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
         <Card
           icon={<Globe size={18} />}
           title="VLANs & WAN"
-          action={<Button variant="accent" icon={<Plus size={14} />} onClick={addService}>Add VLAN</Button>}
+          action={<Button variant="accent" icon={<Plus size={14} />} onClick={addService}>{t('wiz.addVlan')}</Button>}
         >
-          <p className="text-xs text-tx3 -mt-1 mb-4">Tambah VLAN sesuai kebutuhan. Setiap VLAN bisa punya WAN config berbeda (Bridge/DHCP/PPPoE).</p>
+          <p className="text-xs text-tx3 -mt-1 mb-4">{t('wiz.vlanWanHint')}</p>
 
           {/* Global Profiles */}
           {(() => {
@@ -863,7 +866,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                   label="EPON SLA Profile (Speed Limit)"
                   value={data.slaProfile}
                   onChange={e => update('slaProfile', e.target.value)}
-                  options={[{ value: '', label: '— No SLA (Default) —' }, ...slaProfiles.map(p => ({ value: p, label: p }))]}
+                  options={[{ value: '', label: t('wiz.noSla') }, ...slaProfiles.map(p => ({ value: p, label: p }))]}
                 />
               </div>
             ) : (
@@ -880,7 +883,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                   label="Traffic Profile (Download)"
                   value={data.trafficProfile}
                   onChange={e => update('trafficProfile', e.target.value)}
-                  options={[{ value: '', label: '— Same as TCONT —' }, ...trafficProfiles.map(p => ({ value: p, label: p }))]}
+                  options={[{ value: '', label: t('wiz.sameAsTcont') }, ...trafficProfiles.map(p => ({ value: p, label: p }))]}
                 />
               </div>
             );
@@ -920,7 +923,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
             <select value={data.ontStyle}
               onChange={e => update('ontStyle', e.target.value as WizardState['ontStyle'])}
               className="h-8 px-2 rounded-lg bg-glass border border-brd text-xs">
-              <option value="default">Default</option>
+              <option value="default">{t('wiz.default')}</option>
               <option value="nokia">Nokia</option>
             </select>
             {data.ontStyle === 'nokia' && (
@@ -1047,13 +1050,13 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           {/* Per-port VLAN map — empty keeps the default auto-tag behaviour */}
           <div className="mt-4 p-3 rounded-xl border border-brd bg-glass">
             <PortMapEditor value={data.portMap} onChange={rows => update('portMap', rows)} includeWifi={true} vlanList={vlanList} />
-            <p className="text-[10px] text-tx3 mt-1">Kosong = auto-tag eth_0/1..4 dari service VLAN. Terisi = hanya port di map yang dikonfigurasi.</p>
+            <p className="text-[10px] text-tx3 mt-1">{t('wiz.lanMapHint')}</p>
           </div>
 
           {/* Quick add from OLT VLAN list */}
           {vlanList.length > 0 && (
             <div className="space-y-1.5">
-              <span className="text-[10px] text-tx3">Tambah dari VLAN OLT:</span>
+              <span className="text-[10px] text-tx3">{t('wiz.addFromOltVlan')}</span>
               <div className="flex flex-wrap gap-1.5">
                 {vlanList.filter(v => !data.services.find(s => s.vlan === v.vlan_id)).map(v => (
                   <button key={v.vlan_id}
@@ -1063,7 +1066,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                   </button>
                 ))}
                 {vlanList.every(v => data.services.find(s => s.vlan === v.vlan_id)) && (
-                  <span className="text-[10px] text-tx3 italic">Semua VLAN sudah ditambahkan</span>
+                  <span className="text-[10px] text-tx3 italic">{t('wiz.allVlansAdded')}</span>
                 )}
               </div>
             </div>
@@ -1080,7 +1083,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Wifi size={16} className="text-accent" />
-                  <h4 className="text-sm font-semibold">WiFi Configuration</h4>
+                  <h4 className="text-sm font-semibold">{t('wiz.wifiConfig')}</h4>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent">ZTE</span>
                 </div>
                 <Button variant="primary" icon={<Plus size={12} />} disabled={(data.wifi.ssids || []).length >= 8} onClick={() => {
@@ -1091,12 +1094,12 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                     update('wifi', { ...data.wifi, ssids: cur });
                   }
                 }}>
-                  Add SSID
+                  {t('wiz.addSsidPlain')}
                 </Button>
               </div>
 
               {(data.wifi.ssids || []).length === 0 && (
-                <p className="text-xs text-tx3">No SSIDs added. Click "Add SSID" to configure WiFi.</p>
+                <p className="text-xs text-tx3">{t('wiz.noSsid')}</p>
               )}
 
               {(data.wifi.ssids || []).map((s, i) => (
@@ -1113,13 +1116,13 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                         <label className="flex items-center gap-1 cursor-pointer ml-2">
                           <input type="checkbox" checked={s.hidden} onChange={e => { const next = [...(data.wifi.ssids || [])]; next[i] = { ...s, hidden: e.target.checked }; update('wifi', { ...data.wifi, ssids: next }); }}
                             className="w-3 h-3 rounded accent-accent" />
-                          <span className="text-[10px] text-tx3">Hidden</span>
+                          <span className="text-[10px] text-tx3">{t('wiz.hidden')}</span>
                         </label>
                       )}
                     </div>
                     <button type="button" onClick={() => update('wifi', { ...data.wifi, ssids: (data.wifi.ssids || []).filter((_, idx) => idx !== i) })}
                       className="text-danger hover:text-danger/70 text-xs flex items-center gap-1">
-                      <Trash2 size={12} /> Remove
+                      <Trash2 size={12} /> {t('wiz.remove')}
                     </button>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1131,9 +1134,9 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] text-tx3 font-medium uppercase">SSID Name</label>
+                      <label className="text-[10px] text-tx3 font-medium uppercase">{t('wiz.ssidName')}</label>
                       <input value={s.name} onChange={e => { const next = [...(data.wifi.ssids || [])]; next[i] = { ...s, name: e.target.value }; update('wifi', { ...data.wifi, ssids: next }); }}
-                        className="h-8 px-2 rounded-lg bg-glass border border-brd text-xs w-full" placeholder="Nama WiFi" disabled={!s.enabled} />
+                        className="h-8 px-2 rounded-lg bg-glass border border-brd text-xs w-full" placeholder={t('wiz.wifiName')} disabled={!s.enabled} />
                     </div>
                     <div>
                       <label className="text-[10px] text-tx3 font-medium uppercase">Auth</label>
@@ -1150,7 +1153,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                       {vlanList.length > 0 ? (
                         <select value={s.vlan} onChange={e => { const next = [...(data.wifi.ssids || [])]; next[i] = { ...s, vlan: e.target.value }; update('wifi', { ...data.wifi, ssids: next }); }}
                           className="h-8 px-2 rounded-lg bg-glass border border-brd text-xs w-full" disabled={!s.enabled}>
-                          <option value="">No VLAN tag</option>
+                          <option value="">{t('wiz.noVlanTag')}</option>
                           {vlanList.map(v => <option key={v.vlan_id} value={String(v.vlan_id)}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                         </select>
                       ) : (
@@ -1163,7 +1166,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                     <div>
                       <label className="text-[10px] text-tx3 font-medium uppercase">Password</label>
                       <input type="password" value={s.pass} onChange={e => { const next = [...(data.wifi.ssids || [])]; next[i] = { ...s, pass: e.target.value }; update('wifi', { ...data.wifi, ssids: next }); }}
-                        className="h-8 px-2 rounded-lg bg-glass border border-brd text-xs w-full" placeholder="Min 8 karakter" />
+                        className="h-8 px-2 rounded-lg bg-glass border border-brd text-xs w-full" placeholder={t('wiz.min8')} />
                     </div>
                   )}
                 </div>
@@ -1172,7 +1175,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           ) : (
             <div className="p-3 rounded-lg bg-glass border border-brd text-xs text-tx3">
               <Wifi size={14} className="inline mr-1.5 text-tx3" />
-              WiFi config via OMCI is ZTE-specific. Non-ZTE ONUs configure WiFi via web interface or TR-069 ACS.
+              {t('wiz.wifiOmciNote')}
             </div>
           )}
 
@@ -1194,7 +1197,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                 {/* Profile selector */}
                 {tr069Profiles.length > 0 && (
                   <div>
-                    <label className="text-[10px] text-tx3 mb-0.5 block">Load from Profile</label>
+                    <label className="text-[10px] text-tx3 mb-0.5 block">{t('wiz.loadFromProfile')}</label>
                     <select value={data.tr069.profile_id} onChange={e => {
                       const pid = e.target.value;
                       const p = tr069Profiles.find(x => x.id === parseInt(pid));
@@ -1248,7 +1251,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
 
       {/* ═══ Step 5: Review ═══ */}
       {step === 5 && (
-        <Card icon={<Check size={18} />} title="Review & Provision" bodyClassName="p-4 md:p-6 space-y-4">
+        <Card icon={<Check size={18} />} title={t('wiz.reviewProvision')} bodyClassName="p-4 md:p-6 space-y-4">
           {/* Summary */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
             <div className="p-2.5 rounded-lg bg-glass border border-brd">
@@ -1283,9 +1286,9 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
                       value={odpAssignments[onu.sn] ?? ''}
                       onChange={e => setOdpAssignments(prev => ({ ...prev, [onu.sn]: e.target.value ? Number(e.target.value) : null }))}
                       className="input-field !h-7 !text-[11px] max-w-[220px]"
-                      title="Assign ODP port (optional)"
+                      title={t('wiz.assignOdp')}
                     >
-                      <option value="">— ODP (optional) —</option>
+                      <option value="">{t('wiz.odpOptional')}</option>
                       {odpPorts.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                     </select>
                   )}
@@ -1333,11 +1336,11 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           <div>
             <button onClick={() => setShowScript(!showScript)}
               className="flex items-center gap-1.5 text-xs text-accent hover:underline mb-2">
-              <Eye size={12} /> {showScript ? 'Hide' : 'Show'} CLI Script
+              <Eye size={12} /> {showScript ? t('wiz.hideScript') : t('wiz.showScript')}
             </button>
             {showScript && (
               <div className="relative">
-                <button onClick={() => { navigator.clipboard.writeText(script); toast.success('Copied!'); }}
+                <button onClick={() => { navigator.clipboard.writeText(script); toast.success(t('wiz.copied')); }}
                   className="absolute top-2 right-2 p-1.5 rounded-lg bg-glass border border-brd text-tx3 hover:text-tx1 z-10">
                   <Copy size={12} />
                 </button>
@@ -1351,7 +1354,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <Button variant="primary" className="flex-1" icon={<Zap size={16} />} loading={loading} onClick={provision}>
-              {loading ? 'Provisioning...' : `Register ${data.selectedOnus.length} ONU(s)`}
+              {loading ? t('wiz.provisioning') : t('wiz.registerN', { n: data.selectedOnus.length })}
             </Button>
           </div>
         </Card>
@@ -1359,7 +1362,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
 
       {/* ═══ Step 6: Results ═══ */}
       {step === 6 && (
-        <Card icon={results.every(r => r.success) ? <Check className="text-success" size={18} /> : <Zap className="text-warning" size={18} />} title="Results">
+        <Card icon={results.every(r => r.success) ? <Check className="text-success" size={18} /> : <Zap className="text-warning" size={18} />} title={t('wiz.resultsShort')}>
           <div className="space-y-2">
             {results.map((r, i) => (
               <div key={i} className={cn('flex items-center gap-3 p-3 rounded-lg border',
@@ -1374,10 +1377,10 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           </div>
           <div className="flex gap-3 mt-4">
             <Button variant="primary" className="flex-1" onClick={() => navigate('/dashboard/onus')}>
-              View All ONUs
+              {t('wiz.viewAllOnus')}
             </Button>
             <Button variant="secondary" onClick={() => { setStep(1); setResults([]); }}>
-              Register More
+              {t('wiz.registerMore')}
             </Button>
           </div>
         </Card>
@@ -1387,18 +1390,18 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
       {step >= 1 && step <= 4 && (
         <StickyActionBar>
           <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => step > 1 ? setStep(step - 1) : navigate('/dashboard/onus')}>
-            Kembali
+            {t('common.back')}
           </Button>
           <Button variant="primary" disabled={!canNext()}
             onClick={() => { if (step === 2 && manualMode) handleStep2Next(); else if (canNext()) setStep(step + 1); }}>
-            Lanjut <ArrowRight size={16} />
+            {t('wiz.next')} <ArrowRight size={16} />
           </Button>
         </StickyActionBar>
       )}
       {step === 5 && (
         <div className="flex">
           <Button variant="secondary" icon={<ArrowLeft size={16} />} onClick={() => setStep(4)}>
-            Kembali
+            {t('common.back')}
           </Button>
         </div>
       )}
