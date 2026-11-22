@@ -153,8 +153,16 @@ export function AiAgentSettings() {
               <p className="text-xs text-tx3">{t('pg_ai.noKeyNeeded')}</p>
             )}
 
-            <Input label={t('pg_ai.model')} value={cfg.ai_model} onChange={e => set('ai_model', e.target.value)}
-              helperText={t('pg_ai.modelHelp')} />
+            <div className="space-y-1.5">
+              <Input label={t('pg_ai.model')} value={cfg.ai_model} onChange={e => set('ai_model', e.target.value)}
+                helperText={t('pg_ai.modelHelp')} />
+              {preset && cfg.ai_model !== preset.model && (
+                <button type="button" onClick={() => set('ai_model', preset.model)}
+                  className="text-xs text-accent hover:underline">
+                  {t('pg_ai.useDefaultModel', { model: preset.model })}
+                </button>
+              )}
+            </div>
 
             <details className="group rounded-lg border border-brd" open={providerId === 'custom'}>
               <summary className="flex items-center justify-between cursor-pointer select-none px-3 py-2 text-sm text-tx2">

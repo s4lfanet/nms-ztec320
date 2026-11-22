@@ -1451,7 +1451,8 @@
     "subscriptionNote": "Langganan Claude Pro/Max atau ChatGPT Plus tidak bisa dipakai di sini — gunakan API key (bayar per pemakaian) dari penyedia, atau Ollama lokal.",
     "testConnection": "Tes koneksi",
     "testHelp": "Mengirim satu pesan pendek memakai pengaturan yang sudah DISIMPAN",
-    "accessNote": "WhatsApp juga menerima nomor HP user aktif yang punya izin AI Agent (atau super admin). Pengirim lain diabaikan tanpa balasan. AI hanya membaca data NMS — tidak bisa reboot atau mengubah konfigurasi. Setelah mengaktifkan WhatsApp, klik Start ulang gateway di Pengaturan Alert → WA Native agar pesan masuk diteruskan."
+    "accessNote": "WhatsApp juga menerima nomor HP user aktif yang punya izin AI Agent (atau super admin). Pengirim lain diabaikan tanpa balasan. AI hanya membaca data NMS — tidak bisa reboot atau mengubah konfigurasi. Setelah mengaktifkan WhatsApp, klik Start ulang gateway di Pengaturan Alert → WA Native agar pesan masuk diteruskan.",
+    "useDefaultModel": "Gunakan model bawaan: {{model}} (lalu Simpan)"
   },
   "pg_ftth": {
     "deleted": "Terhapus",

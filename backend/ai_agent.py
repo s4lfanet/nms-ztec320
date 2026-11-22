@@ -39,6 +39,29 @@ DEFAULT_MODEL = {'anthropic': 'claude-haiku-5-5', 'openai': 'gpt-4o-mini'}
 DEFAULT_BASE = {'anthropic': 'https://api.anthropic.com', 'openai': 'https://api.openai.com/v1'}
 
 
+# Model yang sudah dipensiunkan penyedia → penggantinya. Config lama yang
+# tersimpan otomatis dipindahkan (sekali, lalu disimpan) supaya user tidak
+# terjebak error 404 setelah update.
+RETIRED_MODELS = {
+    'generativelanguage.googleapis.com': {'gemini-2.5-flash': 'gemini-3.8-flash'},
+}
+
+
+def _upgrade_retired_model(cfg):
+    for host, mapping in RETIRED_MODELS.items():
+        if host in (cfg.get('ai_base_url') or '') and cfg.get('ai_model') in mapping:
+            new = mapping[cfg['ai_model']]
+            try:
+                row = SystemConfig.query.filter_by(key='ai_model').first()
+                if row:
+                    row.value = new
+                    db.session.commit()
+            except Exception:
+                db.session.rollback()
+            cfg['ai_model'] = new
+    return cfg
+
+
 # ─────────────────────────────── konfigurasi ────────────────────────────────
 
 def get_config(include_key=False):
@@ -48,6 +71,7 @@ def get_config(include_key=False):
     cfg['ai_provider'] = provider
     cfg['ai_model'] = cfg['ai_model'] or DEFAULT_MODEL[provider]
     cfg['ai_base_url'] = (cfg['ai_base_url'] or DEFAULT_BASE[provider]).rstrip('/')
+    _upgrade_retired_model(cfg)
     key = decrypt_field(rows.get('ai_api_key_enc', '') or '')
     cfg['has_key'] = bool(key)
     if include_key:

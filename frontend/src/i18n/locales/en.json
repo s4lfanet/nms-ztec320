@@ -1451,7 +1451,8 @@
     "subscriptionNote": "Claude Pro/Max or ChatGPT Plus subscriptions cannot be used here — use a pay-as-you-go API key from the provider, or local Ollama.",
     "testConnection": "Test connection",
     "testHelp": "Sends one short message using the SAVED settings",
-    "accessNote": "WhatsApp also accepts phone numbers of active users with the AI Agent permission (or super admins). Other senders are ignored without reply. The AI only reads NMS data — it cannot reboot or change configuration. After enabling WhatsApp, Start the gateway again in Alert Settings → WA Native so incoming messages are forwarded."
+    "accessNote": "WhatsApp also accepts phone numbers of active users with the AI Agent permission (or super admins). Other senders are ignored without reply. The AI only reads NMS data — it cannot reboot or change configuration. After enabling WhatsApp, Start the gateway again in Alert Settings → WA Native so incoming messages are forwarded.",
+    "useDefaultModel": "Use the default model: {{model}} (then Save)"
   },
   "pg_ftth": {
     "deleted": "Deleted",
