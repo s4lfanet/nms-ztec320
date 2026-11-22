@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Download, X, Loader2 } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
+import { Modal } from './ui/Modal';
 import { toast } from './Toast';
 import { useAuth } from '../stores/auth';
 
@@ -18,11 +19,12 @@ const INTERVAL_MS = 6 * 60 * 60 * 1000;   // cek ulang tiap 6 jam
 const FIRST_DELAY_MS = 15_000;            // tunggu halaman selesai dimuat
 
 /**
- * Pop-up "Update tersedia" untuk super admin: cek GitHub berkala lewat
- * /api/system/update/check (endpoint yang sama dengan halaman Update Sistem).
- * "Update sekarang" memasang update dari pop-up (konfirmasi dulu), lalu memuat
- * ulang halaman setelah service hidup lagi; "Detail" membuka halaman Update Sistem.
- * "Nanti" menyembunyikan pop-up sampai ada commit baru lagi.
+ * Pop-up "Update tersedia" (dialog di tengah halaman) untuk super admin: cek
+ * GitHub berkala lewat /api/system/update/check (endpoint yang sama dengan
+ * halaman Update Sistem). "Update sekarang" langsung memasang update lalu
+ * memuat ulang halaman setelah service hidup lagi; "Lihat detail" membuka
+ * halaman Update Sistem. "Abaikan" menyembunyikan pop-up sampai ada commit
+ * baru lagi.
  */
 /** Tunggu service mati lalu hidup lagi (maks ±90 dtk). */
 async function waitForRestart() {
@@ -77,7 +79,6 @@ export function UpdatePrompt() {
 
   // Pasang langsung dari pop-up: endpoint yang sama dengan tombol Apply Update.
   const applyNow = async () => {
-    if (!confirm('Pasang update sekarang? Kode terbaru diambil dari GitHub lalu service di-restart — aplikasi tidak bisa diakses beberapa detik.')) return;
     setPhase('applying');
     try {
       const r = await fetch('/api/system/update/apply', {
@@ -85,7 +86,7 @@ export function UpdatePrompt() {
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       });
       const d = await r.json();
-      if (!d.success) { toast.error(d.message || 'Update gagal'); setPhase('idle'); return; }
+      if (!d.success) { toast.error(d.message || t('cmp_update.failedToApplyThe')); setPhase('idle'); return; }
       if (!d.restarted) { toast.success(d.message); setPhase('idle'); setInfo(null); return; }
       setPhase('restarting');
       await waitForRestart();
@@ -100,39 +101,50 @@ export function UpdatePrompt() {
     }
   };
   const commits = info.commits || [];
+  const busy = phase !== 'idle';
 
   return (
-    <div className="fixed z-[70] left-3 right-3 top-20 md:left-auto md:right-6 md:w-96">
-      <div className="bg-surface border border-brd rounded-2xl shadow-2xl p-4 flex gap-3 items-start">
-        <Download size={20} className="text-accent shrink-0 mt-0.5" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-tx1">{t('cmp_update.updateAvailable')}</p>
-          <p className="text-xs text-tx3 mt-0.5">
-            {commits.length} perubahan baru di GitHub ({info.local_sha} → {info.remote_sha}).
-          </p>
-          {commits.length > 0 && (
-            <ul className="mt-2 space-y-0.5 text-[11px] text-tx2 max-h-28 overflow-y-auto">
-              {commits.slice(0, 5).map(c => (
-                <li key={c} className="truncate">• {c.replace(/^[0-9a-f]{7,}\s+/, '')}</li>
-              ))}
-              {commits.length > 5 && <li className="text-tx3">… dan {commits.length - 5} lainnya</li>}
-            </ul>
-          )}
-          {phase === 'idle' ? (
-            <div className="flex flex-wrap gap-2 mt-3">
-              <button onClick={applyNow} className="btn-primary text-xs">{t('cmp_update.updateNow')}</button>
-              <button onClick={open} className="px-3 py-1.5 rounded-xl text-xs border border-brd text-tx2 hover:text-tx1">Detail</button>
-              <button onClick={later} className="px-3 py-1.5 rounded-xl text-xs text-tx3 hover:text-tx1">{t('cmp_update.later')}</button>
-            </div>
-          ) : (
-            <p className="flex items-center gap-2 mt-3 text-xs text-tx2">
-              <Loader2 size={14} className="animate-spin" />
-              {phase === 'applying' ? 'Mengambil update dari GitHub…' : 'Service memulai ulang — halaman dimuat ulang otomatis…'}
-            </p>
-          )}
+    <Modal
+      open
+      onClose={busy ? () => undefined : later}
+      icon={<Download size={16} className="text-accent" />}
+      title={t('cmp_update.updateAvailable')}
+      size="sm"
+      footer={busy ? undefined : (
+        <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:justify-end sm:w-auto">
+          <button onClick={later} className="btn-cancel border border-brd px-4 py-2 rounded-xl text-sm">
+            {t('cmp_update.ignore')}
+          </button>
+          <button onClick={applyNow} className="btn-primary px-4 py-2 rounded-xl text-sm">
+            {t('cmp_update.updateNow')}
+          </button>
         </div>
-        {phase === 'idle' && <button onClick={later} className="p-1 text-tx3 hover:text-tx1" aria-label="close"><X size={16} /></button>}
+      )}
+    >
+      <div className="space-y-3 text-sm">
+        <p className="text-tx2 leading-relaxed">
+          {t('cmp_update.summary', { n: commits.length, from: info.local_sha, to: info.remote_sha })}
+        </p>
+        {commits.length > 0 && (
+          <ul className="space-y-1 text-xs text-tx2 max-h-44 overflow-y-auto rounded-lg border border-brd p-3">
+            {commits.slice(0, 8).map(c => (
+              <li key={c} className="break-words">• {c.replace(/^[0-9a-f]{7,}\s+/, '')}</li>
+            ))}
+            {commits.length > 8 && <li className="text-tx3">{t('cmp_update.more', { n: commits.length - 8 })}</li>}
+          </ul>
+        )}
+        {busy ? (
+          <p className="flex items-center gap-2 text-tx2">
+            <Loader2 size={16} className="animate-spin text-accent" />
+            {phase === 'applying' ? t('cmp_update.applying') : t('cmp_update.restarting')}
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-tx3 leading-relaxed">{t('cmp_update.downtimeNote')}</p>
+            <button onClick={open} className="text-xs text-accent hover:underline">{t('cmp_update.details')}</button>
+          </>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }

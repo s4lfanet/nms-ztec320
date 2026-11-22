@@ -1874,7 +1874,14 @@
     "failedToApplyThe": "Gagal memasang update — coba dari halaman Update Sistem",
     "updateAvailable": "Update tersedia",
     "updateNow": "Update sekarang",
-    "later": "Nanti"
+    "later": "Nanti",
+    "ignore": "Abaikan",
+    "summary": "Ada {{n}} perubahan baru di GitHub ({{from}} → {{to}}).",
+    "more": "… dan {{n}} lainnya",
+    "downtimeNote": "Update mengambil kode terbaru dari GitHub lalu me-restart service — aplikasi tidak bisa diakses beberapa detik dan halaman dimuat ulang otomatis. \"Abaikan\" menyembunyikan pemberitahuan ini sampai ada update berikutnya.",
+    "details": "Lihat detail di halaman Update Sistem",
+    "applying": "Mengambil update dari GitHub…",
+    "restarting": "Service memulai ulang — halaman dimuat ulang otomatis…"
   },
   "cmp_search": {
     "searchOnusOltsOdps": "Cari ONU, OLT, ODP, ODC, user…",

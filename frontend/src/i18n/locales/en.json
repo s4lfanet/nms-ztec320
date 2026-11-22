@@ -1874,7 +1874,14 @@
     "failedToApplyThe": "Failed to apply the update — try from the System Update page",
     "updateAvailable": "Update available",
     "updateNow": "Update now",
-    "later": "Later"
+    "later": "Later",
+    "ignore": "Ignore",
+    "summary": "{{n}} new changes on GitHub ({{from}} → {{to}}).",
+    "more": "… and {{n}} more",
+    "downtimeNote": "Updating pulls the latest code from GitHub and restarts the service — the app is unavailable for a few seconds and the page reloads automatically. \"Ignore\" hides this notice until the next update.",
+    "details": "See details on the System Update page",
+    "applying": "Fetching the update from GitHub…",
+    "restarting": "Service restarting — the page will reload automatically…"
   },
   "cmp_search": {
     "searchOnusOltsOdps": "Search ONUs, OLTs, ODPs, ODCs, users…",
