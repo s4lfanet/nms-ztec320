@@ -28,6 +28,45 @@ jobs:
             exit 1
           fi
 
+  ui-responsive:
+    # Buka semua halaman di 360–1920 px dengan data contoh; gagal bila ada
+    # halaman yang melebar keluar layar. Memakai frontend/dist yang di-commit.
+    runs-on: ubuntu-latest
+    env:
+      SECRET_KEY: ci-ui-secret-key
+      INTERNAL_API_KEY: ci-ui-internal-key
+      DATABASE_URL: sqlite:////tmp/ui-check.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt playwright
+          python -m playwright install --with-deps chromium
+      - name: Seed + start server
+        run: |
+          # password akun uji dibuat acak per run (tidak ada kredensial di repo)
+          pw=$(openssl rand -hex 16); echo "::add-mask::$pw"; echo "UI_CHECK_PASSWORD=$pw" >> "$GITHUB_ENV"
+          export UI_CHECK_PASSWORD=$pw
+          python scripts/ui_check/seed.py
+          nohup python scripts/ui_check/serve.py > /tmp/ui-serve.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:5055/login && break; sleep 1; done
+      - name: Check responsive layout
+        run: python scripts/ui_check/check.py --shots /tmp/ui-shots
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: /tmp/ui-shots
+          retention-days: 7
+      - name: Server log
+        if: failure()
+        run: tail -100 /tmp/ui-serve.log
+
   test:
     runs-on: ubuntu-latest
 

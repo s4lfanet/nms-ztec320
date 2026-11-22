@@ -30,6 +30,14 @@ export function AllOnus() {
   const [oltFilter, setOltFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState(() => searchParams.get('filter') || 'all');
   const [signalFilter, setSignalFilter] = useState(() => searchParams.get('signal') || 'all');
+  // Ikuti ?filter= di URL (mis. menu "Gangguan" di navigasi bawah HP diketuk
+  // saat sudah berada di halaman ini — komponen tidak di-mount ulang).
+  const urlStatus = searchParams.get('filter') || 'all';
+  const [prevUrlStatus, setPrevUrlStatus] = useState(urlStatus);
+  if (urlStatus !== prevUrlStatus) {
+    setPrevUrlStatus(urlStatus);
+    setStatusFilter(urlStatus);
+  }
   const [ponFilter, setPonFilter] = useState('all');
   const [slotFilter, setSlotFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -323,7 +331,7 @@ export function AllOnus() {
           );
         })}
         <SignalCard icon={<HelpCircle size={18} />} label={t('allOnus.losNa')}
-          count={signal_stats.los + signal_stats.na} pct={signal_stats.na_pct} color="muted"
+          count={signal_stats.los_na ?? (signal_stats.los + signal_stats.na)} pct={signal_stats.los_na_pct ?? signal_stats.na_pct} color="muted"
           active={signalFilter === 'los_na'}
           onClick={() => applySignalFilter('los_na')} />
       </div>
@@ -401,6 +409,7 @@ export function AllOnus() {
               { value: 'offline', label: t('common.offline') },
               { value: 'los', label: t('common.los') },
               { value: 'dyinggasp', label: t('common.dyinggasp') },
+              { value: 'problem', label: t('allOnus.problemStatus') },
             ]}
           />
           {isFilterFetching && (

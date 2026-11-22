@@ -571,10 +571,13 @@ export interface ONUData {
 }
 
 export interface SignalStats {
-  [key: string]: number | { count: number; pct: number; label?: string; min?: number; max?: number; rx_olt?: number; rx_onu?: number };
+  [key: string]: number | undefined | { count: number; pct: number; label?: string; min?: number; max?: number; rx_olt?: number; rx_onu?: number };
   los: number;
   na: number;
   na_pct: number;
+  /** jumlah unik LOS atau tanpa RX (kartu "LOS / N/A"); server lama tidak mengirim */
+  los_na?: number;
+  los_na_pct?: number;
   online: number;
   offline: number;
   dyinggasp: number;

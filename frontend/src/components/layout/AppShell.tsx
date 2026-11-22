@@ -3,7 +3,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { cn } from '../../lib/utils';
-import { LayoutDashboard, Radio, Server, Sliders } from 'lucide-react';
+import { LayoutDashboard, Radio, Server, AlertTriangle, Menu } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { DashboardWsProvider } from '../../hooks/useDashboardWs';
@@ -12,11 +12,15 @@ import { ForcePasswordChange } from '../ForcePasswordChange';
 import { PushPrompt } from '../PushPrompt';
 import { UpdatePrompt } from '../UpdatePrompt';
 
+// Navigasi bawah HP (redesign Fase 1): Gangguan langsung terjangkau dari
+// lapangan, "Lainnya" membuka menu samping (semua halaman lain, termasuk
+// Customization yang dulu ada di sini).
+const PROBLEMS_PATH = '/dashboard/onus?filter=problem';
 const bottomNavItems = [
-  { labelKey: 'nav.home', icon: LayoutDashboard, path: '/dashboard' },
-  { labelKey: 'nav.allOnus', icon: Radio, path: '/dashboard/onus' },
-  { labelKey: 'nav.oltSettings', icon: Server, path: '/dashboard/settings/olts' },
-  { labelKey: 'nav.system', icon: Sliders, path: '/dashboard/customization' },
+  { labelKey: 'nav.home', icon: LayoutDashboard, path: '/dashboard', end: true },
+  { labelKey: 'nav.allOnus', icon: Radio, path: '/dashboard/onus', end: true },
+  { labelKey: 'nav.problems', icon: AlertTriangle, path: PROBLEMS_PATH, end: true },
+  { labelKey: 'nav.olt', icon: Server, path: '/dashboard/settings/olts', end: false },
 ];
 
 export function AppShell() {
@@ -50,6 +54,8 @@ export function AppShell() {
   });
 
   const unregCount = unregData?.unregistered || 0;
+  const problemCount = (unregData?.offline_count || 0) + (unregData?.dyinggasp_count || 0) + (unregData?.los_count || 0);
+  const onProblems = location.pathname === '/dashboard/onus' && new URLSearchParams(location.search).get('filter') === 'problem';
 
   return (
     <DashboardWsProvider>
@@ -79,34 +85,59 @@ export function AppShell() {
           <div className="flex items-center justify-around h-14 px-1">
             {navItems.map(item => {
               const Icon = item.icon;
+              const isProblems = item.path === PROBLEMS_PATH;
+              const badge = isProblems ? problemCount : item.path === '/dashboard/onus' ? unregCount : 0;
+              const badgeCls = isProblems ? 'bg-danger' : 'bg-warning';
               return (
                 <NavLink
                   key={item.path}
                   to={item.path}
-                  className={({ isActive }) => cn(
-                    'flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[10px] font-medium transition-all relative',
-                    isActive ? 'text-accent' : 'text-tx3',
-                  )}
+                  end={item.end}
+                  className={({ isActive }) => {
+                    // "Semua ONU" dan "Gangguan" berbagi path; bedakan dari ?filter=problem
+                    const active = isProblems ? onProblems : (item.path === '/dashboard/onus' ? isActive && !onProblems : isActive);
+                    return cn(
+                      'flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[10px] font-medium transition-all relative',
+                      active ? 'text-accent' : 'text-tx3',
+                    );
+                  }}
                 >
-                  {({ isActive }) => (
-                    <>
-                      <div className={cn(
-                        'relative flex items-center justify-center w-8 h-8 rounded-lg transition-all',
-                        isActive ? 'bg-accent/15 scale-105' : 'scale-100',
-                      )}>
-                        <Icon size={20} strokeWidth={isActive ? 2.2 : 1.8} />
-                        {item.path === '/dashboard/onus' && unregCount > 0 && (
-                          <div className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-warning text-white text-[9px] font-bold flex items-center justify-center">
-                            {unregCount > 9 ? '9+' : unregCount}
-                          </div>
-                        )}
-                      </div>
-                      <span>{t(item.labelKey)}</span>
-                    </>
-                  )}
+                  {({ isActive }) => {
+                    const active = isProblems ? onProblems : (item.path === '/dashboard/onus' ? isActive && !onProblems : isActive);
+                    return (
+                      <>
+                        <div className={cn(
+                          'relative flex items-center justify-center w-8 h-8 rounded-lg transition-all',
+                          active ? 'bg-accent/15 scale-105' : 'scale-100',
+                        )}>
+                          <Icon size={20} strokeWidth={active ? 2.2 : 1.8} />
+                          {badge > 0 && (
+                            <div className={cn('absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full text-white text-[9px] font-bold flex items-center justify-center', badgeCls)}>
+                              {badge > 99 ? '99+' : badge}
+                            </div>
+                          )}
+                        </div>
+                        <span>{t(item.labelKey)}</span>
+                      </>
+                    );
+                  }}
                 </NavLink>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              aria-expanded={mobileOpen}
+              className={cn(
+                'flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[10px] font-medium transition-all',
+                mobileOpen ? 'text-accent' : 'text-tx3',
+              )}
+            >
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg">
+                <Menu size={20} strokeWidth={1.8} />
+              </div>
+              <span>{t('nav.more')}</span>
+            </button>
           </div>
         </nav>
       </div>

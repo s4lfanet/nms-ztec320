@@ -400,7 +400,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
     navigate(path);
   };
 
-  const renderNotifIcon = (type: NotifType, badge: number) => {
+  const renderNotifIcon = (type: NotifType, badge: number, extraClass?: string) => {
     const cfg = TYPE_CONFIG[type];
     const Icon = cfg.icon;
     const isOpen = openNotif === type;
@@ -408,8 +408,9 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       <button
         key={type}
         onClick={() => setOpenNotif(isOpen ? null : type)}
-        className={cn('relative p-2 rounded-lg hover:bg-glass transition-all active:scale-95', isOpen && 'bg-glass')}
+        className={cn('relative p-2 rounded-lg hover:bg-glass transition-all active:scale-95', isOpen && 'bg-glass', extraClass)}
         title={t(cfg.labelKey)}
+        aria-label={t(cfg.labelKey)}
       >
         <Icon size={18} className={cn('text-tx2 transition-colors', isOpen && cfg.iconActiveClass)} />
         {badge > 0 && (
@@ -443,9 +444,10 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
 
       <div className="flex items-center gap-1">
         {/* Theme quick-toggle */}
+        {/* HP: tombol tema pindah ke menu profil supaya topbar tidak penuh */}
         <button
           onClick={toggle}
-          className="p-2 rounded-lg hover:bg-glass transition-all active:scale-95"
+          className="hidden sm:inline-flex p-2 rounded-lg hover:bg-glass transition-all active:scale-95"
           title={resolved === 'light' ? t('topbar.themeToDark') : t('topbar.themeToLight')}
         >
           {resolved === 'light' ? <Moon size={18} className="text-tx2" /> : <Sun size={18} className="text-tx2" />}
@@ -455,7 +457,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         <div className="relative flex items-center gap-0.5" ref={notifRef}>
           {renderNotifIcon('alarm', alarmUnread)}
           {renderNotifIcon('unregister', unregisterBadge)}
-          {renderNotifIcon('general', generalUnread)}
+          {renderNotifIcon('general', generalUnread, 'hidden sm:block')}
 
           {openNotif === 'alarm' && (
             <NotifDropdown type="alarm" notifs={alarmNotifs} unregData={unregData} onClose={() => setOpenNotif(null)} onNavigate={handleNavigate} />
@@ -479,7 +481,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             </div>
             <div className="text-left hidden sm:block">
               <div className="text-sm font-medium leading-tight">{user?.full_name || 'Admin'}</div>
-              <div className="text-[10px] text-tx3 leading-tight">{user?.role || 'User'}</div>
+              <div className="text-[10px] text-tx3 leading-tight">{user?.is_super_admin && (!user?.role || user.role === 'User') ? t('topbar.superAdmin') : (user?.role || 'User')}</div>
             </div>
           </button>
 
@@ -494,6 +496,16 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
               </div>
               <button onClick={() => { setShowMenu(false); navigate('/dashboard/profile'); }} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-glass transition-colors">
                 <User size={16} className="text-tx3" /> {t('topbar.myProfile')}
+              </button>
+              {/* Khusus HP: item yang disembunyikan dari topbar */}
+              <button onClick={() => { setShowMenu(false); setOpenNotif('general'); }} className="sm:hidden flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-glass transition-colors">
+                <Bell size={16} className="text-tx3" />
+                <span className="flex-1 text-left">{t('topbar.notifications')}</span>
+                {generalUnread > 0 && <span className="px-1.5 min-w-[18px] h-[18px] rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center">{generalUnread > 99 ? '99+' : generalUnread}</span>}
+              </button>
+              <button onClick={() => { toggle(); }} className="sm:hidden flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-glass transition-colors">
+                {resolved === 'light' ? <Moon size={16} className="text-tx3" /> : <Sun size={16} className="text-tx3" />}
+                {resolved === 'light' ? t('topbar.themeToDark') : t('topbar.themeToLight')}
               </button>
               <hr className="border-brd my-1" />
               <button

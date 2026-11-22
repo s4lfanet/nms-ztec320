@@ -140,6 +140,19 @@ def _apply_signal_filter(query, signal):
     return query
 
 
+# Status "Gangguan" = semua kondisi ONU yang butuh tindakan (dipakai menu
+# Gangguan di navigasi bawah HP). Nilai status lain diteruskan apa adanya.
+PROBLEM_STATUSES = ('los', 'offline', 'dyinggasp')
+
+
+def _apply_status_filter(query, status):
+    if not status or status == 'all':
+        return query
+    if status == 'problem':
+        return query.filter(ONU.status.in_(PROBLEM_STATUSES))
+    return query.filter_by(status=status)
+
+
 @bp.route('/api/all-onus')
 @login_required
 def api_all_onus():
@@ -157,8 +170,7 @@ def api_all_onus():
     query = ONU.query.options(joinedload(ONU.odp_port).joinedload(FTTHODPPort.odp))
     if olt_filter != 'all':
         query = query.filter_by(olt_id=int(olt_filter))
-    if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
+    query = _apply_status_filter(query, status_filter)
     if pon_filter != 'all' and olt_filter != 'all':
         try:
             parts = pon_filter.split('/')
@@ -278,6 +290,11 @@ def api_all_onus():
     signal_stats['los'] = los_count
     signal_stats['na'] = na_count
     signal_stats['na_pct'] = round(na_count / stats_total * 100, 1)
+    # Kartu "LOS / N/A": ONU LOS biasanya juga tanpa RX, jadi los + na
+    # menghitung ganda. los_na = jumlah unik (sama dengan filter 'los_na').
+    los_na_count = sum(1 for r in stats_rows if r[2] == 'los' or r[1] is None)
+    signal_stats['los_na'] = los_na_count
+    signal_stats['los_na_pct'] = round(los_na_count / stats_total * 100, 1)
     signal_stats['online'] = online_count
     signal_stats['offline'] = offline_count
     signal_stats['dyinggasp'] = dyinggasp_count
@@ -444,8 +461,7 @@ def all_onus_export():
     olts = {o.id: o.name for o in OLT.query.all()}
     if olt_filter != 'all':
         query = query.filter_by(olt_id=int(olt_filter))
-    if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
+    query = _apply_status_filter(query, status_filter)
     if pon_filter != 'all' and olt_filter != 'all':
         try:
             parts = pon_filter.split('/')

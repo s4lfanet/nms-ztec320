@@ -4,6 +4,21 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Redesign Fase 1: fondasi + navigasi HP
+
+#### Ditambahkan
+- **Token desain `src/tokens.css`** (warna status, ukuran sentuh 44 px, safe-area, sudut) dan **komponen bersama** di `src/components/ui`: `StatusStrip` (chip jumlah = filter), `ActionMenu` (menu "Lainnya": dropdown di desktop, bottom sheet di HP, aksi merusak dipisah di bawah), `Sheet` (panel kanan/bottom sheet), `Stepper` (wizard; HP "Langkah 2 dari 4" + progress bar), `DataList` (tabel di desktop, kartu di HP), `Notice`, `StickyActionBar`. Belum dipakai halaman lama — dipakai bertahap di fase berikutnya.
+- **Menu "Gangguan" di navigasi bawah HP** → All ONUs dengan filter baru `status=problem` (LOS + offline + dying gasp), lengkap dengan badge jumlah; **"Lainnya"** membuka menu samping. Filter status All ONUs juga punya opsi "Gangguan".
+- **Uji responsif otomatis** `scripts/ui_check/` + job CI `ui-responsive`: 28 halaman × 6 lebar layar (360–1920 px), gagal bila ada halaman melebar keluar layar; tangkapan layar diunggah sebagai artefak CI.
+
+#### Diubah
+- Topbar HP lebih ringkas: tombol tema dan notifikasi umum pindah ke menu profil (desktop tetap). Navigasi bawah HP: Beranda · Semua ONU · Gangguan · OLT · Lainnya (Customization tetap ada di menu samping).
+
+#### Diperbaiki
+- Kartu **LOS / N/A** di All ONUs menghitung ONU LOS dua kali (los + tanpa RX); kini jumlah unik `los_na` yang sama dengan hasil filternya.
+- Profil super admin tanpa role menampilkan badge "User" dan "Belum ada hak akses"; kini "Super Admin" / "Semua akses".
+- Mengetuk "Gangguan" saat sudah di halaman All ONUs kini benar-benar mengganti filter.
+
 ### 2026-11-22 — Animasi bermakna: dashboard menyala, kedip status, transisi halaman
 
 #### Ditambahkan
