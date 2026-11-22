@@ -87,7 +87,7 @@ export function ViewOnu() {
       if (liveData.live_detail) {
         setLastGoodLiveDetail(liveData.live_detail);
       } else if (liveData.live_detail_error) {
-        toast.error(`Refresh Live failed: ${liveData.live_detail_error} — showing last known data`);
+        toast.error(t('vo.liveFailed', { err: liveData.live_detail_error }));
       }
       qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
       qc.invalidateQueries({ queryKey: ['all-onus'] });
@@ -120,18 +120,18 @@ export function ViewOnu() {
       setPendingAction(null);
       if (d.success) {
         if (action === 'delete') {
-          toast.success('ONU deleted. Auto-syncing OLT...');
+          toast.success(t('vo.deletedSyncing'));
           navigate('/dashboard/onus');
           return;
         }
         const labels: Record<string, string> = {
           'reset': 'Reboot', 'clear-config': 'Clear Config', 'disable': 'Disable',
-          'enable': 'Enable', 'restore-factory': 'Factory Reset', 'restore-factory-keep': 'Factory Reset (Keep Config)',
+          'enable': 'Enable', 'restore-factory': t('vo.factoryReset'), 'restore-factory-keep': 'Factory Reset (Keep Config)',
           'restore-wifi': 'WiFi Reset',
         };
         const label = labels[action] || 'Action';
         const autoSync = ['clear-config', 'restore-factory', 'restore-factory-keep', 'restore-wifi'].includes(action);
-        toast.success(`${label} completed!${autoSync ? ' Auto-syncing OLT...' : ''}`);
+        toast.success(t(autoSync ? 'vo.actionDoneSync' : 'vo.actionDone', { label }));
         qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
         qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
         qc.invalidateQueries({ queryKey: ['all-onus'] });
@@ -173,7 +173,7 @@ export function ViewOnu() {
         }
       } else toast.error(d.message || 'Action failed');
     },
-    onError: (_e, action) => { setPendingAction(null); toast.error(`${action} failed`); },
+    onError: (_e, action) => { setPendingAction(null); toast.error(t('vo.actionFailed', { action })); },
   });
 
   const getStatusMut = useMutation({
@@ -181,9 +181,9 @@ export function ViewOnu() {
     onSuccess: (d) => {
       setPendingAction(null);
       const status = d.status || d.data;
-      if (d.success && status) { setModal({ type: 'getStatus', data: status }); qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); } else toast.error(d.message || 'Get Status failed');
+      if (d.success && status) { setModal({ type: 'getStatus', data: status }); qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); } else toast.error(d.message || t('vo.getStatusFailed'));
     },
-    onError: () => { setPendingAction(null); toast.error('Get Status failed'); },
+    onError: () => { setPendingAction(null); toast.error(t('vo.getStatusFailed')); },
   });
 
   const replaceMut = useMutation({
@@ -211,14 +211,14 @@ export function ViewOnu() {
       } else toast.error(d.message || 'Replace failed');
       setModal(null);
     },
-    onError: () => { setPendingAction(null); toast.error('Replace ONU failed'); setModal(null); },
+    onError: () => { setPendingAction(null); toast.error(t('vo.replaceFailed')); setModal(null); },
   });
 
   const updateFieldMut = useMutation({
     mutationFn: ({ field, value }: { field: string; value: string }) =>
       fetch(`/api/onu/${onuId}/update-field`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ field, value }) }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); toast.success('Updated!'); },
-    onError: () => toast.error('Update failed'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); toast.success(t('vo.updated')); },
+    onError: () => toast.error(t('vo.updateFailed')),
   });
 
   // Auto-resync config from OLT when page opens (once per ONU) — DB only, fast
@@ -270,7 +270,7 @@ export function ViewOnu() {
     setModal({ type: 'wanEdit', data: { svcIdx, svc: { ...svc }, serialNumber: onu.serial_number || '' } });
   };
   const deleteWanService = async (svcIdx: number) => {
-    const ok = await confirm({ title: `Delete Service ${svcIdx}`, message: `Delete WAN service ${svcIdx}? This will remove service-port, tcont, gemport, wan-ip, and pppoe entries.`, confirmLabel: 'Delete', variant: 'danger' });
+    const ok = await confirm({ title: t('vo.delSvcTitle', { n: svcIdx }), message: t('vo.delSvcMsg', { n: svcIdx }), confirmLabel: t('common.delete'), variant: 'danger' });
     if (!ok) return;
     try {
       const res = await fetch(`/api/onu/${onuId}/wan-service/${svcIdx}`, {
@@ -278,17 +278,17 @@ export function ViewOnu() {
       });
       const d = await res.json();
       if (d.success) {
-        toast.success(`Service ${svcIdx} deleted`);
+        toast.success(t('vo.svcDeleted', { n: svcIdx }));
         qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
         qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] });
         qc.invalidateQueries({ queryKey: ['all-onus'] });
-      } else { toast.error(d.message || 'Failed to delete'); }
-    } catch { toast.error('Failed to delete'); }
+      } else { toast.error(d.message || t('vo.deleteFailed')); }
+    } catch { toast.error(t('vo.deleteFailed')); }
   };
   const showConfig = async () => {
     setPendingAction('show-config');
-    try { const res = await fetch(`/api/onu/${onuId}/running-config`, { credentials: 'include' }); const d = await res.json(); setConfigContent(d.config || d.message || 'No config'); setModal({ type: 'showConfig' }); }
-    catch { toast.error('Failed to get config'); }
+    try { const res = await fetch(`/api/onu/${onuId}/running-config`, { credentials: 'include' }); const d = await res.json(); setConfigContent(d.config || d.message || t('vo.noConfig')); setModal({ type: 'showConfig' }); }
+    catch { toast.error(t('vo.getConfigFailed')); }
     finally { setPendingAction(null); }
   };
   const statusColor = (s: string) => s === 'online' ? 'bg-success/15 text-success' : s === 'los' ? 'bg-danger/15 text-danger' : s === 'dyinggasp' ? 'bg-warning/15 text-warning' : 'bg-offline/15 text-tx3';
@@ -422,14 +422,14 @@ export function ViewOnu() {
               key: 'resync', label: t('viewOnu.resyncConfig'), icon: <RefreshCw size={16} />,
               disabled: !!pendingAction,
               onClick: async () => {
-                const ok = await confirm({ title: 'Resync Config?', message: `Re-collect ONU config from OLT for "${onu.name}"?`, confirmLabel: 'Resync', variant: 'warning' });
+                const ok = await confirm({ title: t('vo.resyncTitle'), message: t('vo.resyncMsg', { name: onu.name }), confirmLabel: 'Resync', variant: 'warning' });
                 if (ok) {
                   setPendingAction('resync');
                   try {
                     const res = await fetch(`/api/onu/${onuId}/resync-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include' });
                     const d = await res.json();
-                    if (d.success) { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); toast.success('Config resynced!'); } else toast.error(d.message || 'Failed');
-                  } catch { toast.error('Resync failed'); }
+                    if (d.success) { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); toast.success(t('vo.resynced')); } else toast.error(d.message || 'Failed');
+                  } catch { toast.error(t('vo.resyncFailed')); }
                   finally { setPendingAction(null); }
                 }
               },
@@ -447,8 +447,8 @@ export function ViewOnu() {
               disabled: !!pendingAction,
               onClick: async () => {
                 const ok = await confirm({
-                  title: 'Factory Reset + Auto-Reconfig?',
-                  message: `ONU "${onu.name}" akan di-factory-reset (OMCI), tapi config di OLT TETAP tersimpan. Saat ONU online kembali, OLT otomatis mengirim ulang config (WAN, PPPoE, WiFi, TR069) ke ONU ini. Hanya ONU ini yang terpengaruh.\n\nLanjutkan?`,
+                  title: t('vo.resetReconfigTitle'),
+                  message: t('vo.resetReconfigMsg', { name: onu.name }),
                   confirmLabel: 'Reset + Reconfig',
                   variant: 'warning',
                 });
@@ -613,7 +613,7 @@ export function ViewOnu() {
                       </>}
                     </div>
                   </div>
-                ) : (<div className="mt-2 pl-1 text-xs text-tx3"><span className="text-accent">|</span> <em>No config</em></div>)}
+                ) : (<div className="mt-2 pl-1 text-xs text-tx3"><span className="text-accent">|</span> <em>{t('vo.noConfig')}</em></div>)}
               </div>
             );
           })}
@@ -622,9 +622,9 @@ export function ViewOnu() {
 
       {/* Remote Access */}
       <Card title={t('viewOnu.remoteAccess')} icon={<Shield size={16} />}
-        action={hasPerm('configure_onu') ? <button onClick={() => setModal({ type: 'aclEdit', data: { entry: {}, isNew: true, newIndex: remoteAccess.length + 1 } })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover"><Plus size={13} /> Create</button> : undefined}>
+        action={hasPerm('configure_onu') ? <button onClick={() => setModal({ type: 'aclEdit', data: { entry: {}, isNew: true, newIndex: remoteAccess.length + 1 } })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover"><Plus size={13} /> {t('vo.create')}</button> : undefined}>
         {remoteAccess.length > 0 ? (
-          <DataTable headers={['ID','Mode','Ingress Type','Service List','Start IP','End IP','Action']}>
+          <DataTable headers={['ID','Mode',t('vo.ingressType'),t('vo.serviceList'),'Start IP','End IP','Action']}>
             {remoteAccess.map((acl, i) => (
               <tr key={i} className={hasPerm('configure_onu') ? 'cursor-pointer' : ''} onClick={hasPerm('configure_onu') ? () => setModal({ type: 'aclEdit', data: { entry: acl, index: parseInt(String(acl.acl_id)) || (i + 1), isNew: false } }) : undefined}>
                 <td>{i+1}</td><td>{acl.mode||'-'}</td><td>{acl.ingress_type||'-'}</td><td>{acl.service_list||'-'}</td><td>{acl.start_ip||'-'}</td><td>{acl.end_ip||'-'}</td><td>{hasPerm('configure_onu') && <EditBtn />}</td>
@@ -723,8 +723,8 @@ export function ViewOnu() {
           <SignalBox label="RX Power (OLT)" value={rxOlt} />
           <SignalBox label="RX Power (ONU)" value={rxOnu} />
           <SignalBox label="TX Power (ONU)" value={txOnu} />
-          <div className="p-3 rounded-lg bg-glass text-center"><div className="text-xs text-tx3 mb-1">Distance</div><div className="text-lg font-bold font-mono">{String(ld.distance_m || onu.distance || '-')}</div><div className="text-xs text-tx3">m</div></div>
-          <div className="p-3 rounded-lg bg-glass text-center"><div className="text-xs text-tx3 mb-1">Online Duration</div><div className="text-lg font-bold">{onlineDuration || String(ld.online_duration || '-')}</div></div>
+          <div className="p-3 rounded-lg bg-glass text-center"><div className="text-xs text-tx3 mb-1">{t('vo.distance')}</div><div className="text-lg font-bold font-mono">{String(ld.distance_m || onu.distance || '-')}</div><div className="text-xs text-tx3">m</div></div>
+          <div className="p-3 rounded-lg bg-glass text-center"><div className="text-xs text-tx3 mb-1">{t('vo.onlineDuration')}</div><div className="text-lg font-bold">{onlineDuration || String(ld.online_duration || '-')}</div></div>
         </div>
         <RxHistoryChart onuId={onuId} />
       </Card>
@@ -761,13 +761,13 @@ export function ViewOnu() {
           latitude={onu.latitude} longitude={onu.longitude}
           loading={updateFieldMut.isPending}
           mapLocked={onu.map_locked}
-          onToggleLock={async () => { const r = await api.onuMapLock(onuId, !onu.map_locked); if (r.success) { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); toast.success(r.map_locked ? 'Pin dikunci' : 'Pin dibuka'); } }}
+          onToggleLock={async () => { const r = await api.onuMapLock(onuId, !onu.map_locked); if (r.success) { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); toast.success(r.map_locked ? t('vo.pinLocked') : t('vo.pinUnlocked')); } }}
           onSave={(lat, lng) => updateFieldMut.mutate({ field: 'location', value: `${lat},${lng}` })}
           onClose={() => setModal(null)}
         />
       )}
       {modal?.type === 'onuType' && <OnuTypeModal onuId={onuId} oltId={onu.olt_id} currentType={onu.onu_type || (ld.onu_type as string) || ''} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
-      {modal?.type === 'moveOnu' && <MoveOnuModal onuId={onuId} onu={onu} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); toast.success('ONU moved!'); }} />}
+      {modal?.type === 'moveOnu' && <MoveOnuModal onuId={onuId} onu={onu} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); toast.success(t('vo.moved')); }} />}
       {modal?.type === 'sectionEdit' && <SectionEditModal data={modal.data!} onuId={onuId} oltId={onu.olt_id} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); qc.invalidateQueries({ queryKey: ['all-onus'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); setModal(null); }} />}
       {modal?.type === 'aclEdit' && <AclEditModal data={modal.data!} onuId={onuId} onClose={() => setModal(null)} onSuccess={() => { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); setModal(null); }} />}
       {modal?.type === 'showConfig' && (
@@ -799,6 +799,7 @@ function SearchableSelect({ label, value, onChange, options, placeholder }: {
   label: string; value: string; onChange: (v: string) => void;
   options: Array<{ value: string; label: string }>; placeholder?: string;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -846,7 +847,7 @@ function SearchableSelect({ label, value, onChange, options, placeholder }: {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search..."
+              placeholder={t('vo.search')}
               className="w-full h-8 px-3 rounded-lg text-sm bg-glass border border-brd outline-none focus:border-accent/50"
               onKeyDown={e => { if (e.key === 'Escape') setOpen(false); }}
             />
@@ -854,7 +855,7 @@ function SearchableSelect({ label, value, onChange, options, placeholder }: {
           {/* Options list */}
           <div className="max-h-48 overflow-y-auto overscroll-contain">
             {filtered.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-tx3">No results</div>
+              <div className="px-3 py-2 text-xs text-tx3">{t('vo.noResults')}</div>
             ) : (
               filtered.map(o => (
                 <button
@@ -888,12 +889,13 @@ function useOltProfiles(oltId: number) {
 }
 
 function EditFieldModal({ data, onSave, onClose, loading }: { data: Record<string, unknown>; onSave: (v: string) => void; onClose: () => void; loading: boolean; }) {
+  const { t } = useTranslation();
   const [val, setVal] = useState((data.value as string) || '');
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
   return (
     <Modal open onClose={onClose} title={`Edit ${data.label as string}`}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" loading={loading} onClick={() => onSave(val)}>Save Changes</Button></>}
+      footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={loading} onClick={() => onSave(val)}>{t('vo.saveChanges')}</Button></>}
     >
       <input ref={ref} type="text" value={val} onChange={e => setVal(e.target.value)} className="input-field" onKeyDown={e => { if (e.key === 'Enter') onSave(val); }} />
     </Modal>
@@ -901,6 +903,7 @@ function EditFieldModal({ data, onSave, onClose, loading }: { data: Record<strin
 }
 
 function MoveOnuModal({ onuId, onu, onClose, onSuccess }: { onuId: number; onu: { olt_id: number; slot: number; port: number; onu_id: number }; onClose: () => void; onSuccess: () => void; }) {
+  const { t } = useTranslation();
   const [card, setCard] = useState(String(onu.slot));
   const [pon, setPon] = useState(String(onu.port));
   const [onuIdMode, setOnuIdMode] = useState<'auto' | 'manual'>('auto');
@@ -925,14 +928,14 @@ function MoveOnuModal({ onuId, onu, onClose, onSuccess }: { onuId: number; onu: 
       });
       const d = await res.json();
       if (d.success) { onSuccess(); }
-      else { toast.error(d.message || 'Move failed'); }
-    } catch { toast.error('Move failed'); }
+      else { toast.error(d.message || t('vo.moveFailed')); }
+    } catch { toast.error(t('vo.moveFailed')); }
     setLoading(false);
   };
 
   return (
-    <Modal open onClose={onClose} title="Move ONU"
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" loading={loading} onClick={save}>Save Changes</Button></>}
+    <Modal open onClose={onClose} title={t('vo.moveOnu')}
+      footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={loading} onClick={save}>{t('vo.saveChanges')}</Button></>}
     >
       <div className="space-y-4 md:space-y-5">
         <div>
@@ -975,6 +978,7 @@ function ReplaceOnuModal({ onu, onClose, onConfirm, loading }: {
   onu: { serial_number: string; name: string; actual_type: string; card: string };
   onClose: () => void; onConfirm: (newSerial: string) => void; loading: boolean;
 }) {
+  const { t } = useTranslation();
   const [newSerial, setNewSerial] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const oldSn = onu.serial_number || '';
@@ -986,19 +990,19 @@ function ReplaceOnuModal({ onu, onClose, onConfirm, loading }: {
   };
 
   const steps = [
-    { label: 'Backup config from old ONU', icon: Database },
-    { label: 'Delete old ONU from OLT', icon: Trash2 },
-    { label: 'Register new ONU with new SN', icon: Plus },
-    { label: 'Apply config to new ONU', icon: Replace },
+    { label: t('vo.replStep1'), icon: Database },
+    { label: t('vo.replStep2'), icon: Trash2 },
+    { label: t('vo.replStep3'), icon: Plus },
+    { label: t('vo.replStep4'), icon: Replace },
   ];
 
   return (
-    <Modal open onClose={onClose} icon={<Replace size={16} />} title="Replace ONU (Swap SN)"
+    <Modal open onClose={onClose} icon={<Replace size={16} />} title={t('vo.replaceTitle')}
       footer={
         <>
-          <Button variant="secondary" disabled={loading} onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" disabled={loading} onClick={onClose}>{t('common.cancel')}</Button>
           <Button variant="warning" loading={loading} disabled={!newSerial.trim() || !confirmed} onClick={handleConfirm}>
-            Replace ONU
+            {t('vo.replaceOnu')}
           </Button>
         </>
       }
@@ -1006,14 +1010,14 @@ function ReplaceOnuModal({ onu, onClose, onConfirm, loading }: {
       <div className="space-y-4">
         {/* Current SN */}
         <div className="p-3 rounded-lg bg-glass">
-          <div className="text-xs text-tx3 mb-1">Current SN / MAC</div>
+          <div className="text-xs text-tx3 mb-1">{t('vo.currentSn')}</div>
           <div className="text-sm font-mono font-bold">{oldSn || '--'}</div>
           <div className="text-xs text-tx3 mt-1">Name: {onu.name || '--'} | Type: {onu.actual_type || '--'} | {isEpon ? 'EPON' : 'GPON'}</div>
         </div>
 
         {/* New SN input */}
         <div>
-          <label className="label-sm mb-2">New SN / MAC</label>
+          <label className="label-sm mb-2">{t('vo.newSn')}</label>
           <input
             type="text"
             value={newSerial}
@@ -1030,8 +1034,8 @@ function ReplaceOnuModal({ onu, onClose, onConfirm, loading }: {
           <div className="flex items-start gap-2">
             <Shield size={16} className="text-warning shrink-0 mt-0.5" />
             <div className="text-xs text-warning leading-relaxed">
-              <strong>Warning:</strong> Pergantian ONU akan menghapus ONU lama dan mengganti dengan perangkat baru menggunakan konfigurasi yang sama.
-              Pastikan model ONU baru sama dengan ONU lama. Semua service, VLAN, dan profile akan dipertahankan.
+              <strong>{t('vo.warning')}</strong> Pergantian ONU akan menghapus ONU lama dan mengganti dengan perangkat baru menggunakan konfigurasi yang sama.
+              {t('vo.replaceNote')}
             </div>
           </div>
         </div>
@@ -1039,7 +1043,7 @@ function ReplaceOnuModal({ onu, onClose, onConfirm, loading }: {
         {/* Confirm checkbox */}
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} disabled={loading} />
-          Saya memahami konsekuensi dan ingin melanjutkan
+          {t('vo.understand')}
         </label>
 
         {/* Progress steps (shown during loading) */}
@@ -1060,6 +1064,7 @@ function ReplaceOnuModal({ onu, onClose, onConfirm, loading }: {
 }
 
 function OnuTypeModal({ onuId, oltId, currentType, onClose, onSuccess }: { onuId: number; oltId: number; currentType: string; onClose: () => void; onSuccess: () => void; }) {
+  const { t } = useTranslation();
   const [types, setTypes] = useState<string[]>([]);
   const [selected, setSelected] = useState(currentType);
   const [loading, setLoading] = useState(false);
@@ -1074,14 +1079,14 @@ function OnuTypeModal({ onuId, oltId, currentType, onClose, onSuccess }: { onuId
         else setStatus('No types found.');
       }).catch(e => setStatus('Error: ' + e.message));
   }, [oltId]);
-  const save = async () => { if (!selected) { toast.error('Please select a type'); return; } setLoading(true); try { const res = await fetch(`/api/onu/${onuId}/update-field`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ field: 'onu_type', value: selected }) }); const d = await res.json(); if (d.success) { onSuccess(); toast.success('Onu type updated!'); } else { toast.error(d.message || 'Failed to update ONU type'); } } catch { toast.error('Failed'); } setLoading(false); };
+  const save = async () => { if (!selected) { toast.error(t('vo.selectTypeFirst')); return; } setLoading(true); try { const res = await fetch(`/api/onu/${onuId}/update-field`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ field: 'onu_type', value: selected }) }); const d = await res.json(); if (d.success) { onSuccess(); toast.success(t('vo.typeUpdated')); } else { toast.error(d.message || 'Failed to update ONU type'); } } catch { toast.error('Failed'); } setLoading(false); };
   return (
     <Modal open onClose={onClose} title="Onu Type"
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" loading={loading} onClick={save}>Save Changes</Button></>}
+      footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={loading} onClick={save}>{t('vo.saveChanges')}</Button></>}
     >
       <p className="text-xs text-tx3 mb-3">{status}</p>
       <select value={selected} onChange={e => setSelected(e.target.value)} className="input-field">
-        <option value="" disabled>Select Type</option>
+        <option value="" disabled>{t('vo.selectType')}</option>
         {types.map(t => <option key={t} value={t}>{t}</option>)}
       </select>
     </Modal>
@@ -1090,6 +1095,7 @@ function OnuTypeModal({ onuId, oltId, currentType, onClose, onSuccess }: { onuId
 
 // ═══ WAN EDIT MODAL (matches original HTML exactly) ═══
 function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: { data: Record<string, unknown>; onuId: number; oltId: number; serialNumber: string; onClose: () => void; onSuccess: () => void; }) {
+  const { t } = useTranslation();
   const svcIdx = data.svcIdx as number;
   const svc = data.svc as Record<string, string>;
   const vlans = useOltVlans(oltId);
@@ -1135,7 +1141,7 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
         }),
       });
       const d = await res.json();
-      if (d.success) { onSuccess(); toast.success('WAN service updated!'); } else { toast.error(d.message || 'Failed'); }
+      if (d.success) { onSuccess(); toast.success(t('vo.wanUpdated')); } else { toast.error(d.message || 'Failed'); }
     } catch { toast.error('Failed'); }
     setLoading(false);
   };
@@ -1146,7 +1152,7 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
 
   return (
     <Modal open onClose={onClose} icon={<Globe size={16} />} title={`Service ${svcIdx}`} size="md"
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" loading={loading} onClick={save}>Save Changes</Button></>}
+      footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={loading} onClick={save}>{t('vo.saveChanges')}</Button></>}
     >
       <div className="space-y-3 md:space-y-4">
         {/* Status */}
@@ -1157,7 +1163,7 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
         {/* VLAN */}
         <div className="flex items-center gap-2"><input type="checkbox" checked={!!vlan} onChange={e => { if (!e.target.checked) setVlan(''); }} className="cursor-pointer" /><label className="label-sm cursor-pointer" onClick={() => { if (!vlan) setVlan(' '); }}>Vlan</label></div>
         {!!vlan && <div className="flex gap-2 md:gap-3 flex-wrap">
-          <div className="flex-1 min-w-[140px]"><SelectField label="" value={vlan} onChange={setVlan} options={vlans.map(v => ({ value: String(v.vlan_id), label: `${v.vlan_id} - ${v.name}` }))} placeholder="Select Vlan" /></div>
+          <div className="flex-1 min-w-[140px]"><SelectField label="" value={vlan} onChange={setVlan} options={vlans.map(v => ({ value: String(v.vlan_id), label: `${v.vlan_id} - ${v.name}` }))} placeholder={t('vo.selectVlan')} /></div>
           <div className="flex items-center gap-2"><input type="checkbox" checked={cosEnabled} onChange={e => setCosEnabled(e.target.checked)} className="cursor-pointer" /><span className="text-xs">CoS</span>
             {cosEnabled && <select value={cos} onChange={e => setCos(e.target.value)} className="input-field w-20"><option value="">CoS</option>{[0,1,2,3,4,5,6,7,8].map(c => <option key={c} value={c}>{c}</option>)}</select>}
           </div>
@@ -1167,9 +1173,9 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
         <div><label className="label-sm mb-1">Service Limit Profile</label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <SelectField label="Download (Traffic)" value={dlProfile} onChange={setDlProfile}
-              options={[...new Set([...profiles.traffic, dlProfile].filter(Boolean))].map(p => ({ value: p, label: p }))} placeholder="Select Traffic Profile" />
+              options={[...new Set([...profiles.traffic, dlProfile].filter(Boolean))].map(p => ({ value: p, label: p }))} placeholder={t('vo.selectTraffic')} />
             <SelectField label="Upload (TCONT)" value={ulProfile} onChange={setUlProfile}
-              options={[...new Set([...profiles.tcont, ulProfile].filter(Boolean))].map(p => ({ value: p, label: p }))} placeholder="Select TCONT Profile" />
+              options={[...new Set([...profiles.tcont, ulProfile].filter(Boolean))].map(p => ({ value: p, label: p }))} placeholder={t('vo.selectTcont')} />
           </div>
         </div>
 
@@ -1177,7 +1183,7 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
         <div><label className="label-sm mb-1">Mode {useVeip && <span className="text-[10px] text-info bg-info/10 px-1.5 py-0.5 rounded">VEIP (host 1)</span>}</label>
           <div className="flex flex-col gap-2">
             {[{v:'PPPoE NAT',l:'PPPoE NAT',disabled:!!useVeip},{v:'Wan-IP',l:'Wan-IP'},{v:'Bridge / ONU Webpage',l:'Bridge / ONU Webpage'}].map(m => (
-              <label key={m.v} className={`flex items-center gap-2 text-sm ${m.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}><input type="radio" name="wanMode" checked={mode === m.v} onChange={() => setMode(m.v)} disabled={m.disabled} /> {m.l} {m.disabled && <span className="text-[10px] text-danger">(not supported)</span>}</label>
+              <label key={m.v} className={`flex items-center gap-2 text-sm ${m.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}><input type="radio" name="wanMode" checked={mode === m.v} onChange={() => setMode(m.v)} disabled={m.disabled} /> {m.l} {m.disabled && <span className="text-[10px] text-danger">{t('vo.notSupported')}</span>}</label>
             ))}
           </div>
         </div>
@@ -1187,7 +1193,7 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
           <SelectField label="Mode WAN-IP" value={wanIpMode} onChange={setWanIpMode} options={useVeip ? [{value:'dhcp',label:'DHCP'},{value:'static',label:'Static'}] : [{value:'dhcp',label:'DHCP'},{value:'pppoe',label:'PPPoE'},{value:'static',label:'Static'}]} />
           <SelectField label="Vlan Profile" value={vlanProfile} onChange={setVlanProfile}
             options={profiles.wan_ip_profiles.map(wp => ({ value: wp.name, label: wp.cvlan ? `${wp.cvlan} - ${wp.name}` : wp.name }))}
-            placeholder="Select Vlan Profile" />
+            placeholder={t('vo.selectVlanProfile')} />
           {wanIpMode === 'pppoe' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="label-sm mb-1">PPPoE Username</label><input type="text" value={pppoe.username} onChange={e => setPppoe(p => ({...p, username: e.target.value}))} placeholder="PPPoE Username" className="input-field" /></div>
             <div><label className="label-sm mb-1">PPPoE Password</label><input type="password" value={pppoe.password} onChange={e => setPppoe(p => ({...p, password: e.target.value}))} placeholder="PPPoE Password" className="input-field" /></div>
@@ -1198,7 +1204,7 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
             <div><label className="label-sm mb-1">Gateway</label><input type="text" value={staticIp.gateway} onChange={e => setStaticIp(p => ({...p, gateway: e.target.value}))} placeholder="e.g. 192.168.1.1" className="input-field" /></div>
             <div><label className="label-sm mb-1">DNS1</label><input type="text" value={staticIp.dns1} onChange={e => setStaticIp(p => ({...p, dns1: e.target.value}))} placeholder="e.g. 8.8.8.8" className="input-field" /></div>
           </div>}
-          <div className="flex gap-4"><label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={ping} onChange={e => setPing(e.target.checked)} /> Ping Response</label><label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={traceroute} onChange={e => setTraceroute(e.target.checked)} /> Traceroute Response</label></div>
+          <div className="flex gap-4"><label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={ping} onChange={e => setPing(e.target.checked)} /> {t('vo.pingResp')}</label><label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={traceroute} onChange={e => setTraceroute(e.target.checked)} /> {t('vo.traceResp')}</label></div>
         </div>}
 
         {/* PPPoE NAT sub-options */}
@@ -1213,6 +1219,7 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
 
 // ═══ SECTION EDIT MODAL (WiFi/LAN/VEIP/TR069) ═══
 function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Record<string, unknown>; onuId: number; oltId: number; onClose: () => void; onSuccess: () => void; }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const section = data.section as string;
   const entry = data.entry as Record<string, string>;
@@ -1264,7 +1271,7 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
         // Delay refetch to let OLT apply changes (especially for interface eth state)
         await new Promise(r => setTimeout(r, 1500));
         onSuccess();
-        toast.success('Updated! Auto-syncing OLT...');
+        toast.success(t('vo.updatedSyncing'));
         // Re-invalidate after auto-sync completes (~8s)
         setTimeout(() => {
           qc.invalidateQueries({ queryKey: ['onu-detail', onuId] });
@@ -1278,13 +1285,13 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
   };
 
   const deleteEntry = async () => {
-    const ok = await confirm({ title: `Delete ${section}`, message: `Delete this ${section} entry?`, confirmLabel: 'Delete', variant: 'danger' });
+    const ok = await confirm({ title: t('vo.delSectionTitle', { section }), message: t('vo.delSectionMsg', { section }), confirmLabel: t('common.delete'), variant: 'danger' });
     if (ok) {
       try {
         const deleteData = section === 'wifi' ? { ssid_num: Number(ssidNum) } : {};
         const res = await fetch(`/api/onu/${onuId}/section-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ section, action: 'delete', index: data.index, data: deleteData }) });
         const d = await res.json();
-        if (d.success) { onSuccess(); toast.success('Deleted!'); } else { toast.error(d.message || 'Failed'); }
+        if (d.success) { onSuccess(); toast.success(t('vo.deleted')); } else { toast.error(d.message || 'Failed'); }
       } catch { toast.error('Failed'); }
     }
   };
@@ -1298,7 +1305,7 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
 
   const VlanSelect = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
     <select value={value} onChange={e => onChange(e.target.value)} className="input-field">
-      <option value="">-- Select VLAN --</option>
+      <option value="">{t('vo.selectVlanDash')}</option>
       {vlans.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} - {v.name}</option>)}
     </select>
   );
@@ -1309,8 +1316,8 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
         <div className="w-full flex items-center justify-between gap-2">
           {section !== 'tr069' ? <Button variant="danger" icon={<Trash2 size={14} />} onClick={deleteEntry}>Delete</Button> : <span />}
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" loading={loading} onClick={save}>Save Changes</Button>
+            <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+            <Button variant="primary" loading={loading} onClick={save}>{t('vo.saveChanges')}</Button>
           </div>
         </div>
       }
@@ -1333,7 +1340,7 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
                 <div>
                   <label className="label-sm mb-1">VLAN</label>
                   <select value={tr069Vlan} onChange={e => setTr069Vlan(e.target.value)} className="input-field">
-                    <option value="">-- Select VLAN --</option>
+                    <option value="">{t('vo.selectVlanDash')}</option>
                     {vlans.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} - {v.name}</option>)}
                   </select>
                 </div>
@@ -1386,11 +1393,11 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
                 </label>
                 {ssidNameEnabled && (
                   <input type="text" value={ssidBroadcastName} onChange={e => setSsidBroadcastName(e.target.value)}
-                    placeholder="e.g. MyWiFi" className="input-field" />
+                    placeholder={t('vo.ssidPh')} className="input-field" />
                 )}
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={ssidAuthEnabled} onChange={e => setSsidAuthEnabled(e.target.checked)} />
-                  <span className="text-tx2">Authentication Type</span>
+                  <span className="text-tx2">{t('vo.authType')}</span>
                 </label>
                 {ssidAuthEnabled && (
                   <div className="space-y-2">
@@ -1398,14 +1405,14 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
                       <option value="wpa2-psk">WPA2-PSK</option>
                       <option value="wpa-psk">WPA-PSK</option>
                       <option value="wpa-wpa2-psk">Mixed WPA/WPA2-PSK</option>
-                      <option value="open">Open (No Password)</option>
+                      <option value="open">{t('wiz.openAuth')}</option>
                     </select>
                     {ssidAuthType !== 'open' && (
                       <div className="space-y-1">
                         <input type="password" value={ssidPassword} onChange={e => setSsidPassword(e.target.value)}
-                          placeholder="WiFi Password" className="input-field" />
+                          placeholder={t('wiz.wifiKeyLabel')} className="input-field" />
                         {ssidPwFromDb && ssidPassword && (
-                          <p className="text-xs text-tx3 italic">(dari database)</p>
+                          <p className="text-xs text-tx3 italic">{t('vo.fromDb')}</p>
                         )}
                       </div>
                     )}
@@ -1435,6 +1442,7 @@ function SectionEditModal({ data, onuId, oltId, onClose, onSuccess }: { data: Re
 
 // ═══ ACL EDIT MODAL ═══
 function AclEditModal({ data, onuId, onClose, onSuccess }: { data: Record<string, unknown>; onuId: number; onClose: () => void; onSuccess: () => void; }) {
+  const { t } = useTranslation();
   const entry = (data.entry as Record<string, string>) || {};
   const isNew = data.isNew as boolean;
   const slWords = (entry.service_list || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
@@ -1473,12 +1481,12 @@ function AclEditModal({ data, onuId, onClose, onSuccess }: { data: Record<string
   };
 
   const deleteAcl = async () => {
-    const ok = await confirm({ title: 'Delete ACL', message: 'Delete this Remote Access rule?', confirmLabel: 'Delete', variant: 'danger' });
+    const ok = await confirm({ title: t('vo.deleteAcl'), message: t('vo.deleteAclMsg'), confirmLabel: 'Delete', variant: 'danger' });
     if (ok) {
       try {
         const res = await fetch(`/api/onu/${onuId}/section-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ section: 'acl', action: 'delete', index: data.index, data: {} }) });
         const d = await res.json();
-        if (d.success) { onSuccess(); toast.success('ACL rule deleted'); } else { toast.error(d.message || 'Failed'); }
+        if (d.success) { onSuccess(); toast.success(t('vo.aclDeleted')); } else { toast.error(d.message || 'Failed'); }
       } catch { toast.error('Failed'); }
     }
   };
@@ -1489,27 +1497,27 @@ function AclEditModal({ data, onuId, onClose, onSuccess }: { data: Record<string
         <div className="w-full flex items-center justify-between gap-2">
           {!isNew ? <Button variant="danger" icon={<Trash2 size={14} />} onClick={deleteAcl}>Delete</Button> : <span />}
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" loading={loading} onClick={save}>Save Changes</Button>
+            <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+            <Button variant="primary" loading={loading} onClick={save}>{t('vo.saveChanges')}</Button>
           </div>
         </div>
       }
     >
       <div className="space-y-3 md:space-y-4">
         <div><label className="label-sm mb-1">Mode</label>
-          <select value={mode} onChange={e => setMode(e.target.value)} className="input-field"><option value="forward">Allow (Forward)</option><option value="block">Block (Deny)</option></select>
+          <select value={mode} onChange={e => setMode(e.target.value)} className="input-field"><option value="forward">{t('vo.allow')}</option><option value="block">{t('vo.block')}</option></select>
         </div>
-        <div><label className="label-sm mb-1">Ingress Type</label>
+        <div><label className="label-sm mb-1">{t('vo.ingressType')}</label>
           <select value={ingressType} onChange={e => setIngressType(e.target.value)} className="input-field"><option value="WAN">WAN</option><option value="LAN">LAN</option></select>
         </div>
-        <div><label className="label-sm mb-2">Service List</label>
+        <div><label className="label-sm mb-2">{t('vo.serviceList')}</label>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{[{v:'HTTP',l:'WEB (HTTP)'},{v:'HTTPS',l:'HTTPS'},{v:'SNMP',l:'SNMP'},{v:'SSH',l:'SSH'},{v:'TELNET',l:'TELNET'},{v:'FTP',l:'FTP'},{v:'TR069',l:'TR069'}].map(s => (
             <label key={s.v} className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={services.includes(s.v)} onChange={() => toggleService(s.v)} /> {s.l}</label>
           ))}</div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div><label className="label-sm mb-1">Start Source IP</label><input type="text" value={startIp} onChange={e => setStartIp(e.target.value)} placeholder="0.0.0.0" className="input-field" /></div>
-          <div><label className="label-sm mb-1">End Source IP</label><input type="text" value={endIp} onChange={e => setEndIp(e.target.value)} placeholder="0.0.0.0" className="input-field" /></div>
+          <div><label className="label-sm mb-1">{t('vo.startIp')}</label><input type="text" value={startIp} onChange={e => setStartIp(e.target.value)} placeholder="0.0.0.0" className="input-field" /></div>
+          <div><label className="label-sm mb-1">{t('vo.endIp')}</label><input type="text" value={endIp} onChange={e => setEndIp(e.target.value)} placeholder="0.0.0.0" className="input-field" /></div>
         </div>
       </div>
     </Modal>
@@ -1518,6 +1526,7 @@ function AclEditModal({ data, onuId, onClose, onSuccess }: { data: Record<string
 
 // ═══ GET STATUS MODAL (matches R-Config Get Status output) ═══
 function GetStatusModal({ status, onClose }: { status: Record<string, unknown> | undefined | null; onClose: () => void }) {
+  const { t } = useTranslation();
   const safeStatus = status || {};
   const info = (safeStatus.interface || {}) as Record<string, string>;
   const opt = (safeStatus.optical || {}) as Record<string, Record<string, string>>;
@@ -1548,18 +1557,18 @@ function GetStatusModal({ status, onClose }: { status: Record<string, unknown> |
     ['Line Profile', info['Line Profile'] || ''],
     ['Service Profile', info['Service Profile'] || ''],
     ['ONU Distance', info['ONU Distance'] || ''],
-    ['Online Duration', info['Online Duration'] || ''],
+    [t('vo.onlineDuration'), info[t('vo.onlineDuration')] || ''],
   ];
   const hasOpticalData = Object.keys(upOpt).length > 0 || Object.keys(downOpt).length > 0;
   const hasOnuModule = Object.keys(onuModule).length > 0;
   return (
-    <Modal open onClose={onClose} icon={<Activity size={16} />} title="Get Status — ONU Detail" size="xl"
-      footer={<Button variant="secondary" onClick={onClose}>Close</Button>}
+    <Modal open onClose={onClose} icon={<Activity size={16} />} title={t('vo.getStatusTitle')} size="xl"
+      footer={<Button variant="secondary" onClick={onClose}>{t('common.close')}</Button>}
     >
       <div className="space-y-4 md:space-y-5">
         {/* Interface Info */}
         <div>
-          <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">ONU Interface Info</h6>
+          <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">{t('vo.ifaceInfo')}</h6>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             {infoFields.map(([label, val]) => (
               val ? <div key={label} className="p-2 rounded bg-glass text-xs"><span className="text-tx3">{label}:</span> <span className="font-medium">{val}</span></div> : null
@@ -1570,7 +1579,7 @@ function GetStatusModal({ status, onClose }: { status: Record<string, unknown> |
         {/* Optical Status - Up/Down Power Table */}
         {hasOpticalData && (
         <div>
-          <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">Optical Status — Power Levels</h6>
+          <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">{t('vo.opticalStatus')}</h6>
           <DataTable headers={['Direction', 'OLT Side', 'ONU Side', 'Attenuation']}>
             <tr>
               <td className="font-medium text-success">Up (ONU→OLT)</td>
@@ -1607,23 +1616,23 @@ function GetStatusModal({ status, onClose }: { status: Record<string, unknown> |
         {/* ONU Optical Module Info */}
         {hasOnuModule && (
         <div>
-          <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">ONU Optical Module Info</h6>
+          <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">{t('vo.moduleInfo')}</h6>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {onuModule.temperature && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">Temperature:</span> <span className="font-medium">{onuModule.temperature}</span></div>}
-            {onuModule.voltage && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">Supply Voltage:</span> <span className="font-medium">{onuModule.voltage}</span></div>}
-            {onuModule.bias_current && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">Bias Current:</span> <span className="font-medium">{onuModule.bias_current}</span></div>}
+            {onuModule.temperature && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">{t('vo.temperature')}</span> <span className="font-medium">{onuModule.temperature}</span></div>}
+            {onuModule.voltage && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">{t('vo.voltage')}</span> <span className="font-medium">{onuModule.voltage}</span></div>}
+            {onuModule.bias_current && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">{t('vo.bias')}</span> <span className="font-medium">{onuModule.bias_current}</span></div>}
             {onuModule.tx_power && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">TX Power:</span> <span className="font-medium">{onuModule.tx_power}</span></div>}
             {onuModule.rx_power && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">ONU RX Power:</span> <span className="font-medium">{onuModule.rx_power}</span></div>}
-            {onuModule.wavelength && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">Wavelength:</span> <span className="font-medium">{onuModule.wavelength}</span></div>}
+            {onuModule.wavelength && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">{t('vo.wavelength')}</span> <span className="font-medium">{onuModule.wavelength}</span></div>}
             {onuModule.vendor && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">Vendor:</span> <span className="font-medium">{onuModule.vendor}</span></div>}
-            {onuModule.module_type && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">Module Type:</span> <span className="font-medium">{onuModule.module_type}</span></div>}
+            {onuModule.module_type && <div className="p-2 rounded bg-glass text-xs"><span className="text-tx3">{t('vo.moduleType')}</span> <span className="font-medium">{onuModule.module_type}</span></div>}
           </div>
         </div>
         )}
 
         {/* History */}
         <div>
-          <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">History</h6>
+          <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">{t('vo.history')}</h6>
           {hist.length > 0 ? (
             <DataTable headers={['#', 'Authpass Time', 'Offline Time', 'Cause']}>
               {hist.map((h, i) => (
@@ -1640,13 +1649,13 @@ function GetStatusModal({ status, onClose }: { status: Record<string, unknown> |
                 </tr>
               ))}
             </DataTable>
-          ) : <div className="text-xs text-tx3">No history available</div>}
+          ) : <div className="text-xs text-tx3">{t('vo.noHistory')}</div>}
         </div>
 
         {/* MAC Table */}
         {macs.length > 0 && (
           <div>
-            <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">MACs on OLT from this ONU</h6>
+            <h6 className="text-xs text-tx3 font-semibold mb-2 uppercase">{t('vo.macs')}</h6>
             <DataTable headers={['MAC Address', 'VLAN', 'Type', 'Port', 'Vport']}>
               {macs.map((m, i) => (
                 <tr key={i}>
@@ -1688,7 +1697,7 @@ function FtthPathCard({ onuId }: { onuId: number }) {
   if (data.hops.length === 0) {
     return (
       <Card title={t('viewOnu.ftthPath')} icon={<Cable size={16} />}>
-        <p className="text-xs text-tx3">{data.message || 'ONU ini belum di-assign ke port ODP manapun.'} Assign lewat halaman <strong className="text-tx2">FTTH Infrastructure</strong>.</p>
+        <p className="text-xs text-tx3">{data.message || 'ONU ini belum di-assign ke port ODP manapun.'} Assign lewat halaman <strong className="text-tx2">{t('vo.ftthInfra')}</strong>.</p>
       </Card>
     );
   }
@@ -1698,7 +1707,7 @@ function FtthPathCard({ onuId }: { onuId: number }) {
       {!data.complete && (
         <div className="mb-3 flex items-start gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20 text-xs text-warning">
           <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-          <span>Jalur belum lengkap — ada titik yang datanya belum disambungkan di FTTH Infrastructure (lihat tanda merah di bawah).</span>
+          <span>{t('vo.pathIncomplete')}</span>
         </div>
       )}
       <div className="flex items-stretch gap-1 overflow-x-auto scrollbar-thin pb-1">
@@ -1729,9 +1738,9 @@ function FtthPathCard({ onuId }: { onuId: number }) {
       </div>
       {data.complete && (
         data.total_attenuation_db !== null ? (
-          <p className="text-xs text-tx3 mt-3">Total redaman jalur (kalkulasi): <span className="font-medium text-tx1">{data.total_attenuation_db.toFixed(2)} dB</span></p>
+          <p className="text-xs text-tx3 mt-3">{t('vo.totalLoss')} <span className="font-medium text-tx1">{data.total_attenuation_db.toFixed(2)} dB</span></p>
         ) : (
-          <p className="text-xs text-tx3 mt-3">Total redaman jalur belum bisa dihitung — data panjang kabel belum lengkap di salah satu titik (isi lewat FTTH Infrastructure).</p>
+          <p className="text-xs text-tx3 mt-3">{t('vo.lossUnknown')}</p>
         )
       )}
     </Card>
@@ -1758,20 +1767,21 @@ function ActBtn({ icon, label, onClick, variant, loading, disabled }: { icon: Re
 }
 function EditBtn() { return <button className="text-accent hover:text-accent-hover"><Edit3 size={13} /></button>; }
 function SaveConfigBtn({ onuId }: { onuId: number }) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const save = async () => {
     setSaving(true);
     try {
       const res = await fetch(`/api/onu/${onuId}/save-config`, { method: 'POST', credentials: 'include' });
       const d = await res.json();
-      if (d.success) toast.success('Config saved to startup-config!');
-      else toast.error(d.message || 'Save failed');
-    } catch { toast.error('Save failed'); }
+      if (d.success) toast.success(t('vo.configSaved'));
+      else toast.error(d.message || t('vo.saveFailed'));
+    } catch { toast.error(t('vo.saveFailed')); }
     setSaving(false);
   };
   return (
     <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-all disabled:opacity-60">
-      <Save size={13} /> {saving ? 'Saving...' : 'Save Config'}
+      <Save size={13} /> {saving ? t('vo.saving') : t('vo.saveConfig')}
     </button>
   );
 }
@@ -1818,13 +1828,13 @@ function LocationEditModal({ latitude, longitude, onSave, onClose, loading, mapL
       />
       {/* Google Maps link paste (Fase 4) */}
       <div className="mt-3 pt-3 border-t border-brd">
-        <div className="label-sm mb-1.5">Tempel link Google Maps</div>
+        <div className="label-sm mb-1.5">{t('vo.pasteMaps')}</div>
         <div className="flex gap-2">
           <input
             type="text"
             value={pasteText}
             onChange={e => setPasteText(e.target.value)}
-            placeholder="https://maps.app.goo.gl/... atau -6.2,106.8"
+            placeholder={t('vo.mapsPh')}
             className="flex-1 px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none"
           />
           <Button variant="ghost" onClick={handleParseLink} disabled={!pasteText.trim()}>Parse</Button>
@@ -1840,18 +1850,18 @@ function LocationEditModal({ latitude, longitude, onSave, onClose, loading, mapL
               mapLocked ? 'bg-warning/20 text-warning' : 'bg-glass text-tx3 hover:text-tx1')}
           >
             {mapLocked ? <Lock size={12} /> : <Unlock size={12} />}
-            {mapLocked ? 'Pin Terkunci' : 'Pin Terbuka'}
+            {mapLocked ? t('vo.pinLockedLabel') : t('vo.pinOpenLabel')}
           </button>
           <span className="text-[10px] text-tx3">
-            {mapLocked ? 'Koordinat tidak akan ditimpa oleh sync/jitter' : 'Koordinat bisa ditimpa oleh sync/jitter ODP'}
+            {mapLocked ? t('vo.pinLockedHint') : t('vo.pinOpenHint')}
           </span>
         </div>
       )}
-      <p className="text-xs text-tx3 mt-3">Koordinat ini menentukan posisi marker pelanggan di peta FTTH.</p>
+      <p className="text-xs text-tx3 mt-3">{t('vo.coordHint')}</p>
       <div className="flex justify-end gap-2 mt-4">
-        <Button variant="ghost" onClick={onClose}>Batal</Button>
+        <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
         <Button onClick={() => onSave(parseFloat(coords.lat).toFixed(6), parseFloat(coords.lng).toFixed(6))} disabled={!valid || loading}>
-          {loading ? 'Menyimpan…' : 'Simpan'}
+          {loading ? t('vo.saving') : t('common.save')}
         </Button>
       </div>
     </Modal>
@@ -2026,17 +2036,17 @@ function Tr069Panel({ onuId }: { onuId: number }) {
       {canManage && (
         <div className="mt-3 pt-3 border-t border-brd space-y-3">
           <div className="flex flex-wrap gap-2">
-            <Button variant="ghost" onClick={() => api.onuTr069Refresh(onuId).then(() => { toast.success('Refresh task dikirim'); refetch(); })}>
+            <Button variant="ghost" onClick={() => api.onuTr069Refresh(onuId).then(() => { toast.success(t('vo.refreshSent')); refetch(); })}>
               Refresh
             </Button>
-            <Button variant="ghost" onClick={async () => { if (await confirm({ title: 'Reboot via GenieACS', message: 'Reboot ONU via GenieACS?', variant: 'warning' })) api.onuTr069Reboot(onuId).then(r => r.success ? toast.success('Reboot task dikirim') : toast.error(r.message)); }}>
+            <Button variant="ghost" onClick={async () => { if (await confirm({ title: 'Reboot via GenieACS', message: t('vo.rebootAcsMsg'), variant: 'warning' })) api.onuTr069Reboot(onuId).then(r => r.success ? toast.success(t('vo.rebootSent')) : toast.error(r.message)); }}>
               Reboot
             </Button>
-            <Button variant="ghost" onClick={async () => { if (await confirm({ title: 'Factory Reset via GenieACS', message: 'Kembalikan ONU ke pengaturan pabrik? Semua konfigurasi pelanggan hilang.', variant: 'warning' })) api.onuTr069FactoryReset(onuId).then(r => r.success ? toast.success('Factory reset task dikirim') : toast.error(r.message)); }}>
-              Factory Reset
+            <Button variant="ghost" onClick={async () => { if (await confirm({ title: 'Factory Reset via GenieACS', message: t('vo.factoryAcsMsg'), variant: 'warning' })) api.onuTr069FactoryReset(onuId).then(r => r.success ? toast.success(t('vo.factorySent')) : toast.error(r.message)); }}>
+              {t('vo.factoryReset')}
             </Button>
             <Button variant="ghost" onClick={() => setShowCfg(v => !v)}>
-              {showCfg ? 'Sembunyikan Konfig' : 'Konfigurasi'}
+              {showCfg ? t('vo.hideConfig') : t('vo.showConfig')}
             </Button>
           </div>
           {showCfg && (
@@ -2047,8 +2057,8 @@ function Tr069Panel({ onuId }: { onuId: number }) {
                   <span className="text-[10px] font-bold text-tx3 uppercase tracking-wider">WiFi SSID</span>
                   <button className="text-[10px] text-accent hover:underline" onClick={() =>
                     api.onuTr069AddObject(onuId, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.')
-                      .then(r => { if (r.success) { toast.success(`Instance WiFi #${r.instance || 'baru'} dibuat`); refetch(); } else toast.error(r.message); })
-                  }>+ Tambah SSID</button>
+                      .then(r => { if (r.success) { toast.success(t('vo.wifiCreated', { n: r.instance || '' })); refetch(); } else toast.error(r.message); })
+                  }>{t('wiz.addSsid')}</button>
                 </div>
                 {(p?.ssids || []).map(s => {
                   const ed = wifiEdit[s.index] || { ssid: s.ssid, pass: '' };
@@ -2061,22 +2071,22 @@ function Tr069Panel({ onuId }: { onuId: number }) {
                         placeholder="password" value={ed.pass}
                         onChange={e => setWifiEdit({ ...wifiEdit, [s.index]: { ...ed, pass: e.target.value } })} />
                       <Button variant="primary" className="w-full sm:w-auto" onClick={() => {
-                        if (!ed.ssid.trim()) { toast.error('SSID wajib diisi'); return; }
+                        if (!ed.ssid.trim()) { toast.error(t('vo.ssidRequired')); return; }
                         api.onuTr069SetWifi(onuId, { ssid: ed.ssid.trim(), password: ed.pass || undefined, index: s.index })
-                          .then(r => r.success ? toast.success(`WiFi #${s.index} dikirim`) : toast.error(r.message));
+                          .then(r => r.success ? toast.success(t('vo.wifiSent', { n: s.index })) : toast.error(r.message));
                       }}>Set</Button>
                       {s.index > 2 && (
                         <Button variant="ghost" className="w-full sm:w-auto" onClick={async () => {
-                          if (await confirm({ title: `Hapus SSID #${s.index}?`, message: `Instance ${s.ssid} akan dihapus via deleteObject.`, variant: 'warning' }))
+                          if (await confirm({ title: t('vo.delSsidTitle', { n: s.index }), message: t('vo.delSsidMsg', { ssid: s.ssid }), variant: 'warning' }))
                             api.onuTr069DelObject(onuId, `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${s.index}.`)
-                              .then(r => { if (r.success) { toast.success('deleteObject dikirim'); refetch(); } else toast.error(r.message); });
+                              .then(r => { if (r.success) { toast.success(t('vo.deleteObjSent')); refetch(); } else toast.error(r.message); });
                         }}>Hapus</Button>
                       )}
                     </div>
                   );
                 })}
                 {(!p?.ssids || p.ssids.length === 0) && (
-                  <div className="text-xs text-tx3">Belum ada konfigurasi WLAN — klik "+ Tambah SSID".</div>
+                  <div className="text-xs text-tx3">{t('vo.noWlan')}</div>
                 )}
               </div>
             </div>
@@ -2084,7 +2094,7 @@ function Tr069Panel({ onuId }: { onuId: number }) {
           {/* Task history */}
           {tasks.length > 0 && (
             <div className="text-[10px] text-tx3 space-y-0.5">
-              <span className="font-bold uppercase tracking-wider">ACS Tasks</span>
+              <span className="font-bold uppercase tracking-wider">{t('vo.acsTasks')}</span>
               {tasks.map(t => (
                 <div key={t._id} className="flex justify-between font-mono">
                   <span>{t.name}</span><span>{t.timestamp.slice(0, 16).replace('T', ' ')}</span>

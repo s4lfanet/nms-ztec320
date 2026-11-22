@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -28,6 +29,7 @@ const TABS = [
 ];
 
 export function OltConfiguration() {
+  const { t } = useTranslation();
   const { oltId } = useParams();
   const id = Number(oltId);
   const [activeTab, setActiveTab] = useState('uplinks');
@@ -35,13 +37,13 @@ export function OltConfiguration() {
   const canManage = hasPerm('settings_ip_olts');
   const { data: oltData } = useQuery({ queryKey: ['dashboard'], queryFn: () => fetch('/api/dashboard', { credentials: 'include' }).then(r => r.json()) });
   const olt = oltData?.olts?.find((o: {id:number}) => o.id === id);
-  if (!olt) return <div className="text-center py-20 text-tx3">OLT not found</div>;
+  if (!olt) return <div className="text-center py-20 text-tx3">{t('oc.notFound')}</div>;
   return (
     <div className="space-y-4 md:space-y-5 animate-fade-in">
       <Breadcrumb items={[
-        { label: 'Home', path: '/dashboard' },
-        { label: 'Settings', path: '/dashboard/settings/olts' },
-        { label: 'Configurations' },
+        { label: t('oc.home'), path: '/dashboard' },
+        { label: t('oc.settings'), path: '/dashboard/settings/olts' },
+        { label: t('oc.configurations') },
       ]} />
 
       {/* OLT Header */}
@@ -65,15 +67,15 @@ export function OltConfiguration() {
             <div><div className="text-[10px] text-tx3 uppercase">Model</div><strong className="truncate block">{olt.model}</strong></div>
             {olt.firmware_version && <div><div className="text-[10px] text-tx3 uppercase">Firmware</div><strong className="text-[11px] truncate block">{String(olt.firmware_version).substring(0, 30)}</strong></div>}
             <div><div className="text-[10px] text-tx3 uppercase">IP Address</div><strong>{olt.ip_address}</strong></div>
-            <div><div className="text-[10px] text-tx3 uppercase">Last Sync</div><strong className="text-xs">{formatDate(olt.last_sync)}</strong></div>
+            <div><div className="text-[10px] text-tx3 uppercase">{t('oc.lastSync')}</div><strong className="text-xs">{formatDate(olt.last_sync)}</strong></div>
           </div>
         </div>
       </div>
 
       {/* Belum pernah sync: jelaskan kenapa angka N/A & port map kosong (redesign Fase 3) */}
       {!olt.last_sync && (
-        <Notice tone="info" title="OLT ini belum pernah disinkronkan">
-          Kartu, port, CPU, memori, dan peta port masih kosong sampai sinkronisasi pertama selesai. Jalankan <strong>Sync</strong> di halaman Pengaturan OLT.
+        <Notice tone="info" title={t('oc.neverSyncedTitle')}>
+          {t('oc.neverSyncedBody1')} <strong>Sync</strong> {t('oc.neverSyncedBody2')}
         </Notice>
       )}
 
@@ -125,7 +127,7 @@ export function OltConfiguration() {
       <div className="glass-card">
         <div className="p-3 md:p-4 border-b border-brd overflow-x-auto scrollbar-thin">
           <Tabs
-            tabs={TABS.map(t => ({ key: t.id, label: t.label, icon: t.icon }))}
+            tabs={TABS.map(tb => ({ key: tb.id, label: t(`oc.tab_${tb.id.replace(/-/g, '_')}`), icon: tb.icon }))}
             active={activeTab}
             onChange={setActiveTab}
           />
@@ -197,6 +199,7 @@ function formatBytes(bytes: unknown): string {
 // ═══ UPLINKS TAB ═══
 
 function UplinksTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [slotFilter, setSlotFilter] = useState<string>('all');
   const { data, isLoading } = useQuery({
@@ -212,26 +215,26 @@ function UplinksTab({ oltId, canManage }: { oltId: number; canManage: boolean })
   });
   const refreshMut = useMutation({
     mutationFn: async () => { await fetch(`/api/olt/${oltId}/uplink/refresh`, { method: 'POST', credentials: 'include' }); },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success('Uplinks refreshed'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success(t('oc.uplinksRefreshed')); },
   });
   const toggleMut = useMutation({
     mutationFn: async ({ uplinkId, action }: { uplinkId: number; action: string }) => {
       await fetch(`/api/olt/${oltId}/uplink/${uplinkId}/toggle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action }) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success('Port toggled'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success(t('oc.portToggled')); },
   });
   const descMut = useMutation({
     mutationFn: async ({ uplinkId, description }: { uplinkId: number; description: string }) => {
       await fetch(`/api/olt/${oltId}/uplink/${uplinkId}/description`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ description }) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success('Description updated'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success(t('oc.descUpdated')); },
   });
   const vlanMut = useMutation({
     mutationFn: async ({ uplinkId, vlans, mode }: { uplinkId: number; vlans: string; mode: string }) => {
       const vlanList = vlans.split(',').map(v => v.trim()).filter(Boolean);
       const r = await fetch(`/api/olt/${oltId}/uplink/${uplinkId}/vlan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ vlan_ids: vlanList, mode: mode || 'trunk' }) });
       const d = await r.json();
-      if (!d.success) throw new Error(d.message || 'Failed');
+      if (!d.success) throw new Error(d.message || t('oc.failed'));
       return d.message as string;
     },
     onSuccess: (msg) => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success(msg || 'VLANs updated'); },
@@ -246,24 +249,24 @@ function UplinksTab({ oltId, canManage }: { oltId: number; canManage: boolean })
       }
       await fetch(`/api/olt/${oltId}/uplink/${uplinkId}/configure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success('Port configured'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success(t('oc.portConfigured')); },
   });
   const vlanRemoveMut = useMutation({
     mutationFn: async ({ uplinkId, vlanId }: { uplinkId: number; vlanId: string }) => {
       const r = await fetch(`/api/olt/${oltId}/uplink/${uplinkId}/vlan/remove`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ vlan_ids: [vlanId] }) });
       const d = await r.json();
-      if (!d.success) throw new Error(d.message || 'Failed');
+      if (!d.success) throw new Error(d.message || t('oc.failed'));
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success('VLAN removed'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success(t('oc.vlanRemoved')); },
     onError: (e: Error) => toast.error(e.message || 'Failed to remove VLAN'),
   });
   const ipMut = useMutation({
     mutationFn: async ({ uplinkId, ip_vlan_id, ip_address, ip_mask, ip_gateway }: { uplinkId: number; ip_vlan_id: number; ip_address: string; ip_mask: string; ip_gateway: string }) => {
       const r = await fetch(`/api/olt/${oltId}/uplink/${uplinkId}/ip`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ ip_vlan_id, ip_address, ip_mask, ip_gateway }) });
       const d = await r.json();
-      if (!d.success) throw new Error(d.message || 'Failed');
+      if (!d.success) throw new Error(d.message || t('oc.failed'));
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success('IP configuration applied'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-uplinks', oltId] }); toast.success(t('oc.ipApplied')); },
     onError: (e: Error) => toast.error(e.message || 'Failed to set IP'),
   });
 
@@ -306,12 +309,12 @@ function UplinksTab({ oltId, canManage }: { oltId: number; canManage: boolean })
         return m && m[1] === slotFilter;
       });
 
-  if (uplinks.length === 0) return <EmptyState icon={Settings} title="No uplink ports found. Run Sync to collect." />;
+  if (uplinks.length === 0) return <EmptyState icon={Settings} title={t('oc.noUplinks')} />;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-2">
-        <h6 className="text-sm font-semibold flex items-center gap-2"><Network size={16} /> Uplink Ports</h6>
+        <h6 className="text-sm font-semibold flex items-center gap-2"><Network size={16} /> {t('oc.uplinkPorts')}</h6>
         <div className="flex items-center gap-3">
           {uniqueSlots.length > 1 && (
             <div className="flex items-center gap-1.5">
@@ -336,7 +339,7 @@ function UplinksTab({ oltId, canManage }: { oltId: number; canManage: boolean })
           <button onClick={() => refreshMut.mutate()} disabled={refreshMut.isPending}
             className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
             <RefreshCw size={14} className={refreshMut.isPending ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">Sync Data</span>
+            <span className="hidden sm:inline">{t('oc.syncData')}</span>
           </button>
         </div>
       </div>
@@ -357,6 +360,7 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
   onConfig: { mutate: (v: { uplinkId: number; speed?: string; duplex?: string; negotiation?: string; flowcontrol?: string; description?: string; admin?: string }) => void };
   onIp: { mutate: (v: { uplinkId: number; ip_vlan_id: number; ip_address: string; ip_mask: string; ip_gateway: string }) => void };
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
   const [descVal, setDescVal] = useState(String(uplink.description || ''));
@@ -440,7 +444,7 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
       {expanded && (
         <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-brd grid grid-cols-1 gap-3 animate-fade-in">
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd">
-            <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-1"><Settings size={12} /> Interface Configuration</h6>
+            <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-1"><Settings size={12} /> {t('oc.ifaceConfig')}</h6>
             <div className="grid grid-cols-2 gap-2 text-xs md:text-sm">
               {([['Admin', uplink.admin_status], ['Oper', uplink.oper_status], ['Line Proto', uplink.line_protocol], ['Speed', uplink.speed || 'N/A'], ['Duplex', uplink.duplex], ['Medium', uplink.medium || 'N/A'], ['Negotiation', uplink.negotiation], ['Flow Control', uplink.flowcontrol]] as [string, unknown][]).map(([k, v]) => (
                 <div key={k}><span className="text-tx3">{k}:</span> <strong>{String(v || '-').toUpperCase()}</strong></div>
@@ -449,7 +453,7 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
           </div>
 
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd">
-            <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-1"><Wifi size={12} /> Optical Module Info</h6>
+            <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-1"><Wifi size={12} /> {t('oc.moduleInfo')}</h6>
             <div className="grid grid-cols-2 gap-2 text-xs md:text-sm">
               {(() => {
                 const portName = String(uplink.port_name || '');
@@ -513,11 +517,11 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
 
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd">
             <div className="flex items-center justify-between mb-3">
-              <h6 className="text-xs font-semibold text-tx3 uppercase flex items-center gap-1"><Globe size={12} /> VLAN Configuration</h6>
+              <h6 className="text-xs font-semibold text-tx3 uppercase flex items-center gap-1"><Globe size={12} /> {t('oc.vlanConfig')}</h6>
               {canManage && <button onClick={() => setEditingVlan(!editingVlan)} className="text-accent hover:text-accent-hover"><Edit3 size={12} /></button>}
             </div>
             <div className="text-sm mb-2"><span className="text-tx3">Mode:</span> <strong>{String(uplink.switchport_mode || 'trunk').toUpperCase()}</strong></div>
-            <div className="text-xs text-tx3 mb-1">Tagged VLANs:</div>
+            <div className="text-xs text-tx3 mb-1">{t('oc.taggedVlans')}</div>
             {editingVlan ? (
               <div className="space-y-2">
                 <div className="flex gap-2 items-center">
@@ -531,8 +535,8 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
                 <textarea value={vlanVal} onChange={e => setVlanVal(e.target.value)} rows={2}
                   className="w-full px-3 py-2 rounded-lg bg-glass border border-brd text-xs font-mono" placeholder="e.g. 30,100,151" />
                 <div className="flex gap-2">
-                  <button onClick={() => { onVlan.mutate({ uplinkId: Number(uplink.id), vlans: vlanVal, mode: vlanMode }); setEditingVlan(false); }} className="px-3 py-1 rounded-lg bg-accent text-white text-xs">Save</button>
-                  <button onClick={() => setEditingVlan(false)} className="px-3 py-1 rounded-lg bg-glass text-xs">Cancel</button>
+                  <button onClick={() => { onVlan.mutate({ uplinkId: Number(uplink.id), vlans: vlanVal, mode: vlanMode }); setEditingVlan(false); }} className="px-3 py-1 rounded-lg bg-accent text-white text-xs">{t('common.save')}</button>
+                  <button onClick={() => setEditingVlan(false)} className="px-3 py-1 rounded-lg bg-glass text-xs">{t('common.cancel')}</button>
                 </div>
               </div>
             ) : (
@@ -568,14 +572,14 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
                 <div><label className="text-xs text-tx3 block mb-1">Subnet Mask</label>
                   <input value={ipForm.ip_mask} onChange={e => setIpForm({ ...ipForm, ip_mask: e.target.value })}
                     className="w-full h-8 px-3 rounded-lg bg-glass border border-brd text-sm font-mono" placeholder="e.g. 255.255.255.252" /></div>
-                <div><label className="text-xs text-tx3 block mb-1">Gateway (optional)</label>
+                <div><label className="text-xs text-tx3 block mb-1">{t('oc.gatewayOpt')}</label>
                   <input value={ipForm.ip_gateway} onChange={e => setIpForm({ ...ipForm, ip_gateway: e.target.value })}
                     className="w-full h-8 px-3 rounded-lg bg-glass border border-brd text-sm font-mono" placeholder="e.g. 172.16.88.1" /></div>
-                <div className="text-[10px] text-tx3">IP will be set on VLAN interface and tagged to this uplink port.</div>
+                <div className="text-[10px] text-tx3">{t('oc.ipHint')}</div>
                 <div className="flex gap-2">
-                  <button onClick={() => { onIp.mutate({ uplinkId: Number(uplink.id), ...ipForm }); setEditingIp(false); }} className="px-3 py-1 rounded-lg bg-accent text-white text-xs">Save</button>
-                  <button onClick={() => setEditingIp(false)} className="px-3 py-1 rounded-lg bg-glass text-xs">Cancel</button>
-                  {String(uplink.ip_address || '') && <button onClick={() => { setIpForm({ ip_vlan_id: 0, ip_address: '', ip_mask: '', ip_gateway: '' }); onIp.mutate({ uplinkId: Number(uplink.id), ip_vlan_id: Number(uplink.ip_vlan_id || 0), ip_address: '', ip_mask: '', ip_gateway: '' }); setEditingIp(false); }} className="px-3 py-1 rounded-lg bg-danger/15 text-danger text-xs">Remove IP</button>}
+                  <button onClick={() => { onIp.mutate({ uplinkId: Number(uplink.id), ...ipForm }); setEditingIp(false); }} className="px-3 py-1 rounded-lg bg-accent text-white text-xs">{t('common.save')}</button>
+                  <button onClick={() => setEditingIp(false)} className="px-3 py-1 rounded-lg bg-glass text-xs">{t('common.cancel')}</button>
+                  {String(uplink.ip_address || '') && <button onClick={() => { setIpForm({ ip_vlan_id: 0, ip_address: '', ip_mask: '', ip_gateway: '' }); onIp.mutate({ uplinkId: Number(uplink.id), ip_vlan_id: Number(uplink.ip_vlan_id || 0), ip_address: '', ip_mask: '', ip_gateway: '' }); setEditingIp(false); }} className="px-3 py-1 rounded-lg bg-danger/15 text-danger text-xs">{t('oc.removeIp')}</button>}
                 </div>
               </div>
             ) : (
@@ -588,14 +592,14 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
                     {String(uplink.ip_gateway || '') && <div><span className="text-tx3">Gateway:</span> <strong className="font-mono">{String(uplink.ip_gateway)}</strong></div>}
                   </>
                 ) : (
-                  <div className="text-tx3"><em>No IP configured (L2 switchport)</em></div>
+                  <div className="text-tx3"><em>{t('oc.noIp')}</em></div>
                 )}
               </div>
             )}
           </div>
 
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd">
-            <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-1"><Activity size={12} /> Traffic Statistics</h6>
+            <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-1"><Activity size={12} /> {t('oc.trafficStats')}</h6>
             <div className="grid grid-cols-2 gap-2 md:gap-4 mb-3">
               {/* IN */}
               <div className="text-center">
@@ -641,7 +645,7 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
           </div>
 
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd">
-            <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-1"><XCircle size={12} /> Error Counters</h6>
+            <h6 className="text-xs font-semibold text-tx3 uppercase mb-3 flex items-center gap-1"><XCircle size={12} /> {t('oc.errorCounters')}</h6>
             <div className="grid grid-cols-2 gap-3">
               <div className="text-center p-2 rounded-lg bg-glass/50">
                 <div className="text-xs text-tx3">CRC Errors</div>
@@ -661,7 +665,7 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
         <Modal open onClose={() => setShowPortConfig(false)} icon={<Settings size={16} />} title={`Port Config: ${String(uplink.port_name)}`}
           footer={
             <>
-              <Button variant="secondary" onClick={() => setShowPortConfig(false)}>Cancel</Button>
+              <Button variant="secondary" onClick={() => setShowPortConfig(false)}>{t('common.cancel')}</Button>
               <Button variant="primary" onClick={() => { onConfig.mutate({ uplinkId: Number(uplink.id), speed: cfgForm.speed, duplex: cfgForm.duplex, negotiation: cfgForm.negotiation, flowcontrol: cfgForm.flowcontrol, description: cfgForm.description, admin: cfgForm.admin }); setShowPortConfig(false); }}>
                 Apply
               </Button>
@@ -672,8 +676,8 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
             {/* Admin Toggle */}
             <div className="flex items-center justify-between p-3 rounded-lg bg-glass border border-brd">
               <div>
-                <div className="text-sm font-bold">Port Admin Status</div>
-                <div className="text-xs text-tx3">Enable or disable (shutdown / no shutdown)</div>
+                <div className="text-sm font-bold">{t('oc.adminStatus')}</div>
+                <div className="text-xs text-tx3">{t('oc.adminHint')}</div>
               </div>
               <button onClick={() => setCfgForm({ ...cfgForm, admin: cfgForm.admin === 'up' ? 'down' : 'up' })}
                 className={cn('w-12 h-6 rounded-full relative transition-colors', cfgForm.admin === 'up' ? 'bg-success' : 'bg-danger')}>
@@ -682,7 +686,7 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Select label="Speed" value={cfgForm.speed} onChange={e => setCfgForm({ ...cfgForm, speed: e.target.value })}
-                options={[{ value: '', label: '— No Change —' }, { value: '100', label: '100 Mbps' }, { value: '1000', label: '1 Gbps' }, { value: '10000', label: '10 Gbps' }]} />
+                options={[{ value: '', label: t('oc.noChange') }, { value: '100', label: '100 Mbps' }, { value: '1000', label: '1 Gbps' }, { value: '10000', label: '10 Gbps' }]} />
               <Select label="Duplex" value={cfgForm.duplex} onChange={e => setCfgForm({ ...cfgForm, duplex: e.target.value })}
                 options={[{ value: 'full', label: 'Full' }, { value: 'half', label: 'Half' }]} />
               <Select label="Negotiation" value={cfgForm.negotiation} onChange={e => setCfgForm({ ...cfgForm, negotiation: e.target.value })}
@@ -691,7 +695,7 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
                 options={[{ value: 'enable', label: 'Enable' }, { value: 'disable', label: 'Disable' }]} />
             </div>
             <Input label="Description" value={cfgForm.description} onChange={e => setCfgForm({ ...cfgForm, description: e.target.value })}
-              placeholder="Leave empty to keep current" />
+              placeholder={t('oc.keepCurrent')} />
           </div>
         </Modal>
       )}
@@ -700,6 +704,7 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
 }
 
 function PonCardsTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
+  const { t } = useTranslation();
   const { data: ponData, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['olt-pon-ports', oltId],
     queryFn: async () => { const r = await fetch(`/api/olt/${oltId}/pon-ports`, { credentials: 'include' }); return r.json(); },
@@ -709,18 +714,18 @@ function PonCardsTab({ oltId, canManage }: { oltId: number; canManage: boolean }
     mutationFn: async ({ portId, action }: { portId: number; action: string }) => {
       await fetch(`/api/olt/${oltId}/pon-port/${portId}/toggle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action }) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-pon-ports', oltId] }); toast.success('PON port toggled'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-pon-ports', oltId] }); toast.success(t('oc.ponToggled')); },
   });
   const editMut = useMutation({
     mutationFn: async ({ portId, name, description }: { portId: number; name: string; description: string }) => {
       await fetch(`/api/olt/${oltId}/pon-port/${portId}/edit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name, description }) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-pon-ports', oltId] }); toast.success('PON port updated'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-pon-ports', oltId] }); toast.success(t('oc.ponUpdated')); },
   });
 
   if (isLoading) return <TabSkeleton />;
   const ports: Array<Record<string, unknown>> = ponData?.ports || [];
-  if (ports.length === 0) return <EmptyState icon={Settings} title="No PON ports found. Run Sync to collect." />;
+  if (ports.length === 0) return <EmptyState icon={Settings} title={t('oc.noPon')} />;
 
   const totalOnu = ports.reduce((s: number, p: Record<string, unknown>) => s + Number(p.onu_count || 0), 0);
   const totalOnline = ports.reduce((s: number, p: Record<string, unknown>) => s + Number(p.onu_online || 0), 0);
@@ -730,7 +735,7 @@ function PonCardsTab({ oltId, canManage }: { oltId: number; canManage: boolean }
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-2">
-        <h6 className="text-sm font-semibold flex items-center gap-2"><HardDrive size={16} /> PON Cards & Ports</h6>
+        <h6 className="text-sm font-semibold flex items-center gap-2"><HardDrive size={16} /> {t('oc.ponCardsPorts')}</h6>
         <div className="flex items-center gap-2">
           <span className="text-xs text-tx3">{ports.length} Ports</span>
           <button onClick={() => refetch()} disabled={isFetching}
@@ -762,6 +767,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
   onEdit: { mutate: (v: { portId: number; name: string; description: string }) => void };
   oltId: number;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [nameVal, setNameVal] = useState(String(port.name || ''));
@@ -845,8 +851,8 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
             <div><label className="text-xs text-tx3">Description</label><input value={descVal} onChange={e => setDescVal(e.target.value)} className="w-full h-8 px-3 rounded-lg bg-glass border border-brd text-sm" /></div>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => { onEdit.mutate({ portId: Number(port.id), name: nameVal, description: descVal }); setEditing(false); }} className="px-3 py-1 rounded-lg bg-accent text-white text-xs">Save</button>
-            <button onClick={() => setEditing(false)} className="px-3 py-1 rounded-lg bg-glass text-xs">Cancel</button>
+            <button onClick={() => { onEdit.mutate({ portId: Number(port.id), name: nameVal, description: descVal }); setEditing(false); }} className="px-3 py-1 rounded-lg bg-accent text-white text-xs">{t('common.save')}</button>
+            <button onClick={() => setEditing(false)} className="px-3 py-1 rounded-lg bg-glass text-xs">{t('common.cancel')}</button>
           </div>
         </div>
       )}
@@ -855,7 +861,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
         <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-brd animate-fade-in">
           <div className="p-3 rounded-lg bg-glass border border-brd mb-3">
             <h6 className="text-xs font-semibold text-tx3 uppercase mb-2 flex items-center gap-1">
-              <Wifi size={12} /> Optical Module Info
+              <Wifi size={12} /> {t('oc.moduleInfo')}
             </h6>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs md:text-sm">
               {(() => {
@@ -913,7 +919,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
                 </tbody>
               </table>
             </div>
-          ) : <div className="text-xs text-tx3">No ONU data for this port.</div>}
+          ) : <div className="text-xs text-tx3">{t('oc.noOnuData')}</div>}
             </>
           ) : (
             <>
@@ -935,7 +941,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
                 </tbody>
               </table>
             </div>
-          ) : <div className="text-xs text-tx3">No ONU registered on this port.</div>}
+          ) : <div className="text-xs text-tx3">{t('oc.noOnuRegistered')}</div>}
             </>
           )}
         </div>
@@ -947,6 +953,7 @@ function PonPortCard({ port, canManage, onToggle, onEdit, oltId }: {
 // ═══ VLANS TAB ═══
 
 function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['olt-vlans', oltId],
@@ -963,22 +970,22 @@ function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
   const renameMut = useMutation({
     mutationFn: async ({ vlanId, name }: { vlanId: number; name: string }) => {
       const r = await fetch(`/api/olt/${oltId}/vlan/${vlanId}/rename`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ name }) });
-      if (!r.ok) throw new Error('Failed');
+      if (!r.ok) throw new Error(t('oc.failed'));
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-vlans', oltId] }); toast.success('VLAN renamed'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-vlans', oltId] }); toast.success(t('oc.vlanRenamed')); },
   });
   const createMut = useMutation({
     mutationFn: async ({ vlanId, name }: { vlanId: number; name: string }) => {
       const r = await fetch(`/api/olt/${oltId}/vlan/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ vlan_id: vlanId, name }) });
       const d = await r.json();
-      if (!d.success) throw new Error(d.message || 'Failed');
+      if (!d.success) throw new Error(d.message || t('oc.failed'));
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-vlans', oltId] }); toast.success('VLAN created'); setShowAdd(false); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-vlans', oltId] }); toast.success(t('oc.vlanCreated')); setShowAdd(false); },
     onError: (e: Error) => toast.error(e.message || 'Failed to create VLAN'),
   });
   const deleteMut = useMutation({
     mutationFn: async (vlanId: number) => { await fetch(`/api/olt/${oltId}/vlan/${vlanId}/delete`, { method: 'POST', credentials: 'include' }); },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-vlans', oltId] }); toast.success('VLAN deleted'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-vlans', oltId] }); toast.success(t('oc.vlanDeleted')); },
   });
 
   const [editingVlan, setEditingVlan] = useState<number | null>(null);
@@ -992,20 +999,20 @@ function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h6 className="text-sm font-semibold flex items-center gap-2"><Globe size={16} /> VLAN Configuration</h6>
+        <h6 className="text-sm font-semibold flex items-center gap-2"><Globe size={16} /> {t('oc.vlanConfig')}</h6>
         <div className="flex items-center gap-2">
           <span className="text-xs text-tx3">{vlans.length} VLANs</span>
           <button onClick={() => refetch()} disabled={isFetching}
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
             <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
           </button>
-          {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90 transition-colors"><Plus size={13} /> Add VLAN</button>}
+          {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90 transition-colors"><Plus size={13} /> {t('wiz.addVlan')}</button>}
         </div>
       </div>
 
       {showAdd && (
         <div className="glass-card p-4 mb-4 space-y-3">
-          <h6 className="text-sm font-semibold">Create New VLAN</h6>
+          <h6 className="text-sm font-semibold">{t('oc.createVlan')}</h6>
           <div className="flex gap-3">
             <div className="w-32">
               <label className="text-xs text-tx3 block mb-1">VLAN ID *</label>
@@ -1015,7 +1022,7 @@ function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
             <div className="flex-1">
               <label className="text-xs text-tx3 block mb-1">Name</label>
               <input value={addForm.name} onChange={e => setAddForm({ ...addForm, name: e.target.value })}
-                className="w-full h-8 px-3 rounded-lg bg-glass border border-brd text-sm" placeholder="e.g. Management" />
+                className="w-full h-8 px-3 rounded-lg bg-glass border border-brd text-sm" placeholder={t('oc.vlanNamePh')} />
             </div>
           </div>
           <div className="flex gap-2">
@@ -1023,13 +1030,13 @@ function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
               disabled={!addForm.vlanId} className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium disabled:opacity-50">
               {createMut.isPending ? 'Creating...' : 'Create VLAN'}
             </button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 rounded-lg bg-glass text-xs">Cancel</button>
+            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 rounded-lg bg-glass text-xs">{t('common.cancel')}</button>
           </div>
         </div>
       )}
 
       {vlans.length === 0 ? (
-        <EmptyState icon={Settings} title="No VLAN data. Run Sync to collect or click 'Add VLAN' to create one." />
+        <EmptyState icon={Settings} title={t('oc.noVlan')} />
       ) : (
       <>
       {/* Desktop Table */}
@@ -1064,7 +1071,7 @@ function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
                 <td className="py-2 px-3">
                   <div className="flex gap-1">
                     {canManage && <button onClick={() => { setEditingVlan(Number(v.vlan_id)); setRenameVal(String(v.vlan_name || '')); }} className="p-1.5 rounded hover:bg-accent/15 text-tx3 hover:text-accent"><Edit3 size={13} /></button>}
-                    {canManage && <button onClick={() => confirm({ title: 'Delete VLAN', message: `Delete VLAN ${v.vlan_id}?`, variant: 'danger' }).then(() => deleteMut.mutate(Number(v.vlan_id)))}
+                    {canManage && <button onClick={() => confirm({ title: t('oc.deleteVlan'), message: t('oc.deleteVlanMsg', { id: v.vlan_id }), variant: 'danger' }).then(ok => ok && deleteMut.mutate(Number(v.vlan_id)))}
                       className="p-1.5 rounded hover:bg-danger/15 text-tx3 hover:text-danger"><Trash2 size={13} /></button>}
                   </div>
                 </td>
@@ -1087,7 +1094,7 @@ function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
               </div>
               <div className="flex gap-1">
                 {canManage && <button onClick={() => { setEditingVlan(Number(v.vlan_id)); setRenameVal(String(v.vlan_name || '')); }} className="p-1.5 rounded hover:bg-accent/15 text-tx3 hover:text-accent"><Edit3 size={13} /></button>}
-                {canManage && <button onClick={() => confirm({ title: 'Delete VLAN', message: `Delete VLAN ${v.vlan_id}?`, variant: 'danger' }).then(() => deleteMut.mutate(Number(v.vlan_id)))}
+                {canManage && <button onClick={() => confirm({ title: t('oc.deleteVlan'), message: t('oc.deleteVlanMsg', { id: v.vlan_id }), variant: 'danger' }).then(ok => ok && deleteMut.mutate(Number(v.vlan_id)))}
                   className="p-1.5 rounded hover:bg-danger/15 text-tx3 hover:text-danger"><Trash2 size={13} /></button>}
               </div>
             </div>
@@ -1114,6 +1121,7 @@ function VlansTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
 // ═══ ONU TYPES TAB ═══
 
 function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['olt-onu-types', oltId],
@@ -1121,15 +1129,15 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
   });
   const deleteMut = useMutation({
     mutationFn: async (typeId: number) => { await fetch(`/api/olt/${oltId}/onu-type/${typeId}/delete`, { method: 'POST', credentials: 'include' }); },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-onu-types', oltId] }); toast.success('ONU type deleted'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-onu-types', oltId] }); toast.success(t('oc.typeDeleted')); },
   });
   const addMut = useMutation({
     mutationFn: async (body: Record<string, string | string[]>) => {
       const r = await fetch(`/api/olt/${oltId}/onu-type/add`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
-      if (!r.ok) throw new Error('Failed');
+      if (!r.ok) throw new Error(t('oc.failed'));
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-onu-types', oltId] }); toast.success('ONU type added'); setShowAdd(false); },
-    onError: () => toast.error('Failed to add ONU type'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-onu-types', oltId] }); toast.success(t('oc.typeAdded')); setShowAdd(false); },
+    onError: () => toast.error(t('oc.typeAddFailed')),
   });
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({
@@ -1197,15 +1205,15 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
             <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
           </button>
-          {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> Create</button>}
+          {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> {t('vo.create')}</button>}
         </div>
       </div>
-      <EmptyState icon={Settings} title="No ONU types found. Run Sync or click Create." />
+      <EmptyState icon={Settings} title={t('oc.noTypes')} />
     </div>
   );
 
-  const gponTypes = allTypes.filter(t => String(t.pon_type || 'gpon') !== 'epon');
-  const eponTypes = allTypes.filter(t => String(t.pon_type) === 'epon');
+  const gponTypes = allTypes.filter(ty => String(ty.pon_type || 'gpon') !== 'epon');
+  const eponTypes = allTypes.filter(ty => String(ty.pon_type) === 'epon');
   const currentTypes = subTab === 'gpon' ? gponTypes : eponTypes;
 
   return (
@@ -1218,7 +1226,7 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
           className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
           <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
         </button>
-        {canManage && <button onClick={() => { setAddForm({ name: '', pon_type: subTab, description: '', max_tcont: 7, max_gem: 32, max_switch: 8, max_flow: 32, max_ip_host: 5 }); setEthPorts(new Set([1, 2, 3, 4])); setPotsPorts(new Set([1])); setWifiPorts(new Set([1, 2])); setShowAdd(true); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> Create</button>}
+        {canManage && <button onClick={() => { setAddForm({ name: '', pon_type: subTab, description: '', max_tcont: 7, max_gem: 32, max_switch: 8, max_flow: 32, max_ip_host: 5 }); setEthPorts(new Set([1, 2, 3, 4])); setPotsPorts(new Set([1])); setWifiPorts(new Set([1, 2])); setShowAdd(true); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> {t('vo.create')}</button>}
       </div>
 
       {showAdd && (
@@ -1285,8 +1293,8 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
 
           {/* Actions */}
           <div className="flex gap-2">
-            <button onClick={submitAdd} disabled={!addForm.name || addMut.isPending} className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium disabled:opacity-50">{addMut.isPending ? 'Saving...' : 'Save'}</button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 rounded-lg bg-glass text-xs">Cancel</button>
+            <button onClick={submitAdd} disabled={!addForm.name || addMut.isPending} className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium disabled:opacity-50">{addMut.isPending ? 'Saving...' : t('common.save')}</button>
+            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 rounded-lg bg-glass text-xs">{t('common.cancel')}</button>
           </div>
         </div>
       )}
@@ -1297,19 +1305,19 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
             <th className="text-left py-2 px-3">#</th><th className="text-left py-2 px-3">Name</th><th className="text-left py-2 px-3">Description</th><th className="text-left py-2 px-3">Max T-CONT</th><th className="text-left py-2 px-3">Max GEM</th><th className="text-left py-2 px-3">Max Switch</th><th className="text-left py-2 px-3">Max Flow</th><th className="text-left py-2 px-3">Max IP Host</th><th className="text-left py-2 px-3">Interfaces</th><th className="text-left py-2 px-3">Action</th>
           </tr></thead>
           <tbody>
-            {currentTypes.map((t: Record<string, unknown>, i: number) => (
-              <tr key={String(t.id || i)} className="border-b border-brd/50 hover:bg-glass/50">
+            {currentTypes.map((ty: Record<string, unknown>, i: number) => (
+              <tr key={String(ty.id || i)} className="border-b border-brd/50 hover:bg-glass/50">
                 <td className="py-2 px-3">{i + 1}</td>
-                <td className="py-2 px-3 font-bold">{String(t.type_name || t.name || '-')}</td>
-                <td className="py-2 px-3 text-xs">{String(t.description || '-')}</td>
-                <td className="py-2 px-3 text-center">{String(t.max_tcont || '8')}</td>
-                <td className="py-2 px-3 text-center">{String(t.max_gem || '32')}</td>
-                <td className="py-2 px-3 text-center">{String(t.max_switch || '16')}</td>
-                <td className="py-2 px-3 text-center">{String(t.max_flow || '32')}</td>
-                <td className="py-2 px-3 text-center">{String(t.max_ip_host || '8')}</td>
-                <td className="py-2 px-3 text-xs">{String(t.interfaces || '-')}</td>
+                <td className="py-2 px-3 font-bold">{String(ty.type_name || ty.name || '-')}</td>
+                <td className="py-2 px-3 text-xs">{String(ty.description || '-')}</td>
+                <td className="py-2 px-3 text-center">{String(ty.max_tcont || '8')}</td>
+                <td className="py-2 px-3 text-center">{String(ty.max_gem || '32')}</td>
+                <td className="py-2 px-3 text-center">{String(ty.max_switch || '16')}</td>
+                <td className="py-2 px-3 text-center">{String(ty.max_flow || '32')}</td>
+                <td className="py-2 px-3 text-center">{String(ty.max_ip_host || '8')}</td>
+                <td className="py-2 px-3 text-xs">{String(ty.interfaces || '-')}</td>
                 <td className="py-2 px-3">
-                  {canManage && <button onClick={() => confirm({ title: 'Delete ONU Type', message: `Delete ${t.type_name}?`, variant: 'danger' }).then(() => deleteMut.mutate(Number(t.id)))}
+                  {canManage && <button onClick={() => confirm({ title: t('oc.deleteType'), message: t('oc.deleteTypeMsg', { name: String(ty.type_name) }), variant: 'danger' }).then(ok => ok && deleteMut.mutate(Number(ty.id)))}
                     className="p-1.5 rounded hover:bg-danger/15 text-tx3 hover:text-danger"><Trash2 size={13} /></button>}
                 </td>
               </tr>
@@ -1319,24 +1327,24 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
       </div>
       {/* Mobile Cards */}
       <div className="md:hidden space-y-2">
-        {currentTypes.map((t: Record<string, unknown>, i: number) => (
-          <div key={String(t.id || i)} className="p-3 rounded-lg bg-glass border border-brd">
+        {currentTypes.map((ty: Record<string, unknown>, i: number) => (
+          <div key={String(ty.id || i)} className="p-3 rounded-lg bg-glass border border-brd">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-tx3">{i + 1}</span>
-                <span className="font-bold text-sm">{String(t.type_name || t.name || '-')}</span>
+                <span className="font-bold text-sm">{String(ty.type_name || ty.name || '-')}</span>
               </div>
-              {canManage && <button onClick={() => confirm({ title: 'Delete ONU Type', message: `Delete ${t.type_name}?`, variant: 'danger' }).then(() => deleteMut.mutate(Number(t.id)))}
+              {canManage && <button onClick={() => confirm({ title: t('oc.deleteType'), message: t('oc.deleteTypeMsg', { name: String(ty.type_name) }), variant: 'danger' }).then(ok => ok && deleteMut.mutate(Number(ty.id)))}
                 className="p-1.5 rounded hover:bg-danger/15 text-tx3 hover:text-danger"><Trash2 size={13} /></button>}
             </div>
-            {String(t.description || '-') !== '-' && <div className="text-xs text-tx3 mb-1">{String(t.description)}</div>}
-            {String(t.interfaces || '') && <div className="text-[10px] text-tx3 mb-1 font-mono">{String(t.interfaces)}</div>}
+            {String(ty.description || '-') !== '-' && <div className="text-xs text-tx3 mb-1">{String(ty.description)}</div>}
+            {String(ty.interfaces || '') && <div className="text-[10px] text-tx3 mb-1 font-mono">{String(ty.interfaces)}</div>}
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-tx3">
-              <span>T-CONT: <strong className="text-tx2">{String(t.max_tcont || '8')}</strong></span>
-              <span>GEM: <strong className="text-tx2">{String(t.max_gem || '32')}</strong></span>
-              <span>Switch: <strong className="text-tx2">{String(t.max_switch || '16')}</strong></span>
-              <span>Flow: <strong className="text-tx2">{String(t.max_flow || '32')}</strong></span>
-              <span>IP Host: <strong className="text-tx2">{String(t.max_ip_host || '8')}</strong></span>
+              <span>T-CONT: <strong className="text-tx2">{String(ty.max_tcont || '8')}</strong></span>
+              <span>GEM: <strong className="text-tx2">{String(ty.max_gem || '32')}</strong></span>
+              <span>Switch: <strong className="text-tx2">{String(ty.max_switch || '16')}</strong></span>
+              <span>Flow: <strong className="text-tx2">{String(ty.max_flow || '32')}</strong></span>
+              <span>IP Host: <strong className="text-tx2">{String(ty.max_ip_host || '8')}</strong></span>
             </div>
           </div>
         ))}
@@ -1348,6 +1356,7 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
 // ═══ WAN-IP TAB ═══
 
 function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['olt-wan-ip', oltId],
@@ -1355,7 +1364,7 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
   });
   const deleteMut = useMutation({
     mutationFn: async (profileId: number) => { await fetch(`/api/olt/${oltId}/wan-ip/${profileId}/delete`, { method: 'POST', credentials: 'include' }); },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-wan-ip', oltId] }); toast.success('WAN IP profile deleted'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-wan-ip', oltId] }); toast.success(t('oc.wanDeleted')); },
   });
   const addMut = useMutation({
     mutationFn: async (body: Record<string, string>) => {
@@ -1368,10 +1377,10 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
         dns2: body.priority ? `pri:${body.priority}` : '',
       };
       const r = await fetch(`/api/olt/${oltId}/wan-ip/add`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) });
-      if (!r.ok) throw new Error('Failed');
+      if (!r.ok) throw new Error(t('oc.failed'));
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-wan-ip', oltId] }); toast.success('WAN IP profile added'); setShowAdd(false); },
-    onError: () => toast.error('Failed to add WAN IP profile'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-wan-ip', oltId] }); toast.success(t('oc.wanAdded')); setShowAdd(false); },
+    onError: () => toast.error(t('oc.wanAddFailed')),
   });
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({ name: '', ip_mode: 'dhcp', vlan: '', priority: '', ip_address: '', netmask: '', gateway: '' });
@@ -1388,7 +1397,7 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-glass border border-brd hover:border-accent/30 transition-all disabled:opacity-50">
             <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
           </button>
-          {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> Add Profile</button>}
+          {canManage && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90"><Plus size={13} /> {t('oc.addProfile')}</button>}
         </div>
       </div>
 
@@ -1408,8 +1417,8 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
             </div>
           )}
           <div className="flex gap-2">
-            <button onClick={() => addMut.mutate(addForm)} disabled={!addForm.name} className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium disabled:opacity-50">Save</button>
-            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 rounded-lg bg-glass text-xs">Cancel</button>
+            <button onClick={() => addMut.mutate(addForm)} disabled={!addForm.name} className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium disabled:opacity-50">{t('common.save')}</button>
+            <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 rounded-lg bg-glass text-xs">{t('common.cancel')}</button>
           </div>
         </div>
       )}
@@ -1439,7 +1448,7 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
                     <td className="py-2 px-3">{!isDhcp ? String(wp.ip_address) : '-'}</td>
                     <td className="py-2 px-3">{wp.gateway && wp.gateway !== '-' ? String(wp.gateway) : '-'}</td>
                     <td className="py-2 px-3">
-                      {canManage && <button onClick={() => confirm({ title: 'Delete WAN IP', message: `Delete ${wp.name}?`, variant: 'danger' }).then(() => deleteMut.mutate(Number(wp.id)))}
+                      {canManage && <button onClick={() => confirm({ title: t('oc.deleteWan'), message: t('oc.deleteTypeMsg', { name: wp.name }), variant: 'danger' }).then(ok => ok && deleteMut.mutate(Number(wp.id)))}
                         className="p-1.5 rounded hover:bg-danger/15 text-tx3 hover:text-danger"><Trash2 size={13} /></button>}
                     </td>
                   </tr>
@@ -1462,7 +1471,7 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
                       {isDhcp ? 'DHCP' : 'Static'}
                     </span>
                   </div>
-                  {canManage && <button onClick={() => confirm({ title: 'Delete WAN IP', message: `Delete ${wp.name}?`, variant: 'danger' }).then(() => deleteMut.mutate(Number(wp.id)))}
+                  {canManage && <button onClick={() => confirm({ title: t('oc.deleteWan'), message: t('oc.deleteTypeMsg', { name: wp.name }), variant: 'danger' }).then(ok => ok && deleteMut.mutate(Number(wp.id)))}
                     className="p-1.5 rounded hover:bg-danger/15 text-tx3 hover:text-danger"><Trash2 size={13} /></button>}
                 </div>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-tx3">
@@ -1477,7 +1486,7 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
         </div>
         </>
       ) : (
-        <EmptyState icon={Settings} title="No WAN IP profiles configured. Click 'Add Profile' to create one." />
+        <EmptyState icon={Settings} title={t('oc.noWan')} />
       )}
     </div>
   );
@@ -1486,6 +1495,7 @@ function WanIpTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
 // ═══ SPEED PROFILES TAB ═══
 
 function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: boolean }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['olt-speed-profiles', oltId],
@@ -1495,21 +1505,21 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
     mutationFn: async (body: Record<string, string>) => {
       await fetch(`/api/olt/${oltId}/tcont/add`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] }); toast.success('TCONT added'); setShowTcont(false); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] }); toast.success(t('oc.tcontAdded')); setShowTcont(false); },
   });
   const addTrafficMut = useMutation({
     mutationFn: async (body: Record<string, string>) => {
       await fetch(`/api/olt/${oltId}/traffic/add`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] }); toast.success('Traffic profile added'); setShowTraffic(false); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] }); toast.success(t('oc.trafficAdded')); setShowTraffic(false); },
   });
   const deleteTcontMut = useMutation({
     mutationFn: async (id: number) => { await fetch(`/api/olt/${oltId}/tcont/${id}/delete`, { method: 'POST', credentials: 'include' }); },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] }); toast.success('TCONT deleted'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] }); toast.success(t('oc.tcontDeleted')); },
   });
   const deleteTrafficMut = useMutation({
     mutationFn: async (id: number) => { await fetch(`/api/olt/${oltId}/traffic/${id}/delete`, { method: 'POST', credentials: 'include' }); },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] }); toast.success('Traffic profile deleted'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] }); toast.success(t('oc.trafficDeleted')); },
   });
   // --- EPON SLA PROFILES ---
   const [slaName, setSlaName] = useState('');
@@ -1520,7 +1530,7 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
 
   const handleAddSla = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slaName) return toast.error('SLA Name is required');
+    if (!slaName) return toast.error(t('oc.slaNameRequired'));
     try {
       const res = await fetch(`/api/olt/${oltId}/sla/add`, {
         method: 'POST',
@@ -1532,7 +1542,7 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
       });
       const d = await res.json();
       if (!d.success) throw new Error(d.message);
-      toast.success('EPON SLA Profile created successfully');
+      toast.success(t('oc.slaCreated'));
       setSlaName('');
       qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] });
     } catch (err: any) {
@@ -1548,7 +1558,7 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
       });
       const d = await res.json();
       if (!d.success) throw new Error(d.message);
-      toast.success('EPON SLA Profile deleted successfully');
+      toast.success(t('oc.slaDeleted'));
       qc.invalidateQueries({ queryKey: ['olt-speed-profiles', oltId] });
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete SLA profile');
@@ -1577,7 +1587,7 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
         <div className="rounded-xl bg-glass p-4">
           <div className="flex items-center justify-between mb-3">
             <h6 className="text-sm font-semibold flex items-center gap-2"><ArrowUp size={14} className="text-success" /> Upload (Traffic)</h6>
-            {canManage && <button onClick={() => setShowTraffic(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs bg-accent text-white"><Plus size={12} /> Create</button>}
+            {canManage && <button onClick={() => setShowTraffic(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs bg-accent text-white"><Plus size={12} /> {t('vo.create')}</button>}
           </div>
           {showTraffic && (
             <div className="p-3 rounded-lg bg-glass border border-brd mb-3 space-y-2">
@@ -1587,8 +1597,8 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
                 <input value={trafficForm.pir} onChange={e => setTrafficForm({ ...trafficForm, pir: e.target.value })} className="flex-1 h-8 px-3 rounded bg-glass border border-brd text-xs" placeholder="PIR (kbps)" />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => addTrafficMut.mutate(trafficForm)} disabled={!trafficForm.name} className="px-3 py-1 rounded bg-accent text-white text-xs disabled:opacity-50">Save</button>
-                <button onClick={() => setShowTraffic(false)} className="px-3 py-1 rounded bg-glass text-xs">Cancel</button>
+                <button onClick={() => addTrafficMut.mutate(trafficForm)} disabled={!trafficForm.name} className="px-3 py-1 rounded bg-accent text-white text-xs disabled:opacity-50">{t('common.save')}</button>
+                <button onClick={() => setShowTraffic(false)} className="px-3 py-1 rounded bg-glass text-xs">{t('common.cancel')}</button>
               </div>
             </div>
           )}
@@ -1601,13 +1611,13 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
                 </div>
               ))}
             </div>
-          ) : <div className="text-center py-6 text-tx3 text-xs"><ArrowUp size={24} className="mx-auto mb-1 text-tx3/30" />No upload profiles</div>}
+          ) : <div className="text-center py-6 text-tx3 text-xs"><ArrowUp size={24} className="mx-auto mb-1 text-tx3/30" />{t('oc.noUpload')}</div>}
         </div>
 
         <div className="rounded-xl bg-glass p-4">
           <div className="flex items-center justify-between mb-3">
             <h6 className="text-sm font-semibold flex items-center gap-2"><ArrowDown size={14} className="text-accent" /> Download (TCONT)</h6>
-            {canManage && <button onClick={() => setShowTcont(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs bg-accent text-white"><Plus size={12} /> Create</button>}
+            {canManage && <button onClick={() => setShowTcont(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs bg-accent text-white"><Plus size={12} /> {t('vo.create')}</button>}
           </div>
           {showTcont && (
             <div className="p-3 rounded-lg bg-glass border border-brd mb-3 space-y-2">
@@ -1617,8 +1627,8 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
                 <input value={tcontForm.max_bandwidth} onChange={e => setTcontForm({ ...tcontForm, max_bandwidth: e.target.value })} className="flex-1 h-8 px-3 rounded bg-glass border border-brd text-xs" placeholder="Max bandwidth (kbps)" />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => addTcontMut.mutate(tcontForm)} disabled={!tcontForm.name} className="px-3 py-1 rounded bg-accent text-white text-xs disabled:opacity-50">Save</button>
-                <button onClick={() => setShowTcont(false)} className="px-3 py-1 rounded bg-glass text-xs">Cancel</button>
+                <button onClick={() => addTcontMut.mutate(tcontForm)} disabled={!tcontForm.name} className="px-3 py-1 rounded bg-accent text-white text-xs disabled:opacity-50">{t('common.save')}</button>
+                <button onClick={() => setShowTcont(false)} className="px-3 py-1 rounded bg-glass text-xs">{t('common.cancel')}</button>
               </div>
             </div>
           )}
@@ -1631,7 +1641,7 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
                 </div>
               ))}
             </div>
-          ) : <div className="text-center py-6 text-tx3 text-xs"><ArrowDown size={24} className="mx-auto mb-1 text-tx3/30" />No download profiles</div>}
+          ) : <div className="text-center py-6 text-tx3 text-xs"><ArrowDown size={24} className="mx-auto mb-1 text-tx3/30" />{t('oc.noDownload')}</div>}
         </div>
       </div>
 
@@ -1658,7 +1668,7 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
 
           <div className="lg:col-span-2 overflow-x-auto">
             {profiles.filter((p: any) => p.profile_type === 'sla').length === 0 ? (
-              <EmptyState icon={Settings} title="No EPON SLA profiles configured." />
+              <EmptyState icon={Settings} title={t('oc.noSla')} />
             ) : (
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead>
@@ -1697,6 +1707,7 @@ function SpeedProfilesTab({ oltId, canManage }: { oltId: number; canManage: bool
 // ═══ SYSTEM TAB ═══
 
 function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; oltId: number; canManage: boolean }) {
+  const { t } = useTranslation();
   const fans = (olt as Record<string, unknown>).fans as Array<Record<string, unknown>> || [];
   const cards = (olt as Record<string, unknown>).cards as Array<Record<string, unknown>> || [];
 
@@ -1739,7 +1750,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
   useEffect(() => { fetchSnmpUsers(); }, [oltId]);
 
   const addSnmp = async () => {
-    if (!snmpAdd.community.trim()) { toast.error('Community string required'); return; }
+    if (!snmpAdd.community.trim()) { toast.error(t('oc.communityRequired')); return; }
     setSnmpSaving(true);
     try {
       const res = await fetch(`/api/olt/${oltId}/snmp-communities`, {
@@ -1751,13 +1762,13 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
         toast.success(d.message);
         setSnmpAdd({ community: '', access: 'ro' });
         fetchSnmpUsers();
-      } else { toast.error(d.message || 'Failed'); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
-    } catch { toast.error('Network error'); }
+      } else { toast.error(d.message || t('oc.failed')); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
+    } catch { toast.error(t('oltForm.networkError')); }
     setSnmpSaving(false);
   };
 
   const deleteSnmp = async (community: string) => {
-    const ok = await confirm({ title: 'Delete SNMP Community', message: `Delete community "${community}" from OLT?`, confirmLabel: 'Delete', variant: 'danger' });
+    const ok = await confirm({ title: t('oc.deleteCommunity'), message: t('oc.deleteCommunityMsg', { community }), confirmLabel: t('common.delete'), variant: 'danger' });
     if (!ok) return;
     try {
       const res = await fetch(`/api/olt/${oltId}/snmp-communities`, {
@@ -1766,8 +1777,8 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
       });
       const d = await res.json();
       if (d.success) { toast.success(d.message); fetchSnmpUsers(); }
-      else { toast.error(d.message || 'Failed'); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
-    } catch { toast.error('Network error'); }
+      else { toast.error(d.message || t('oc.failed')); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
+    } catch { toast.error(t('oltForm.networkError')); }
   };
 
   const addUser = async () => {
@@ -1783,13 +1794,13 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
         toast.success(d.message);
         setUserAdd({ username: '', password: '', level: '15' });
         fetchSnmpUsers();
-      } else { toast.error(d.message || 'Failed'); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
-    } catch { toast.error('Network error'); }
+      } else { toast.error(d.message || t('oc.failed')); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
+    } catch { toast.error(t('oltForm.networkError')); }
     setUserSaving(false);
   };
 
   const deleteUser = async (username: string) => {
-    const ok = await confirm({ title: 'Delete User', message: `Delete user "${username}" from OLT?`, confirmLabel: 'Delete', variant: 'danger' });
+    const ok = await confirm({ title: t('oc.deleteUser'), message: t('oc.deleteUserMsg', { username }), confirmLabel: t('common.delete'), variant: 'danger' });
     if (!ok) return;
     try {
       const res = await fetch(`/api/olt/${oltId}/cli-users`, {
@@ -1798,8 +1809,8 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
       });
       const d = await res.json();
       if (d.success) { toast.success(d.message); fetchSnmpUsers(); }
-      else { toast.error(d.message || 'Failed'); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
-    } catch { toast.error('Network error'); }
+      else { toast.error(d.message || t('oc.failed')); if (d.log) { setCliLog(d.log); setShowCliLog(true); } }
+    } catch { toast.error(t('oltForm.networkError')); }
   };
 
   const formatUptime = (seconds: unknown): string => {
@@ -1814,7 +1825,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
 
   return (
     <div className="space-y-4">
-      <h6 className="text-sm font-semibold flex items-center gap-2"><Settings size={16} /> System Information</h6>
+      <h6 className="text-sm font-semibold flex items-center gap-2"><Settings size={16} /> {t('oc.sysInfo')}</h6>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
         <div className="rounded-xl bg-glass p-3 md:p-4">
           <h6 className="text-xs font-semibold text-tx3 uppercase mb-3">Device</h6>
@@ -1827,7 +1838,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
         <div className="rounded-xl bg-glass p-3 md:p-4">
           <h6 className="text-xs font-semibold text-tx3 uppercase mb-3">Chassis</h6>
           <div className="space-y-2 text-xs md:text-sm">
-            {([['Temperature', olt.temperature ? `${olt.temperature}°C` : 'N/A'], ['Uptime', formatUptime(olt.uptime)], ['Polling Interval', `${olt.polling_interval || 300}s`], ['Total Fans', olt.total_fan || 0], ['Total Cards', cards.length], ['Last Sync', olt.last_sync ? new Date(String(olt.last_sync)).toLocaleString() : 'Never']] as [string, unknown][]).map(([k, v]) => (
+            {([['Temperature', olt.temperature ? `${olt.temperature}°C` : 'N/A'], ['Uptime', formatUptime(olt.uptime)], ['Polling Interval', `${olt.polling_interval || 300}s`], ['Total Fans', olt.total_fan || 0], ['Total Cards', cards.length], [t('oc.lastSync'), olt.last_sync ? new Date(String(olt.last_sync)).toLocaleString() : 'Never']] as [string, unknown][]).map(([k, v]) => (
               <div key={k} className="flex justify-between"><span className="text-tx3">{k}</span><strong>{String(v)}</strong></div>
             ))}
           </div>
@@ -1836,7 +1847,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
         <div className="rounded-xl bg-glass p-3 md:p-4">
-          <h6 className="text-xs font-semibold text-tx3 uppercase mb-3">Connection Status</h6>
+          <h6 className="text-xs font-semibold text-tx3 uppercase mb-3">{t('oc.connStatus')}</h6>
           <div className="space-y-3">
             {([['SNMP', olt.snmp_status], ['CLI', olt.telnet_status], ['Overall', olt.connection_status]] as [string, unknown][]).map(([k, v]) => {
               const isConnected = String(v || '').toLowerCase() === 'connected';
@@ -1852,7 +1863,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
           </div>
         </div>
         <div className="rounded-xl bg-glass p-3 md:p-4">
-          <h6 className="text-xs font-semibold text-tx3 uppercase mb-3">Fan Status</h6>
+          <h6 className="text-xs font-semibold text-tx3 uppercase mb-3">{t('oc.fanStatus')}</h6>
           {fans.length > 0 ? (
             <div className="space-y-2">
               {fans.map((f: Record<string, unknown>) => {
@@ -1874,12 +1885,12 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
                 );
               })}
             </div>
-          ) : <div className="text-center py-4 text-tx3 text-xs">No fan data available</div>}
+          ) : <div className="text-center py-4 text-tx3 text-xs">{t('oc.noFan')}</div>}
         </div>
       </div>
 
       <div className="rounded-xl bg-glass p-3 md:p-4">
-        <h6 className="text-xs font-semibold text-tx3 uppercase mb-3">Card Slots</h6>
+        <h6 className="text-xs font-semibold text-tx3 uppercase mb-3">{t('oc.cardSlots')}</h6>
         {cards.length > 0 ? (
           <>
           {/* Desktop Table */}
@@ -1930,7 +1941,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
             ))}
           </div>
           </>
-        ) : <div className="text-center py-6 text-tx3 text-xs">No card data available. Run Sync.</div>}
+        ) : <div className="text-center py-6 text-tx3 text-xs">{t('oc.noCard')}</div>}
       </div>
 
       {/* Device Configuration — Credentials, SNMP & Users */}
@@ -1948,7 +1959,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
 
           {/* NMS Stored Credentials */}
           <div className="p-3 rounded-lg bg-glass/50 border border-brd space-y-2">
-            <div className="text-xs font-semibold text-tx2 flex items-center gap-2"><Check size={14} className="text-success" /> NMS Stored Credentials</div>
+            <div className="text-xs font-semibold text-tx2 flex items-center gap-2"><Check size={14} className="text-success" /> {t('oc.storedCreds')}</div>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="flex justify-between"><span className="text-tx3">SNMP Read:</span><strong className="font-mono">{oltCreds.snmp_community || '-'}</strong></div>
               <div className="flex justify-between"><span className="text-tx3">SNMP Write:</span><strong className="font-mono">{oltCreds.snmp_community_write || '-'}</strong></div>
@@ -2043,7 +2054,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
           {showCliLog && cliLog && (
             <div className="p-3 rounded-lg bg-black/80 border border-brd max-h-48 overflow-y-auto">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-tx3 font-mono">CLI Output</span>
+                <span className="text-xs text-tx3 font-mono">{t('oc.cliOutput')}</span>
                 <button onClick={() => setShowCliLog(false)} className="text-tx3 hover:text-tx1"><X size={14} /></button>
               </div>
               <pre className="text-[11px] text-green-400 font-mono whitespace-pre-wrap">{cliLog}</pre>

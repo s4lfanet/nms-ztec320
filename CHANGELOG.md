@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Terjemahan kelompok 3: Detail ONU, Konfigurasi OLT
+
+#### Diubah
+- **Detail ONU** (termasuk dialog Edit, Pindah ONU, Ganti ONU, Tipe ONU, WAN, ACL, Get Status, lokasi, TR-069) dan **Konfigurasi OLT** (semua tab: Uplink, Card PON, VLAN, ONU Type, WAN-IP, Speed Profile, Sistem) kini mengikuti pilihan bahasa. Istilah teknis dan pesan dari server tetap.
+
+#### Diperbaiki
+- **Konfigurasi OLT: menekan "Batal" di dialog hapus tetap menghapus.** Tombol hapus VLAN, ONU Type, dan WAN IP Profile memanggil penghapusan apa pun jawaban dialog konfirmasi. Kini hanya menghapus bila dikonfirmasi.
+
 ### 2026-11-22 — Terjemahan kelompok 2: wizard ONU
 
 #### Diubah
