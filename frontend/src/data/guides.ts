@@ -91,7 +91,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Tanya lewat WhatsApp',
-        content: 'Bila AI Agent aktif dan nomor Anda diizinkan, kirim **/insiden** ke nomor WA NMS untuk melihat gangguan yang sedang ditangani, atau **/gangguan** untuk daftar ONU yang mati.',
+        content: 'Bila AI Agent aktif dan nomor Anda diizinkan, kirim **/insiden** ke nomor WA NMS untuk melihat gangguan yang sedang ditangani, **/gangguan** untuk daftar ONU yang mati, atau **/diagnosa <nama>** untuk tahu kenapa internet satu pelanggan bermasalah (optik, PPPoE, putus-nyambung, gangguan massal) beserta saran tindakannya.',
       },
     ],
     tips: [
@@ -206,6 +206,7 @@ export const guides: Guide[] = [
       'Column visibility & order bisa diatur di Customization page',
       'Export CSV include semua ONU (tidak terfilter by pagination)',
       'Match MAC butuh MikroTik yang sudah ditambahkan di menu Mikrotik — mulai dari mode Selisih ±1, naikkan bila banyak yang tidak cocok',
+      'Sumber ping "Dari server NMS" mem-ping semua pelanggan paralel tiap siklus (status lambat/putus selalu segar) — pastikan server NMS bisa menjangkau IP PPPoE klien; bila tidak, pakai "Dari MikroTik"',
       'Untuk MikroTik buat user khusus NMS dengan group policy read,api,test saja (cukup untuk /ppp/active dan ping), dan pakai api-ssl (port 8729) agar login tidak lewat jaringan tanpa enkripsi',
     ],
   },
@@ -836,7 +837,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Perintah Cepat (hemat token)',
-        content: 'Perintah berawalan **/** dijawab langsung dari database NMS **tanpa AI** — gratis, instan, dan tetap jalan walau API key belum diisi:\n**/ringkasan** — status semua OLT\n**/gangguan [OLT]** — ONU offline/LOS/dying gasp\n**/redaman [OLT]** — ONU online dengan RX < -27 dBm\n**/alert [jam]** — alert terbaru (default 6 jam)\n**/insiden** — gangguan massal yang sedang ditangani\n**/cari <nama/PPPoE/SN>** — cari pelanggan\n**/onu <ID atau nama>** — detail satu ONU\n**/menu** — daftar perintah\n\nGunakan pertanyaan bebas (tanpa /) hanya untuk analisis yang butuh AI, mis. "kenapa budi sering putus?".',
+        content: 'Perintah berawalan **/** dijawab langsung dari database NMS **tanpa AI** — gratis, instan, dan tetap jalan walau API key belum diisi:\n**/ringkasan** — status semua OLT\n**/gangguan [OLT]** — ONU offline/LOS/dying gasp\n**/redaman [OLT]** — ONU online dengan RX < -27 dBm\n**/alert [jam]** — alert terbaru (default 6 jam)\n**/insiden** — gangguan massal yang sedang ditangani\n**/cari <nama/PPPoE/SN>** — cari pelanggan\n**/onu <ID atau nama>** — detail satu ONU\n**/diagnosa <ID atau nama>** — kenapa internet pelanggan bermasalah + saran tindakan\n**/menu** — daftar perintah\n\nGunakan pertanyaan bebas (tanpa /) hanya untuk analisis yang butuh AI, mis. "kenapa budi sering putus?".',
       },
       {
         title: 'Pilih Penyedia AI',

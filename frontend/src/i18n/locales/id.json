@@ -1008,7 +1008,22 @@
     "act_factory_msg": "ONU \"{{name}}\" akan dikembalikan ke pengaturan pabrik.",
     "act_delete_title": "Hapus ONU?",
     "act_delete_msg": "ONU \"{{name}}\" akan dihapus dari OLT dan NMS. Tindakan ini tidak bisa dibatalkan.",
-    "acsQueued": "Perintah antre: modem belum merespons, akan dijalankan saat modem lapor ke GenieACS berikutnya."
+    "acsQueued": "Perintah antre: modem belum merespons, akan dijalankan saat modem lapor ke GenieACS berikutnya.",
+    "diagTitle": "Diagnosis pelanggan",
+    "diagAction": "Saran",
+    "diagConnected": "Tersambung",
+    "diagNotLoggedIn": "Tidak login",
+    "diag24h": "24 jam terakhir",
+    "diagDrops": "PPPoE putus {{p}}x · ONU drop {{o}}x",
+    "diagHistory": "Riwayat sesi PPPoE",
+    "diagEv_up": "PPPoE tersambung",
+    "diagEv_down": "PPPoE putus",
+    "diagEv_reconnect": "Putus-nyambung cepat",
+    "diagAfter": "setelah {{u}}",
+    "diagPingNow": "Ping sekarang",
+    "diagPinging": "Ping…",
+    "diagPingFail": "Ping gagal",
+    "diagPingResult": "Ping: loss {{loss}}%, {{rtt}} ms (dari {{src}})"
   },
   "oc": {
     "notFound": "OLT tidak ditemukan",
@@ -1156,7 +1171,12 @@
     "testOk": "{{name}}: terhubung — \"{{identity}}\", {{n}} sesi PPPoE aktif",
     "failedWord": "gagal",
     "syncDone": "Sync link selesai — {{ok}} ok, {{slow}} lambat, {{down}} down, {{none}} tanpa sesi",
-    "deleteMsg": "Hapus \"{{name}}\"? Monitoring link-state untuk PPPoE server ini akan berhenti."
+    "deleteMsg": "Hapus \"{{name}}\"? Monitoring link-state untuk PPPoE server ini akan berhenti.",
+    "pingSource": "Sumber ping",
+    "pingFromRouter": "Dari MikroTik (bergiliran per siklus)",
+    "pingFromVps": "Dari server NMS (paralel, semua klien)",
+    "pingVpsHint": "Semua klien di-ping sekaligus tiap siklus tanpa membebani router. Server NMS harus punya rute ke IP klien PPPoE.",
+    "pingVpsShort": "semua (VPS)"
   },
   "pg_users": {
     "userCreated": "User dibuat",

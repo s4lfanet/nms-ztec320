@@ -8,6 +8,17 @@ Polls every enabled MikrotikDevice:
 Joins sessions to `onus.pppoe` (username) and persists OnuLinkState rows.
 Only state *changes* are broadcast via ws_bridge so the map updates live.
 
+Ping source per device (`ping_source`):
+  'mikrotik' (default) -> ping from the router, `ping_batch` clients per cycle
+                          round-robin, VPS ping as fallback (original behaviour)
+  'vps'                -> every client pinged from the NMS host in parallel each
+                          cycle (fast for large networks; the VPS needs a route
+                          to the client IPs)
+
+Session history: PppoeSessionEvent rows ('up' / 'down' / 'reconnect' — the
+last when a session's uptime went *down* between two cycles, i.e. it dropped
+and redialled faster than the poll interval). Pruned after `pppoe_event_days`.
+
 Config keys in SystemConfig:
   link_check_interval  seconds between cycles      (default 45, clamp 15-600)
   link_slow_rtt_ms     RTT threshold for 'slow'    (default 150)
@@ -18,9 +29,10 @@ import re
 import subprocess
 import threading
 import time
-from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone, timedelta
 
-from models import db, MikrotikDevice, ONU, OnuLinkState, SystemConfig
+from models import db, MikrotikDevice, ONU, OnuLinkState, SystemConfig, PppoeSessionEvent
 from routeros_client import RouterOSClient, RouterOSError
 from ws_bridge import ws_broadcast_dashboard
 
@@ -65,6 +77,43 @@ def _session_variants(name):
     base = re.sub(r'-\d+$', '', name or '')
     if base != name:
         yield base
+
+
+_UPTIME_UNITS = {'w': 604800, 'd': 86400, 'h': 3600, 'm': 60, 's': 1}
+VPS_PING_WORKERS = 64
+VPS_PING_MAX = 3000  # safety cap per device per cycle
+
+
+def uptime_seconds(v):
+    """RouterOS uptime → detik. '1w2d03:04:05', '2d3h4m5s', '00:05:12', '45s'.
+    None bila tidak bisa dibaca."""
+    v = (v or '').strip()
+    if not v:
+        return None
+    total, rest = 0, v
+    for num, unit in re.findall(r'(\d+)([wdhms])', v):
+        total += int(num) * _UPTIME_UNITS[unit]
+    rest = re.sub(r'\d+[wdhms]', '', v)
+    m = re.search(r'(\d+):(\d+):(\d+)', rest)
+    if m:
+        total += int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+    elif not re.search(r'\d+[wdhms]', v):
+        return None
+    return total
+
+
+def _event(st, onu_id, dev_id, kind, ip='', caller='', prev_uptime='', now=None):
+    db.session.add(PppoeSessionEvent(
+        onu_id=onu_id, mikrotik_id=dev_id, pppoe_user=st.pppoe_user or '', event=kind,
+        ip=ip or '', caller_id=caller or '', prev_uptime=prev_uptime or '', at=now))
+
+
+def prune_events(days=None):
+    days = days or _cfg_int('pppoe_event_days', 30, 1, 365)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    n = PppoeSessionEvent.query.filter(PppoeSessionEvent.at < cutoff).delete(synchronize_session=False)
+    db.session.commit()
+    return n
 
 
 def _cfg_int(key, default, lo=None, hi=None):
@@ -196,7 +245,16 @@ def poll_device(dev):
             plans.append((onu, user, sess))
 
     pings = {}  # onu_id -> ping result (or None when ping failed both ways)
-    if dev.ping_enabled and plans:
+    if dev.ping_enabled and plans and (dev.ping_source or 'mikrotik') == 'vps':
+        # Semua klien sekaligus, paralel dari server NMS — router tidak dibebani.
+        cli.close()
+        targets = [(onu.id, sess.get('address', '')) for onu, _u, sess in plans
+                   if sess.get('address')][:VPS_PING_MAX]
+        with ThreadPoolExecutor(max_workers=VPS_PING_WORKERS) as ex:
+            for oid, res in zip([t[0] for t in targets],
+                                ex.map(lambda t: ping_from_vps(t[1], count=2, timeout_s=1), targets)):
+                pings[oid] = res
+    elif dev.ping_enabled and plans:
         off = _rr_cursor.get(dev.id, 0)
         ordered = plans[off % len(plans):] + plans[:off % len(plans)]
         _rr_cursor[dev.id] = (off + batch) % len(plans)
@@ -227,11 +285,20 @@ def poll_device(dev):
             db.session.add(st)
             st_map[onu.id] = st
         old = st.link_state
+        was_up, prev_uptime = bool(st.session_up), st.session_uptime or ''
+        new_uptime = sess.get('uptime', '')
+        if st.id is not None and not was_up and st.checked_at is not None:
+            _event(st, onu.id, dev.id, 'up', sess.get('address', ''), sess.get('caller-id', ''), now=now)
+        elif was_up and st.pppoe_user == user:
+            a, b = uptime_seconds(prev_uptime), uptime_seconds(new_uptime)
+            if a is not None and b is not None and b < a:
+                _event(st, onu.id, dev.id, 'reconnect', sess.get('address', ''), sess.get('caller-id', ''),
+                       prev_uptime, now=now)
         st.mikrotik_id = dev.id
         st.pppoe_user = user
         st.pppoe_ip = sess.get('address', '')
         st.session_up = True
-        st.session_uptime = sess.get('uptime', '')
+        st.session_uptime = new_uptime
         st.caller_id = sess.get('caller-id', '')
         st.checked_at = now
         if old == 'no_session':
@@ -250,6 +317,8 @@ def poll_device(dev):
     for st in OnuLinkState.query.filter_by(mikrotik_id=dev.id).all():
         if st.pppoe_user and st.pppoe_user not in seen_users \
                 and st.link_state != 'no_session':
+            if st.session_up:
+                _event(st, st.onu_id, dev.id, 'down', st.pppoe_ip, st.caller_id, st.session_uptime, now=now)
             st.link_state = 'no_session'
             st.session_up = False
             st.fail_count = 0
@@ -303,6 +372,8 @@ def reconcile_no_session(all_users, ok_dev_ids):
             changed.append(st)
         elif st.link_state != 'no_session' and (
                 st.mikrotik_id is None or st.mikrotik_id in ok_dev_ids):
+            if st.session_up:
+                _event(st, o.id, st.mikrotik_id, 'down', st.pppoe_ip, st.caller_id, st.session_uptime, now=now)
             st.link_state = 'no_session'
             st.session_up = False
             st.fail_count = 0
@@ -333,6 +404,7 @@ def run_link_poller(app):
     """Daemon loop — started from run_server.py alongside the alert monitor."""
     with app.app_context():
         logger.info('link-state poller started')
+        last_prune = 0.0
         while True:
             interval = _cfg_int('link_check_interval', 45, 15, 600)
             try:
@@ -356,4 +428,11 @@ def run_link_poller(app):
             except Exception as e:
                 db.session.rollback()
                 logger.error('link poller cycle failed: %s', e)
+            if time.time() - last_prune > 3600:
+                last_prune = time.time()
+                try:
+                    prune_events()
+                except Exception as e:
+                    db.session.rollback()
+                    logger.warning('pppoe event prune failed: %s', e)
             time.sleep(interval)

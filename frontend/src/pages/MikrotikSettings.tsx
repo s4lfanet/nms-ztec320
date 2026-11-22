@@ -24,11 +24,13 @@ interface FormState {
   enabled: boolean;
   ping_enabled: boolean;
   ping_batch: number;
+  ping_source: 'mikrotik' | 'vps';
 }
 
 const EMPTY: FormState = {
   name: '', host: '', api_mode: 'api', api_port: 8728, api_ssl: false,
   api_user: '', api_password: '', enabled: true, ping_enabled: true, ping_batch: 25,
+  ping_source: 'mikrotik',
 };
 
 export function MikrotikSettings() {
@@ -71,6 +73,7 @@ export function MikrotikSettings() {
       name: d.name, host: d.host, api_mode: d.api_mode, api_port: d.api_port,
       api_ssl: d.api_ssl, api_user: d.api_user, api_password: '',
       enabled: d.enabled, ping_enabled: d.ping_enabled, ping_batch: d.ping_batch,
+      ping_source: d.ping_source || 'mikrotik',
     });
     setModal({ mode: 'edit', dev: d });
   };
@@ -172,7 +175,7 @@ export function MikrotikSettings() {
                     {!d.enabled && <span className="ml-2 text-warning">{t('pg_mikrotik.disabled')}</span>}
                   </td>
                   <td className="px-4 py-3 text-tx3 text-xs">
-                    {d.ping_enabled ? `${d.ping_batch}/siklus` : 'off'}
+                    {!d.ping_enabled ? 'off' : d.ping_source === 'vps' ? t('pg_mikrotik.pingVpsShort') : `${d.ping_batch}/siklus`}
                   </td>
                   <td className="px-4 py-3">
                     {d.last_polled_at == null ? (
@@ -237,8 +240,18 @@ export function MikrotikSettings() {
           <Input label="Username" value={form.api_user} onChange={e => set('api_user', e.target.value)} placeholder="nms-readonly" />
           <Input label={modal?.mode === 'edit' ? 'Password (kosongkan = tetap)' : 'Password'}
             type="password" value={form.api_password} onChange={e => set('api_password', e.target.value)} />
-          <Input label={t('pg_mikrotik.pingEachCycle')} type="number" min={1} max={200} value={form.ping_batch}
-            onChange={e => set('ping_batch', parseInt(e.target.value) || 25)} />
+          <Select label={t('pg_mikrotik.pingSource')} value={form.ping_source}
+            onChange={e => set('ping_source', e.target.value as 'mikrotik' | 'vps')}
+            options={[
+              { value: 'mikrotik', label: t('pg_mikrotik.pingFromRouter') },
+              { value: 'vps', label: t('pg_mikrotik.pingFromVps') },
+            ]} />
+          {form.ping_source === 'vps' ? (
+            <p className="text-xs text-tx3 self-end pb-1">{t('pg_mikrotik.pingVpsHint')}</p>
+          ) : (
+            <Input label={t('pg_mikrotik.pingEachCycle')} type="number" min={1} max={200} value={form.ping_batch}
+              onChange={e => set('ping_batch', parseInt(e.target.value) || 25)} />
+          )}
           <div className="flex items-end gap-4 pb-1">
             <label className="flex items-center gap-2 text-sm text-tx2 cursor-pointer">
               <input type="checkbox" checked={form.api_ssl} onChange={e => set('api_ssl', e.target.checked)} className="accent-accent" /> SSL

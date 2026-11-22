@@ -474,7 +474,7 @@ def tool_onu_history(args):
 def tool_mikrotik(args):
     """Status PPPoE & ping pelanggan dari MikroTik (data poller tersimpan).
     Tanpa onu_id/query → ringkasan per router."""
-    from models import MikrotikDevice, OnuLinkState
+    from models import MikrotikDevice, OnuLinkState, PppoeSessionEvent
     routers = {m.id: m for m in MikrotikDevice.query.all()}
     if args.get('onu_id') or args.get('query'):
         o = _resolve_onu(args)
@@ -488,7 +488,10 @@ def tool_mikrotik(args):
                 'pppoe_user': s.pppoe_user or None, 'ip': s.pppoe_ip or None,
                 'sesi_aktif': bool(s.session_up), 'uptime': s.session_uptime or None,
                 'mac': s.caller_id or None, 'ping_ms': s.rtt_ms, 'loss_pct': s.loss_pct,
-                'kondisi_link': s.link_state, 'dicek': _iso(s.checked_at)}
+                'kondisi_link': s.link_state, 'dicek': _iso(s.checked_at),
+                'putus_24_jam': PppoeSessionEvent.query.filter(
+                    PppoeSessionEvent.onu_id == o.id, PppoeSessionEvent.event.in_(('down', 'reconnect')),
+                    PppoeSessionEvent.at >= datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)).count()}
     out = []
     for r in routers.values():
         q = OnuLinkState.query.filter_by(mikrotik_id=r.id)
@@ -501,6 +504,18 @@ def tool_mikrotik(args):
     return {'routers': out,
             'onu_online_tapi_pppoe_putus': [dict(_onu_brief(db.session.get(ONU, s.onu_id)),
                                                  pppoe_user=s.pppoe_user or None) for s in down]}
+
+
+def tool_diagnose(args):
+    """Diagnosis otomatis pelanggan: gabungan status ONU, redaman, PPPoE/ping,
+    riwayat putus 24 jam, dan insiden FTTH di jalurnya."""
+    from diagnosis import diagnose_onu
+    o = _resolve_onu(args)
+    if not o:
+        return {'error': 'ONU tidak ditemukan (beri onu_id atau query)'}
+    d = diagnose_onu(o)
+    d['onu'] = _onu_brief(o)
+    return d
 
 
 def tool_tr069(args):
@@ -566,6 +581,10 @@ TOOLS = [
     ('mikrotik', 'Status PPPoE pelanggan dari MikroTik: sesi aktif, IP, uptime, ping/loss. Tanpa ONU → '
                  'ringkasan router & ONU yang online tapi PPPoE putus.',
      {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_mikrotik),
+    ('diagnose', 'Diagnosis otomatis keluhan pelanggan ("internet mati/lemot/putus-putus"): status optik, '
+                 'redaman, PPPoE & ping, jumlah putus 24 jam, gangguan massal di jalurnya, plus saran tindakan. '
+                 'Pakai ini PERTAMA untuk keluhan pelanggan.',
+     {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_diagnose),
     ('tr069', 'Info modem dari GenieACS/TR069 (live): firmware, uptime, WAN IP, PPPoE, SSID, jumlah '
               'klien WiFi, terakhir lapor.',
      {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_tr069),
@@ -620,8 +639,8 @@ SYSTEM_PROMPT = (
     "tanpa judul '#'. "
     "Pilih tool yang tepat: lokasi/ODP pelanggan → onu_location; titik FTTH → ftth_node; port kosong → "
     "ftth_free_ports; port/uplink OLT → olt_detail; trafik → traffic; sering putus/riwayat → onu_history; "
-    "PPPoE/internet pelanggan → mikrotik; modem/SSID/WiFi → tr069. Untuk keluhan pelanggan, gabungkan "
-    "beberapa tool (status ONU, PPPoE, lokasi) lalu beri kesimpulan singkat. "
+    "PPPoE/internet pelanggan → mikrotik; modem/SSID/WiFi → tr069. Untuk keluhan pelanggan, mulai dari "
+    "diagnose, tambah onu_location bila perlu kunjungan, lalu beri kesimpulan singkat. "
     "Selalu ambil data lewat tool sebelum menyebut angka atau status — jangan menebak. "
     "Kamu hanya bisa MEMBACA data NMS; jika diminta reboot/ubah konfigurasi, jelaskan "
     "bahwa itu harus dilakukan lewat aplikasi NMS. Redaman RX normal -8 s/d -27 dBm. "
@@ -857,6 +876,7 @@ def _cmd_menu(_arg):
             '/redaman [nama OLT] — ONU online dengan RX < -27 dBm\n'
             '/alert [jam] — alert terbaru (default 6 jam)\n'
             '/insiden — gangguan massal yang sedang ditangani\n'
+            '/diagnosa <ID atau nama> — kenapa internet pelanggan bermasalah\n'
             '/reset — mulai percakapan AI baru\n\n'
             'Pertanyaan bebas (tanpa /) dijawab oleh AI.')
 
@@ -962,6 +982,37 @@ def _cmd_incidents(_arg):
     return '\n'.join(out)
 
 
+def _cmd_diagnose(arg):
+    if not arg:
+        return 'Format: /diagnosa <ID atau nama>, contoh: /diagnosa budi'
+    if arg.isdigit():
+        o = db.session.get(ONU, int(arg))
+    else:
+        r = tool_search_onu({'query': arg, 'limit': 5})
+        if not r.get('onus'):
+            return f'Tidak ada ONU yang cocok dengan "{arg}".'
+        if r['count'] > 1:
+            return _cmd_search(arg) + '\nKetik /diagnosa <ID>.'
+        o = db.session.get(ONU, r['onus'][0]['id'])
+    if not o:
+        return 'ONU tidak ditemukan.'
+    from diagnosis import diagnose_onu
+    d = diagnose_onu(o)
+    icon = {'critical': '🔴', 'warning': '🟠', 'info': '🔵', 'ok': '🟢'}
+    out = [f"*Diagnosa {o.name or '-'}* (ID {o.id})"]
+    out += [f"{icon[f['level']]} {f['text']}" for f in d['findings']]
+    p = d.get('pppoe')
+    if p:
+        ping = f", ping {p['rtt_ms']} ms" if p.get('rtt_ms') is not None else ''
+        out.append(f"PPPoE: {'tersambung' if p['session_up'] else 'tidak login'}"
+                   f"{' ' + p['ip'] if p.get('ip') else ''}{', uptime ' + p['uptime'] if p.get('uptime') else ''}{ping}")
+    e = d['events_24h']
+    out.append(f"24 jam: PPPoE putus {e['pppoe_drops']}x, ONU drop {e['onu_drops']}x")
+    if d.get('action'):
+        out.append(f"Saran: {d['action']}")
+    return '\n'.join(out)
+
+
 QUICK_COMMANDS = {
     'menu': _cmd_menu, 'bantuan': _cmd_menu, 'help': _cmd_menu, 'start': _cmd_menu,
     'ringkasan': _cmd_summary, 'status': _cmd_summary,
@@ -971,6 +1022,7 @@ QUICK_COMMANDS = {
     'redaman': _cmd_weak,
     'alert': _cmd_alerts,
     'insiden': _cmd_incidents, 'incident': _cmd_incidents,
+    'diagnosa': _cmd_diagnose, 'diag': _cmd_diagnose,
 }
 
 
