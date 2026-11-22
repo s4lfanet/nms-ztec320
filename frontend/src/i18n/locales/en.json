@@ -73,7 +73,10 @@
     "reports": "Reports",
     "terminal": "OLT Terminal",
     "home": "Home",
-    "aiAgent": "AI Agent"
+    "aiAgent": "AI Agent",
+    "problems": "Problems",
+    "olt": "OLT",
+    "more": "More"
   },
   "topbar": {
     "alarms": "Network Alarms",
@@ -212,7 +215,8 @@
     "macApplied": "{{count}} ONU names written from PPPoE match",
     "macPartial": "{{count}} failed — check console",
     "applyFailed": "Apply failed",
-    "macMatchModal": "Match MAC — Active PPPoE Sessions"
+    "macMatchModal": "Match MAC — Active PPPoE Sessions",
+    "problemStatus": "Problems (LOS/Offline/Dying gasp)"
   },
   "viewOnu": {
     "breadcrumbView": "View / ONU",
@@ -350,7 +354,8 @@
     "themeSystem": "System",
     "language": "Language",
     "langId": "Indonesia",
-    "langEn": "English"
+    "langEn": "English",
+    "allAccess": "All access (Super Admin)"
   },
   "error": {
     "invalid_credentials": "Invalid username or password",
@@ -387,5 +392,10 @@
     "colMatch": "Match",
     "ambiguous": "ambiguous",
     "note": "Only non-ZTE ONUs with an empty name (NA) are scanned. Apply writes the PPPoE username to the ONU Name and PPPoE fields. Ambiguous matches (several ONUs sharing a MAC prefix — usually the same vendor OUI) cannot be selected; reduce the octet strip or set the name manually."
+  },
+  "ui": {
+    "more": "More",
+    "steps": "Steps",
+    "stepOf": "Step {{n}} of {{total}}"
   }
 }

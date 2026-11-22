@@ -2352,6 +2352,22 @@ class TestAllOnusSignalFilter:
         r2 = client.get('/api/all-onus?signal=all')
         assert len(self._ids(r2)) == 6
 
+    def test_los_na_count_is_unique(self, client):
+        # Regression: kartu LOS/N/A dulu menjumlah los + na, sehingga ONU LOS
+        # tanpa RX terhitung dua kali (3 di sini, padahal filternya 2).
+        client = self._setup(client)
+        st = client.get('/api/all-onus').get_json()['signal_stats']
+        assert st['los_na'] == 2
+        assert st['los_na'] == len(self._ids(client.get('/api/all-onus?signal=los_na')))
+        assert st['los_na_pct'] == round(2 / 6 * 100, 1)
+
+    def test_status_problem_filter(self, client):
+        # Menu Gangguan (HP) = LOS + offline + dying gasp
+        client = self._setup(client)
+        assert self._ids(client.get('/api/all-onus?status=problem')) == {'onu-los', 'onu-na'}
+        r = client.get('/api/all-onus/export?status=problem')
+        assert r.status_code == 200
+
     def test_signal_custom_ranges(self, client):
         client = self._setup(client)
         with app.app_context():

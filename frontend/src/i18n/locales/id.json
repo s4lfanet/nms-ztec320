@@ -73,7 +73,10 @@
     "reports": "Laporan",
     "terminal": "Terminal OLT",
     "home": "Beranda",
-    "aiAgent": "AI Agent"
+    "aiAgent": "AI Agent",
+    "problems": "Gangguan",
+    "olt": "OLT",
+    "more": "Lainnya"
   },
   "topbar": {
     "alarms": "Alarm Jaringan",
@@ -212,7 +215,8 @@
     "macApplied": "{{count}} nama ONU ditulis dari match PPPoE",
     "macPartial": "{{count}} gagal — cek konsol",
     "applyFailed": "Apply gagal",
-    "macMatchModal": "Match MAC — Sesi PPPoE Aktif"
+    "macMatchModal": "Match MAC — Sesi PPPoE Aktif",
+    "problemStatus": "Gangguan (LOS/Offline/Dying gasp)"
   },
   "viewOnu": {
     "breadcrumbView": "Lihat / ONU",
@@ -350,7 +354,8 @@
     "themeSystem": "Ikuti Sistem",
     "language": "Bahasa",
     "langId": "Indonesia",
-    "langEn": "English"
+    "langEn": "English",
+    "allAccess": "Semua akses (Super Admin)"
   },
   "error": {
     "invalid_credentials": "Username atau password salah",
@@ -387,5 +392,10 @@
     "colMatch": "Match",
     "ambiguous": "ambigu",
     "note": "Hanya ONU non-ZTE dengan nama belum terisi (NA) yang discan. Apply menulis username PPPoE ke field Name dan PPPoE ONU. Match ambigu (beberapa ONU berbagi prefix MAC — biasanya OUI pabrikan sama) tidak bisa dipilih; perkecil pengurangan oktet atau isi nama manual."
+  },
+  "ui": {
+    "more": "Lainnya",
+    "steps": "Langkah",
+    "stepOf": "Langkah {{n}} dari {{total}}"
   }
 }

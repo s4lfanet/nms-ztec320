@@ -134,7 +134,7 @@ export function MyProfile() {
           <p className="text-tx3 text-sm mt-1">@{user?.username}</p>
           <div className="mt-3">
             <span className="px-3 py-1 rounded-full bg-accent/15 text-accent text-xs font-medium">
-              {user?.role || 'User'}
+              {user?.is_super_admin && (!user?.role || user.role === 'User') ? t('topbar.superAdmin') : (user?.role || 'User')}
             </span>
           </div>
           <div className="mt-4 pt-4 border-t border-brd">
@@ -142,7 +142,7 @@ export function MyProfile() {
             <div className="flex flex-wrap gap-1 justify-center">
               {perms.length > 0 ? perms.map((p: string) => (
                 <span key={p} className="px-2 py-0.5 rounded text-[10px] bg-glass text-tx2 border border-brd">{p}</span>
-              )) : <span className="text-xs text-tx3">{t('profile.noPermissions')}</span>}
+              )) : <span className="text-xs text-tx3">{user?.is_super_admin ? t('profile.allAccess') : t('profile.noPermissions')}</span>}
             </div>
           </div>
         </Card>
