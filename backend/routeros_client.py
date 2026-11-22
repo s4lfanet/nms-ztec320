@@ -201,6 +201,33 @@ class RouterOSClient:
         res = self._conn.talk('/system/identity/print')
         return res[0].get('name', '') if res else ''
 
+    def get_resource(self):
+        """/system/resource → dict (cpu-load, free-memory, total-memory, uptime,
+        version, board-name …). Baca-saja."""
+        if self.api_mode == 'rest':
+            d = self._rest('GET', 'system/resource')
+            return d if isinstance(d, dict) else (d[0] if d else {})
+        res = self._conn.talk('/system/resource/print')
+        return res[0] if res else {}
+
+    def get_health(self):
+        """/system/health → {nama: nilai}. v7 mengembalikan baris {name, value};
+        v6 satu baris berisi semua kolom. Router tanpa sensor → {}."""
+        try:
+            rows = self._rest('GET', 'system/health') if self.api_mode == 'rest' \
+                else self._conn.talk('/system/health/print')
+        except Exception:
+            return {}
+        if isinstance(rows, dict):
+            rows = [rows]
+        out = {}
+        for r in rows or []:
+            if 'name' in r and 'value' in r:
+                out[r['name']] = r['value']
+            else:
+                out.update({k: v for k, v in r.items() if not k.startswith('.')})
+        return out
+
     def ping(self, address, count=3, timeout=None):
         """Ping `address` from the Mikrotik. Returns
         {'sent': int, 'received': int, 'loss_pct': float, 'avg_rtt_ms': float|None}

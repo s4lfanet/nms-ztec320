@@ -797,6 +797,13 @@ def _check_onus_for_tenant(force_send=False):
     # via SystemConfig `odp_outage_threshold` (default 3).
     _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force_send)
 
+    # ─── Integrasi: kesehatan router MikroTik (data dari link poller) ───
+    try:
+        from integration_health import check_mikrotik_health
+        check_mikrotik_health(now, notifications_to_create, alerts_to_send)
+    except Exception as e:
+        logger.warning(f"[ALERT] mikrotik health check failed: {e}")
+
     # ─── Check unregistered ONUs via Telnet (show pon onu uncfg — ZTE CLI only) ───
     for olt in olts:
         if not olt.cli_enabled:
@@ -1329,6 +1336,7 @@ def _deep_link_url(target_type, target_id):
         'otb': f'/dashboard/ftth?tab=otb&otb={target_id}',
         'pon': f'/dashboard/onus?pon={target_id}',
         'incident': f'/dashboard/incidents/{target_id}',
+        'mikrotik': '/dashboard/settings/mikrotik',
     }
     path = routes.get(target_type)
     return f'{base}{path}' if path else ''

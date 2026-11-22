@@ -4,6 +4,18 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-23 — Integrasi MikroTik & GenieACS: tahap 3 (kesehatan & pemantauan)
+
+#### Ditambahkan
+- **Kesehatan router MikroTik**: CPU, RAM, suhu, versi RouterOS, board, dan uptime dibaca tiap siklus poller (`/system/resource`, `/system/health`) dan tampil di kolom **Kesehatan** halaman MikroTik.
+- **Alert router** (WA/Telegram/lonceng): MikroTik tidak terjangkau > 5 menit (kritis), CPU ≥ 85% selama 3 cek berturut-turut, suhu ≥ 70°C — dengan pesan pulih otomatis. Batas: `mikrotik_cpu_threshold`, `mikrotik_temp_threshold`, `mikrotik_down_minutes`, `mikrotik_cpu_cycles`.
+- **Pemantauan GenieACS** di halaman TR069 Profile:
+  - **Modem tidak lapor**: ONU online yang modemnya tidak inform ke GenieACS > 24 jam (`genieacs_stale_hours`) — perintah TR-069 ke modem ini tidak akan sampai. Juga muncul sebagai temuan di Diagnosis pelanggan.
+  - **Fault GenieACS**: perintah/preset yang gagal per modem, dengan tombol **Hapus & coba lagi**.
+- **Sinkron GenieACS otomatis** tiap 30 menit (`genieacs_sync_minutes`, 0 = mati); waktu lapor terakhir tiap modem disimpan.
+- **Data tambahan modem** di panel TR-069: redaman RX versi modem, kanal WiFi per SSID, daftar perangkat terhubung (nama, IP, WiFi/LAN), fault per modem, dan model data (TR-098/TR-181).
+- AI Agent: tool `mikrotik` menyertakan CPU/RAM/suhu router; tool `tr069` tanpa ONU memberi ringkasan modem yang tidak lapor + fault.
+
 ### 2026-11-23 — Integrasi MikroTik & GenieACS: tahap 2 (ping paralel, riwayat PPPoE, diagnosis)
 
 #### Ditambahkan

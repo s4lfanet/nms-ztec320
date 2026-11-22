@@ -496,6 +496,8 @@ def tool_mikrotik(args):
     for r in routers.values():
         q = OnuLinkState.query.filter_by(mikrotik_id=r.id)
         out.append({'router': r.name, 'host': r.host, 'aktif': bool(r.enabled), 'terhubung': bool(r.last_ok),
+                    'cpu_pct': r.cpu_load, 'ram_pct': r.mem_used_pct, 'suhu_c': r.temperature,
+                    'uptime': r.ros_uptime or None, 'versi': r.ros_version or None,
                     'error': r.last_error or None, 'dicek': _iso(r.last_polled_at),
                     'pppoe_up': q.filter_by(session_up=True).count(),
                     'pppoe_down': q.filter_by(session_up=False).count()})
@@ -522,13 +524,20 @@ def tool_tr069(args):
     """Info perangkat TR069 dari GenieACS (live, baca-saja): firmware, uptime,
     WAN/PPPoE, SSID, jumlah klien WiFi, terakhir lapor. Tidak menampilkan password."""
     from models import GenieacsDeviceMap
+    import genieacs_client
+    if not args.get('onu_id') and not args.get('query'):
+        hours, stale = genieacs_client.stale_devices()
+        faults = genieacs_client.fetch_faults(limit=50)
+        return {'modem_tidak_lapor': {'lebih_dari_jam': hours, 'jumlah': len(stale), 'onu': stale[:15]},
+                'fault_genieacs': {'jumlah': len(faults),
+                                   'contoh': [{'device': f['device'], 'code': f['code'], 'pesan': f['message']}
+                                              for f in faults[:10]]}}
     o = _resolve_onu(args)
     if not o:
         return {'error': 'ONU tidak ditemukan (beri onu_id atau query)'}
     m = GenieacsDeviceMap.query.filter_by(onu_id=o.id).first()
     if not m:
         return {'onu': _onu_brief(o), 'tr069': 'ONU belum terpetakan ke perangkat GenieACS'}
-    import genieacs_client
     p = genieacs_client.get_device_params(m.device_id)
     if not p:
         return {'onu': _onu_brief(o), 'error': 'GenieACS tidak bisa dihubungi atau perangkat tidak ditemukan'}
@@ -536,6 +545,10 @@ def tool_tr069(args):
             'firmware': p.get('software_version'), 'uptime_detik': p.get('uptime'),
             'terakhir_lapor': p.get('last_inform'), 'wan_ip': p.get('wan_ip'),
             'pppoe_user': p.get('pppoe_username'), 'klien_wifi': p.get('wifi_clients'),
+            'rx_modem_dbm': p.get('optical_rx_dbm'), 'model_data': p.get('data_model'),
+            'perangkat_terhubung': [{'nama': h['name'] or None, 'ip': h['ip'] or None, 'via': h['via'] or None}
+                                    for h in (p.get('hosts') or []) if h.get('active') is not False][:15],
+            'fault': [{'code': f['code'], 'pesan': f['message']} for f in genieacs_client.fetch_faults(m.device_id, 5)],
             'ssid': [{'ssid': s['ssid'], 'band': s['band'], 'aktif': s['active']} for s in p.get('ssids') or []],
             'wan': [{'tipe': w['type'], 'user': w['username'] or None, 'ip': w['ip'] or None,
                      'status': w['status'] or None} for w in p.get('wan_conns') or []]}
@@ -579,14 +592,15 @@ TOOLS = [
      {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'},
        'days': {'type': 'integer'}}}, tool_onu_history),
     ('mikrotik', 'Status PPPoE pelanggan dari MikroTik: sesi aktif, IP, uptime, ping/loss. Tanpa ONU → '
-                 'ringkasan router & ONU yang online tapi PPPoE putus.',
+                 'ringkasan router (CPU, RAM, suhu, versi) & ONU yang online tapi PPPoE putus.',
      {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_mikrotik),
     ('diagnose', 'Diagnosis otomatis keluhan pelanggan ("internet mati/lemot/putus-putus"): status optik, '
                  'redaman, PPPoE & ping, jumlah putus 24 jam, gangguan massal di jalurnya, plus saran tindakan. '
                  'Pakai ini PERTAMA untuk keluhan pelanggan.',
      {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_diagnose),
-    ('tr069', 'Info modem dari GenieACS/TR069 (live): firmware, uptime, WAN IP, PPPoE, SSID, jumlah '
-              'klien WiFi, terakhir lapor.',
+    ('tr069', 'Info modem dari GenieACS/TR069 (live): firmware, uptime, WAN IP, PPPoE, SSID, redaman '
+              'versi modem, perangkat terhubung, fault, terakhir lapor. Tanpa ONU → ringkasan modem yang '
+              'tidak lapor ke ACS dan daftar fault GenieACS.',
      {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_tr069),
 ]
 _TOOL_FN = {t[0]: t[3] for t in TOOLS}

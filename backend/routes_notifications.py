@@ -33,7 +33,7 @@ bp = Blueprint('notifications', __name__)
 ALARM_CATEGORIES = {'offline', 'dyinggasp', 'los', 'olt_offline', 'signal', 'signal_drop',
                     'offline_batch', 'dyinggasp_batch', 'los_batch', 'signal_drop_batch',
                     'olt_cpu_high', 'olt_mem_high', 'olt_temp_high', 'olt_backup_failed',
-                    'odp_outage', 'outage'}
+                    'odp_outage', 'outage', 'mikrotik_down', 'mikrotik_cpu', 'mikrotik_temp'}
 
 
 UNREGISTER_CATEGORIES = {'unconfig', 'unconfigured'}

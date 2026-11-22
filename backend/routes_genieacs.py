@@ -87,6 +87,7 @@ def get_tr069(onu_id):
         'match_method': mapping.match_method, 'pinned': mapping.pinned,
         'last_synced': utc_iso(mapping.last_synced_at),
         'params': params,
+        'faults': genieacs_client.fetch_faults(mapping.device_id, limit=20) if params is not None else [],
     })
 
 
@@ -287,3 +288,36 @@ def tr069_wan_bind(onu_id):
     log_action('tr069_wan_bind', 'onu', target=str(onu_id),
                detail=f'{d["conn_key"]} vlan={d["vlan_id"]} ok={ok}')
     return _task_resp(ok, err)
+
+
+@bp.route('/api/genieacs/faults', methods=['GET'])
+@login_required
+def list_faults():
+    """Fault GenieACS + ONU yang terpetakan ke device-nya."""
+    faults = genieacs_client.fetch_faults()
+    dev_ids = {f['device'] for f in faults}
+    onu_by_dev = {}
+    if dev_ids:
+        for m, o in (db.session.query(GenieacsDeviceMap, ONU).join(ONU, GenieacsDeviceMap.onu_id == ONU.id)
+                     .filter(GenieacsDeviceMap.device_id.in_(dev_ids)).all()):
+            onu_by_dev[m.device_id] = {'onu_id': o.id, 'onu_name': o.name}
+    for f in faults:
+        f.update(onu_by_dev.get(f['device'], {'onu_id': None, 'onu_name': None}))
+    return jsonify({'success': True, 'faults': faults})
+
+
+@bp.route('/api/genieacs/faults/<path:fault_id>', methods=['DELETE'])
+@login_required
+@permission_required(_PERM)
+def remove_fault(fault_id):
+    ok, err = genieacs_client.delete_fault(fault_id)
+    log_action('tr069_fault_delete', 'settings', target=fault_id[:120], detail=f'ok={ok} {err}')
+    return jsonify({'success': ok, 'message': err})
+
+
+@bp.route('/api/genieacs/stale', methods=['GET'])
+@login_required
+def list_stale():
+    hours = request.args.get('hours', type=int)
+    hours, rows = genieacs_client.stale_devices(hours)
+    return jsonify({'success': True, 'hours': hours, 'devices': rows})

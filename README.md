@@ -109,6 +109,8 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - **Diagnosis otomatis per ONU**: optik (LOS/dying gasp/redaman), PPPoE & ping dari MikroTik, putus-nyambung 24 jam, dan gangguan massal di jalur FTTH → kesimpulan + saran tindakan (Detail ONU, `/diagnosa`, AI)
 - **Riwayat sesi PPPoE** (tersambung/putus/putus-nyambung cepat) dari poller MikroTik, 30 hari
 - **Ping paralel dari server NMS** (opsional per MikroTik) — semua pelanggan dicek tiap siklus
+- **Kesehatan router MikroTik** (CPU/RAM/suhu/versi) + alert tidak terjangkau/CPU/suhu tinggi
+- **Pemantauan GenieACS**: modem tidak lapor, fault (hapus & coba lagi), sinkron otomatis 30 menit, RX versi modem & perangkat terhubung di panel TR-069
 
 ### AI Agent (baca-saja)
 - **Tanya status jaringan lewat WhatsApp/Telegram/web**: ringkasan OLT, cari pelanggan, detail ONU, ONU bermasalah/redaman lemah, alert terbaru, insiden gangguan aktif, lokasi pelanggan di FTTH (ODP/port, jalur hulu + Google Maps), isi titik FTTH & port ODP kosong, detail port/uplink OLT, trafik, riwayat putus & tren redaman ONU, status PPPoE/ping dari MikroTik (data poller), info modem dari GenieACS/TR069 (GET baca-saja) — data langsung dari DB NMS via tool calling, tanpa perintah ke OLT

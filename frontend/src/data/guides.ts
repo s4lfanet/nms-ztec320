@@ -206,6 +206,7 @@ export const guides: Guide[] = [
       'Column visibility & order bisa diatur di Customization page',
       'Export CSV include semua ONU (tidak terfilter by pagination)',
       'Match MAC butuh MikroTik yang sudah ditambahkan di menu Mikrotik — mulai dari mode Selisih ±1, naikkan bila banyak yang tidak cocok',
+      'Kolom Kesehatan di halaman MikroTik menampilkan CPU, RAM, suhu, dan versi RouterOS; NMS mengirim alert bila router tidak terjangkau > 5 menit, CPU ≥ 85% berturut-turut, atau suhu ≥ 70°C',
       'Sumber ping "Dari server NMS" mem-ping semua pelanggan paralel tiap siklus (status lambat/putus selalu segar) — pastikan server NMS bisa menjangkau IP PPPoE klien; bila tidak, pakai "Dari MikroTik"',
       'Untuk MikroTik buat user khusus NMS dengan group policy read,api,test saja (cukup untuk /ppp/active dan ping), dan pakai api-ssl (port 8729) agar login tidak lewat jaringan tanpa enkripsi',
     ],
@@ -561,6 +562,10 @@ export const guides: Guide[] = [
       {
         title: 'Usage',
         content: 'TR069 profile dipakai oleh 4 template: ZTE Single, ZTE Dual Band, ZTE Multi-Service, dan Fiberhome VEIP — dipilih dari dropdown saat konfigurasi ONU di Register/Provision Wizard.',
+      },
+      {
+        title: 'Pemantauan GenieACS',
+        content: 'Kartu **Pemantauan GenieACS** di halaman ini menampilkan:\n**Modem tidak lapor** — ONU online tetapi modemnya tidak inform ke GenieACS lebih dari 24 jam. Perintah TR-069 tidak akan sampai ke modem ini; cek VLAN/IP manajemen dan setelan ACS di modem.\n**Fault GenieACS** — perintah/preset yang gagal. Selama fault ada, perintah berikutnya di jalur yang sama ditahan; klik **Hapus & coba lagi** setelah penyebabnya dibereskan.\n\nPemetaan ONU ↔ modem disinkronkan otomatis tiap 30 menit (tombol Sync tetap bisa dipakai kapan saja).'
       },
       {
         title: 'Perintah ke modem (GenieACS)',
