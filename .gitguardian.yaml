@@ -1,0 +1,8 @@
+# GitGuardian: frontend/dist adalah hasil build (minified) dari frontend/src,
+# yang tetap dipindai. Setiap perubahan halaman membuat nama file bundle baru,
+# sehingga pola di kode minified ikut terdeteksi ulang sebagai "Generic Password"
+# palsu. Abaikan folder hasil build saja.
+version: 2
+secret:
+  ignored_paths:
+    - frontend/dist/**

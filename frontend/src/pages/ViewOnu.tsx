@@ -16,7 +16,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useTranslation } from 'react-i18next';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
-import { Card, EmptyState, Modal, Button } from '../components/ui';
+import { Card, EmptyState, Modal, Button, ActionMenu } from '../components/ui';
 
 interface ModalState { type: string; data?: Record<string, unknown>; }
 
@@ -379,6 +379,104 @@ export function ViewOnu() {
         { label: t('viewOnu.breadcrumbView') },
       ]} />
 
+      {/* Ringkasan ONU (redesign Fase 2): nama, status, dan redaman langsung
+          terlihat di layar pertama HP, aksi tepat di bawahnya. */}
+      <section className="glass-card rounded-2xl p-4 md:p-5 flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl md:text-2xl font-bold font-display text-tx1 truncate">{onu.name || onu.serial_number || '-'}</h1>
+              <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium', statusColor(onu.status))}>
+                <span className={cn('w-1.5 h-1.5 rounded-full', onu.status === 'online' ? 'bg-success' : onu.status === 'los' ? 'bg-danger' : 'bg-offline')} />{onu.status}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-tx3 font-mono truncate">{[onu.olt_name, onu.onu_id_str, onu.serial_number].filter(Boolean).join(' · ')}</p>
+          </div>
+          <div className="flex items-end gap-5 sm:text-right shrink-0">
+            <div>
+              <div className="label-sm">RX ONU</div>
+              <div className={cn('text-2xl md:text-3xl font-bold num leading-tight', sigColor(rxOnu))}>
+                {rxOnu !== null ? rxOnu.toFixed(2) : 'N/A'}<span className="text-sm font-medium text-tx3 ml-1">{rxOnu !== null ? 'dBm' : ''}</span>
+              </div>
+            </div>
+            <div>
+              <div className="label-sm">RX OLT</div>
+              <div className={cn('text-lg font-semibold num leading-tight', sigColor(rxOlt))}>
+                {rxOlt !== null ? rxOlt.toFixed(2) : 'N/A'}<span className="text-xs font-medium text-tx3 ml-1">{rxOlt !== null ? 'dBm' : ''}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      {/* Aksi ONU (redesign Fase 2): 3 aksi harian tetap terlihat, sisanya di
+          menu "Lainnya" — aksi merusak dipisah di bagian bawah menu. Handler,
+          izin, dan dialog konfirmasi sama seperti sebelumnya. */}
+        <div className="flex flex-wrap items-center gap-2">
+        <ActBtn icon={<Activity size={14} />} label={t('viewOnu.getStatus')} onClick={() => getStatusMut.mutate()} loading={pendingAction === 'get-status'} />
+        {hasPerm('reboot_onu') && <ActBtn icon={<RotateCcw size={14} />} label={t('viewOnu.reboot')} onClick={() => doAction('reset', t('viewOnu.reboot'))} loading={pendingAction === 'reset'} />}
+        <ActBtn icon={<FileText size={14} />} label={t('viewOnu.showConfig')} onClick={showConfig} loading={pendingAction === 'show-config'} />
+        <ActionMenu
+          className="py-2! px-3! text-xs! rounded-xl! font-medium"
+          title={onu.name || t('ui.more')}
+          actions={[
+            ...(hasPerm('configure_onu') ? [{
+              key: 'resync', label: t('viewOnu.resyncConfig'), icon: <RefreshCw size={16} />,
+              disabled: !!pendingAction,
+              onClick: async () => {
+                const ok = await confirm({ title: 'Resync Config?', message: `Re-collect ONU config from OLT for "${onu.name}"?`, confirmLabel: 'Resync', variant: 'warning' });
+                if (ok) {
+                  setPendingAction('resync');
+                  try {
+                    const res = await fetch(`/api/onu/${onuId}/resync-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include' });
+                    const d = await res.json();
+                    if (d.success) { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); toast.success('Config resynced!'); } else toast.error(d.message || 'Failed');
+                  } catch { toast.error('Resync failed'); }
+                  finally { setPendingAction(null); }
+                }
+              },
+            }] : []),
+            ...(hasPerm('configure_onu') ? [
+              { key: 'reset-wifi', label: t('viewOnu.resetWifi'), icon: <WifiOff size={16} />, disabled: !!pendingAction, onClick: () => doAction('restore-wifi', t('viewOnu.resetWifi')) },
+              { key: 'replace', label: t('viewOnu.replaceOnu'), icon: <Replace size={16} />, disabled: !!pendingAction, onClick: () => setModal({ type: 'replaceOnu' }) },
+            ] : []),
+            ...(hasPerm('disable_onu') && onu.status !== 'online' ? [
+              { key: 'enable', label: t('viewOnu.enableOnu'), icon: <Activity size={16} />, disabled: !!pendingAction, onClick: () => doAction('enable', t('common.enable')) },
+            ] : []),
+            // ── aksi merusak ──
+            ...(hasPerm('reset_onu') ? [{
+              key: 'reset-reconfig', label: t('viewOnu.resetReconfig'), icon: <RefreshCw size={16} />, danger: true,
+              disabled: !!pendingAction,
+              onClick: async () => {
+                const ok = await confirm({
+                  title: 'Factory Reset + Auto-Reconfig?',
+                  message: `ONU "${onu.name}" akan di-factory-reset (OMCI), tapi config di OLT TETAP tersimpan. Saat ONU online kembali, OLT otomatis mengirim ulang config (WAN, PPPoE, WiFi, TR069) ke ONU ini. Hanya ONU ini yang terpengaruh.\n\nLanjutkan?`,
+                  confirmLabel: 'Reset + Reconfig',
+                  variant: 'warning',
+                });
+                if (ok) actionMut.mutate('restore-factory-keep');
+              },
+            }] : []),
+            ...(hasPerm('disable_onu') && onu.status === 'online' ? [
+              { key: 'disable', label: t('viewOnu.disableOnu'), icon: <Ban size={16} />, danger: true, disabled: !!pendingAction, onClick: () => doAction('disable', t('common.disable')) },
+            ] : []),
+            ...(hasPerm('clear_config_onu') ? [
+              { key: 'clear-config', label: t('viewOnu.clearConfig'), icon: <Eraser size={16} />, danger: true, disabled: !!pendingAction, onClick: () => doAction('clear-config', t('viewOnu.clearConfig')) },
+            ] : []),
+            ...(hasPerm('reset_onu') ? [
+              { key: 'factory', label: t('viewOnu.resetFactory'), icon: <Power size={16} />, danger: true, disabled: !!pendingAction, onClick: () => doAction('restore-factory', t('viewOnu.resetFactory')) },
+            ] : []),
+            ...(hasPerm('delete_onu') ? [
+              { key: 'delete', label: t('common.delete'), icon: <Trash2 size={16} />, danger: true, disabled: !!pendingAction, onClick: () => doAction('delete', t('common.delete')) },
+            ] : []),
+          ]}
+        />
+        {pendingAction && !['get-status', 'reset', 'show-config'].includes(pendingAction) && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-tx3" role="status">
+            <RefreshCw size={13} className="animate-spin" /> {t('common.loading')}
+          </span>
+        )}
+      </div>
+      </section>
+
       {/* ONU Details Card */}
       <Card
         title={t('viewOnu.details')}
@@ -479,44 +577,6 @@ export function ViewOnu() {
             ) : (<div className="flex items-center gap-2 p-3 rounded-lg bg-glass text-xs text-tx3"><Clock size={14} /> {t('viewOnu.noEvents')} <strong>{t('viewOnu.getStatus')}</strong> {t('viewOnu.noEventsSuffix')}</div>)}
           </div>
       </Card>
-
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-2">
-        {hasPerm('reboot_onu') && <ActBtn icon={<RotateCcw size={14} />} label={t('viewOnu.reboot')} onClick={() => doAction('reset', t('viewOnu.reboot'))} loading={pendingAction === 'reset'} />}
-        <ActBtn icon={<Activity size={14} />} label={t('viewOnu.getStatus')} onClick={() => getStatusMut.mutate()} loading={pendingAction === 'get-status'} />
-        <ActBtn icon={<FileText size={14} />} label={t('viewOnu.showConfig')} onClick={showConfig} loading={pendingAction === 'show-config'} />
-        {hasPerm('configure_onu') && <ActBtn icon={<RefreshCw size={14} />} label={t('viewOnu.resyncConfig')} onClick={async () => {
-          const ok = await confirm({ title: 'Resync Config?', message: `Re-collect ONU config from OLT for "${onu.name}"?`, confirmLabel: 'Resync', variant: 'warning' });
-          if (ok) {
-            setPendingAction('resync');
-            try {
-              const res = await fetch(`/api/onu/${onuId}/resync-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include' });
-              const d = await res.json();
-              if (d.success) { qc.invalidateQueries({ queryKey: ['onu-detail', onuId] }); qc.invalidateQueries({ queryKey: ['onu-live-detail', onuId] }); toast.success('Config resynced!'); } else toast.error(d.message || 'Failed');
-            } catch { toast.error('Resync failed'); }
-            finally { setPendingAction(null); }
-          }
-        }} loading={pendingAction === 'resync'} />}
-        {hasPerm('clear_config_onu') && <ActBtn icon={<Eraser size={14} />} label={t('viewOnu.clearConfig')} onClick={() => doAction('clear-config', t('viewOnu.clearConfig'))} variant="danger" loading={pendingAction === 'clear-config'} />}
-        {hasPerm('configure_onu') && <ActBtn icon={<WifiOff size={14} />} label={t('viewOnu.resetWifi')} onClick={() => doAction('restore-wifi', t('viewOnu.resetWifi'))} variant="warning" loading={pendingAction === 'restore-wifi'} />}
-        {hasPerm('reset_onu') && <ActBtn icon={<Power size={14} />} label={t('viewOnu.resetFactory')} onClick={() => doAction('restore-factory', t('viewOnu.resetFactory'))} variant="danger" loading={pendingAction === 'restore-factory'} />}
-        {hasPerm('reset_onu') && <ActBtn icon={<RefreshCw size={14} />} label={t('viewOnu.resetReconfig')} onClick={async () => {
-          const ok = await confirm({
-            title: 'Factory Reset + Auto-Reconfig?',
-            message: `ONU "${onu.name}" akan di-factory-reset (OMCI), tapi config di OLT TETAP tersimpan. Saat ONU online kembali, OLT otomatis mengirim ulang config (WAN, PPPoE, WiFi, TR069) ke ONU ini. Hanya ONU ini yang terpengaruh.\n\nLanjutkan?`,
-            confirmLabel: 'Reset + Reconfig',
-            variant: 'warning',
-          });
-          if (ok) actionMut.mutate('restore-factory-keep');
-        }} variant="warning" loading={pendingAction === 'restore-factory-keep'} />}
-        {hasPerm('disable_onu') && (onu.status === 'online' ? (
-          <ActBtn icon={<Ban size={14} />} label={t('viewOnu.disableOnu')} onClick={() => doAction('disable', t('common.disable'))} variant="danger" loading={pendingAction === 'disable'} />
-        ) : (
-          <ActBtn icon={<Activity size={14} />} label={t('viewOnu.enableOnu')} onClick={() => doAction('enable', t('common.enable'))} variant="success" loading={pendingAction === 'enable'} />
-        ))}
-        {hasPerm('delete_onu') && <ActBtn icon={<Trash2 size={14} />} label={t('common.delete')} onClick={() => doAction('delete', t('common.delete'))} variant="danger" loading={pendingAction === 'delete'} />}
-        {hasPerm('configure_onu') && <ActBtn icon={<Replace size={14} />} label={t('viewOnu.replaceOnu')} onClick={() => setModal({ type: 'replaceOnu' })} variant="warning" loading={pendingAction === 'replace'} />}
-      </div>
 
       {/* FTTH cable path — trace this customer back to the OLT */}
       <FtthPathCard onuId={onuId} />
