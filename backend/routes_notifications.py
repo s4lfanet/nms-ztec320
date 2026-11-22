@@ -245,6 +245,14 @@ def get_alert_history():
     })
 
 
+def _maint_node_name(w):
+    if not w.node_type:
+        return ''
+    from ftth_topology import get_node
+    n = get_node(w.node_type, w.node_id)
+    return n.name if n else f'#{w.node_id}'
+
+
 @bp.route('/api/maintenance', methods=['GET'])
 @login_required
 def get_maintenance_windows():
@@ -256,6 +264,9 @@ def get_maintenance_windows():
         'windows': [{
             'id': w.id, 'olt_id': w.olt_id,
             'olt_name': w.olt.name if w.olt else 'All OLTs',
+            'node_type': w.node_type or '',
+            'node_id': w.node_id,
+            'node_name': _maint_node_name(w),
             'start_time': utc_iso(w.start_time),
             'end_time': utc_iso(w.end_time),
             'reason': w.reason,
@@ -283,8 +294,25 @@ def create_maintenance_window():
     except Exception:
         return jsonify({'success': False, 'message': 'Invalid datetime format'}), 400
 
+    if end_dt <= start_dt:
+        return jsonify({'success': False, 'message': 'Waktu selesai harus setelah waktu mulai'}), 400
+    node_type = str(data.get('node_type') or '')
+    node_id = data.get('node_id')
+    if node_type:
+        from ftth_topology import NODE_MODELS, get_node
+        try:
+            node_id = int(node_id)
+        except (TypeError, ValueError):
+            node_id = None
+        if node_type not in NODE_MODELS or not node_id or get_node(node_type, node_id) is None:
+            return jsonify({'success': False, 'message': 'Node FTTH tidak ditemukan'}), 400
+    else:
+        node_id = None
+
     window = MaintenanceWindow(
-        olt_id=data.get('olt_id'),
+        node_type=node_type,
+        node_id=node_id,
+        olt_id=None if node_type else data.get('olt_id'),
         start_time=start_dt,
         end_time=end_dt,
         reason=data.get('reason', ''),

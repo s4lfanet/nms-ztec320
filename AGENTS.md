@@ -239,6 +239,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 27. **Insiden (`Incident`, `IncidentLog`, `incidents.py`, `routes_incidents.py`)** — dibuat/diperbarui di `_check_odp_outages` via `upsert_incident` (satu insiden aktif per node), ditutup di `close_stale_incidents` (merged ke root di atasnya / pulih: auto-resolve bila masih `open`). Status hanya maju: open → acknowledged → en_route → on_site → resolved (resolved wajib catatan). Foto di `instance/incident_photos/<id>/` (bukan static), disajikan lewat `/api/incidents/<id>/photos/<name>` dengan login. Alert punya `incident_id` → link insiden di pesan; penerima hasil routing disimpan di `assigned_user_ids`.
 
+28. **Eskalasi & maintenance (`escalation.py`, `MaintenanceWindow.node_type/node_id`)** — `check_escalations()` dipanggil di akhir `_check_onus_for_tenant`: insiden `open` → level 1 teknisi `backup` (route_alert role='backup') → level 2 admin (super admin / `manage_users` + nomor WA); pengingat TTR sekali (log `action='ttr'`). Kunci SystemConfig `escalation_enabled/ack_minutes/ttr_hours`. Kirim WA lewat `alerts._wa_send(phone, text)`. Maintenance: window dengan `node_type` (otb/jc/odc/odp) hanya menahan ONU hilirnya (`_node_maintenance_scope`); window OLT-wide = `node_type` kosong. Jangan pakai `olt_id IS NULL` saja sebagai "semua OLT".
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

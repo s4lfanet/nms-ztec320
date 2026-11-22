@@ -8,7 +8,7 @@ import {
   Bell, MessageCircle, Send, Settings, Shield, Save,
   ToggleLeft, ToggleRight, AlertTriangle, Radio, Wifi,
   Zap, Clock, RefreshCw, Smartphone, QrCode, LogOut, Loader2,
-  Play, Square, Server, Activity, Cpu, Thermometer, CheckCircle2, Terminal, MapPin, Trash2, Plus
+  Play, Square, Server, Activity, Cpu, Thermometer, CheckCircle2, Terminal, MapPin, Trash2, Plus, Timer, Wrench
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -237,6 +237,8 @@ function AlertRulesSection() {
       ))}
       <OutageCorrelationCard />
       <TechnicianAreasCard />
+      <EscalationCard />
+      <MaintenanceCard />
     </div>
   );
 }
@@ -1949,6 +1951,195 @@ function TechnicianAreasCard() {
             </Select>
             <div className="sm:col-span-3">
               <Button variant="primary" icon={<Plus size={15} />} loading={busy} onClick={add}>{t('pg_alerts.areaAdd')}</Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ─── Eskalasi insiden (Fase 4) ─── */
+
+function EscalationCard() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['system-config'],
+    queryFn: async () => { const r = await fetch('/api/system-config', { credentials: 'include' }); return r.json(); },
+  });
+  const [enabled, setEnabled] = useState(true);
+  const [ackMin, setAckMin] = useState('15');
+  const [ttrH, setTtrH] = useState('3');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const c = data?.config;
+    if (!c) return;
+    setEnabled(!['0', 'false', 'off', 'no'].includes(String(c.escalation_enabled ?? '1').toLowerCase()));
+    setAckMin(String(c.escalation_ack_minutes || '15'));
+    setTtrH(String(c.escalation_ttr_hours || '3'));
+  }, [data]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const r = await fetch('/api/system-config', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({
+          escalation_enabled: enabled ? '1' : '0',
+          escalation_ack_minutes: String(Math.max(5, Math.min(240, parseInt(ackMin) || 15))),
+          escalation_ttr_hours: String(Math.max(1, Math.min(72, parseInt(ttrH) || 3))),
+        }),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success(t('pg_alerts.escSaved')); qc.invalidateQueries({ queryKey: ['system-config'] }); }
+      else toast.error(d.message || t('pg_alerts.failedToSave'));
+    } catch { toast.error(t('pg_alerts.failedToSave')); }
+    setSaving(false);
+  };
+
+  return (
+    <Card
+      icon={<div className="w-8 h-8 rounded-lg bg-warning/10 border border-warning/20 flex items-center justify-center"><Timer size={15} className="text-warning" /></div>}
+      title={t('pg_alerts.escTitle')}
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-tx3">{t('pg_alerts.escDesc')}</p>
+        <button type="button" onClick={() => setEnabled(v => !v)}
+          className={cn('w-full flex items-center gap-2.5 p-2.5 rounded-lg border text-xs font-medium transition-colors',
+            enabled ? 'border-accent/50 bg-accent/10 text-tx1' : 'border-brd bg-surface/60 text-tx3 hover:text-tx2')}>
+          <span className="flex-1 text-left">{t('pg_alerts.escEnable')}</span>
+          {enabled ? <ToggleRight size={18} className="text-accent flex-shrink-0" /> : <ToggleLeft size={18} className="flex-shrink-0" />}
+        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Input label={t('pg_alerts.escAckMinutes')} type="number" min={5} max={240} value={ackMin} disabled={!enabled}
+            onChange={e => setAckMin(e.target.value)} helperText={t('pg_alerts.escAckHelp')} />
+          <Input label={t('pg_alerts.escTtrHours')} type="number" min={1} max={72} value={ttrH} disabled={!enabled}
+            onChange={e => setTtrH(e.target.value)} helperText={t('pg_alerts.escTtrHelp')} />
+        </div>
+        <div className="pt-2 border-t border-brd">
+          <Button variant="primary" icon={<Save size={15} />} loading={saving} onClick={save}>{t('pg_alerts.escSave')}</Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/* ─── Mode maintenance (Fase 4) ─── */
+
+type MaintWindow = { id: number; olt_id: number | null; olt_name: string; node_type: string; node_id: number | null; node_name: string; start_time: string; end_time: string; reason: string; created_by: string; is_active: boolean };
+
+function toLocalInput(d: Date) {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function MaintenanceCard() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const hasPerm = useHasPerm();
+  const canEdit = hasPerm('customization');
+  const { data } = useQuery({
+    queryKey: ['maintenance'],
+    queryFn: async () => { const r = await fetch('/api/maintenance', { credentials: 'include' }); return r.json(); },
+  });
+  const { data: nodeData } = useQuery({
+    queryKey: ['technician-area-nodes'],
+    queryFn: async () => { const r = await fetch('/api/technician-areas/nodes', { credentials: 'include' }); return r.json(); },
+    enabled: canEdit,
+  });
+  const windows: MaintWindow[] = (data?.windows || []).filter((w: MaintWindow) => new Date(w.end_time) > new Date(Date.now() - 7 * 864e5));
+  const nodes: AreaNode[] = nodeData?.nodes || [];
+  const [scope, setScope] = useState('all');
+  const [start, setStart] = useState(() => toLocalInput(new Date()));
+  const [hours, setHours] = useState('2');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const add = async () => {
+    const st = new Date(start);
+    if (isNaN(st.getTime())) { toast.error(t('pg_alerts.maintBadTime')); return; }
+    const en = new Date(st.getTime() + Math.max(0.25, parseFloat(hours) || 2) * 3600e3);
+    const [ty, id] = scope.split(':');
+    const body: Record<string, unknown> = { start_time: st.toISOString(), end_time: en.toISOString(), reason };
+    if (ty === 'olt') body.olt_id = Number(id);
+    else if (ty !== 'all') { body.node_type = ty; body.node_id = Number(id); }
+    setBusy(true);
+    try {
+      const r = await fetch('/api/maintenance', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (d.success) { toast.success(t('pg_alerts.maintSaved')); setReason(''); qc.invalidateQueries({ queryKey: ['maintenance'] }); }
+      else toast.error(d.message || t('pg_alerts.failedToSave'));
+    } catch { toast.error(t('pg_alerts.failedToSave')); }
+    setBusy(false);
+  };
+
+  const remove = async (w: MaintWindow) => {
+    const ok = await confirm({ title: t('pg_alerts.maintRemoveTitle'), message: w.reason || scopeLabel(w), variant: 'danger' });
+    if (!ok) return;
+    const r = await fetch(`/api/maintenance/${w.id}`, { method: 'DELETE', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    const d = await r.json();
+    if (d.success) qc.invalidateQueries({ queryKey: ['maintenance'] }); else toast.error(d.message || t('pg_alerts.failedToSave'));
+  };
+
+  function scopeLabel(w: MaintWindow) {
+    if (w.node_type) return `${w.node_type.toUpperCase()} ${w.node_name}`;
+    return w.olt_id ? `OLT ${w.olt_name}` : t('pg_alerts.maintAllOlt');
+  }
+  const fmt = (s: string) => new Date(s).toLocaleString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <Card
+      icon={<div className="w-8 h-8 rounded-lg bg-info/10 border border-info/20 flex items-center justify-center"><Wrench size={15} className="text-info" /></div>}
+      title={t('pg_alerts.maintTitle')}
+    >
+      <div className="space-y-4">
+        <p className="text-xs text-tx3">{t('pg_alerts.maintDesc')}</p>
+        {windows.length === 0 ? (
+          <p className="text-xs text-tx3 p-3 rounded-lg bg-glass border border-brd">{t('pg_alerts.maintEmpty')}</p>
+        ) : (
+          <div className="space-y-2">
+            {windows.map(w => (
+              <div key={w.id} className={cn('flex items-start gap-3 p-3 rounded-lg border', w.is_active ? 'border-info/40 bg-info/10' : 'border-brd bg-glass')}>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-tx1">{scopeLabel(w)}
+                    {w.is_active && <span className="ml-2 text-[11px] font-medium text-info">{t('pg_alerts.maintActive')}</span>}
+                  </div>
+                  <div className="text-xs text-tx3">{fmt(w.start_time)} – {fmt(w.end_time)}{w.reason ? ` · ${w.reason}` : ''}</div>
+                </div>
+                {canEdit && (
+                  <button type="button" onClick={() => remove(w)} aria-label={t('pg_alerts.maintRemoveTitle')}
+                    className="p-1.5 rounded hover:bg-danger/10 text-tx3 hover:text-danger"><Trash2 size={14} /></button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {canEdit && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-brd">
+            <Select label={t('pg_alerts.maintScope')} value={scope} onChange={e => setScope(e.target.value)}>
+              <option value="all">{t('pg_alerts.maintAllOlt')}</option>
+              {AREA_TYPES.map(ty => {
+                const list = nodes.filter(n => n.type === ty);
+                return list.length ? (
+                  <optgroup key={ty} label={ty.toUpperCase()}>
+                    {list.map(n => <option key={`${ty}:${n.id}`} value={`${ty}:${n.id}`}>{n.name}</option>)}
+                  </optgroup>
+                ) : null;
+              })}
+            </Select>
+            <Input label={t('pg_alerts.maintStart')} type="datetime-local" value={start} onChange={e => setStart(e.target.value)} />
+            <Select label={t('pg_alerts.maintDuration')} value={hours} onChange={e => setHours(e.target.value)}>
+              {['0.5', '1', '2', '4', '8', '24'].map(h => <option key={h} value={h}>{t('pg_alerts.maintHours', { n: h })}</option>)}
+            </Select>
+            <Input label={t('pg_alerts.maintReason')} value={reason} onChange={e => setReason(e.target.value)} placeholder={t('pg_alerts.maintReasonPh')} />
+            <div className="sm:col-span-2">
+              <Button variant="primary" icon={<Plus size={15} />} loading={busy} onClick={add}>{t('pg_alerts.maintAdd')}</Button>
             </div>
           </div>
         )}
