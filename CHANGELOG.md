@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — AI Agent: model Gemini lama dipindah otomatis
+
+#### Diperbaiki
+- Pengaturan AI yang sudah tersimpan dengan `gemini-2.5-flash` (sudah tidak tersedia untuk pengguna baru) otomatis diganti `gemini-3.8-flash` saat halaman AI Agent dibuka atau AI dipakai. Sebelumnya update hanya mengubah bawaan untuk pilihan baru, sehingga model yang tersimpan tetap versi lama.
+- Bila model berbeda dari bawaan penyedia, muncul tautan **Gunakan model bawaan** di bawah kolom Model (memilih ulang penyedia yang sama di dropdown tidak memicu perubahan).
+
 ### 2026-11-22 — AI Agent: model Gemini & pesan error
 
 #### Diperbaiki

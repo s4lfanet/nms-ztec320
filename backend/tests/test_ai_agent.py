@@ -237,3 +237,15 @@ def test_api_error_is_readable(client, monkeypatch):
     with app.app_context():
         ans = ai_agent.ask('e', 'kenapa banyak LOS?')
     assert 'ganti kolom Model' in ans
+
+
+def test_retired_gemini_model_is_upgraded(client):
+    with app.app_context():
+        ai_agent.save_config({'ai_provider': 'openai', 'ai_model': 'gemini-2.5-flash',
+                              'ai_base_url': 'https://generativelanguage.googleapis.com/v1beta/openai'})
+        assert ai_agent.get_config()['ai_model'] == 'gemini-3.8-flash'
+        from models import SystemConfig
+        assert SystemConfig.query.filter_by(key='ai_model').first().value == 'gemini-3.8-flash'
+        # model sama di penyedia lain tidak disentuh
+        ai_agent.save_config({'ai_model': 'gemini-2.5-flash', 'ai_base_url': 'https://openrouter.ai/api/v1'})
+        assert ai_agent.get_config()['ai_model'] == 'gemini-2.5-flash'
