@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Notifikasi gangguan Fase 5: peta gangguan, laporan, info pelanggan
+
+#### Ditambahkan
+- **Peta gangguan**: di tab Peta FTTH, titik insiden aktif tampil sebagai lingkaran berdenyut (merah = dugaan kabel putus, kuning = dugaan listrik padam) dengan popup jumlah terdampak dan link ke insiden; tombol "N gangguan aktif" di atas peta.
+- **Laporan insiden** (Insiden Gangguan → tab Laporan, periode 7/30/90/365 hari): jumlah insiden, rata-rata waktu diterima (MTTA) dan selesai (MTTR), jumlah yang melewati target TTR, yang pulih sendiri, perbandingan penyebab, titik paling sering gangguan, dan kinerja per teknisi.
+- **Info ke pelanggan** di detail insiden: template pesan yang bisa disunting + salin, dan link WhatsApp per pelanggan terdampak yang nomornya diisi di port ODP. Dikirim manual oleh admin, tidak otomatis.
+
 ### 2026-11-22 — Notifikasi gangguan Fase 4: eskalasi & maintenance
 
 #### Ditambahkan

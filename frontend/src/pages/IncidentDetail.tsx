@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Siren, MapPin, Users, Camera, CheckCircle2, Navigation, Hand, Flag, Send, Radio,
+  Siren, MapPin, Users, Camera, CheckCircle2, Navigation, Hand, Flag, Send, Radio, MessageCircle, Copy,
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -38,6 +38,8 @@ export function IncidentDetail() {
   const [resolveNote, setResolveNote] = useState('');
   const [note, setNote] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  const [noticeText, setNoticeText] = useState('');
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['incident', incId] });
@@ -142,6 +144,12 @@ export function IncidentDetail() {
               <Link to={impactLink} className="btn-cancel border border-brd inline-flex items-center gap-2 text-sm">
                 <Radio size={15} /> {t('pg_incidents.openImpact')}
               </Link>
+              {active && (
+                <button type="button" className="btn-cancel border border-brd inline-flex items-center gap-2 text-sm"
+                  onClick={() => { setNoticeText(t('pg_incidents.noticeTemplate', { area: `${inc.node_type.toUpperCase()} ${inc.node_name}` })); setNoticeOpen(true); }}>
+                  <MessageCircle size={15} /> {t('pg_incidents.customerNotice')}
+                </button>
+              )}
             </div>
             {inc.resolution_note && (
               <div className="mt-4 p-3 rounded-lg bg-success/10 border border-success/25 text-sm">
@@ -224,6 +232,42 @@ export function IncidentDetail() {
           </Button>
         </StickyActionBar>
       )}
+
+      <Sheet
+        open={noticeOpen}
+        onClose={() => setNoticeOpen(false)}
+        title={t('pg_incidents.customerNotice')}
+        description={t('pg_incidents.noticeDesc')}
+        footer={
+          <Button variant="primary" icon={<Copy size={16} />} onClick={async () => {
+            try { await navigator.clipboard.writeText(noticeText); toast.success(t('pg_incidents.copied')); }
+            catch { toast.error(t('pg_incidents.copyFailed')); }
+          }}>{t('pg_incidents.copyText')}</Button>
+        }
+      >
+        <Textarea rows={6} value={noticeText} onChange={e => setNoticeText(e.target.value)} />
+        {(() => {
+          const withPhone = inc.onus.filter(o => o.phone);
+          return (
+            <div className="mt-4">
+              <div className="text-xs text-tx3 mb-2">{t('pg_incidents.noticeCustomers', { n: withPhone.length, total: inc.onus.length })}</div>
+              <div className="space-y-1 max-h-72 overflow-y-auto">
+                {withPhone.map(o => {
+                  const digits = o.phone.replace(/\D/g, '').replace(/^0/, '62');
+                  return (
+                    <a key={o.id} href={`https://wa.me/${digits}?text=${encodeURIComponent(noticeText)}`} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 p-2 rounded-lg bg-glass text-xs hover:bg-accent/10">
+                      <MessageCircle size={13} className="text-success" />
+                      <span className="flex-1 truncate">{o.customer || o.name}</span>
+                      <span className="font-mono text-tx3">{o.phone}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+      </Sheet>
 
       <Sheet
         open={resolveOpen}

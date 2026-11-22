@@ -124,3 +124,34 @@ class TestApi:
         assert bad.status_code == 400
         logs = client.get(f'/api/incidents/{iid}').get_json()['incident']['logs']
         assert [lg['action'] for lg in logs][-2:] == ['note', 'photo']
+
+
+class TestReport:
+    def test_report_numbers(self, client):
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        with app.app_context():
+            def mk(**kw):
+                base = dict(node_type='odc', node_id=1, node_name='ODC-X', olt_id=1, title='t', peak_affected=4)
+                base.update(kw)
+                db.session.add(Incident(**base))
+            mk(cause='fiber', status='resolved', opened_at=now - timedelta(hours=5), acknowledged_at=now - timedelta(hours=4, minutes=50),
+               resolved_at=now - timedelta(hours=4), resolved_by='Andi')
+            mk(cause='fiber', status='resolved', opened_at=now - timedelta(hours=10), acknowledged_at=now - timedelta(hours=9, minutes=30),
+               resolved_at=now - timedelta(hours=6), resolved_by='Andi')
+            mk(cause='power', status='resolved', opened_at=now - timedelta(hours=2), resolved_at=now - timedelta(hours=1, minutes=50),
+               node_type='odp', node_id=5, node_name='ODP-Y')
+            mk(cause='mixed', status='open', opened_at=now - timedelta(minutes=30), node_id=2, node_name='ODC-Z')
+            mk(cause='fiber', status='merged', opened_at=now - timedelta(hours=1))
+            mk(cause='fiber', status='resolved', opened_at=now - timedelta(days=60), resolved_at=now - timedelta(days=59), resolved_by='Lama')
+            db.session.commit()
+        _login(client)
+        r = client.get('/api/incidents/report?days=30').get_json()
+        assert r['total'] == 4 and r['active'] == 1
+        assert r['resolved_handled'] == 2 and r['resolved_self'] == 1
+        assert r['mttr_minutes'] == 150  # (60 + 240) / 2
+        assert r['mtta_minutes'] == 20   # (10 + 30) / 2
+        assert r['ttr_breaches'] == 1    # 4 jam > 3 jam
+        assert r['causes'] == {'power': 1, 'fiber': 2, 'mixed': 1}
+        assert r['top_nodes'][0]['node_name'] == 'ODC-X' and r['top_nodes'][0]['count'] == 2
+        assert r['technicians'] == [{'name': 'Andi', 'resolved': 2, 'avg_minutes': 150}]

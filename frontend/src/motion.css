@@ -57,7 +57,15 @@
   to   { opacity: 1; transform: none; }
 }
 
+/* Fase 5: lingkaran gangguan aktif di peta FTTH */
+@keyframes outagePulse {
+  0%, 100% { stroke-opacity: 0.9; fill-opacity: 0.18; }
+  50% { stroke-opacity: 0.35; fill-opacity: 0.06; }
+}
+.outage-pulse { animation: outagePulse 1.8s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
+  .outage-pulse { animation: none; }
   .ignite-sweep::after { animation: none; display: none; }
   .status-flash { animation: none; outline: 2px solid rgb(var(--flash-rgb) / 0.8); outline-offset: -2px; }
   .page-enter { animation: none; }

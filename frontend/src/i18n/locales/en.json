@@ -1561,7 +1561,8 @@
     "odcNoOtb": "{{n}} ODCs without OTB",
     "otbNoOlt": "{{n}} OTBs without OLT",
     "onuNoTech": "{{n}} ONUs without technician",
-    "onuNoGps": "{{n}} ONUs without GPS coordinates"
+    "onuNoGps": "{{n}} ONUs without GPS coordinates",
+    "activeOutages": "{{n}} active outages"
   },
   "pg_cust": {
     "saveFailed": "Save failed",
@@ -1880,7 +1881,9 @@
     "linkSlowFull": "Link slow / loss",
     "linkDownFull": "Link down (ping timeout)",
     "noPppoe": "No PPPoE session",
-    "notChecked": "Not checked yet"
+    "notChecked": "Not checked yet",
+    "outageAffected": "{{n}} customers affected",
+    "outageOpen": "Open incident"
   },
   "cmp_loc": {
     "geolocationNotSupportedBy": "Geolocation not supported by this browser",
@@ -1988,6 +1991,30 @@
     "causeSelf": "Recovered on its own, no fault found",
     "notFound": "Incident not found",
     "notFoundHint": "It may have been removed or the link is wrong.",
-    "failed": "Failed to save"
+    "failed": "Failed to save",
+    "viewList": "List",
+    "viewReport": "Report",
+    "period": "Period",
+    "lastDays": "Last {{n}} days",
+    "minutes": "{{n}} min",
+    "hoursMinutes": "{{h}} h {{m}} min",
+    "rTotal": "Incidents",
+    "rMttr": "Avg time to fix",
+    "rMtta": "Avg time to accept",
+    "rBreach": "Over {{h}} h",
+    "rSelf": "Self-recovered",
+    "rCauses": "Causes",
+    "rTopNodes": "Most affected points",
+    "rTechs": "Technicians (avg time to fix)",
+    "rNone": "No data in this period.",
+    "rTimes": "{{n}}×",
+    "rResolved": "{{n}} resolved",
+    "customerNotice": "Notify customers",
+    "noticeDesc": "Messages are sent manually from your WhatsApp — edit first if needed. Only customers with a phone number on their ODP port are listed.",
+    "noticeTemplate": "Dear customer, there is currently a network outage in the {{area}} area. Our technicians are working on it. Sorry for the inconvenience — we will update you once service is back.",
+    "noticeCustomers": "{{n}} of {{total}} customers have a WhatsApp number",
+    "copyText": "Copy message",
+    "copied": "Message copied",
+    "copyFailed": "Copy failed"
   }
 }
