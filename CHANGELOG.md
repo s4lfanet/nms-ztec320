@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — AI Agent: model Gemini & pesan error
+
+#### Diperbaiki
+- Pilihan **Google Gemini** kini memakai model `gemini-3.8-flash` (model lama `gemini-2.5-flash` sudah tidak tersedia untuk pengguna baru dan menghasilkan error 404).
+- Error dari penyedia AI tampil ringkas, bukan JSON mentah, dan disertai petunjuk: 404 model → ganti kolom Model; 401/403 → API key salah; 429 → kuota habis.
+
+#### Ditambahkan
+- Tombol cepat **/insiden** di "Coba tanya"; teks *tebal* ala WhatsApp tampil tebal di chat web.
+
 ### 2026-11-22 — Halaman AI Agent lebih jelas
 
 #### Diubah

@@ -224,3 +224,16 @@ def test_connection_check(client, monkeypatch):
     client.post('/api/auth/logout', headers=H)
     _login(client, 'tech')
     assert client.post('/api/ai/test', headers=H).status_code == 403
+
+
+def test_api_error_is_readable(client, monkeypatch):
+    body = [{'error': {'code': 404, 'message': 'This model models/gemini-old is no longer available to new users.'}}]
+    monkeypatch.setattr(ai_agent.httpx, 'post', lambda *a, **k: _Resp(body, 404))
+    _enable('openai', ai_base_url='https://generativelanguage.googleapis.com/v1beta/openai', ai_model='gemini-old')
+    _login(client, 'boss')
+    r = client.post('/api/ai/test', headers=H).get_json()
+    assert not r['success'] and '"error"' not in r['message']
+    assert 'no longer available' in r['message'] and 'ganti kolom Model' in r['message']
+    with app.app_context():
+        ans = ai_agent.ask('e', 'kenapa banyak LOS?')
+    assert 'ganti kolom Model' in ans

@@ -20,7 +20,7 @@ interface Cfg {
 const PRESETS: { id: string; label: string; provider: Provider; base: string; model: string; keyUrl?: string; needsKey: boolean }[] = [
   { id: 'claude', label: 'Claude (Anthropic)', provider: 'anthropic', base: 'https://api.anthropic.com', model: 'claude-haiku-5-5', keyUrl: 'https://console.anthropic.com/settings/keys', needsKey: true },
   { id: 'openai', label: 'OpenAI', provider: 'openai', base: 'https://api.openai.com/v1', model: 'gpt-4o-mini', keyUrl: 'https://platform.openai.com/api-keys', needsKey: true },
-  { id: 'gemini', label: 'Google Gemini', provider: 'openai', base: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash', keyUrl: 'https://aistudio.google.com/apikey', needsKey: true },
+  { id: 'gemini', label: 'Google Gemini', provider: 'openai', base: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.8-flash', keyUrl: 'https://aistudio.google.com/apikey', needsKey: true },
   { id: 'openrouter', label: 'OpenRouter', provider: 'openai', base: 'https://openrouter.ai/api/v1', model: 'anthropic/claude-haiku-4.5', keyUrl: 'https://openrouter.ai/keys', needsKey: true },
   { id: 'ollama', label: 'Ollama (lokal)', provider: 'openai', base: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:7b', needsKey: false },
 ];
@@ -33,10 +33,17 @@ const QUICK: [string, string][] = [
   ['/gangguan', 'ONU offline / LOS / dying gasp'],
   ['/redaman', 'ONU online dengan RX < -27 dBm'],
   ['/alert', 'Alert 6 jam terakhir'],
+  ['/insiden', 'Gangguan massal yang sedang ditangani'],
   ['/cari <kata>', 'Cari pelanggan (nama/PPPoE/SN)'],
   ['/onu <ID|nama>', 'Detail satu ONU'],
   ['/menu', 'Daftar perintah'],
 ];
+
+/** Format WhatsApp sederhana di chat web: *tebal* → <b>, sisanya teks biasa. */
+function WaText({ text }: { text: string }) {
+  const parts = text.split(/(\*[^*\n]+\*)/g);
+  return <>{parts.map((p, i) => (p.length > 2 && p.startsWith('*') && p.endsWith('*') ? <b key={i}>{p.slice(1, -1)}</b> : p))}</>;
+}
 
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -199,7 +206,7 @@ export function AiAgentSettings() {
           {chat.length === 0 && <p className="text-xs text-tx3">{t('pg_ai.commandsStartingWith')} <b>/</b> {t('pg_ai.areAnsweredStraightFrom')}</p>}
           {chat.map((m, i) => (
             <div key={i} className={m.role === 'user' ? 'text-right' : ''}>
-              <span className={`inline-block max-w-[90%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm text-left ${m.role === 'user' ? 'bg-accent/15 text-tx1' : 'bg-glass text-tx1'}`}>{m.text}</span>
+              <span className={`inline-block max-w-[90%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm text-left ${m.role === 'user' ? 'bg-accent/15 text-tx1' : 'bg-glass text-tx1'}`}>{m.role === 'ai' ? <WaText text={m.text} /> : m.text}</span>
             </div>
           ))}
           {asking && <Loader2 size={16} className="animate-spin text-tx3" />}
