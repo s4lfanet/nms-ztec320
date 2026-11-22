@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Map as MapIcon, TreePine, Plus, Edit2, Trash2, ChevronDown, ChevronRight,
@@ -138,6 +138,14 @@ export function FtthInfrastructure() {
   const { data: availableOnus } = useQuery({ queryKey: ['ftth-onus'], queryFn: () => api.ftthAvailableOnus() });
   const { data: ponList } = useQuery({ queryKey: ['ftth-pon'], queryFn: api.ftthPonList });
   const { data: fiberPaths } = useQuery({ queryKey: ['ftth-paths'], queryFn: api.ftthPathsList, enabled: tab === 'map' });
+  const { data: activeIncidents } = useQuery({
+    queryKey: ['incidents', 'active'], queryFn: () => api.incidents('active'),
+    enabled: tab === 'map', refetchInterval: tab === 'map' ? 30000 : false,
+  });
+  const outages = (activeIncidents?.incidents || [])
+    .filter(i => i.lat != null && i.lng != null)
+    .map(i => ({ id: i.id, lat: i.lat as number, lng: i.lng as number, cause: i.cause,
+      affected: i.affected_count, label: `${i.node_type.toUpperCase()} ${i.node_name}` }));
 
   const invalidate = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['ftth-tree'] });
@@ -491,9 +499,14 @@ export function FtthInfrastructure() {
               </button>
             )}
             {drawMode && <span className="text-xs text-tx3">{t('pg_ftth.clickTheMapTo')}</span>}
+            {(activeIncidents?.active_count ?? 0) > 0 && (
+              <Link to="/dashboard/incidents" className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-danger/10 border border-danger/30 text-danger text-xs font-semibold">
+                {t('pg_ftth.activeOutages', { n: activeIncidents?.active_count })}
+              </Link>
+            )}
             {autoRouteMode && <span className="text-xs text-tx3">{autoRouteStart ? `Start selected: ${autoRouteStart.name}. Click end marker...` : 'Click a marker to set start point'}</span>}
           </div>
-          <MapView markers={mapData?.markers || []} lines={mapData?.lines || []} fiberPaths={fiberPaths?.paths || []} drawMode={drawMode} onDrawComplete={async (coords) => {
+          <MapView markers={mapData?.markers || []} lines={mapData?.lines || []} fiberPaths={fiberPaths?.paths || []} outages={outages} drawMode={drawMode} onDrawComplete={async (coords) => {
             try {
               await api.ftthPathCreate({ from_type: 'otb', from_id: 0, to_type: 'odp', to_id: 0, coordinates: coords, path_type: 'manual' });
               toast.success(t('pg_ftth.fiberPathSaved'));
@@ -965,8 +978,9 @@ function JcRow({ jc, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDel
 }
 
 // ─── Map View (Leaflet interactive map) ───
-function MapView({ markers, lines, fiberPaths, drawMode, onDrawComplete, onMarkerClick }: {
+function MapView({ markers, lines, fiberPaths, outages, drawMode, onDrawComplete, onMarkerClick }: {
   markers: any[]; lines: any[]; fiberPaths: FTTHFiberPath[]; drawMode: boolean;
+  outages?: Array<{ id: number; lat: number; lng: number; label: string; cause: string; affected: number }>;
   onDrawComplete: (coords: [number, number][]) => void;
   onMarkerClick?: (marker: any) => void;
 }) {
@@ -979,6 +993,7 @@ function MapView({ markers, lines, fiberPaths, drawMode, onDrawComplete, onMarke
       markers={markers}
       lines={lines}
       fiberPaths={fiberPaths}
+      outages={outages}
       height="500px"
       refreshKey={JSON.stringify({ m: markers.length, l: lines.length })}
       drawMode={drawMode}

@@ -1561,7 +1561,8 @@
     "odcNoOtb": "{{n}} ODC tanpa OTB",
     "otbNoOlt": "{{n}} OTB tanpa OLT",
     "onuNoTech": "{{n}} ONU tanpa teknisi",
-    "onuNoGps": "{{n}} ONU tanpa koordinat GPS"
+    "onuNoGps": "{{n}} ONU tanpa koordinat GPS",
+    "activeOutages": "{{n}} gangguan aktif"
   },
   "pg_cust": {
     "saveFailed": "Gagal menyimpan",
@@ -1880,7 +1881,9 @@
     "linkSlowFull": "Link lambat / loss",
     "linkDownFull": "Link down (ping timeout)",
     "noPppoe": "Tidak ada sesi PPPoE",
-    "notChecked": "Belum dicek"
+    "notChecked": "Belum dicek",
+    "outageAffected": "{{n}} pelanggan terdampak",
+    "outageOpen": "Buka insiden"
   },
   "cmp_loc": {
     "geolocationNotSupportedBy": "Browser ini tidak mendukung geolokasi",
@@ -1988,6 +1991,30 @@
     "causeSelf": "Pulih sendiri, tidak ditemukan masalah",
     "notFound": "Insiden tidak ditemukan",
     "notFoundHint": "Mungkin sudah dihapus atau link-nya salah.",
-    "failed": "Gagal menyimpan"
+    "failed": "Gagal menyimpan",
+    "viewList": "Daftar",
+    "viewReport": "Laporan",
+    "period": "Periode",
+    "lastDays": "{{n}} hari terakhir",
+    "minutes": "{{n}} mnt",
+    "hoursMinutes": "{{h}} j {{m}} mnt",
+    "rTotal": "Insiden",
+    "rMttr": "Rata-rata selesai",
+    "rMtta": "Rata-rata diterima",
+    "rBreach": "Lewat {{h}} jam",
+    "rSelf": "Pulih sendiri",
+    "rCauses": "Penyebab",
+    "rTopNodes": "Titik paling sering gangguan",
+    "rTechs": "Teknisi (rata-rata selesai)",
+    "rNone": "Belum ada data pada periode ini.",
+    "rTimes": "{{n}}×",
+    "rResolved": "{{n}} selesai",
+    "customerNotice": "Info ke pelanggan",
+    "noticeDesc": "Pesan dikirim manual dari WA Anda — sunting dulu bila perlu. Hanya pelanggan yang nomornya diisi di port ODP yang muncul.",
+    "noticeTemplate": "Pelanggan yth, saat ini sedang ada gangguan jaringan di area {{area}}. Teknisi kami sedang menangani. Mohon maaf atas ketidaknyamanannya — kami kabari lagi setelah normal.",
+    "noticeCustomers": "{{n}} dari {{total}} pelanggan punya nomor WA",
+    "copyText": "Salin pesan",
+    "copied": "Pesan disalin",
+    "copyFailed": "Gagal menyalin"
   }
 }

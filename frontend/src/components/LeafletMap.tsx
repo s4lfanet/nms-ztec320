@@ -339,6 +339,7 @@ export function LeafletMap({
   refreshKey,
   drawMode = false,
   onDrawComplete,
+  outages = [],
 }: {
   markers: MapMarker[];
   lines: MapLine[];
@@ -349,8 +350,11 @@ export function LeafletMap({
   refreshKey?: string;
   drawMode?: boolean;
   onDrawComplete?: (coords: [number, number][]) => void;
+  /** Fase 5: titik gangguan aktif (insiden) digambar sebagai lingkaran merah/kuning */
+  outages?: Array<{ id: number; lat: number; lng: number; label: string; cause: string; affected: number }>;
 }) {
   const { t } = useTranslation();
+  const outageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
@@ -391,6 +395,7 @@ export function LeafletMap({
     highlightRef.current = L.layerGroup().addTo(mapRef.current);
     pathLayerRef.current = L.layerGroup().addTo(mapRef.current);
     drawLayerRef.current = L.layerGroup().addTo(mapRef.current);
+    outageRef.current = L.layerGroup().addTo(mapRef.current);
 
     // Initialize marker cluster if plugin is available
     if (L.markerClusterGroup) {
@@ -411,9 +416,29 @@ export function LeafletMap({
         highlightRef.current = null;
         pathLayerRef.current = null;
         drawLayerRef.current = null;
+        outageRef.current = null;
       }
     };
   }, [loaded]);
+
+  // Fase 5: lapisan gangguan aktif
+  const outageKey = JSON.stringify(outages.map(o => [o.id, o.affected, o.cause]));
+  useEffect(() => {
+    if (!loaded || !outageRef.current) return;
+    const L = (window as any).L;
+    outageRef.current.clearLayers();
+    for (const o of outages) {
+      if (o.lat == null || o.lng == null) continue;
+      const color = o.cause === 'power' ? '#f59e0b' : '#ef4444';
+      L.circle([o.lat, o.lng], { radius: 120, color, weight: 2, fillColor: color, fillOpacity: 0.18, className: 'outage-pulse' })
+        .addTo(outageRef.current);
+      const esc = (x: string) => x.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+      L.circleMarker([o.lat, o.lng], { radius: 9, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1 })
+        .bindPopup(`<b>${esc(o.label)}</b><br/>${esc(i18n.t('cmp_map.outageAffected', { n: o.affected }))}<br/><a href="/dashboard/incidents/${o.id}">${esc(i18n.t('cmp_map.outageOpen'))}</a>`)
+        .addTo(outageRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, outageKey]);
 
   // Highlight full path for a marker (BFS along connected lines)
   function highlightPath(marker: MapMarker, lines: MapLine[]) {

@@ -46,11 +46,20 @@ export interface IncidentSummary {
   opened_at: string | null; acknowledged_at: string | null; en_route_at: string | null;
   on_site_at: string | null; resolved_at: string | null; recovered_at: string | null;
   resolution_note: string; merged_into_id: number | null; escalation_level: number;
+  lat: number | null; lng: number | null;
 }
 export interface IncidentLogEntry { id: number; at: string | null; username: string; action: string; status: string; note: string; photo: string }
 export interface IncidentDetail extends IncidentSummary {
-  maps_url: string; onus: Array<{ id: number; name: string; serial: string; status: string }>;
+  maps_url: string; onus: Array<{ id: number; name: string; serial: string; status: string; customer: string; phone: string }>;
   online_now: number; logs: IncidentLogEntry[]; can_handle: boolean;
+}
+
+export interface IncidentReport {
+  success: boolean; days: number; ttr_hours: number; total: number; active: number;
+  resolved_handled: number; resolved_self: number; mttr_minutes: number | null; mtta_minutes: number | null;
+  ttr_breaches: number; causes: { power: number; fiber: number; mixed: number };
+  top_nodes: Array<{ node_type: string; node_id: number; node_name: string; count: number; customers: number }>;
+  technicians: Array<{ name: string; resolved: number; avg_minutes: number }>;
 }
 
 export const api = {
@@ -68,6 +77,7 @@ export const api = {
   incidents: (status: 'active' | 'closed' | 'all' = 'active') =>
     request<{ success: boolean; incidents: IncidentSummary[]; active_count: number; closed_count: number }>(`/api/incidents?status=${status}`),
   incident: (id: number) => request<{ success: boolean; incident: IncidentDetail }>(`/api/incidents/${id}`),
+  incidentReport: (days: number) => request<IncidentReport>(`/api/incidents/report?days=${days}`),
   incidentStatus: (id: number, status: string, note = '') =>
     request<{ success: boolean; incident: IncidentSummary }>(`/api/incidents/${id}/status`, { method: 'POST', body: JSON.stringify({ status, note }) }),
   incidentNote: (id: number, note: string) =>

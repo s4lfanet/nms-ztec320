@@ -2,12 +2,18 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Siren, Users, Zap, Scissors, HelpCircle } from 'lucide-react';
+import { Siren, Users, Zap, Scissors, HelpCircle, BarChart3, List } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { EmptyState, LoadingOverlay, StatusStrip } from '../components/ui';
+import { Card, EmptyState, LoadingOverlay, StatusStrip, Select } from '../components/ui';
 import { cn, timeAgo } from '../lib/utils';
 import { api, type IncidentSummary } from '../lib/api';
+
+function fmtMinutes(m: number | null, t: (k: string, o?: Record<string, unknown>) => string) {
+  if (m == null) return '–';
+  if (m < 60) return t('pg_incidents.minutes', { n: m });
+  return t('pg_incidents.hoursMinutes', { h: Math.floor(m / 60), m: m % 60 });
+}
 
 export const INCIDENT_STATUS_TONE: Record<string, string> = {
   open: 'bg-danger/15 text-danger border-danger/30',
@@ -29,6 +35,7 @@ type Filter = 'active' | 'closed' | 'all';
 export function Incidents() {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<Filter>('active');
+  const [view, setView] = useState<'list' | 'report'>('list');
   const { data, isLoading } = useQuery({
     queryKey: ['incidents', filter],
     queryFn: () => api.incidents(filter),
@@ -43,6 +50,17 @@ export function Incidents() {
         description={t('pg_incidents.subtitle')}
         icon={<Siren size={22} />}
       />
+      <div className="inline-flex p-1 mb-4 rounded-lg bg-glass border border-brd" role="tablist">
+        {(['list', 'report'] as const).map(v => (
+          <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
+            className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium',
+              view === v ? 'bg-surface text-tx1 shadow-sm' : 'text-tx3 hover:text-tx1')}>
+            {v === 'list' ? <List size={14} /> : <BarChart3 size={14} />}
+            {t(v === 'list' ? 'pg_incidents.viewList' : 'pg_incidents.viewReport')}
+          </button>
+        ))}
+      </div>
+      {view === 'report' ? <IncidentReportView /> : <>
       <StatusStrip
         className="mb-4"
         aria-label={t('pg_incidents.filter')}
@@ -92,6 +110,75 @@ export function Incidents() {
           ))}
         </div>
       )}
+      </>}
     </PageContainer>
+  );
+}
+
+function IncidentReportView() {
+  const { t } = useTranslation();
+  const [days, setDays] = useState(30);
+  const { data, isLoading } = useQuery({ queryKey: ['incident-report', days], queryFn: () => api.incidentReport(days) });
+  if (isLoading || !data) return <LoadingOverlay />;
+  return (
+    <div className="space-y-4">
+      <div className="max-w-xs">
+        <Select label={t('pg_incidents.period')} value={String(days)} onChange={e => setDays(Number(e.target.value))}>
+          {[7, 30, 90, 365].map(d => <option key={d} value={d}>{t('pg_incidents.lastDays', { n: d })}</option>)}
+        </Select>
+      </div>
+      <StatusStrip
+        aria-label={t('pg_incidents.viewReport')}
+        items={[
+          { key: 'total', label: t('pg_incidents.rTotal'), count: data.total, tone: 'idle' },
+          { key: 'mttr', label: t('pg_incidents.rMttr'), count: fmtMinutes(data.mttr_minutes, t), tone: 'info' },
+          { key: 'mtta', label: t('pg_incidents.rMtta'), count: fmtMinutes(data.mtta_minutes, t), tone: 'info' },
+          { key: 'breach', label: t('pg_incidents.rBreach', { h: data.ttr_hours }), count: data.ttr_breaches, tone: data.ttr_breaches ? 'warn' : 'ok' },
+          { key: 'self', label: t('pg_incidents.rSelf'), count: data.resolved_self, tone: 'ok' },
+        ]}
+      />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <Card title={t('pg_incidents.rCauses')}>
+          <ul className="space-y-2 text-sm">
+            {(['fiber', 'power', 'mixed'] as const).map(c => {
+              const n = data.causes[c]; const pct = data.total ? Math.round(n * 100 / data.total) : 0;
+              return (
+                <li key={c}>
+                  <div className="flex items-center gap-2"><CauseIcon cause={c} /><span className="flex-1">{t(`pg_incidents.cause_${c}`)}</span>
+                    <span className="font-semibold tabular-nums">{n}</span><span className="text-xs text-tx3 w-10 text-right">{pct}%</span></div>
+                  <div className="h-1.5 mt-1 rounded bg-glass overflow-hidden"><div className={cn('h-full', c === 'power' ? 'bg-warning' : c === 'fiber' ? 'bg-danger' : 'bg-tx3')} style={{ width: `${pct}%` }} /></div>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+        <Card title={t('pg_incidents.rTopNodes')}>
+          {data.top_nodes.length === 0 ? <p className="text-xs text-tx3">{t('pg_incidents.rNone')}</p> : (
+            <ol className="space-y-1.5 text-sm">
+              {data.top_nodes.map(n => (
+                <li key={`${n.node_type}:${n.node_id}`} className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-tx3 w-9">{n.node_type.toUpperCase()}</span>
+                  <span className="flex-1 truncate">{n.node_name}</span>
+                  <span className="font-semibold tabular-nums">{t('pg_incidents.rTimes', { n: n.count })}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Card>
+        <Card title={t('pg_incidents.rTechs')}>
+          {data.technicians.length === 0 ? <p className="text-xs text-tx3">{t('pg_incidents.rNone')}</p> : (
+            <ul className="space-y-1.5 text-sm">
+              {data.technicians.map(r => (
+                <li key={r.name} className="flex items-center gap-2">
+                  <span className="flex-1 truncate">{r.name}</span>
+                  <span className="text-xs text-tx3">{t('pg_incidents.rResolved', { n: r.resolved })}</span>
+                  <span className="font-semibold tabular-nums w-20 text-right">{fmtMinutes(r.avg_minutes, t)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+    </div>
   );
 }

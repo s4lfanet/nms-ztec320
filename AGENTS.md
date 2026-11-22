@@ -241,6 +241,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 28. **Eskalasi & maintenance (`escalation.py`, `MaintenanceWindow.node_type/node_id`)** — `check_escalations()` dipanggil di akhir `_check_onus_for_tenant`: insiden `open` → level 1 teknisi `backup` (route_alert role='backup') → level 2 admin (super admin / `manage_users` + nomor WA); pengingat TTR sekali (log `action='ttr'`). Kunci SystemConfig `escalation_enabled/ack_minutes/ttr_hours`. Kirim WA lewat `alerts._wa_send(phone, text)`. Maintenance: window dengan `node_type` (otb/jc/odc/odp) hanya menahan ONU hilirnya (`_node_maintenance_scope`); window OLT-wide = `node_type` kosong. Jangan pakai `olt_id IS NULL` saja sebagai "semua OLT".
 
+29. **Peta & laporan insiden (Fase 5)** — `LeafletMap` prop `outages` (lapisan sendiri, kelas `.outage-pulse` di `motion.css`); FTTH tab peta mengambil `/api/incidents?status=active` (ringkasan insiden membawa `lat/lng` node). `/api/incidents/report?days=N`: MTTR hanya dari insiden yang ditutup manusia (`resolved_by` terisi), `merged` dikecualikan. Info pelanggan = template + link `wa.me` (nomor dari `FTTHODPPort.customer_phone`), tidak dikirim otomatis.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

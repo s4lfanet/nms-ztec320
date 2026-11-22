@@ -48,8 +48,11 @@ def _maps(inc):
 
 
 def _summary(inc):
+    from ftth_topology import get_node
     olt = db.session.get(OLT, inc.olt_id) if inc.olt_id else None
+    node = get_node(inc.node_type, inc.node_id)
     return {
+        'lat': getattr(node, 'latitude', None), 'lng': getattr(node, 'longitude', None),
         'id': inc.id, 'title': inc.title, 'status': inc.status, 'cause': inc.cause,
         'category': inc.category, 'node_type': inc.node_type, 'node_id': inc.node_id,
         'node_name': inc.node_name, 'olt_id': inc.olt_id, 'olt_name': olt.name if olt else '',
@@ -95,8 +98,11 @@ def get_incident(inc_id):
     for oid in ids:
         o = db.session.get(ONU, oid)
         if o:
+            port = getattr(o, 'odp_port', None)
             onus.append({'id': o.id, 'name': o.name or o.serial_number or '', 'serial': o.serial_number or '',
-                         'status': o.status or ''})
+                         'status': o.status or '',
+                         'customer': (port.customer_name or '') if port else '',
+                         'phone': (port.customer_phone or '') if port else ''})
     logs = IncidentLog.query.filter_by(incident_id=inc.id).order_by(IncidentLog.created_at.asc()).all()
     data = _summary(inc)
     data.update({
@@ -197,3 +203,57 @@ def get_photo(inc_id, name):
     if not IncidentLog.query.filter_by(incident_id=inc_id, photo=name).first():
         abort(404)
     return send_from_directory(_photo_dir(inc_id), name, max_age=3600)
+
+
+@bp.route('/api/incidents/report', methods=['GET'])
+@login_required
+def incident_report():
+    """Fase 5 — ringkasan kinerja penanganan gangguan untuk N hari terakhir."""
+    from datetime import timedelta
+    from escalation import escalation_settings
+    try:
+        days = max(1, min(365, int(request.args.get('days', 30))))
+    except ValueError:
+        days = 30
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    since = now - timedelta(days=days)
+    rows = Incident.query.filter(Incident.opened_at >= since, Incident.status != 'merged').all()
+    _, _, ttr_h = escalation_settings()
+
+    def _n(dt):
+        return dt.replace(tzinfo=None) if dt is not None and dt.tzinfo else dt
+
+    def _mins(a, b):
+        return (_n(b) - _n(a)).total_seconds() / 60
+
+    handled = [i for i in rows if i.status == 'resolved' and i.resolved_by]
+    self_recovered = [i for i in rows if i.status == 'resolved' and not i.resolved_by]
+    acked = [i for i in rows if i.acknowledged_at]
+    mttr = round(sum(_mins(i.opened_at, i.resolved_at) for i in handled) / len(handled)) if handled else None
+    mtta = round(sum(_mins(i.opened_at, i.acknowledged_at) for i in acked) / len(acked)) if acked else None
+    breaches = sum(1 for i in rows if _mins(i.opened_at, i.resolved_at or now) > ttr_h * 60)
+
+    causes = {'power': 0, 'fiber': 0, 'mixed': 0}
+    nodes, techs = {}, {}
+    for i in rows:
+        causes[i.cause if i.cause in causes else 'mixed'] += 1
+        k = (i.node_type, i.node_id)
+        nodes.setdefault(k, {'node_type': i.node_type, 'node_id': i.node_id, 'node_name': i.node_name, 'count': 0,
+                             'customers': 0})
+        nodes[k]['count'] += 1
+        nodes[k]['customers'] += i.peak_affected or 0
+    for i in handled:
+        t = techs.setdefault(i.resolved_by, {'name': i.resolved_by, 'resolved': 0, 'minutes': 0.0})
+        t['resolved'] += 1
+        t['minutes'] += _mins(i.opened_at, i.resolved_at)
+    tech_rows = [{'name': t['name'], 'resolved': t['resolved'], 'avg_minutes': round(t['minutes'] / t['resolved'])}
+                 for t in techs.values()]
+    tech_rows.sort(key=lambda r: (-r['resolved'], r['avg_minutes']))
+    top_nodes = sorted(nodes.values(), key=lambda r: (-r['count'], -r['customers']))[:10]
+    return jsonify({
+        'success': True, 'days': days, 'ttr_hours': ttr_h,
+        'total': len(rows), 'active': sum(1 for i in rows if i.status in ACTIVE_STATUSES),
+        'resolved_handled': len(handled), 'resolved_self': len(self_recovered),
+        'mttr_minutes': mttr, 'mtta_minutes': mtta, 'ttr_breaches': breaches,
+        'causes': causes, 'top_nodes': top_nodes, 'technicians': tech_rows,
+    })
