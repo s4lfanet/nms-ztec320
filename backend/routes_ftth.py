@@ -1257,50 +1257,8 @@ def ftth_trace_onu(onu_id):
     return jsonify({'success': True, 'complete': complete, 'hops': hops, 'total_attenuation_db': total_attenuation_db})
 
 
-def _collect_downstream_onus(node_type, node_id, _depth=0, _seen=None):
-    """Recursively collect every ONU reachable downstream of a node (OTB,
-    JC, ODC, or ODP) — used to answer "if this breaks, who's affected"."""
-    if _seen is None:
-        _seen = set()
-    key = (node_type, node_id)
-    if _depth > 25 or key in _seen:
-        return []
-    _seen.add(key)
-    onus = []
-    if node_type == 'odp':
-        for p in FTTHODPPort.query.filter_by(odp_id=node_id).all():
-            if p.onu_id:
-                onu = db.session.get(ONU, p.onu_id)
-                if onu:
-                    onus.append(onu)
-        for child_odp in FTTHODP.query.filter_by(feed_source='odp').join(
-                FTTHODPPort, FTTHODP.parent_odp_port_id == FTTHODPPort.id).filter(FTTHODPPort.odp_id == node_id).all():
-            onus.extend(_collect_downstream_onus('odp', child_odp.id, _depth + 1, _seen))
-    elif node_type == 'odc':
-        for odp in FTTHODP.query.filter_by(feed_source='odc', odc_id=node_id).all():
-            onus.extend(_collect_downstream_onus('odp', odp.id, _depth + 1, _seen))
-        for jc in FTTHJC.query.filter_by(parent_type='odc', parent_id=node_id).all():
-            onus.extend(_collect_downstream_onus('jc', jc.id, _depth + 1, _seen))
-    elif node_type == 'otb':
-        for odc in FTTHODC.query.filter_by(feed_source='otb', otb_id=node_id).all():
-            onus.extend(_collect_downstream_onus('odc', odc.id, _depth + 1, _seen))
-        for jc in FTTHJC.query.filter_by(parent_type='otb', parent_id=node_id).all():
-            onus.extend(_collect_downstream_onus('jc', jc.id, _depth + 1, _seen))
-    elif node_type == 'jc':
-        for otb in FTTHOTB.query.filter_by(feed_source='jc', jc_id=node_id).all():
-            onus.extend(_collect_downstream_onus('otb', otb.id, _depth + 1, _seen))
-        for odc in FTTHODC.query.filter_by(feed_source='jc', jc_id=node_id).all():
-            onus.extend(_collect_downstream_onus('odc', odc.id, _depth + 1, _seen))
-        for odp in FTTHODP.query.filter_by(feed_source='jc', jc_id=node_id).all():
-            onus.extend(_collect_downstream_onus('odp', odp.id, _depth + 1, _seen))
-        for port in FTTHODPPort.query.filter_by(feed_source='jc', jc_id=node_id).all():
-            if port.onu_id:
-                onu = db.session.get(ONU, port.onu_id)
-                if onu:
-                    onus.append(onu)
-        for child in FTTHJC.query.filter_by(parent_type='jc', parent_id=node_id).all():
-            onus.extend(_collect_downstream_onus('jc', child.id, _depth + 1, _seen))
-    return onus
+# Moved to ftth_topology so the alert monitor can reuse it.
+from ftth_topology import collect_downstream_onus as _collect_downstream_onus  # noqa: E402
 
 
 @bp.route('/api/ftth/impact/<node_type>/<int:node_id>', methods=['GET'])
@@ -1317,7 +1275,8 @@ def ftth_impact(node_type, node_id):
     onus = _collect_downstream_onus(node_type, node_id)
     online = sum(1 for u in onus if (u.status or '').lower() == 'online')
     return jsonify({
-        'success': True, 'total': len(onus), 'online': online, 'offline': len(onus) - online,
+        'success': True, 'name': getattr(node, 'name', '') or '',
+        'total': len(onus), 'online': online, 'offline': len(onus) - online,
         'customers': [{'id': u.id, 'name': u.name or u.serial_number or '', 'serial': u.serial_number or '', 'status': u.status or ''} for u in onus[:200]],
         'truncated': len(onus) > 200,
     })

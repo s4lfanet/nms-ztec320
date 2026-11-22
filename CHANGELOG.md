@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Notifikasi gangguan Fase 1: korelasi bertingkat
+
+#### Ditambahkan
+- **Korelasi gangguan naik ke ODC/JC/OTB.** Bila sebagian besar ONU di bawah satu ODC/JC/OTB mati bersamaan, NMS mengirim *satu* alert untuk titik itu (bukan satu per ODP): jumlah ONU mati dari total di bawahnya, daftar ODP terdampak, dan OLT terkait. Membaca data FTTH yang sudah ada; tidak ada perintah ke OLT.
+- **Dugaan penyebab** di setiap alert gangguan ODP/ODC/JC/OTB: mayoritas Dying Gasp → listrik padam, mayoritas LOS → kabel putus.
+- **Link Google Maps** lokasi titik gangguan (bila koordinatnya diisi) dan link langsung ke daftar pelanggan terdampak di halaman FTTH.
+- **Pesan "pulih"** saat ONU di titik gangguan kembali online; notifikasi gangguan ditandai selesai otomatis.
+- Pengaturan baru di **Pengaturan Alert → Aturan**: sakelar korelasi bertingkat, minimal ONU mati, dan persentase ONU mati.
+
+#### Diperbaiki
+- Link "Lihat detail" di WA/Telegram/push mengarah ke halaman yang benar (sebelumnya berakhir di halaman login).
+- Alert gangguan ODP tidak lagi dikirim ulang setiap siklus setelah notifikasinya dibaca, dan dua ODP di OLT yang sama tidak lagi saling menimpa notifikasinya.
+
 ### 2026-11-22 — Terjemahan kelompok 5: komponen bersama
 
 #### Diubah
