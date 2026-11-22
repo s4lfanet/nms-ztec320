@@ -4,6 +4,20 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — AI Agent membaca seluruh data NMS
+
+#### Ditambahkan
+- 8 alat baru untuk AI Agent (baca-saja, tanpa Telnet/SNMP ke OLT):
+  - **onu_location**: ODP & port pelanggan, nama/HP pelanggan, jalur ke ODC/JC/OTB dengan link Google Maps, teknisi.
+  - **ftth_node**: detail titik OTB/JC/ODC/ODP — isi port, ONU hilir per status, ONU yang mati, insiden aktif.
+  - **ftth_free_ports**: ODP yang masih punya port kosong.
+  - **olt_detail**: port PON, uplink (status, utilisasi, CRC error), kipas, suhu, firmware.
+  - **traffic**: rata-rata & puncak trafik port OLT dari log tersimpan.
+  - **onu_history**: riwayat putus/nyambung dan tren redaman harian.
+  - **mikrotik**: status PPPoE, IP, uptime, ping/loss dari data poller MikroTik; ringkasan ONU online tetapi PPPoE putus.
+  - **tr069**: info modem dari GenieACS (firmware, WAN, SSID, klien WiFi) — hanya GET, tanpa password.
+- Detail ONU kini menyebut teknisi dan ODP/port. Panduan AI Agent ditambah contoh pertanyaan teknisi.
+
 ### 2026-11-22 — AI Agent: jawaban rapi di WhatsApp & web
 
 #### Diperbaiki
