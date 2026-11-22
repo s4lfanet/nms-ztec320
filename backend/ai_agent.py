@@ -188,6 +188,9 @@ def tool_onu_detail(args):
         'last_down_reason': o.last_dereg_reason, 'model': o.actual_type or o.onu_type,
         'last_online': _iso(o.last_online), 'last_offline': _iso(o.last_offline),
         'last_seen': _iso(o.last_seen),
+        'teknisi': (o.technician.full_name or o.technician.username) if o.technician else None,
+        'odp': (f"{o.odp_port.odp.name} port {o.odp_port.port_number}"
+                if getattr(o, 'odp_port', None) and getattr(o.odp_port, 'odp', None) else None),
     })
     return d
 
@@ -245,6 +248,284 @@ def tool_incidents(args):
     return {'incidents': out}
 
 
+# ── alat tambahan: FTTH, OLT, trafik, riwayat, MikroTik, TR069 (baca-saja) ──
+
+_NODE_LABEL = {'otb': 'OTB', 'jc': 'JC', 'odc': 'ODC', 'odp': 'ODP'}
+
+
+def _maps(lat, lng):
+    return f'https://maps.google.com/?q={lat},{lng}' if lat is not None and lng is not None else None
+
+
+def _node_brief(t, n):
+    return {'type': _NODE_LABEL.get(t, t), 'id': n.id, 'name': n.name,
+            'location': getattr(n, 'location', '') or None, 'maps': _maps(n.latitude, n.longitude)}
+
+
+def _chain(t, node):
+    """Jalur ke hulu: ODP → ODC/JC → OTB (urut dari yang terdekat)."""
+    from ftth_topology import parents_of, get_node
+    out, seen, cur = [], set(), (t, node)
+    for _ in range(25):
+        ps = parents_of(cur[0], cur[1])
+        if not ps or ps[0] in seen:
+            break
+        seen.add(ps[0])
+        n = get_node(*ps[0])
+        if not n:
+            break
+        out.append(_node_brief(ps[0][0], n))
+        cur = (ps[0][0], n)
+    return out
+
+
+def _resolve_onu(args):
+    if args.get('onu_id'):
+        return db.session.get(ONU, int(args['onu_id']))
+    q = str(args.get('query') or '').strip()
+    if len(q) >= 2:
+        like = f'%{q}%'
+        return ONU.query.filter(db.or_(ONU.name.ilike(like), ONU.pppoe.ilike(like),
+                                       ONU.serial_number.ilike(like))).first()
+    return None
+
+
+def tool_onu_location(args):
+    from ftth_topology import get_node
+    o = _resolve_onu(args)
+    if not o:
+        return {'error': 'ONU tidak ditemukan (beri onu_id atau query)'}
+    out = {'onu': _onu_brief(o),
+           'teknisi': (o.technician.full_name or o.technician.username) if o.technician else None}
+    port = getattr(o, 'odp_port', None)
+    if not port:
+        out['odp'] = 'ONU belum dipetakan ke port ODP mana pun di FTTH.'
+        return out
+    odp = get_node('odp', port.odp_id)
+    out['odp'] = dict(_node_brief('odp', odp), port=port.port_number) if odp else None
+    out['pelanggan'] = {'nama': port.customer_name or None, 'hp': port.customer_phone or None,
+                        'kabel_drop_m': port.cable_length_meters}
+    if odp:
+        out['jalur_ke_hulu'] = _chain('odp', odp)
+    return out
+
+
+def tool_ftth_node(args):
+    """Cari titik FTTH (OTB/JC/ODC/ODP) per nama; satu hasil → detail lengkap."""
+    from ftth_topology import NODE_MODELS, collect_downstream_onus
+    from models import FTTHODPPort, Incident
+    q = str(args.get('name') or '').strip()
+    types = [args['type'].lower()] if str(args.get('type') or '').lower() in NODE_MODELS else list(NODE_MODELS)
+    if len(q) < 1:
+        return {'error': 'isi name'}
+    hits = []
+    for t in types:
+        m = NODE_MODELS[t]
+        exact = m.query.filter(db.func.lower(m.name) == q.lower()).all()
+        rows = exact or m.query.filter(db.or_(m.name.ilike(f'%{q}%'), m.location.ilike(f'%{q}%'))).limit(10).all()
+        hits += [(t, n) for n in rows]
+    if not hits:
+        return {'error': f'titik FTTH "{q}" tidak ditemukan'}
+    if len(hits) > 1:
+        return {'count': len(hits), 'matches': [_node_brief(t, n) for t, n in hits[:15]],
+                'hint': 'pilih satu nama lalu panggil lagi'}
+    t, n = hits[0]
+    onus = collect_downstream_onus(t, n.id)
+    status = {}
+    for o in onus:
+        status[o.status or 'unknown'] = status.get(o.status or 'unknown', 0) + 1
+    d = dict(_node_brief(t, n), model=getattr(n, 'model', '') or None,
+             splitter=getattr(n, 'splitter_model', '') or None, description=n.description or None,
+             jalur_ke_hulu=_chain(t, n), onu_hilir_total=len(onus), onu_hilir_status=status,
+             onu_tidak_online=[_onu_brief(o) for o in onus if o.status != 'online'][:20])
+    if t == 'odp':
+        ports = FTTHODPPort.query.filter_by(odp_id=n.id).order_by(FTTHODPPort.port_number).all()
+        d['port_total'] = n.total_ports
+        d['port_terpakai'] = sum(1 for p in ports if p.onu_id or p.status == 'used')
+        d['ports'] = [{'port': p.port_number, 'status': p.status, 'pelanggan': p.customer_name or None,
+                       'onu': p.onu.name if p.onu else None, 'onu_status': p.onu.status if p.onu else None}
+                      for p in ports]
+    inc = Incident.query.filter_by(node_type=t, node_id=n.id).filter(
+        Incident.status.in_(('open', 'acknowledged', 'en_route', 'on_site'))).first()
+    d['insiden_aktif'] = {'id': inc.id, 'status': inc.status, 'terdampak': inc.affected_count} if inc else None
+    return d
+
+
+def tool_ftth_free_ports(args):
+    """ODP yang masih punya port kosong (untuk pasang baru)."""
+    from models import FTTHODP, FTTHODPPort
+    q = str(args.get('query') or '').strip()
+    limit = max(1, min(int(args.get('limit') or 10), 30))
+    odps = FTTHODP.query
+    if q:
+        odps = odps.filter(db.or_(FTTHODP.name.ilike(f'%{q}%'), FTTHODP.location.ilike(f'%{q}%')))
+    out = []
+    for odp in odps.all():
+        ports = FTTHODPPort.query.filter_by(odp_id=odp.id).all()
+        used = {p.port_number for p in ports if p.onu_id or p.status == 'used'}
+        free = [i for i in range(1, (odp.total_ports or 0) + 1) if i not in used]
+        if free:
+            out.append(dict(_node_brief('odp', odp), port_kosong=free, jumlah_kosong=len(free)))
+    out.sort(key=lambda x: -x['jumlah_kosong'])
+    return {'count': len(out), 'odps': out[:limit]}
+
+
+def _find_olt(name):
+    if not name:
+        return None
+    return OLT.query.filter(OLT.name.ilike(f'%{name}%')).first()
+
+
+def tool_olt_detail(args):
+    """Port PON (jumlah ONU), uplink (status, utilisasi, error), kipas, suhu."""
+    from models import OLTPort, OLTUplink, Fan
+    olt = _find_olt(args.get('olt'))
+    if not olt:
+        return {'error': 'OLT tidak ditemukan', 'olts': [o.name for o in OLT.query.all()]}
+    pons = OLTPort.query.filter_by(olt_id=olt.id).order_by(OLTPort.port_number).all()
+    ups = OLTUplink.query.filter_by(olt_id=olt.id).order_by(OLTUplink.port_number).all()
+    fans = Fan.query.filter_by(olt_id=olt.id).order_by(Fan.fan_number).all()
+    return {
+        'olt': olt.name, 'ip': olt.ip_address, 'vendor': olt.vendor, 'model': olt.model,
+        'firmware': olt.firmware_version, 'temperature_c': olt.temperature,
+        'online': bool(olt.is_online), 'last_sync': _iso(olt.last_sync),
+        'pon_ports': [{'port': p.port_name or p.port_interface, 'nama': p.name or None,
+                       'admin': p.admin_status, 'onu': p.onu_count, 'online': p.onu_online,
+                       'offline': p.onu_offline, 'sfp_tx': p.sfp_tx_power or None,
+                       'sfp_temp': p.sfp_temperature or None} for p in pons],
+        'uplinks': [{'port': u.port_name, 'speed': u.speed, 'admin': u.admin_status, 'oper': u.oper_status,
+                     'desc': u.description or None, 'in': u.input_rate, 'out': u.output_rate,
+                     'util_in': u.input_utilization, 'util_out': u.output_utilization,
+                     'crc_errors': u.crc_errors, 'dropped': u.dropped} for u in ups],
+        'fans': [{'fan': f.fan_number, 'status': f.status, 'rpm': f.rpm} for f in fans],
+    }
+
+
+def tool_traffic(args):
+    """Trafik per port (Mbps) dari log yang sudah tersimpan: rata-rata & puncak."""
+    from models import TrafficLog, TrafficLogHourly
+    hours = max(1, min(int(args.get('hours') or 24), 24 * 30))
+    olt = _find_olt(args.get('olt'))
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    ptype = args.get('port_type') if args.get('port_type') in ('uplink', 'pon') else None
+    agg = {}
+    if hours <= 3:
+        q = TrafficLog.query.filter(TrafficLog.recorded_at >= since)
+        if olt:
+            q = q.filter(TrafficLog.olt_id == olt.id)
+        if ptype:
+            q = q.filter(TrafficLog.port_type == ptype)
+        for r in q.all():
+            a = agg.setdefault((r.olt_id, r.port_name), {'rx': [], 'tx': [], 'rxp': 0, 'txp': 0, 'type': r.port_type})
+            a['rx'].append(r.rx_mbps or 0); a['tx'].append(r.tx_mbps or 0)
+            a['rxp'] = max(a['rxp'], r.rx_mbps or 0); a['txp'] = max(a['txp'], r.tx_mbps or 0)
+    else:
+        q = TrafficLogHourly.query.filter(TrafficLogHourly.hour_start >= since)
+        if olt:
+            q = q.filter(TrafficLogHourly.olt_id == olt.id)
+        if ptype:
+            q = q.filter(TrafficLogHourly.port_type == ptype)
+        for r in q.all():
+            a = agg.setdefault((r.olt_id, r.port_name), {'rx': [], 'tx': [], 'rxp': 0, 'txp': 0, 'type': r.port_type})
+            a['rx'].append(r.rx_mbps_avg or 0); a['tx'].append(r.tx_mbps_avg or 0)
+            a['rxp'] = max(a['rxp'], r.rx_mbps_peak or 0); a['txp'] = max(a['txp'], r.tx_mbps_peak or 0)
+    names = {o.id: o.name for o in OLT.query.all()}
+    rows = [{'olt': names.get(k[0], k[0]), 'port': k[1], 'type': a['type'],
+             'rx_avg_mbps': round(sum(a['rx']) / len(a['rx']), 1), 'tx_avg_mbps': round(sum(a['tx']) / len(a['tx']), 1),
+             'rx_peak_mbps': round(a['rxp'], 1), 'tx_peak_mbps': round(a['txp'], 1)}
+            for k, a in agg.items() if a['rx']]
+    rows.sort(key=lambda r: -(r['rx_peak_mbps'] + r['tx_peak_mbps']))
+    if not rows:
+        return {'hours': hours, 'ports': [], 'note': 'belum ada data trafik pada rentang ini'}
+    return {'hours': hours, 'ports': rows[:30]}
+
+
+def tool_onu_history(args):
+    """Riwayat status ONU (putus/nyambung) dan tren redaman harian."""
+    from models import OnuStatusHistory, OnuRxHourly
+    o = _resolve_onu(args)
+    if not o:
+        return {'error': 'ONU tidak ditemukan (beri onu_id atau query)'}
+    days = max(1, min(int(args.get('days') or 7), 30))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    hist = (OnuStatusHistory.query.filter(OnuStatusHistory.onu_id == o.id, OnuStatusHistory.created_at >= since)
+            .order_by(OnuStatusHistory.created_at.desc()).limit(30).all())
+    daily = {}
+    for r in OnuRxHourly.query.filter(OnuRxHourly.onu_id == o.id, OnuRxHourly.hour >= since).all():
+        dkey = _iso(r.hour)[:10]
+        d = daily.setdefault(dkey, {'min': None, 'max': None, 'sum': 0.0, 'n': 0})
+        if r.rx_min is not None:
+            d['min'] = r.rx_min if d['min'] is None else min(d['min'], r.rx_min)
+        if r.rx_max is not None:
+            d['max'] = r.rx_max if d['max'] is None else max(d['max'], r.rx_max)
+        if r.rx_avg is not None:
+            d['sum'] += r.rx_avg; d['n'] += 1
+    return {
+        'onu': _onu_brief(o), 'days': days,
+        'jumlah_putus': sum(1 for h in hist if h.new_status != 'online'),
+        'perubahan_status': [{'waktu': _iso(h.created_at), 'dari': h.old_status, 'ke': h.new_status,
+                              'alasan': h.dereg_reason or None, 'rx': h.rx_power} for h in hist],
+        'rx_harian_dbm': [{'tanggal': k, 'min': v['min'], 'max': v['max'],
+                           'avg': round(v['sum'] / v['n'], 2) if v['n'] else None}
+                          for k, v in sorted(daily.items())],
+    }
+
+
+def tool_mikrotik(args):
+    """Status PPPoE & ping pelanggan dari MikroTik (data poller tersimpan).
+    Tanpa onu_id/query → ringkasan per router."""
+    from models import MikrotikDevice, OnuLinkState
+    routers = {m.id: m for m in MikrotikDevice.query.all()}
+    if args.get('onu_id') or args.get('query'):
+        o = _resolve_onu(args)
+        if not o:
+            return {'error': 'ONU tidak ditemukan'}
+        s = OnuLinkState.query.filter_by(onu_id=o.id).first()
+        if not s:
+            return {'onu': _onu_brief(o), 'pppoe': 'belum ada data PPPoE untuk ONU ini (belum terhubung ke MikroTik)'}
+        r = routers.get(s.mikrotik_id)
+        return {'onu': _onu_brief(o), 'router': r.name if r else None,
+                'pppoe_user': s.pppoe_user or None, 'ip': s.pppoe_ip or None,
+                'sesi_aktif': bool(s.session_up), 'uptime': s.session_uptime or None,
+                'mac': s.caller_id or None, 'ping_ms': s.rtt_ms, 'loss_pct': s.loss_pct,
+                'kondisi_link': s.link_state, 'dicek': _iso(s.checked_at)}
+    out = []
+    for r in routers.values():
+        q = OnuLinkState.query.filter_by(mikrotik_id=r.id)
+        out.append({'router': r.name, 'host': r.host, 'aktif': bool(r.enabled), 'terhubung': bool(r.last_ok),
+                    'error': r.last_error or None, 'dicek': _iso(r.last_polled_at),
+                    'pppoe_up': q.filter_by(session_up=True).count(),
+                    'pppoe_down': q.filter_by(session_up=False).count()})
+    down = (OnuLinkState.query.filter_by(session_up=False).join(ONU, OnuLinkState.onu_id == ONU.id)
+            .filter(ONU.status == 'online').limit(15).all())
+    return {'routers': out,
+            'onu_online_tapi_pppoe_putus': [dict(_onu_brief(db.session.get(ONU, s.onu_id)),
+                                                 pppoe_user=s.pppoe_user or None) for s in down]}
+
+
+def tool_tr069(args):
+    """Info perangkat TR069 dari GenieACS (live, baca-saja): firmware, uptime,
+    WAN/PPPoE, SSID, jumlah klien WiFi, terakhir lapor. Tidak menampilkan password."""
+    from models import GenieacsDeviceMap
+    o = _resolve_onu(args)
+    if not o:
+        return {'error': 'ONU tidak ditemukan (beri onu_id atau query)'}
+    m = GenieacsDeviceMap.query.filter_by(onu_id=o.id).first()
+    if not m:
+        return {'onu': _onu_brief(o), 'tr069': 'ONU belum terpetakan ke perangkat GenieACS'}
+    import genieacs_client
+    p = genieacs_client.get_device_params(m.device_id)
+    if not p:
+        return {'onu': _onu_brief(o), 'error': 'GenieACS tidak bisa dihubungi atau perangkat tidak ditemukan'}
+    return {'onu': _onu_brief(o), 'model': p.get('model'), 'vendor': p.get('vendor'),
+            'firmware': p.get('software_version'), 'uptime_detik': p.get('uptime'),
+            'terakhir_lapor': p.get('last_inform'), 'wan_ip': p.get('wan_ip'),
+            'pppoe_user': p.get('pppoe_username'), 'klien_wifi': p.get('wifi_clients'),
+            'ssid': [{'ssid': s['ssid'], 'band': s['band'], 'aktif': s['active']} for s in p.get('ssids') or []],
+            'wan': [{'tipe': w['type'], 'user': w['username'] or None, 'ip': w['ip'] or None,
+                     'status': w['status'] or None} for w in p.get('wan_conns') or []]}
+
+
 TOOLS = [
     ('nms_summary', 'Ringkasan semua OLT: status OLT, suhu, jumlah ONU online/offline/LOS/dying-gasp.',
      {'type': 'object', 'properties': {}}, tool_summary),
@@ -263,6 +544,31 @@ TOOLS = [
                   'jumlah pelanggan terdampak, teknisi. status=active (default) atau all.',
      {'type': 'object', 'properties': {'status': {'type': 'string', 'enum': ['active', 'all']},
                                        'limit': {'type': 'integer'}}}, tool_incidents),
+    ('onu_location', 'Lokasi fisik pelanggan/ONU: ODP & nomor port, nama/HP pelanggan, jalur ke hulu '
+                     '(ODC/JC/OTB) dengan link Google Maps, teknisi. Beri onu_id atau query (nama/PPPoE/SN).',
+     {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_onu_location),
+    ('ftth_node', 'Detail titik FTTH (OTB/JC/ODC/ODP) per nama: lokasi+Maps, jalur hulu, isi port ODP, '
+                  'jumlah ONU hilir per status, ONU hilir yang mati, insiden aktif.',
+     {'type': 'object', 'properties': {'name': {'type': 'string'},
+       'type': {'type': 'string', 'enum': ['otb', 'jc', 'odc', 'odp']}}, 'required': ['name']}, tool_ftth_node),
+    ('ftth_free_ports', 'ODP yang masih punya port kosong untuk pasang baru (filter nama/lokasi opsional).',
+     {'type': 'object', 'properties': {'query': {'type': 'string'}, 'limit': {'type': 'integer'}}},
+     tool_ftth_free_ports),
+    ('olt_detail', 'Detail satu OLT: port PON (jumlah ONU online/offline, SFP), uplink (status, '
+                   'utilisasi, CRC error), kipas, suhu, firmware.',
+     {'type': 'object', 'properties': {'olt': {'type': 'string'}}, 'required': ['olt']}, tool_olt_detail),
+    ('traffic', 'Trafik port OLT (uplink/PON) dalam N jam terakhir: rata-rata & puncak Mbps.',
+     {'type': 'object', 'properties': {'olt': {'type': 'string'}, 'hours': {'type': 'integer'},
+       'port_type': {'type': 'string', 'enum': ['uplink', 'pon']}}}, tool_traffic),
+    ('onu_history', 'Riwayat ONU N hari: kapan putus/nyambung & alasannya, tren redaman RX harian.',
+     {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'},
+       'days': {'type': 'integer'}}}, tool_onu_history),
+    ('mikrotik', 'Status PPPoE pelanggan dari MikroTik: sesi aktif, IP, uptime, ping/loss. Tanpa ONU → '
+                 'ringkasan router & ONU yang online tapi PPPoE putus.',
+     {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_mikrotik),
+    ('tr069', 'Info modem dari GenieACS/TR069 (live): firmware, uptime, WAN IP, PPPoE, SSID, jumlah '
+              'klien WiFi, terakhir lapor.',
+     {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_tr069),
 ]
 _TOOL_FN = {t[0]: t[3] for t in TOOLS}
 
@@ -312,6 +618,10 @@ SYSTEM_PROMPT = (
     "(cocok dibaca di WhatsApp: tanpa tabel markdown, pakai daftar pendek bila perlu). "
     "Format WhatsApp: tebal pakai *satu bintang*, butir daftar pakai '- ', tanpa backtick, "
     "tanpa judul '#'. "
+    "Pilih tool yang tepat: lokasi/ODP pelanggan → onu_location; titik FTTH → ftth_node; port kosong → "
+    "ftth_free_ports; port/uplink OLT → olt_detail; trafik → traffic; sering putus/riwayat → onu_history; "
+    "PPPoE/internet pelanggan → mikrotik; modem/SSID/WiFi → tr069. Untuk keluhan pelanggan, gabungkan "
+    "beberapa tool (status ONU, PPPoE, lokasi) lalu beri kesimpulan singkat. "
     "Selalu ambil data lewat tool sebelum menyebut angka atau status — jangan menebak. "
     "Kamu hanya bisa MEMBACA data NMS; jika diminta reboot/ubah konfigurasi, jelaskan "
     "bahwa itu harus dilakukan lewat aplikasi NMS. Redaman RX normal -8 s/d -27 dBm. "

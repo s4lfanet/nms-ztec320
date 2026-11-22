@@ -827,7 +827,7 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Apa yang Bisa Ditanyakan',
-        content: 'AI agent membaca data NMS dan menjawab dalam bahasa sehari-hari, misalnya: **"ringkasan semua OLT"**, **"cek pelanggan budi"**, **"ONU mana yang LOS?"**, **"yang redamannya jelek?"**, **"gangguan 6 jam terakhir"**.\n\nAI hanya bisa **membaca** — tidak bisa reboot, register, atau mengubah konfigurasi. Percakapan diingat 30 menit per pengirim; ketik **/reset** untuk mulai baru.',
+        content: 'AI agent membaca data NMS dan menjawab dalam bahasa sehari-hari, misalnya: **"ringkasan semua OLT"**, **"cek pelanggan budi"**, **"ONU mana yang LOS?"**, **"yang redamannya jelek?"**, **"gangguan 6 jam terakhir"**.\n\nUntuk teknisi di lapangan: **"budi di ODP mana?"** (ODP, port, jalur ke ODC/OTB + link Google Maps), **"ODP-RW01 isinya siapa saja?"**, **"ODP kosong di Melati"**, **"budi sering putus seminggu ini?"** (riwayat & tren redaman), **"PPPoE budi nyambung?"** (MikroTik: sesi, IP, ping), **"modem budi SSID-nya apa?"** (GenieACS/TR069), **"uplink C320 ada error?"**, **"trafik uplink 24 jam"**.\n\nAI hanya bisa **membaca** — tidak bisa reboot, register, atau mengubah konfigurasi. Percakapan diingat 30 menit per pengirim; ketik **/reset** untuk mulai baru.',
       },
       {
         title: 'Perintah Cepat (hemat token)',

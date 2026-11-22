@@ -332,3 +332,84 @@ def test_wa_format_converts_markdown():
     assert '*NA (HIOSO 1)* - gpon-onu_1/1/1:41' in out
     assert '    - *Status:* LOS' in out
     assert '`' not in out and '**' not in out
+
+
+def _seed_extra():
+    from datetime import datetime, timezone, timedelta
+    from models import (FTTHOTB, FTTHODC, FTTHODP, FTTHODPPort, TrafficLogHourly, OnuStatusHistory,
+                        OnuRxHourly, MikrotikDevice, OnuLinkState, GenieacsDeviceMap, OLTPort, OLTUplink)
+    olt = OLT.query.first()
+    budi = ONU.query.filter_by(name='budi@rw01').first()
+    ani = ONU.query.filter_by(name='ani@rw02').first()
+    otb = FTTHOTB(name='OTB-POP', olt_id=olt.id, latitude=-7.1, longitude=110.1)
+    db.session.add(otb); db.session.flush()
+    odc = FTTHODC(name='ODC-RW', otb_id=otb.id, feed_source='otb')
+    db.session.add(odc); db.session.flush()
+    odp = FTTHODP(name='ODP-RW01', odc_id=odc.id, feed_source='odc', total_ports=4,
+                  location='Jl. Melati', latitude=-7.2, longitude=110.2)
+    db.session.add(odp); db.session.flush()
+    db.session.add_all([
+        FTTHODPPort(odp_id=odp.id, port_number=1, onu_id=budi.id, status='used', customer_name='Budi'),
+        FTTHODPPort(odp_id=odp.id, port_number=2, onu_id=ani.id, status='used', customer_name='Ani'),
+    ])
+    now = datetime.now(timezone.utc)
+    db.session.add_all([
+        OLTPort(olt_id=olt.id, port_number=1, port_name='gpon-olt_1/1/1', onu_count=2, onu_online=1, onu_offline=1),
+        OLTUplink(olt_id=olt.id, port_number=1, port_name='xgei_1/3/1', oper_status='up', crc_errors=3),
+        TrafficLogHourly(olt_id=olt.id, port_type='uplink', port_name='xgei_1/3/1', rx_mbps_avg=400,
+                         tx_mbps_avg=50, rx_mbps_peak=900, tx_mbps_peak=80, hour_start=now - timedelta(hours=2)),
+        OnuStatusHistory(onu_id=ani.id, olt_id=olt.id, old_status='online', new_status='los',
+                         dereg_reason='LOS', created_at=now - timedelta(hours=5)),
+        OnuRxHourly(onu_id=budi.id, olt_id=olt.id, hour=now - timedelta(hours=3), rx_min=-22, rx_avg=-21.5,
+                    rx_max=-21, samples=12),
+    ])
+    mk = MikrotikDevice(name='CCR-Core', host='10.0.0.1', last_ok=True)
+    db.session.add(mk); db.session.flush()
+    db.session.add(OnuLinkState(onu_id=budi.id, mikrotik_id=mk.id, pppoe_user='budi@rw01',
+                                pppoe_ip='100.64.0.9', session_up=False, link_state='down'))
+    db.session.add(GenieacsDeviceMap(onu_id=budi.id, device_id='ZTEG-F663-ZTEG00000001'))
+    db.session.commit()
+
+
+def test_extra_tools_cover_ftth_olt_traffic_mikrotik_tr069(client, monkeypatch):
+    import genieacs_client
+    monkeypatch.setattr(genieacs_client, 'get_device_params', lambda did: {
+        'model': 'F663', 'software_version': 'V9', 'ssids': [{'ssid': 'BUDI', 'band': '2.4g', 'active': True}],
+        'wan_conns': [{'type': 'pppoe', 'username': 'budi@rw01', 'ip': '100.64.0.9', 'status': 'Connected'}]})
+    with app.app_context():
+        _seed_extra()
+        loc = ai_agent.run_tool('onu_location', {'query': 'budi'})
+        assert loc['odp']['name'] == 'ODP-RW01' and loc['odp']['port'] == 1
+        assert [n['name'] for n in loc['jalur_ke_hulu']] == ['ODC-RW', 'OTB-POP']
+        assert loc['odp']['maps'].startswith('https://maps.google.com/?q=')
+
+        node = ai_agent.run_tool('ftth_node', {'name': 'ODP-RW01'})
+        assert node['onu_hilir_total'] == 2 and node['port_terpakai'] == 2
+        assert [o['name'] for o in node['onu_tidak_online']] == ['ani@rw02']
+        assert ai_agent.run_tool('ftth_node', {'name': 'OTB'})['onu_hilir_total'] == 2
+
+        free = ai_agent.run_tool('ftth_free_ports', {})
+        assert free['odps'][0]['port_kosong'] == [3, 4]
+
+        od = ai_agent.run_tool('olt_detail', {'olt': 'C320'})
+        assert od['uplinks'][0]['crc_errors'] == 3 and od['pon_ports'][0]['onu'] == 2
+
+        tr = ai_agent.run_tool('traffic', {'hours': 24})
+        assert tr['ports'][0]['rx_peak_mbps'] == 900
+
+        h = ai_agent.run_tool('onu_history', {'query': 'ani'})
+        assert h['jumlah_putus'] == 1 and h['perubahan_status'][0]['ke'] == 'los'
+        assert ai_agent.run_tool('onu_history', {'query': 'budi'})['rx_harian_dbm'][0]['avg'] == -21.5
+
+        mk = ai_agent.run_tool('mikrotik', {'query': 'budi'})
+        assert mk['router'] == 'CCR-Core' and mk['sesi_aktif'] is False
+        summ = ai_agent.run_tool('mikrotik', {})
+        assert summ['routers'][0]['pppoe_down'] == 1
+        assert summ['onu_online_tapi_pppoe_putus'][0]['name'] == 'budi@rw01'
+
+        t = ai_agent.run_tool('tr069', {'query': 'budi'})
+        assert t['model'] == 'F663' and t['ssid'][0]['ssid'] == 'BUDI'
+        assert 'belum terpetakan' in ai_agent.run_tool('tr069', {'query': 'ani'})['tr069']
+
+        d = ai_agent.run_tool('onu_detail', {'onu_id': ONU.query.filter_by(name='budi@rw01').first().id})
+        assert d['odp'] == 'ODP-RW01 port 1'

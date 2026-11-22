@@ -106,7 +106,7 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - **Link state & ping**: Status link per ONU dari sesi PPPoE + ping ke IP client langsung dari View ONU
 
 ### AI Agent (baca-saja)
-- **Tanya status jaringan lewat WhatsApp/Telegram/web**: ringkasan OLT, cari pelanggan, detail ONU, ONU bermasalah/redaman lemah, alert terbaru, insiden gangguan aktif — data langsung dari DB NMS via tool calling, tanpa perintah ke OLT
+- **Tanya status jaringan lewat WhatsApp/Telegram/web**: ringkasan OLT, cari pelanggan, detail ONU, ONU bermasalah/redaman lemah, alert terbaru, insiden gangguan aktif, lokasi pelanggan di FTTH (ODP/port, jalur hulu + Google Maps), isi titik FTTH & port ODP kosong, detail port/uplink OLT, trafik, riwayat putus & tren redaman ONU, status PPPoE/ping dari MikroTik (data poller), info modem dari GenieACS/TR069 (GET baca-saja) — data langsung dari DB NMS via tool calling, tanpa perintah ke OLT
 - **Perintah cepat tanpa AI**: `/ringkasan`, `/gangguan`, `/redaman`, `/alert`, `/insiden`, `/cari`, `/onu`, `/menu` dijawab langsung dari DB (0 token); teks bebas baru diteruskan ke AI
 - **Multi-provider**: Claude API (Anthropic) atau endpoint OpenAI-compatible (OpenAI, Gemini, OpenRouter, Ollama lokal, dll.); API key terenkripsi; halaman Sistem → AI Agent dengan kotak uji
 - **Akses terbatas**: whitelist nomor WA / chat ID Telegram, atau nomor HP user aktif ber-izin `ai_agent`; pengirim lain diabaikan; setiap pertanyaan di audit log. Gateway WA meneruskan pesan masuk ke `/api/internal/ai/wa-inbound` (header `X-Internal-Key`)
