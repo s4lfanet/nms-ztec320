@@ -8,6 +8,7 @@ import {
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card } from '../components/ui';
+import { refreshAfterServerUpdate } from '../lib/swUpdate';
 
 interface UpdateCheckResult {
   success: boolean;
@@ -124,6 +125,15 @@ export function SystemUpdate() {
               <div className="text-xs text-tx3 flex items-center gap-2">
                 <GitBranch size={12} /> Branch: <span className="font-mono text-tx2">{result.branch}</span>
               </div>
+
+              {result.up_to_date && (
+                <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-glass border border-brd text-xs text-tx3">
+                  <span className="flex-1 min-w-[12rem]">{t('pg_sysupdate.staleUiHint')}</span>
+                  <Button variant="secondary" icon={<RefreshCw size={14} />} onClick={() => refreshAfterServerUpdate()}>
+                    {t('pg_sysupdate.reloadUi')}
+                  </Button>
+                </div>
+              )}
 
               {/* Incoming commits */}
               {!result.up_to_date && result.commits.length > 0 && (
