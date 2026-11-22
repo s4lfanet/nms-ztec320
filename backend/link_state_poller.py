@@ -438,6 +438,14 @@ def run_link_poller(app):
     """Daemon loop — started from run_server.py alongside the alert monitor."""
     with app.app_context():
         logger.info('link-state poller started')
+        try:  # rute kernel hilang saat reboot — pasang ulang dari DB
+            import vps_routes
+            n = vps_routes.apply_all()
+            if n:
+                logger.info('re-applied %s VPS route(s)', n)
+        except Exception as e:
+            db.session.rollback()
+            logger.warning('vps routes re-apply failed: %s', e)
         last_prune = 0.0
         last_acs_sync = time.time() - 25 * 60  # sinkron ACS pertama ±5 menit setelah start
         while True:

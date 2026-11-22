@@ -259,6 +259,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 37. **Operasi massal TR-069 (`acs_bulk.py`, `AcsBulkJob/AcsBulkJobItem`)** — alur wajib: `/api/genieacs/bulk/preview` → `/bulk/run` dengan `confirm_count` = jumlah target saat ini (409 bila berubah), maks `MAX_TARGETS` (500), satu job berjalan (`running_job()` juga merapikan job 'running' tanpa thread hidup setelah restart). Eksekusi di thread `acs-bulk-<id>`, `WORKERS`=4 + `PAUSE_S`; tiap perintah lewat `genieacs_client._post_task` (202 → item `queued`). Aksi: refresh/reboot/inform_interval/firmware (task `download`, fileType `1 Firmware Upgrade Image`)/set_param (path lengkap, tipe xsd terbatas). Item menyimpan `onu_id` tanpa FK (riwayat tetap ada walau ONU dihapus). Jangan menambah aksi tanpa `validate_action()`.
 
+38. **Rute server NMS → pelanggan (`vps_routes.py`, `VpsRoute`, `deploy/salfanet-route`)** — aplikasi (user `salfanet`) tidak punya root; rute kernel hanya lewat `sudo -n /usr/local/sbin/salfanet-route add|del|list|check`. Helper adalah salinan MILIK ROOT (dipasang `deploy/setup_routes.sh`) — sudoers jangan pernah menunjuk ke file di repo (repo dimiliki `salfanet`). Helper memvalidasi ulang semuanya (privat/CGNAT saja, /8–/32, tidak beririsan dengan jaringan server, gateway on-link) dan hanya menyentuh rute `proto 186`. Rute ditolak helper tidak disimpan ke DB. `apply_all()` dipanggil saat link poller start. API `/api/vps-routes*` = `super_admin_required`.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

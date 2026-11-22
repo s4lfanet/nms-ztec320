@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type MikrotikDevice } from '../lib/api';
 import { useHasPerm } from '../hooks/useHasPerm';
+import { useAuth } from '../stores/auth';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
   Router, Plus, Trash2, Edit3, CheckCircle, XCircle,
-  Loader2, Wifi, WifiOff, Zap, RefreshCw,
+  Loader2, Wifi, WifiOff, Zap, RefreshCw, Route, Activity,
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -282,6 +283,99 @@ export function MikrotikSettings() {
           </Button>
         </div>
       </Modal>
+      <VpsRoutesCard />
     </PageContainer>
+  );
+}
+
+function VpsRoutesCard() {
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const isSuper = !!user?.is_super_admin;
+  const { data, refetch } = useQuery({ queryKey: ['vps-routes'], queryFn: api.vpsRoutes, enabled: isSuper });
+  const [cidr, setCidr] = useState('');
+  const [gw, setGw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [testIp, setTestIp] = useState('');
+  const [testing, setTesting] = useState(false);
+  if (!isSuper || !data) return null;
+  const ready = data.helper === 'ok';
+  const add = async (c = cidr, g = gw) => {
+    setBusy(true);
+    try {
+      const r = await api.vpsRouteAdd({ cidr: c.trim(), gateway: g.trim() });
+      if (r.success) { toast.success(t('pg_mikrotik.rtAdded', { cidr: r.route.cidr })); setCidr(''); setGw(''); refetch(); }
+      else toast.error(r.message || 'Gagal');
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
+  };
+  const del = async (id: number, c: string) => {
+    if (!(await confirm({ title: t('pg_mikrotik.rtDelTitle', { cidr: c }), message: t('pg_mikrotik.rtDelMsg'), variant: 'warning' }))) return;
+    const r = await api.vpsRouteDelete(id);
+    if (r.success) { toast.success(t('pg_mikrotik.rtDeleted')); refetch(); } else toast.error(r.message || 'Gagal');
+  };
+  const test = async () => {
+    setTesting(true);
+    try {
+      const r = await api.vpsRouteTest(testIp.trim());
+      if (!r.success) toast.error(r.message || 'Gagal');
+      else if (r.reachable) toast.success(t('pg_mikrotik.rtTestOk', { ip: testIp, rtt: r.ping.avg_rtt_ms ?? '-' }));
+      else toast.warning(t('pg_mikrotik.rtTestFail', { ip: testIp }));
+    } catch (e) { toast.error((e as Error).message); } finally { setTesting(false); }
+  };
+  const pending = data.suggestions.filter(s => !s.covered);
+  return (
+    <Card className="mt-4" icon={<Route size={16} />} title={t('pg_mikrotik.rtTitle')}>
+      <p className="text-xs text-tx3 mb-3">{t('pg_mikrotik.rtHint')}</p>
+      {!ready && (
+        <div className="p-3 mb-3 rounded-lg bg-warning/10 border border-warning/30 text-xs space-y-1.5">
+          <div className="text-warning font-medium">{data.helper === 'missing' ? t('pg_mikrotik.rtHelperMissing') : t('pg_mikrotik.rtHelperNoSudo')}</div>
+          <code className="block p-2 rounded bg-bg2 font-mono text-tx1 break-all select-all">{data.setup_cmd}</code>
+          <div className="text-tx3">{t('pg_mikrotik.rtHelperOnce')}</div>
+        </div>
+      )}
+      {data.routes.length > 0 && (
+        <div className="space-y-1.5 mb-3">
+          {data.routes.map(r => (
+            <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-2 rounded bg-glass text-xs">
+              <span className="font-mono text-tx1">{r.cidr} → {r.gateway}</span>
+              <span className="flex items-center gap-3">
+                {r.active === true ? <span className="text-success">{t('pg_mikrotik.rtActive')}</span>
+                  : r.status === 'error' ? <span className="text-danger" title={r.last_error}>{t('pg_mikrotik.rtError')}</span>
+                    : <span className="text-warning">{t('pg_mikrotik.rtInactive')}</span>}
+                {ready && r.active !== true && (
+                  <button className="text-accent hover:underline" onClick={() => api.vpsRouteApply(r.id).then(x => { if (x.success) toast.success(t('pg_mikrotik.rtApplied')); else toast.error(x.message); refetch(); })}>{t('pg_mikrotik.rtApply')}</button>
+                )}
+                <button className="text-danger hover:underline" onClick={() => del(r.id, r.cidr)}>{t('pg_mikrotik.rtDelete')}</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {pending.length > 0 && ready && (
+        <div className="mb-3">
+          <div className="text-xs font-semibold text-tx2 mb-1">{t('pg_mikrotik.rtSuggest')}</div>
+          <div className="space-y-1">
+            {pending.map(s => (
+              <div key={s.cidr + s.mikrotik_id} className="flex flex-wrap items-center justify-between gap-2 p-2 rounded bg-glass text-xs">
+                <span><span className="font-mono text-tx1">{s.cidr}</span> <span className="text-tx3">→ {s.gateway || '?'} · {s.router || '-'} · {t('pg_mikrotik.rtClients', { n: s.clients })}</span></span>
+                {s.gateway
+                  ? <Button variant="secondary" onClick={() => add(s.cidr, s.gateway)} disabled={busy}>{t('pg_mikrotik.rtUse')}</Button>
+                  : <button className="text-accent hover:underline" onClick={() => setCidr(s.cidr)}>{t('pg_mikrotik.rtFill')}</button>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+        <Input label={t('pg_mikrotik.rtCidr')} value={cidr} onChange={e => setCidr(e.target.value)} placeholder="10.10.0.0/16" />
+        <Input label={t('pg_mikrotik.rtGateway')} value={gw} onChange={e => setGw(e.target.value)} placeholder="192.168.54.1" />
+        <Button onClick={() => add()} disabled={!ready || busy || !cidr || !gw} icon={<Plus size={14} />}>{t('pg_mikrotik.rtAdd')}</Button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end mt-3">
+        <Input label={t('pg_mikrotik.rtTestIp')} value={testIp} onChange={e => setTestIp(e.target.value)} placeholder="10.10.3.7" />
+        <Button variant="secondary" onClick={test} disabled={testing || !testIp} icon={<Activity size={14} />}>{testing ? t('pg_mikrotik.rtTesting') : t('pg_mikrotik.rtTest')}</Button>
+      </div>
+      <p className="text-xs text-tx3 mt-3">{t('pg_mikrotik.rtMikrotikNote')}</p>
+    </Card>
   );
 }

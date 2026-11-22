@@ -1238,6 +1238,23 @@ class PppoeSessionEvent(db.Model):
     at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
 
 
+class VpsRoute(db.Model):
+    """Rute statis server NMS → jaringan pelanggan PPPoE (via router MikroTik).
+    Dipasang lewat helper root /usr/local/sbin/salfanet-route (sudo khusus) dan
+    dipasang ulang otomatis saat service start (rute kernel hilang saat reboot)."""
+    __tablename__ = 'vps_routes'
+    id = db.Column(db.Integer, primary_key=True)
+    cidr = db.Column(db.String(20), nullable=False, unique=True)
+    gateway = db.Column(db.String(45), nullable=False)
+    mikrotik_id = db.Column(db.Integer, nullable=True)
+    note = db.Column(db.String(120), default='')
+    enabled = db.Column(db.Boolean, default=True)
+    status = db.Column(db.String(10), default='pending')  # pending | ok | error
+    last_error = db.Column(db.String(300), default='')
+    applied_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+
 class AcsBulkJob(db.Model):
     """Operasi massal TR-069 lewat GenieACS (refresh/reboot/inform/firmware/param)."""
     __tablename__ = 'acs_bulk_jobs'

@@ -214,6 +214,8 @@ ${APP_USER} ALL=(root) NOPASSWD: /usr/bin/systemd-run --no-block --unit=${APP_NA
 EOF
 chmod 440 /etc/sudoers.d/${APP_NAME}-restart
 visudo -cf /etc/sudoers.d/${APP_NAME}-restart > /dev/null || rm -f /etc/sudoers.d/${APP_NAME}-restart
+# Helper rute server NMS → jaringan pelanggan PPPoE (diatur dari web).
+APP_NAME="${APP_NAME}" APP_USER="${APP_USER}" bash "${APP_DIR}/deploy/setup_routes.sh" || true
 
 # ── 7. Nginx reverse proxy ──
 echo "[7/8] Configuring Nginx..."
