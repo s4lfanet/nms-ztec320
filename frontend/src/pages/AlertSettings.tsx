@@ -65,7 +65,7 @@ export function AlertSettings() {
     <PageContainer>
       <PageHeader
         icon={<Bell size={20} className="text-accent" />}
-        title="Alert & Notification Channels"
+        title="Pengaturan Alert & Notifikasi"
         description="Atur parameter deteksi gangguan optik OLT/ONU serta integrasi pengiriman pesan ke WhatsApp Gateway dan Telegram."
       />
 

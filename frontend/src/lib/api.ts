@@ -287,6 +287,8 @@ export const api = {
 
 export interface UserData {
   id: number; full_name: string; username: string; role: string; role_id: number; phone: string;
+  /** server lama tidak mengirim */
+  is_super_admin?: boolean;
 }
 export interface RoleData {
   id: number; name: string; description: string; permissions: string; is_system: boolean;

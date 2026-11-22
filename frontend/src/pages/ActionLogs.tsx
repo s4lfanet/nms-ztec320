@@ -95,8 +95,8 @@ export function ActionLogs() {
   return (
     <PageContainer className="animate-fade-in">
       <PageHeader
-        title="Action Logs"
-        description="Audit trail of all user activities"
+        title="Log Aktivitas"
+        description="Jejak audit semua aktivitas pengguna"
         action={
           <>
             {verifyState !== 'idle' && (

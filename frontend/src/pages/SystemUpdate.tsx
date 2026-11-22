@@ -77,8 +77,8 @@ export function SystemUpdate() {
             <GitBranch size={20} className="text-accent" />
           </div>
         }
-        title="System Update"
-        description="Check and apply updates from GitHub repository"
+        title="Update Sistem"
+        description="Cek dan pasang pembaruan dari repository GitHub"
       />
 
       {/* Check section */}

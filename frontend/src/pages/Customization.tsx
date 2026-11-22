@@ -111,7 +111,7 @@ export function Customization() {
 
   return (
     <PageContainer className="animate-fade-in">
-      <PageHeader title="Customization" description="All ONUs Custom Page" />
+      <PageHeader title="Kustomisasi" description="Atur kolom, filter sinyal, dan warna RX di halaman Semua ONU" />
 
       {/* Tabs */}
       <Card bodyClassName="p-0">

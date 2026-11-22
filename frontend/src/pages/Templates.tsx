@@ -289,8 +289,8 @@ export default function Templates() {
   return (
     <PageContainer>
       <PageHeader
-        title="Templates"
-        description="ONU configuration templates for automatic provisioning"
+        title="Template ONU"
+        description="Template konfigurasi ONU untuk provisioning otomatis"
         action={
           <>
             <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>

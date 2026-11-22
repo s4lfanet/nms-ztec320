@@ -62,8 +62,8 @@ export default function Tr069Profile() {
   return (
     <PageContainer>
       <PageHeader
-        title="TR069 Profile"
-        description="Manage ACS profiles for TR069 remote management"
+        title="Profil TR069"
+        description="Kelola profil ACS untuk manajemen jarak jauh TR069"
         action={canManage && (
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setModal({ mode: 'add' })}>
             Create

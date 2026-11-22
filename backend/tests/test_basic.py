@@ -2843,3 +2843,17 @@ class TestDeleteOnuRow:
             assert db.session.get(ONU, oid) is None
             assert OnuLinkState.query.filter_by(onu_id=oid).count() == 0
             assert OnuStatusHistory.query.filter_by(onu_id=oid).count() == 0
+
+
+class TestUserListSuperAdminFlag:
+    """Daftar user menandai super admin, supaya UI tidak menampilkan badge
+    "User" untuk super admin yang tidak punya role."""
+
+    def test_users_include_is_super_admin(self, client):
+        client.post('/api/auth/login',
+            data=json.dumps({'username': 'admin', 'password': 'admin123'}),
+            content_type='application/json')
+        r = client.get('/api/users')
+        assert r.status_code == 200
+        admin = next(u for u in r.get_json()['users'] if u['username'] == 'admin')
+        assert admin['is_super_admin'] is True

@@ -644,7 +644,7 @@ export function ProvisionWizard({ manualMode = false }: { manualMode?: boolean }
           </button>
         }
         title={manualMode ? 'Pre-config ONT' : 'Provision ONU'}
-        description={manualMode ? 'Manual SN input — no OLT scan needed' : 'Unified wizard — all vendors, dynamic services'}
+        description={manualMode ? 'Input SN manual — tanpa scan OLT' : 'Wizard terpadu — semua vendor, layanan dinamis'}
       />
 
       {/* Penanda langkah (redesign Fase 3) */}

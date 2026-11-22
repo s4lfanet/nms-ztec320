@@ -222,8 +222,8 @@ export function OltSettings() {
   return (
     <PageContainer className="animate-fade-in">
       <PageHeader
-        title={isSuperAdmin ? 'OLT Overview' : 'OLT Settings'}
-        description={isSuperAdmin ? 'View all tenant OLT devices' : 'Manage OLT devices and connections'}
+        title={isSuperAdmin ? 'Ringkasan OLT' : 'Pengaturan OLT'}
+        description={isSuperAdmin ? 'Semua perangkat OLT tenant' : 'Kelola perangkat OLT dan koneksinya'}
         action={
           <div className="flex items-center gap-2 w-full sm:w-auto">
             {canManage && (
@@ -298,7 +298,7 @@ export function OltSettings() {
       )}
 
       {/* OLT Table */}
-      <Card title="OLT Management" icon={<Server size={16} />} bodyClassName="p-0" className="overflow-hidden">
+      <Card title="Daftar OLT" icon={<Server size={16} />} bodyClassName="p-0" className="overflow-hidden">
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">

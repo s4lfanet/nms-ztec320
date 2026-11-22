@@ -778,8 +778,8 @@ export function RegisterWizard() {
             <ArrowLeft size={18} />
           </Button>
           <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold truncate">Register ONU Wizard</h1>
-            <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">Step-by-step ONU registration with auto-configuration</p>
+            <h1 className="text-xl md:text-2xl font-bold truncate">Wizard Registrasi ONU</h1>
+            <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">Registrasi ONU langkah demi langkah dengan konfigurasi otomatis</p>
           </div>
         </div>
       </div>

@@ -40,6 +40,7 @@ def api_users():
             'id': u.id, 'full_name': u.full_name, 'username': u.username,
             'role': u.role.name if u.role else 'User', 'role_id': u.role_id or 0,
             'phone': u.phone or '',
+            'is_super_admin': bool(u.is_super_admin),
         } for u in users],
         'roles': [{
             'id': r.id, 'name': r.name, 'description': r.description,
