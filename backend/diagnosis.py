@@ -109,6 +109,17 @@ def diagnose_onu(onu):
     elif onu_drops >= 3:
         add('flapping_optical', 'warning', f'ONU drop {onu_drops}x dalam 24 jam di OLT: cek redaman/konektor/adaptor.')
 
+    if status == 'online':
+        from models import GenieacsDeviceMap, SystemConfig
+        m = GenieacsDeviceMap.query.filter_by(onu_id=onu.id).first()
+        if m and m.last_inform:
+            row = SystemConfig.query.filter_by(key='genieacs_stale_hours').first()
+            stale_h = int(row.value) if row and str(row.value).isdigit() else 24
+            age_h = (now - m.last_inform).total_seconds() / 3600
+            if age_h > stale_h:
+                add('acs_stale', 'info', f'Modem tidak lapor ke GenieACS selama {int(age_h)} jam: perintah TR-069 '
+                                         'tidak akan sampai — cek VLAN/IP manajemen dan setelan ACS di modem.')
+
     if not findings:
         if status == 'online' and st and st.link_state == 'ok':
             add('ok', 'ok', 'Normal: optik baik, PPPoE tersambung, ping lancar.')

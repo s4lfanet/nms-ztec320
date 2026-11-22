@@ -207,6 +207,17 @@ def match_onu_to_device(onu, devices):
     return None, None
 
 
+def _parse_ts(v):
+    """ISO time GenieACS → datetime naive UTC (None bila kosong/tidak valid)."""
+    if not v:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(v).replace('Z', '+00:00'))
+        return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+    except ValueError:
+        return None
+
+
 def sync_device_maps():
     """Full sync: match all ONUs to GenieACS devices. Pinned rows are skipped.
     Returns (matched_count, total_onus, errors)."""
@@ -214,21 +225,26 @@ def sync_device_maps():
     if not devices:
         return 0, 0, ['No devices fetched from GenieACS']
     onus = ONU.query.all()
+    by_id = {d['_id']: d for d in devices}
     matched = 0
     for onu in onus:
         existing = GenieacsDeviceMap.query.filter_by(onu_id=onu.id).first()
         if existing and existing.pinned:
+            if existing.device_id in by_id:  # pin tetap, tapi waktu lapor diperbarui
+                existing.last_inform = _parse_ts(by_id[existing.device_id].get('last_inform'))
             continue  # manual pin — don't auto-rematch
         dev_id, method = match_onu_to_device(onu, devices)
         if dev_id:
+            inform = _parse_ts(by_id.get(dev_id, {}).get('last_inform'))
             if existing:
                 existing.device_id = dev_id
                 existing.match_method = method
                 existing.last_synced_at = datetime.now(timezone.utc)
+                existing.last_inform = inform
             else:
                 db.session.add(GenieacsDeviceMap(
                     onu_id=onu.id, device_id=dev_id, match_method=method,
-                    last_synced_at=datetime.now(timezone.utc)))
+                    last_synced_at=datetime.now(timezone.utc), last_inform=inform))
             matched += 1
         elif existing and not existing.pinned:
             # No longer matched — remove stale auto-match
@@ -268,6 +284,51 @@ def _count_hosts(host_node):
     if any('Active' in h for h in inst):
         return sum(1 for h in inst if str(_param(h, 'Active')).lower() in ('true', '1'))
     return len(inst)
+
+
+_RX_RE = re.compile(r'(RXPower|RxPower|RXOpticalPower|RxOpticalPower|OpticalSignalLevel)$')
+
+
+def _to_dbm(v):
+    """Normalisasi redaman yang dilaporkan modem ke dBm. Vendor berbeda satuan:
+    dBm langsung (-21.5), dBm×1000 (TR-181 OpticalSignalLevel, -21500), atau
+    dBm×10. Nilai di luar rentang wajar → None."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    for div in (1, 10, 100, 1000):
+        y = x / div
+        if -50 <= y <= 10:
+            return round(y, 2)
+    return None
+
+
+def _optical_rx(d):
+    for p, v in _collect(d):
+        if _RX_RE.search(p) and ('WANDevice' in p or 'Optical' in p or 'PON' in p.upper()):
+            dbm = _to_dbm(v)
+            if dbm is not None:
+                return dbm
+    return None
+
+
+def _host_list(host_node, tr181=False, limit=30):
+    """Perangkat terhubung (Hosts.Host): nama, IP, MAC, wifi/lan, aktif."""
+    out = []
+    for k, h in sorted((host_node or {}).items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0):
+        if not k.isdigit() or not isinstance(h, dict):
+            continue
+        iface = str(_param(h, 'Layer1Interface' if tr181 else 'InterfaceType') or
+                    _param(h, 'Layer2Interface') or '')
+        active = _param(h, 'Active')
+        out.append({'name': str(_param(h, 'HostName') or ''), 'ip': str(_param(h, 'IPAddress') or ''),
+                    'mac': str(_param(h, 'PhysAddress' if tr181 else 'MACAddress') or ''),
+                    'via': 'wifi' if re.search(r'wi-?fi|wlan|802\.11', iface, re.I) else ('lan' if iface else ''),
+                    'active': None if active is None else str(active).lower() in ('true', '1')})
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _collect(tree, path=''):
@@ -365,7 +426,8 @@ def get_device_params(device_id):
                 enabled = bool(_param(cfg, 'Enable')) and bool(
                     _param(cfg, 'SSIDAdvertisementEnabled'))
                 ssid_list.append({'ssid': str(ssid), 'band': '5g' if int(idx) > 1 else '2.4g',
-                                  'active': enabled, 'index': int(idx)})
+                                  'active': enabled, 'index': int(idx),
+                                  'channel': _param(cfg, 'Channel')})
         return {
             '_id': device_id,
             'last_inform': str(d.get('_lastInform') or _param(d, 'LastInform') or ''),
@@ -382,6 +444,8 @@ def get_device_params(device_id):
             'ssid_24g': str(next((s['ssid'] for s in ssid_list if s['band'] == '2.4g'), '')),
             'ssid_5g': str(next((s['ssid'] for s in ssid_list if s['band'] == '5g'), '')),
             'data_model': 'tr098',
+            'optical_rx_dbm': _optical_rx(d),
+            'hosts': _host_list(_node(d, 'InternetGatewayDevice.LANDevice.1.Hosts.Host')),
         }
     except Exception as e:
         logger.error('genieacs get_device_params failed: %s', e)
@@ -415,10 +479,11 @@ def _tr181_params(device_id, d):
                     break
             if wan_ip:
                 break
-    radios = {}
+    radios, channels = {}, {}
     for idx, r in (_node(d, 'Device.WiFi.Radio') or {}).items():
         if idx.isdigit() and isinstance(r, dict):
             radios[idx] = '5g' if '5' in str(_param(r, 'OperatingFrequencyBand') or '') else '2.4g'
+            channels[idx] = _param(r, 'Channel')
     ap_adv = {}
     for idx, a in (_node(d, 'Device.WiFi.AccessPoint') or {}).items():
         if idx.isdigit() and isinstance(a, dict):
@@ -434,7 +499,8 @@ def _tr181_params(device_id, d):
         m = re.search(r'Radio\.(\d+)', str(_param(c, 'LowerLayers') or ''))
         band = radios.get(m.group(1)) if m else ('2.4g' if int(idx) == 1 else '5g')
         ssid_list.append({'ssid': str(ssid), 'band': band or '2.4g', 'index': int(idx),
-                          'active': bool(_param(c, 'Enable')) and ap_adv.get(idx, True)})
+                          'active': bool(_param(c, 'Enable')) and ap_adv.get(idx, True),
+                          'channel': channels.get(m.group(1)) if m else None})
     return {
         '_id': device_id,
         'last_inform': str(d.get('_lastInform') or ''),
@@ -449,6 +515,8 @@ def _tr181_params(device_id, d):
         'ssid_24g': next((x['ssid'] for x in ssid_list if x['band'] == '2.4g'), ''),
         'ssid_5g': next((x['ssid'] for x in ssid_list if x['band'] == '5g'), ''),
         'data_model': 'tr181',
+        'optical_rx_dbm': _optical_rx(d),
+        'hosts': _host_list(_node(d, 'Device.Hosts.Host'), tr181=True),
     }
 
 
@@ -547,6 +615,65 @@ def fetch_tasks(device_id, limit=10):
         return out
     except Exception:
         return []
+
+
+def stale_devices(hours=None):
+    """ONU online yang modemnya terpetakan tetapi tidak lapor (inform) ke GenieACS
+    lebih dari N jam — ACS/VLAN manajemen/TR-069 di modem bermasalah."""
+    from datetime import timedelta
+    if hours is None:
+        row = SystemConfig.query.filter_by(key='genieacs_stale_hours').first()
+        try:
+            hours = int(row.value) if row and row.value else 24
+        except ValueError:
+            hours = 24
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
+    rows = (db.session.query(GenieacsDeviceMap, ONU).join(ONU, GenieacsDeviceMap.onu_id == ONU.id)
+            .filter(ONU.status == 'online', GenieacsDeviceMap.last_inform.isnot(None),
+                    GenieacsDeviceMap.last_inform < cutoff)
+            .order_by(GenieacsDeviceMap.last_inform).all())
+    return hours, [{'onu_id': o.id, 'name': o.name, 'device_id': m.device_id,
+                    'last_inform': m.last_inform.isoformat() + 'Z'} for m, o in rows]
+
+
+def fetch_faults(device_id=None, limit=200):
+    """Fault GenieACS (task gagal: kredensial CR salah, parameter ditolak, timeout…).
+    Fault memblokir task berikutnya di channel yang sama sampai dihapus/di-retry."""
+    url, user, pwd = _nbi_config()
+    if not url:
+        return []
+    params = {'limit': limit}
+    if device_id:
+        params['query'] = json.dumps({'device': device_id})
+    try:
+        r = httpx.get(f'{url}/faults', params=params, auth=_auth(user, pwd), timeout=_TIMEOUT)
+        rows = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        logger.warning('genieacs fetch_faults failed: %s', e)
+        return []
+    out = []
+    for f in rows if isinstance(rows, list) else []:
+        detail = f.get('detail')
+        msg = f.get('message') or ''
+        if not msg and isinstance(detail, dict):
+            msg = detail.get('faultString') or detail.get('message') or ''
+        out.append({'_id': f.get('_id', ''), 'device': f.get('device', ''), 'channel': f.get('channel', ''),
+                    'code': str(f.get('code', '')), 'message': str(msg)[:300],
+                    'retries': f.get('retries', 0), 'timestamp': str(f.get('timestamp', ''))})
+    return out
+
+
+def delete_fault(fault_id):
+    """Hapus fault → GenieACS mencoba lagi task/preset di channel tsb saat inform berikutnya."""
+    url, user, pwd = _nbi_config()
+    if not url or not fault_id:
+        return False, 'NBI not configured'
+    from urllib.parse import quote
+    try:
+        r = httpx.delete(f'{url}/faults/{quote(fault_id, safe="")}', auth=_auth(user, pwd), timeout=_TIMEOUT)
+    except Exception as e:
+        return False, str(e)[:200]
+    return (True, '') if r.status_code in (200, 204) else (False, f'HTTP {r.status_code}')
 
 
 def add_object(device_id, object_name):

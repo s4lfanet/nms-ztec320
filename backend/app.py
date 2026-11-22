@@ -463,6 +463,13 @@ def migrate_schema():
     add_col('maintenance_windows', 'node_type', 'VARCHAR(10)', "''")
     add_col('maintenance_windows', 'node_id', 'INTEGER', None)
     add_col('mikrotik_devices', 'ping_source', 'VARCHAR(10)', "'mikrotik'")
+    for _c, _t, _d in (('cpu_load', 'INTEGER', None), ('mem_used_pct', 'FLOAT', None),
+                       ('ros_uptime', 'VARCHAR(40)', "''"), ('ros_version', 'VARCHAR(60)', "''"),
+                       ('board', 'VARCHAR(60)', "''"), ('temperature', 'FLOAT', None),
+                       ('health_at', 'DATETIME', None), ('last_ok_at', 'DATETIME', None),
+                       ('cpu_high_cycles', 'INTEGER', '0')):
+        add_col('mikrotik_devices', _c, _t, _d)
+    add_col('genieacs_device_map', 'last_inform', 'DATETIME', None)
 
     # AlertRule table - add notify_whatsapp_native + OLT health fields
     add_col('alert_rules', 'notify_whatsapp_native', 'BOOLEAN', '0')

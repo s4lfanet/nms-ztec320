@@ -124,8 +124,11 @@ export const api = {
   genieacsGetSettings: () => request<{ nbi_url: string; nbi_user: string; has_password: boolean }>('/api/genieacs/settings'),
   genieacsSaveSettings: (data: { nbi_url: string; nbi_user: string; nbi_password?: string }) => request<{ success: boolean }>('/api/genieacs/settings', { method: 'POST', body: JSON.stringify(data) }),
   genieacsTest: () => request<{ success: boolean; device_count: number; error: string }>('/api/genieacs/test', { method: 'POST' }),
+  genieacsFaults: () => request<{ success: boolean; faults: AcsFault[] }>('/api/genieacs/faults'),
+  genieacsDeleteFault: (id: string) => request<{ success: boolean; message: string }>(`/api/genieacs/faults/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  genieacsStale: () => request<{ success: boolean; hours: number; devices: { onu_id: number; name: string; device_id: string; last_inform: string }[] }>('/api/genieacs/stale'),
   genieacsSync: () => request<{ success: boolean; matched: number; total: number; errors: string[] }>('/api/genieacs/sync', { method: 'POST' }),
-  onuTr069: (id: number) => request<{ success: boolean; connected: boolean; match_method?: string; pinned?: boolean; last_synced?: string; params: Tr069Params | null }>(`/api/onu/${id}/tr069`),
+  onuTr069: (id: number) => request<{ success: boolean; connected: boolean; match_method?: string; pinned?: boolean; last_synced?: string; params: Tr069Params | null; faults?: AcsFault[] }>(`/api/onu/${id}/tr069`),
   aiSettings: () => request<{ success: boolean; config: Record<string, unknown> }>('/api/ai/settings'),
   aiSaveSettings: (data: Record<string, unknown>) => request<{ success: boolean; config: Record<string, unknown> }>('/api/ai/settings', { method: 'POST', body: JSON.stringify(data) }),
   aiTest: () => request<{ success: boolean; message: string }>('/api/ai/test', { method: 'POST' }),
@@ -357,6 +360,11 @@ export interface RxHistoryPoint {
   samples?: number;
 }
 
+export interface AcsFault {
+  _id: string; device: string; channel: string; code: string; message: string; retries: number; timestamp: string;
+  onu_id?: number | null; onu_name?: string | null;
+}
+
 export interface Tr069Params {
   _id: string;
   last_inform: string;
@@ -366,7 +374,9 @@ export interface Tr069Params {
   model: string;
   vendor: string;
   wifi_clients?: number;
-  ssids?: { ssid: string; band: string; active: boolean; index: number }[];
+  ssids?: { ssid: string; band: string; active: boolean; index: number; channel?: number | string | null }[];
+  hosts?: { name: string; ip: string; mac: string; via: string; active: boolean | null }[];
+  optical_rx_dbm?: number | null;
   wan_conns?: { key: string; index: number; type: string; username: string; ip: string; status: string; enabled: boolean | null; service: string }[];
   wan_ip: string;
   pppoe_username: string;
@@ -1019,6 +1029,13 @@ export interface MikrotikDevice {
   ping_enabled: boolean;
   ping_batch: number;
   ping_source?: 'mikrotik' | 'vps';
+  cpu_load?: number | null;
+  mem_used_pct?: number | null;
+  temperature?: number | null;
+  ros_uptime?: string;
+  ros_version?: string;
+  board?: string;
+  health_at?: string | null;
   last_ok: boolean;
   last_error: string;
   last_polled_at: string | null;

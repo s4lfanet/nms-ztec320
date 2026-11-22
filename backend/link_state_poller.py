@@ -116,6 +116,38 @@ def prune_events(days=None):
     return n
 
 
+def _num(v):
+    try:
+        return float(str(v).strip().rstrip('%C').strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def read_health(dev, cli):
+    """Isi kolom kesehatan router dari /system/resource & /system/health.
+    Gagal membaca tidak menggagalkan siklus poll."""
+    try:
+        r = cli.get_resource() or {}
+    except Exception as e:
+        logger.debug('mikrotik %s resource failed: %s', dev.host, e)
+        return
+    cpu = _num(r.get('cpu-load'))
+    dev.cpu_load = int(cpu) if cpu is not None else None
+    free, total = _num(r.get('free-memory')), _num(r.get('total-memory'))
+    dev.mem_used_pct = round((1 - free / total) * 100, 1) if free is not None and total else None
+    dev.ros_uptime = str(r.get('uptime') or '')[:40]
+    dev.ros_version = str(r.get('version') or '')[:60]
+    dev.board = str(r.get('board-name') or '')[:60]
+    h = cli.get_health() if hasattr(cli, 'get_health') else {}
+    temp = None
+    for k in ('cpu-temperature', 'temperature', 'board-temperature1', 'sfp-temperature'):
+        temp = _num((h or {}).get(k))
+        if temp is not None:
+            break
+    dev.temperature = temp
+    dev.health_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def _cfg_int(key, default, lo=None, hi=None):
     row = SystemConfig.query.filter_by(key=key).first()
     try:
@@ -194,6 +226,8 @@ def poll_device(dev):
         return None
 
     dev.last_ok, dev.last_error, dev.last_polled_at = True, '', now
+    dev.last_ok_at = now
+    read_health(dev, cli)
     db.session.commit()  # flush device bookkeeping now — never carry a dirty
     # session into the ping phase, or the open write transaction holds SQLite's
     # RESERVED lock for the whole (slow) network round-trip and every other
@@ -405,6 +439,7 @@ def run_link_poller(app):
     with app.app_context():
         logger.info('link-state poller started')
         last_prune = 0.0
+        last_acs_sync = time.time() - 25 * 60  # sinkron ACS pertama ±5 menit setelah start
         while True:
             interval = _cfg_int('link_check_interval', 45, 15, 600)
             try:
@@ -428,6 +463,17 @@ def run_link_poller(app):
             except Exception as e:
                 db.session.rollback()
                 logger.error('link poller cycle failed: %s', e)
+            sync_min = _cfg_int('genieacs_sync_minutes', 30, 0, 1440)
+            if sync_min and time.time() - last_acs_sync > sync_min * 60:
+                last_acs_sync = time.time()
+                try:
+                    nbi = SystemConfig.query.filter_by(key='genieacs_nbi_url').first()
+                    if nbi and nbi.value:
+                        import genieacs_client
+                        genieacs_client.sync_device_maps()
+                except Exception as e:
+                    db.session.rollback()
+                    logger.warning('genieacs auto-sync failed: %s', e)
             if time.time() - last_prune > 3600:
                 last_prune = time.time()
                 try:

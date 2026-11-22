@@ -2099,6 +2099,7 @@ function Tr069Panel({ onuId }: { onuId: number }) {
         ['WAN IP', p?.wan_ip || '-'],
         ['PPPoE', p?.pppoe_username || '-'],
         ['WiFi Clients', p?.wifi_clients != null ? String(p.wifi_clients) : '-'],
+        [t('vo.acsRxModem'), p?.optical_rx_dbm != null ? `${p.optical_rx_dbm} dBm` : '-'],
       ],
     },
     {
@@ -2106,6 +2107,7 @@ function Tr069Panel({ onuId }: { onuId: number }) {
       rows: [
         ['Last Inform', p?.last_inform ? new Date(p.last_inform).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'],
         ['Match', data?.match_method || '-'],
+        [t('vo.acsDataModel'), p?.data_model === 'tr181' ? 'TR-181' : 'TR-098'],
       ],
     },
   ];
@@ -2123,7 +2125,7 @@ function Tr069Panel({ onuId }: { onuId: number }) {
             )}>
               <Wifi size={11} />
               {s.ssid}
-              <span className="text-[9px] opacity-70">{s.band}</span>
+              <span className="text-[9px] opacity-70">{s.band}{s.channel ? ` · ch ${s.channel}` : ''}</span>
             </span>
           ))}
         </div>
@@ -2141,6 +2143,27 @@ function Tr069Panel({ onuId }: { onuId: number }) {
           </div>
         ))}
       </div>
+      {(data?.faults?.length ?? 0) > 0 && (
+        <div className="mt-3 p-2 rounded-lg bg-danger/10 border border-danger/30 text-xs space-y-1">
+          <div className="font-medium text-danger">{t('vo.acsFaults', { n: data!.faults!.length })}</div>
+          {data!.faults!.map(f => (
+            <div key={f._id} className="text-tx2 break-words">[{f.code}] {f.message || f.channel}</div>
+          ))}
+        </div>
+      )}
+      {(p?.hosts?.length ?? 0) > 0 && (
+        <details className="mt-3">
+          <summary className="text-xs text-tx3 cursor-pointer">{t('vo.acsHosts', { n: p!.hosts!.filter(h => h.active !== false).length })}</summary>
+          <div className="mt-1.5 space-y-0.5">
+            {p!.hosts!.filter(h => h.active !== false).map((h, i) => (
+              <div key={i} className="flex justify-between gap-2 text-xs px-2 py-1 rounded bg-glass">
+                <span className="truncate">{h.name || h.mac || '-'}</span>
+                <span className="text-tx3 font-mono shrink-0">{h.ip || ''}{h.via ? ` · ${h.via}` : ''}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
       {canManage && (
         <div className="mt-3 pt-3 border-t border-brd space-y-3">
           <div className="flex flex-wrap gap-2">

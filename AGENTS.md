@@ -255,6 +255,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 35. **Riwayat PPPoE & diagnosis (`link_state_poller.py`, `diagnosis.py`)** — poller mencatat `PppoeSessionEvent` (`up` hanya bila baris state sudah ada dan sebelumnya tidak login — jadi deploy pertama tidak membanjiri event; `down` saat sesi hilang; `reconnect` bila `uptime_seconds()` sesi turun). Prune per jam (`pppoe_event_days`, default 30). Tabel ini ONU-keyed → ikut dihapus di `helpers.delete_onu_dependents`. `MikrotikDevice.ping_source`: `mikrotik` (default, round-robin `ping_batch`) | `vps` (ThreadPoolExecutor `VPS_PING_WORKERS`, semua klien). `diagnose_onu()` hanya membaca DB (tanpa Telnet/API router) — dipakai `/api/onu/<id>/diagnosis`, AI tool `diagnose`, dan `/diagnosa`.
 
+36. **Kesehatan MikroTik & pemantauan GenieACS (`integration_health.py`)** — `link_state_poller.read_health()` mengisi `MikrotikDevice.cpu_load/mem_used_pct/temperature/ros_*/health_at/last_ok_at` (kegagalan baca tidak menggagalkan poll). `check_mikrotik_health()` dipanggil di siklus alert setelah `_check_odp_outages`: notifikasi `mikrotik_down/cpu/temp` di-dedupe per `target_type='mikrotik', target_id` yang belum resolved, pulih → resolved + pesan `*_recovery`. GenieACS: `sync_device_maps()` juga menyimpan `GenieacsDeviceMap.last_inform`, dijalankan otomatis oleh link poller tiap `genieacs_sync_minutes` (default 30); `stale_devices()` = ONU online dengan inform > `genieacs_stale_hours`; `fetch_faults()/delete_fault()` (DELETE `/faults/<id>` di-URL-encode). `_to_dbm()` menormalkan RX modem (dBm, ×10, ×100, ×1000).
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

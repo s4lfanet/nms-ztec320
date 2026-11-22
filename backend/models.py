@@ -1165,6 +1165,16 @@ class MikrotikDevice(db.Model):
     # 'mikrotik' = ping dari router (bergiliran ping_batch/siklus, perilaku lama)
     # 'vps' = ping paralel dari server NMS, semua klien tiap siklus
     ping_source = db.Column(db.String(10), default='mikrotik')
+    # Kesehatan router (diisi poller tiap siklus dari /system/resource & /system/health)
+    cpu_load = db.Column(db.Integer, nullable=True)
+    mem_used_pct = db.Column(db.Float, nullable=True)
+    ros_uptime = db.Column(db.String(40), default='')
+    ros_version = db.Column(db.String(60), default='')
+    board = db.Column(db.String(60), default='')
+    temperature = db.Column(db.Float, nullable=True)
+    health_at = db.Column(db.DateTime, nullable=True)
+    last_ok_at = db.Column(db.DateTime, nullable=True)
+    cpu_high_cycles = db.Column(db.Integer, default=0)
     last_ok = db.Column(db.Boolean, default=False)
     last_error = db.Column(db.String(300), default='')
     last_polled_at = db.Column(db.DateTime)
@@ -1305,6 +1315,7 @@ class GenieacsDeviceMap(db.Model):
     match_method = db.Column(db.String(20), default='serial')  # serial, mac, manual
     pinned = db.Column(db.Boolean, default=False)  # manual pin — won't be auto-rematched
     last_synced_at = db.Column(db.DateTime, nullable=True)
+    last_inform = db.Column(db.DateTime, nullable=True)  # dari GenieACS saat sinkron
     onu = db.relationship('ONU', backref=db.backref('genieacs_map', uselist=False))
 
     __table_args__ = (

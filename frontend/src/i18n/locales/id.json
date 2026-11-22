@@ -1023,7 +1023,11 @@
     "diagPingNow": "Ping sekarang",
     "diagPinging": "Ping…",
     "diagPingFail": "Ping gagal",
-    "diagPingResult": "Ping: loss {{loss}}%, {{rtt}} ms (dari {{src}})"
+    "diagPingResult": "Ping: loss {{loss}}%, {{rtt}} ms (dari {{src}})",
+    "acsRxModem": "RX (versi modem)",
+    "acsDataModel": "Model data",
+    "acsFaults": "{{n}} fault GenieACS — perintah berikutnya bisa tertahan (hapus di halaman TR069 Profile)",
+    "acsHosts": "Perangkat terhubung ({{n}})"
   },
   "oc": {
     "notFound": "OLT tidak ditemukan",
@@ -1176,7 +1180,8 @@
     "pingFromRouter": "Dari MikroTik (bergiliran per siklus)",
     "pingFromVps": "Dari server NMS (paralel, semua klien)",
     "pingVpsHint": "Semua klien di-ping sekaligus tiap siklus tanpa membebani router. Server NMS harus punya rute ke IP klien PPPoE.",
-    "pingVpsShort": "semua (VPS)"
+    "pingVpsShort": "semua (VPS)",
+    "health": "Kesehatan"
   },
   "pg_users": {
     "userCreated": "User dibuat",
@@ -1400,7 +1405,19 @@
     "testConnection": "Tes Koneksi",
     "syncDevices": "Sync perangkat",
     "syncDone": "Sync selesai: {{matched}}/{{total}} ONU tertaut ke device GenieACS",
-    "syncErrors": "{{n}} error — lihat log"
+    "syncErrors": "{{n}} error — lihat log",
+    "acsHealth": "Pemantauan GenieACS",
+    "staleTitle": "Modem tidak lapor > {{h}} jam ({{n}})",
+    "staleHint": "ONU online tapi modemnya tidak inform ke GenieACS — perintah TR-069 tidak akan sampai. Cek VLAN/IP manajemen dan setelan ACS di modem.",
+    "staleNone": "Semua modem lapor normal.",
+    "faultTitle": "Fault GenieACS ({{n}})",
+    "faultHint": "Perintah/preset yang gagal di modem. Selama fault ada, perintah berikutnya di jalur yang sama ditahan — hapus fault untuk mencoba lagi.",
+    "faultNone": "Tidak ada fault.",
+    "faultDelete": "Hapus & coba lagi",
+    "faultDeleteTitle": "Hapus fault ini?",
+    "faultDeleteMsg": "GenieACS akan mencoba lagi perintah yang tertahan saat modem lapor berikutnya.",
+    "faultDeleted": "Fault dihapus — dicoba lagi saat modem lapor",
+    "faultRetries": "{{n}}x dicoba"
   },
   "pg_cf": {
     "failedToFetchStatus": "Gagal mengambil status",

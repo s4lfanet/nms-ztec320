@@ -161,6 +161,7 @@ export function MikrotikSettings() {
                 <th className="px-4 py-3">API</th>
                 <th className="px-4 py-3">Ping</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">{t('pg_mikrotik.health')}</th>
                 <th className="px-4 py-3">{t('pg_mikrotik.lastPoll')}</th>
                 <th className="px-4 py-3 text-right">{t('pg_mikrotik.actions')}</th>
               </tr>
@@ -186,6 +187,16 @@ export function MikrotikSettings() {
                       <span className="inline-flex items-center gap-1 text-danger text-xs" title={d.last_error}>
                         <XCircle size={13} /> {d.last_error?.slice(0, 40) || 'gagal'}
                       </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-xs tabular-nums whitespace-nowrap">
+                    {d.cpu_load == null ? <span className="text-tx3">—</span> : (
+                      <div title={[d.board, d.ros_version && `RouterOS ${d.ros_version}`, d.ros_uptime && `uptime ${d.ros_uptime}`].filter(Boolean).join(' · ')}>
+                        <span className={d.cpu_load >= 85 ? 'text-danger' : d.cpu_load >= 60 ? 'text-warning' : 'text-tx2'}>CPU {d.cpu_load}%</span>
+                        {d.mem_used_pct != null && <span className="text-tx3"> · RAM {Math.round(d.mem_used_pct)}%</span>}
+                        {d.temperature != null && <span className={d.temperature >= 70 ? 'text-danger' : 'text-tx3'}> · {d.temperature}°C</span>}
+                        {d.ros_version && <div className="text-tx3">v{d.ros_version}{d.ros_uptime ? ` · ${d.ros_uptime}` : ''}</div>}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3 text-tx3 text-xs tabular-nums">

@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Server, Lock, Unlock, FileText, Globe, RefreshCw, Link2, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Server, Lock, Unlock, FileText, Globe, RefreshCw, Link2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
 import { toast } from '../components/Toast';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, EmptyState, Input, Modal, Select } from '../components/ui';
+import { confirm as confirmDialog } from '../components/ConfirmDialog';
+import { formatDate, timeAgo } from '../lib/utils';
 
 interface Tr069Profile {
   id: number;
@@ -74,6 +77,7 @@ export default function Tr069Profile() {
       />
 
       <GenieAcsSettings />
+      <GenieAcsHealth />
 
       {/* Table */}
       <Card bodyClassName="p-0">
@@ -435,6 +439,62 @@ function GenieAcsSettings() {
           </div>
         </div>
       )}
+    </Card>
+  );
+}
+
+function GenieAcsHealth() {
+  const { t } = useTranslation();
+  const hasPerm = useHasPerm();
+  const canManage = hasPerm('genieacs_manage');
+  const { data: cfg } = useQuery({ queryKey: ['genieacs-settings'], queryFn: api.genieacsGetSettings, enabled: canManage });
+  const on = !!cfg?.nbi_url;
+  const faults = useQuery({ queryKey: ['genieacs-faults'], queryFn: api.genieacsFaults, enabled: on, refetchInterval: 120_000 });
+  const stale = useQuery({ queryKey: ['genieacs-stale'], queryFn: api.genieacsStale, enabled: on, refetchInterval: 300_000 });
+  if (!canManage || !on) return null;
+  const fl = faults.data?.faults || [];
+  const st = stale.data?.devices || [];
+  const removeFault = async (id: string) => {
+    if (!(await confirmDialog({ title: t('pg_tr069.faultDeleteTitle'), message: t('pg_tr069.faultDeleteMsg'), variant: 'warning' }))) return;
+    const r = await api.genieacsDeleteFault(id);
+    if (r.success) { toast.success(t('pg_tr069.faultDeleted')); faults.refetch(); } else toast.error(r.message);
+  };
+  return (
+    <Card icon={<AlertTriangle size={16} />} title={t('pg_tr069.acsHealth')}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div>
+          <div className="text-xs font-semibold text-tx2 mb-1">{t('pg_tr069.staleTitle', { n: st.length, h: stale.data?.hours ?? 24 })}</div>
+          <p className="text-xs text-tx3 mb-2">{t('pg_tr069.staleHint')}</p>
+          {st.length === 0 ? <div className="text-xs text-success">{t('pg_tr069.staleNone')}</div> : (
+            <ul className="space-y-1 max-h-64 overflow-y-auto">
+              {st.map(d => (
+                <li key={d.onu_id} className="flex justify-between gap-2 text-xs">
+                  <Link to={`/dashboard/onus/${d.onu_id}`} className="text-accent hover:underline truncate">{d.name || d.device_id}</Link>
+                  <span className="text-tx3 shrink-0" title={formatDate(d.last_inform)}>{timeAgo(d.last_inform)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div>
+          <div className="text-xs font-semibold text-tx2 mb-1">{t('pg_tr069.faultTitle', { n: fl.length })}</div>
+          <p className="text-xs text-tx3 mb-2">{t('pg_tr069.faultHint')}</p>
+          {fl.length === 0 ? <div className="text-xs text-success">{t('pg_tr069.faultNone')}</div> : (
+            <ul className="space-y-1.5 max-h-64 overflow-y-auto">
+              {fl.map(f => (
+                <li key={f._id} className="text-xs p-1.5 rounded bg-glass">
+                  <div className="flex justify-between gap-2">
+                    {f.onu_id ? <Link to={`/dashboard/onus/${f.onu_id}`} className="text-accent hover:underline truncate">{f.onu_name || f.device}</Link>
+                      : <span className="truncate text-tx2">{f.device}</span>}
+                    <button className="text-danger hover:underline shrink-0" onClick={() => removeFault(f._id)}>{t('pg_tr069.faultDelete')}</button>
+                  </div>
+                  <div className="text-tx3 break-words">[{f.code}] {f.message || f.channel} · {t('pg_tr069.faultRetries', { n: f.retries })}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </Card>
   );
 }

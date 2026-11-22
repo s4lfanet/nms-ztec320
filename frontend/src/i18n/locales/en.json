@@ -1023,7 +1023,11 @@
     "diagPingNow": "Ping now",
     "diagPinging": "Pinging…",
     "diagPingFail": "Ping failed",
-    "diagPingResult": "Ping: loss {{loss}}%, {{rtt}} ms (from {{src}})"
+    "diagPingResult": "Ping: loss {{loss}}%, {{rtt}} ms (from {{src}})",
+    "acsRxModem": "RX (modem-reported)",
+    "acsDataModel": "Data model",
+    "acsFaults": "{{n}} GenieACS fault(s) — later commands may be held (clear them on the TR069 Profile page)",
+    "acsHosts": "Connected devices ({{n}})"
   },
   "oc": {
     "notFound": "OLT not found",
@@ -1176,7 +1180,8 @@
     "pingFromRouter": "From MikroTik (rotating per cycle)",
     "pingFromVps": "From NMS server (parallel, all clients)",
     "pingVpsHint": "Every client is pinged each cycle without loading the router. The NMS server needs a route to the PPPoE client IPs.",
-    "pingVpsShort": "all (VPS)"
+    "pingVpsShort": "all (VPS)",
+    "health": "Health"
   },
   "pg_users": {
     "userCreated": "User created",
@@ -1400,7 +1405,19 @@
     "testConnection": "Test Connection",
     "syncDevices": "Sync devices",
     "syncDone": "Sync done: {{matched}}/{{total}} ONUs linked to GenieACS devices",
-    "syncErrors": "{{n}} errors — see logs"
+    "syncErrors": "{{n}} errors — see logs",
+    "acsHealth": "GenieACS monitoring",
+    "staleTitle": "Modems not reporting > {{h}} h ({{n}})",
+    "staleHint": "ONU is online but its modem is not informing GenieACS — TR-069 commands won't reach it. Check the management VLAN/IP and the modem's ACS settings.",
+    "staleNone": "All modems are reporting.",
+    "faultTitle": "GenieACS faults ({{n}})",
+    "faultHint": "Commands/presets that failed on the modem. While a fault exists, later commands on the same channel are held — delete it to retry.",
+    "faultNone": "No faults.",
+    "faultDelete": "Delete & retry",
+    "faultDeleteTitle": "Delete this fault?",
+    "faultDeleteMsg": "GenieACS will retry the held command on the modem's next inform.",
+    "faultDeleted": "Fault deleted — retried on next inform",
+    "faultRetries": "{{n}} retries"
   },
   "pg_cf": {
     "failedToFetchStatus": "Failed to fetch status",
