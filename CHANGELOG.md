@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — AI Agent: Gemini tidak lagi timeout
+
+#### Diperbaiki
+- **Tes koneksi Gemini "The read operation timed out"**: model Gemini 3.x berpikir (*thinking*) dulu sebelum menjawab, dan dengan batas 30 detik bisa terputus. Untuk Gemini kini dikirim `reasoning_effort: low` (jawaban lebih cepat), batas tes koneksi dinaikkan ke 60 detik dan pertanyaan biasa ke 90 detik.
+- Pesan timeout kini menjelaskan tindakan: coba lagi, pakai model lebih ringan (mis. `gemini-3.5-flash-lite`), atau cek akses internet server.
+- Toast dengan teks panjang (mis. URL) kini terbungkus dan tidak terpotong di tepi layar HP.
+
 ### 2026-11-22 — AI Agent: model Gemini lama dipindah otomatis
 
 #### Diperbaiki

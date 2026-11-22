@@ -95,7 +95,7 @@ export function Toaster() {
           )}
         >
           <span className="flex-shrink-0">{icons[t.type]}</span>
-          <span className="text-sm font-medium flex-1 text-tx1">{t.message}</span>
+          <span className="text-sm font-medium flex-1 min-w-0 text-tx1 break-words [overflow-wrap:anywhere]">{t.message}</span>
           <button onClick={() => remove(t.id)} className="flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity">
             <X size={14} />
           </button>
