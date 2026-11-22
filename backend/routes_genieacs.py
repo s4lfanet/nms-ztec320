@@ -5,6 +5,7 @@ from models import db, SystemConfig, ONU, GenieacsDeviceMap
 from helpers import permission_required, log_action, utc_iso
 from extensions import logger
 import genieacs_client
+import json
 
 bp = Blueprint('genieacs', __name__)
 
@@ -321,3 +322,94 @@ def list_stale():
     hours = request.args.get('hours', type=int)
     hours, rows = genieacs_client.stale_devices(hours)
     return jsonify({'success': True, 'hours': hours, 'devices': rows})
+
+
+# ─── Operasi massal (acs_bulk.py) ───
+
+@bp.route('/api/genieacs/bulk/options', methods=['GET'])
+@login_required
+@permission_required(_PERM)
+def bulk_options():
+    import acs_bulk
+    from models import OLT
+    from ftth_topology import NODE_MODELS
+    models = sorted({(o.actual_type or o.onu_type or '').strip()
+                     for o, _m in db.session.query(ONU, GenieacsDeviceMap)
+                     .join(GenieacsDeviceMap, GenieacsDeviceMap.onu_id == ONU.id).all()} - {''})
+    nodes = [{'type': t, 'id': n.id, 'name': n.name}
+             for t, m in NODE_MODELS.items() for n in m.query.order_by(m.name).all()]
+    return jsonify({'success': True, 'olts': [{'id': o.id, 'name': o.name} for o in OLT.query.order_by(OLT.name)],
+                    'models': models, 'nodes': nodes, 'files': acs_bulk.list_files(),
+                    'max': acs_bulk.MAX_TARGETS})
+
+
+@bp.route('/api/genieacs/bulk/preview', methods=['POST'])
+@login_required
+@permission_required(_PERM)
+def bulk_preview():
+    import acs_bulk
+    f = (request.get_json() or {}).get('filters') or {}
+    return jsonify({'success': True, **acs_bulk.preview(f)})
+
+
+@bp.route('/api/genieacs/bulk/run', methods=['POST'])
+@login_required
+@permission_required(_PERM)
+def bulk_run():
+    import acs_bulk
+    from flask import current_app
+    data = request.get_json() or {}
+    f, action, params = data.get('filters') or {}, data.get('action'), data.get('params') or {}
+    err = acs_bulk.validate_action(action, params)
+    if err:
+        return jsonify({'success': False, 'message': err}), 400
+    busy = acs_bulk.running_job()
+    if busy:
+        return jsonify({'success': False, 'message': f'Masih ada operasi massal berjalan (#{busy.id}).'}), 409
+    count = len(acs_bulk.select_targets(f))
+    if count == 0:
+        return jsonify({'success': False, 'message': 'Tidak ada modem yang cocok dengan filter.'}), 400
+    if count > acs_bulk.MAX_TARGETS:
+        return jsonify({'success': False, 'message': f'Maksimal {acs_bulk.MAX_TARGETS} modem per operasi '
+                                                     f'(filter ini {count}). Persempit filter.'}), 400
+    if int(data.get('confirm_count') or -1) != count:
+        return jsonify({'success': False, 'message': f'Jumlah target berubah sejak pratinjau (sekarang {count}). '
+                                                     'Pratinjau ulang lalu konfirmasi.'}), 409
+    job = acs_bulk.create_job(f, action, params, getattr(current_user, 'username', ''))
+    log_action('tr069_bulk', 'onu', target=f'job#{job.id}',
+               detail=f'{action} {json.dumps(params)[:150]} → {count} modem; filter {json.dumps(f)[:200]}')
+    acs_bulk.start_job(current_app._get_current_object(), job.id)
+    return jsonify({'success': True, 'job': acs_bulk.job_dict(job)})
+
+
+@bp.route('/api/genieacs/bulk/jobs', methods=['GET'])
+@login_required
+@permission_required(_PERM)
+def bulk_jobs():
+    import acs_bulk
+    from models import AcsBulkJob
+    acs_bulk.running_job()  # rapikan job yatim setelah restart
+    rows = AcsBulkJob.query.order_by(AcsBulkJob.id.desc()).limit(20).all()
+    return jsonify({'success': True, 'jobs': [acs_bulk.job_dict(j) for j in rows]})
+
+
+@bp.route('/api/genieacs/bulk/jobs/<int:job_id>', methods=['GET'])
+@login_required
+@permission_required(_PERM)
+def bulk_job(job_id):
+    import acs_bulk
+    from models import AcsBulkJob
+    j = db.session.get(AcsBulkJob, job_id)
+    if not j:
+        return jsonify({'success': False, 'message': 'Job tidak ditemukan'}), 404
+    return jsonify({'success': True, 'job': acs_bulk.job_dict(j, with_items=True)})
+
+
+@bp.route('/api/genieacs/bulk/jobs/<int:job_id>/cancel', methods=['POST'])
+@login_required
+@permission_required(_PERM)
+def bulk_cancel(job_id):
+    import acs_bulk
+    acs_bulk.cancel_job(job_id)
+    log_action('tr069_bulk_cancel', 'onu', target=f'job#{job_id}')
+    return jsonify({'success': True})

@@ -110,6 +110,7 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - **Riwayat sesi PPPoE** (tersambung/putus/putus-nyambung cepat) dari poller MikroTik, 30 hari
 - **Ping paralel dari server NMS** (opsional per MikroTik) — semua pelanggan dicek tiap siklus
 - **Kesehatan router MikroTik** (CPU/RAM/suhu/versi) + alert tidak terjangkau/CPU/suhu tinggi
+- **Operasi massal modem (TR-069)**: refresh/reboot/periodic inform/firmware/parameter ke banyak modem per OLT/model/titik FTTH — pratinjau wajib, konfirmasi jumlah, maks 500, bertahap, bisa dibatalkan, tercatat di audit log
 - **Pemantauan GenieACS**: modem tidak lapor, fault (hapus & coba lagi), sinkron otomatis 30 menit, RX versi modem & perangkat terhubung di panel TR-069
 
 ### AI Agent (baca-saja)
