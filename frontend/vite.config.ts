@@ -8,7 +8,8 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // prompt: SW baru menunggu sampai diterapkan (lib/swUpdate.ts) — tidak ada reload mendadak
+      registerType: 'prompt',
       injectRegister: 'auto',
       disable: false,
       manifest: {
@@ -41,7 +42,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        skipWaiting: true,
+        skipWaiting: false,
       },
       devOptions: {
         enabled: false,

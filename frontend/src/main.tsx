@@ -13,12 +13,21 @@ import './i18n'     // react-i18next — id/en locales, browser pref + user prof
 import { initTheme } from './stores/theme'
 import App from './App'
 
-// Service Worker — auto-reload saat versi baru terdeteksi (menghindari
-// bundle lama nyangkut di precache PWA)
-import { registerSW } from 'virtual:pwa-register'
-const updateSW = registerSW({
-  immediate: true,
-  onNeedRefresh() { updateSW(true) },
+// Service Worker — versi baru TIDAK memuat ulang halaman seketika; diterapkan
+// saat pindah halaman atau lewat tombol (lihat lib/swUpdate.ts).
+import { initServiceWorker } from './lib/swUpdate'
+initServiceWorker()
+
+// Setelah deploy, file chunk lama (hash lama) sudah tidak ada di server. Bila
+// sebuah halaman gagal dimuat karena itu, muat ulang sekali agar dapat versi baru.
+window.addEventListener('vite:preloadError', (event) => {
+  const key = 'nms-chunk-reload-at'
+  const last = Number(sessionStorage.getItem(key) || 0)
+  if (Date.now() - last > 30000) {
+    event.preventDefault()
+    sessionStorage.setItem(key, String(Date.now()))
+    window.location.reload()
+  }
 })
 
 // Init theme (localStorage/system) before first paint; per-user preference

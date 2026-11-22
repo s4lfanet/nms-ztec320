@@ -247,6 +247,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 31. **Kaca hanya untuk kartu di atas latar** — apa pun yang menimpa konten (modal, dialog, menu, toast, sheet, topbar/sidebar/bottom nav, `sticky-action-bar`, kepala tabel) harus solid. Blok "Permukaan yang menimpa konten = SOLID" di akhir `glass.css` menangani `.modal-wrapper > .glass-card` dan `.modal-overlay ~ .glass-card`; untuk popover baru pakai kelas `surface-solid` atau `background: var(--bg-surface)` tanpa `backdrop-filter`. Overlay modal yang di-portal ke body memakai `body > .modal-overlay { z-index: 50 }` agar ikut menutup chrome.
 
+32. **PWA tanpa reload mendadak (`lib/swUpdate.ts`)** — `registerType: 'prompt'`, `skipWaiting: false`. Versi SW baru memicu `onNeedRefresh` → `SwUpdateNotice` (pemberitahuan kecil) dan diterapkan saat pindah halaman / tombol Muat ulang (`applySwUpdate()` → SKIP_WAITING → reload). Jangan kembali ke `autoUpdate` + `updateSW(true)` di `onNeedRefresh`: itu memuat ulang halaman di tengah user membaca. Alur Update Sistem memakai `refreshAfterServerUpdate()`. `vite:preloadError` di `main.tsx` me-reload sekali (maks per 30 detik) bila chunk lama hilang setelah deploy.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

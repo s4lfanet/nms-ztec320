@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Download, Loader2 } from 'lucide-react';
 import { Modal } from './ui/Modal';
+import { refreshAfterServerUpdate } from '../lib/swUpdate';
 import { toast } from './Toast';
 import { useAuth } from '../stores/auth';
 
@@ -90,11 +91,7 @@ export function UpdatePrompt() {
       if (!d.restarted) { toast.success(d.message); setPhase('idle'); setInfo(null); return; }
       setPhase('restarting');
       await waitForRestart();
-      try {
-        const regs = await navigator.serviceWorker?.getRegistrations?.();
-        await Promise.all((regs || []).map(reg => reg.update().catch(() => undefined)));
-      } catch { /* ignore */ }
-      window.location.reload();
+      await refreshAfterServerUpdate();
     } catch {
       toast.error(t('cmp_update.failedToApplyThe'));
       setPhase('idle');
