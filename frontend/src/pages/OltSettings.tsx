@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, EmptyState, Modal, Input, Select } from '../components/ui';
+import { Button, Card, EmptyState, Modal, Input, Select, ActionMenu, type ActionItem } from '../components/ui';
 
 export function OltSettings() {
   const qc = useQueryClient();
@@ -205,6 +205,20 @@ export function OltSettings() {
 
   if (isLoading) return <div className="animate-pulse glass-card h-64" />;
 
+  // Aksi per OLT (redesign Fase 2): Sync & Konfigurasi tetap sebagai ikon,
+  // sisanya di menu "Lainnya" berlabel; Hapus dipisah sebagai aksi merusak.
+  const oltMenu = (olt: OltInfo): ActionItem[] => [
+    { key: 'edit', label: 'Edit koneksi', icon: <Edit3 size={16} />, onClick: () => setModal({ mode: 'edit', olt }) },
+    { key: 'save', label: writingId === olt.id ? 'Menyimpan config…' : 'Save Config (write)', icon: <Save size={16} />, disabled: writingId === olt.id, onClick: () => writeConfigMutation.mutate(olt.id) },
+    { key: 'export', label: 'Export config', icon: <Download size={16} />, onClick: () => exportConfig(olt.id) },
+    { key: 'backup', label: 'Backup config', icon: <History size={16} />, onClick: () => setBackupOlt({ id: olt.id, name: olt.name }) },
+    { key: 'discover', label: discoveringId === olt.id ? 'Mendeteksi slot…' : 'Deteksi slot', icon: <Server size={16} />, disabled: discoveringId === olt.id, onClick: () => discoverSlotsMutation.mutate(olt.id) },
+    { key: 'pon', label: 'Port PON (aktif/nonaktif)', icon: <Power size={16} />, onClick: () => setPonCtlOlt({ oltId: olt.id, oltName: olt.name }) },
+    { key: 'migrate', label: 'Migrasi PON', icon: <ArrowRightLeft size={16} />, onClick: () => setMigrateOlt({ oltId: olt.id, oltName: olt.name }) },
+    { key: 'cross', label: 'Migrasi antar-OLT', icon: <Globe size={16} />, onClick: () => setCrossMigrateOlt({ oltId: olt.id, oltName: olt.name }) },
+    { key: 'delete', label: 'Hapus OLT', icon: <Trash2 size={16} />, danger: true, onClick: () => deleteMutation.mutate(olt.id) },
+  ];
+
   return (
     <PageContainer className="animate-fade-in">
       <PageHeader
@@ -362,17 +376,9 @@ export function OltSettings() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center justify-end gap-1">
-                      {canManage && <ActionBtn icon={<Edit3 size={14} />} title="Edit" onClick={() => setModal({ mode: 'edit', olt })} />}
                       {canManage && <ActionBtn icon={<RefreshCw size={14} />} title="Sync" onClick={() => syncMutation.mutate(olt.id)} />}
-                      {canManage && <ActionBtn icon={<Save size={14} />} title="Save Config" onClick={() => writeConfigMutation.mutate(olt.id)} loading={writingId === olt.id} />}
-                      {canManage && <ActionBtn icon={<Settings size={14} />} title="Config" onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
-                      {canManage && <ActionBtn icon={<Download size={14} />} title="Export" onClick={() => exportConfig(olt.id)} />}
-                      {canManage && <ActionBtn icon={<History size={14} />} title="Backup" onClick={() => setBackupOlt({ id: olt.id, name: olt.name })} />}
-                      {canManage && <ActionBtn icon={<Server size={14} />} title="Discover" onClick={() => discoverSlotsMutation.mutate(olt.id)} loading={discoveringId === olt.id} />}
-                      {canManage && <ActionBtn icon={<ArrowRightLeft size={14} />} title="Migrate PON" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
-                      {canManage && <ActionBtn icon={<Power size={14} />} title="PON Ports" onClick={() => setPonCtlOlt({ oltId: olt.id, oltName: olt.name })} />}
-                      {canManage && <ActionBtn icon={<Globe size={14} />} title="Cross-OLT Migrate" onClick={() => setCrossMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
-                      {canManage && <ActionBtn icon={<Trash2 size={14} />} title="Delete" danger onClick={() => deleteMutation.mutate(olt.id)} />}
+                {canManage && <ActionBtn icon={<Settings size={14} />} title="Konfigurasi OLT" onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
+                {canManage && <ActionMenu iconOnly title={olt.name} actions={oltMenu(olt)} />}
                       {!canManage && <span className="text-xs text-tx3 px-2">View only</span>}
                     </div>
                   </td>
@@ -425,17 +431,9 @@ export function OltSettings() {
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                {canManage && <ActionBtn icon={<Edit3 size={16} />} title="Edit" onClick={() => setModal({ mode: 'edit', olt })} />}
                 {canManage && <ActionBtn icon={<RefreshCw size={16} />} title="Sync" onClick={() => syncMutation.mutate(olt.id)} />}
-                {canManage && <ActionBtn icon={<Save size={16} />} title="Save Config" onClick={() => writeConfigMutation.mutate(olt.id)} loading={writingId === olt.id} />}
-                {canManage && <ActionBtn icon={<Settings size={16} />} title="Config" onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
-                {canManage && <ActionBtn icon={<Download size={16} />} title="Export" onClick={() => exportConfig(olt.id)} />}
-                {canManage && <ActionBtn icon={<History size={16} />} title="Backup" onClick={() => setBackupOlt({ id: olt.id, name: olt.name })} />}
-                {canManage && <ActionBtn icon={<Server size={16} />} title="Discover" onClick={() => discoverSlotsMutation.mutate(olt.id)} loading={discoveringId === olt.id} />}
-                {canManage && <ActionBtn icon={<ArrowRightLeft size={16} />} title="Migrate PON" onClick={() => setMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
-                {canManage && <ActionBtn icon={<Power size={16} />} title="PON Ports" onClick={() => setPonCtlOlt({ oltId: olt.id, oltName: olt.name })} />}
-                {canManage && <ActionBtn icon={<Globe size={16} />} title="Cross-OLT Migrate" onClick={() => setCrossMigrateOlt({ oltId: olt.id, oltName: olt.name })} />}
-                {canManage && <ActionBtn icon={<Trash2 size={16} />} title="Delete" danger onClick={() => deleteMutation.mutate(olt.id)} />}
+                {canManage && <ActionBtn icon={<Settings size={16} />} title="Konfigurasi OLT" onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
+                {canManage && <ActionMenu iconOnly title={olt.name} actions={oltMenu(olt)} />}
                 {!canManage && <span className="text-xs text-tx3 px-2">View only</span>}
               </div>
             </div>
