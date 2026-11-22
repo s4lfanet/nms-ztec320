@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import i18n from '../i18n';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -45,9 +46,12 @@ export function getSystemTimezone(): string {
   return _systemTimezone;
 }
 
+// Teks & format tanggal mengikuti bahasa yang dipilih pengguna (id/en)
+const locale = () => (i18n.language === 'en' ? 'en-GB' : 'id-ID');
+
 export function formatDate(dateStr: string | null): string {
-  if (!dateStr) return 'Never';
-  return new Date(dateStr).toLocaleString('id-ID', {
+  if (!dateStr) return i18n.t('time.never');
+  return new Date(dateStr).toLocaleString(locale(), {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
     timeZone: _systemTimezone,
@@ -55,15 +59,15 @@ export function formatDate(dateStr: string | null): string {
 }
 
 export function timeAgo(dateStr: string | null): string {
-  if (!dateStr) return 'Never';
+  if (!dateStr) return i18n.t('time.never');
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return i18n.t('time.justNow');
+  if (mins < 60) return i18n.t('time.minsAgo', { n: mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
+  if (hrs < 24) return i18n.t('time.hoursAgo', { n: hrs });
   const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return i18n.t('time.daysAgo', { n: days });
 }
 
 /**

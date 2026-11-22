@@ -231,6 +231,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 23. **Redesign bertahap (komponen bersama)** — token di `frontend/src/tokens.css`, komponen di `components/ui` (`StatusStrip`, `ActionMenu`, `Sheet`, `Stepper`, `DataList`, `Notice`, `StickyActionBar`). Halaman dipindah satu per satu (satu PR per halaman), logika API/telnet/SNMP tidak disentuh. Aksi merusak di `ActionMenu` pakai `danger: true`; konfirmasi tetap di `onClick`. Uji tata letak: `scripts/ui_check/check.py` (job CI `ui-responsive`) — jangan menambah halaman yang melebar keluar layar.
 
+24. **Terjemahan (i18n) bertahap** — teks UI lewat `t('bagian.kunci')` (react-i18next), kunci di `frontend/src/i18n/locales/id.json` + `en.json` (harus sama persis — dijaga test `i18n.test.ts` dan `i18n-keys.test.ts`). Hanya teks tampilan yang diterjemahkan: perintah CLI/skrip ke OLT, nilai yang dikirim ke API, dan pesan dari server (`d.message`) tidak diubah. Halaman yang sudah: Pengaturan OLT, ONU Belum Terkonfigurasi, Riwayat Alert (+ halaman yang sejak awal memakai `t()`).
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

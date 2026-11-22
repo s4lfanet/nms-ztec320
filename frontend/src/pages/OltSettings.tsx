@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { api, type OltInfo } from '../lib/api';
 import { useAuth } from '../stores/auth';
 import { useHasPerm } from '../hooks/useHasPerm';
@@ -18,6 +19,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, EmptyState, Modal, Input, Select, ActionMenu, type ActionItem } from '../components/ui';
 
 export function OltSettings() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -54,7 +56,7 @@ export function OltSettings() {
           if (s.status === 'running') {
             setSyncingId(olt.id);
             setSyncProgress(s.progress || 0);
-            setSyncMessage(s.message || 'Syncing...');
+            setSyncMessage(s.message || t('olts.syncing'));
             break;
           }
         } catch { /* ignore */ }
@@ -67,17 +69,17 @@ export function OltSettings() {
     mutationFn: async (id: number) => {
       const olt = olts.find(o => o.id === id);
       const ok = await confirm({
-        title: 'Delete OLT',
-        message: `Delete "${olt?.name}"? This will also delete all associated ONU data. This cannot be undone.`,
-        confirmLabel: 'Delete', variant: 'danger',
+        title: t('olts.deleteTitle'),
+        message: t('olts.deleteMsg', { name: olt?.name }),
+        confirmLabel: t('common.delete'), variant: 'danger',
       });
       if (!ok) throw new Error('cancelled');
       const res = await fetch(`/api/olt/${id}`, { method: 'DELETE', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) throw new Error(data.message || `Delete failed (${res.status})`);
+      if (!res.ok || !data.success) throw new Error(data.message || t('olts.deleteFailed', { status: res.status }));
       return data;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olts'] }); toast.success('OLT deleted'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['olts'] }); toast.success(t('olts.deleted')); },
     onError: (e: Error) => { if (e.message !== 'cancelled') toast.error(e.message); },
   });
 
@@ -85,17 +87,17 @@ export function OltSettings() {
     mutationFn: async (oltId: number) => {
       const olt = olts.find(o => o.id === oltId);
       const ok = await confirm({
-        title: `Save Config: ${olt?.name || 'OLT'}`,
-        message: 'Run "write" command to save running-config to startup-config? This persists all changes on the OLT.',
-        confirmLabel: 'Save Config', variant: 'warning',
+        title: t('olts.saveConfigTitle', { name: olt?.name || 'OLT' }),
+        message: t('olts.saveConfigMsg'),
+        confirmLabel: t('olts.saveConfig'), variant: 'warning',
       });
       if (!ok) throw new Error('cancelled');
       setWritingId(oltId);
       const res = await fetch(`/api/olt/${oltId}/write-config`, { method: 'POST', credentials: 'include' });
       return res.json();
     },
-    onSuccess: (d: { success: boolean; message?: string }) => { toast.success(d.message || 'Config saved!'); },
-    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error('Save config failed'); },
+    onSuccess: (d: { success: boolean; message?: string }) => { toast.success(d.message || t('olts.configSaved')); },
+    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error(t('olts.saveConfigFailed')); },
     onSettled: () => setWritingId(null),
   });
 
@@ -105,17 +107,17 @@ export function OltSettings() {
       return api.discoverSlots(oltId);
     },
     onSuccess: (d) => {
-      toast.success(d.message || 'Slots discovered!');
+      toast.success(d.message || t('olts.slotsDiscovered'));
       qc.invalidateQueries({ queryKey: ['olts'] });
     },
-    onError: (e: Error) => { toast.error(e.message || 'Discovery failed'); },
+    onError: (e: Error) => { toast.error(e.message || t('olts.discoveryFailed')); },
     onSettled: () => setDiscoveringId(null),
   });
 
   const exportConfig = async (oltId: number) => {
     try {
       const res = await fetch(`/api/olt/${oltId}/backup-config`, { method: 'POST', credentials: 'include' });
-      if (!res.ok) { const d = await res.json(); toast.error(d.message || 'Export failed'); return; }
+      if (!res.ok) { const d = await res.json(); toast.error(d.message || t('olts.exportFailed')); return; }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -123,26 +125,26 @@ export function OltSettings() {
       a.download = res.headers.get('Content-Disposition')?.split('filename=')[1] || `olt_${oltId}_backup.cfg`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success('Config exported');
-    } catch { toast.error('Export failed'); }
+      toast.success(t('olts.exported'));
+    } catch { toast.error(t('olts.exportFailed')); }
   };
 
   const syncMutation = useMutation({
     mutationFn: async (oltId: number) => {
       const olt = olts.find(o => o.id === oltId);
       const ok = await confirm({
-        title: `Sync ${olt?.name || 'OLT'}`,
-        message: 'Start synchronization? This will collect all ONU data, signal power, VLAN config from the OLT.',
-        confirmLabel: 'Start Sync', variant: 'warning',
+        title: t('olts.syncTitle', { name: olt?.name || 'OLT' }),
+        message: t('olts.syncMsg'),
+        confirmLabel: t('olts.startSync'), variant: 'warning',
       });
       if (!ok) throw new Error('cancelled');
       return api.syncOlt(oltId);
     },
     onSuccess: (d, oltId) => {
-      setSyncingId(oltId); setSyncProgress(0); setSyncMessage(d?.message || 'Starting sync...');
-      toast.success(d?.message || 'Sync started!');
+      setSyncingId(oltId); setSyncProgress(0); setSyncMessage(d?.message || t('olts.startingSync'));
+      toast.success(d?.message || t('olts.syncStarted'));
     },
-    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error('Sync failed: ' + e.message); },
+    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error(t('olts.syncFailed', { msg: e.message })); },
   });
 
   // Poll sync status
@@ -155,9 +157,9 @@ export function OltSettings() {
         setSyncMessage(s.message || '');
         if (s.status === 'completed' || s.status === 'error' || s.status === 'skipped' || s.status === 'interrupted') {
           clearInterval(interval); setSyncingId(null);
-          if (s.status === 'completed') toast.success('Sync completed!');
-          else if (s.status === 'error') toast.error('Sync failed: ' + (s.message || ''));
-          else toast.info(s.message || 'Sync skipped — already running for this OLT');
+          if (s.status === 'completed') toast.success(t('olts.syncCompleted'));
+          else if (s.status === 'error') toast.error(t('olts.syncFailed', { msg: s.message || '' }));
+          else toast.info(s.message || t('olts.syncSkipped'));
           qc.invalidateQueries({ queryKey: ['olts'] });
         }
       } catch { /* ignore */ }
@@ -168,9 +170,9 @@ export function OltSettings() {
   const syncAllMutation = useMutation({
     mutationFn: async () => {
       const ok = await confirm({
-        title: 'Sync All OLTs',
-        message: `This will sync all ${olts.length} OLT(s) sequentially. Continue?`,
-        confirmLabel: 'Sync All',
+        title: t('olts.syncAllTitle'),
+        message: t('olts.syncAllMsg', { count: olts.length }),
+        confirmLabel: t('olts.syncAll'),
         variant: 'warning',
       });
       if (!ok) throw new Error('cancelled');
@@ -178,9 +180,9 @@ export function OltSettings() {
     },
     onSuccess: () => {
       setSyncingAll(true);
-      toast.success('Sync All started!');
+      toast.success(t('olts.syncAllStarted'));
     },
-    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error('Sync All failed'); },
+    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error(t('olts.syncAllFailed')); },
   });
 
   // Poll all OLTs sync status
@@ -194,8 +196,8 @@ export function OltSettings() {
           clearInterval(interval);
           setSyncingAll(false);
           const anyError = allDone.some(s => s.status === 'error');
-          if (anyError) toast.error('Some OLTs failed to sync');
-          else toast.success('All OLTs synced!');
+          if (anyError) toast.error(t('olts.someFailed'));
+          else toast.success(t('olts.allSynced'));
           qc.invalidateQueries({ queryKey: ['olts'] });
         }
       } catch { /* ignore */ }
@@ -208,35 +210,35 @@ export function OltSettings() {
   // Aksi per OLT (redesign Fase 2): Sync & Konfigurasi tetap sebagai ikon,
   // sisanya di menu "Lainnya" berlabel; Hapus dipisah sebagai aksi merusak.
   const oltMenu = (olt: OltInfo): ActionItem[] => [
-    { key: 'edit', label: 'Edit koneksi', icon: <Edit3 size={16} />, onClick: () => setModal({ mode: 'edit', olt }) },
-    { key: 'save', label: writingId === olt.id ? 'Menyimpan config…' : 'Save Config (write)', icon: <Save size={16} />, disabled: writingId === olt.id, onClick: () => writeConfigMutation.mutate(olt.id) },
-    { key: 'export', label: 'Export config', icon: <Download size={16} />, onClick: () => exportConfig(olt.id) },
-    { key: 'backup', label: 'Backup config', icon: <History size={16} />, onClick: () => setBackupOlt({ id: olt.id, name: olt.name }) },
-    { key: 'discover', label: discoveringId === olt.id ? 'Mendeteksi slot…' : 'Deteksi slot', icon: <Server size={16} />, disabled: discoveringId === olt.id, onClick: () => discoverSlotsMutation.mutate(olt.id) },
-    { key: 'pon', label: 'Port PON (aktif/nonaktif)', icon: <Power size={16} />, onClick: () => setPonCtlOlt({ oltId: olt.id, oltName: olt.name }) },
-    { key: 'migrate', label: 'Migrasi PON', icon: <ArrowRightLeft size={16} />, onClick: () => setMigrateOlt({ oltId: olt.id, oltName: olt.name }) },
-    { key: 'cross', label: 'Migrasi antar-OLT', icon: <Globe size={16} />, onClick: () => setCrossMigrateOlt({ oltId: olt.id, oltName: olt.name }) },
-    { key: 'delete', label: 'Hapus OLT', icon: <Trash2 size={16} />, danger: true, onClick: () => deleteMutation.mutate(olt.id) },
+    { key: 'edit', label: t('olts.menuEdit'), icon: <Edit3 size={16} />, onClick: () => setModal({ mode: 'edit', olt }) },
+    { key: 'save', label: writingId === olt.id ? t('olts.menuSaving') : t('olts.menuSave'), icon: <Save size={16} />, disabled: writingId === olt.id, onClick: () => writeConfigMutation.mutate(olt.id) },
+    { key: 'export', label: t('olts.menuExport'), icon: <Download size={16} />, onClick: () => exportConfig(olt.id) },
+    { key: 'backup', label: t('olts.menuBackup'), icon: <History size={16} />, onClick: () => setBackupOlt({ id: olt.id, name: olt.name }) },
+    { key: 'discover', label: discoveringId === olt.id ? t('olts.menuDiscovering') : t('olts.menuDiscover'), icon: <Server size={16} />, disabled: discoveringId === olt.id, onClick: () => discoverSlotsMutation.mutate(olt.id) },
+    { key: 'pon', label: t('olts.menuPon'), icon: <Power size={16} />, onClick: () => setPonCtlOlt({ oltId: olt.id, oltName: olt.name }) },
+    { key: 'migrate', label: t('olts.menuMigrate'), icon: <ArrowRightLeft size={16} />, onClick: () => setMigrateOlt({ oltId: olt.id, oltName: olt.name }) },
+    { key: 'cross', label: t('olts.menuCross'), icon: <Globe size={16} />, onClick: () => setCrossMigrateOlt({ oltId: olt.id, oltName: olt.name }) },
+    { key: 'delete', label: t('olts.menuDelete'), icon: <Trash2 size={16} />, danger: true, onClick: () => deleteMutation.mutate(olt.id) },
   ];
 
   return (
     <PageContainer className="animate-fade-in">
       <PageHeader
-        title={isSuperAdmin ? 'Ringkasan OLT' : 'Pengaturan OLT'}
-        description={isSuperAdmin ? 'Semua perangkat OLT tenant' : 'Kelola perangkat OLT dan koneksinya'}
+        title={isSuperAdmin ? t('olts.titleOverview') : t('olts.title')}
+        description={isSuperAdmin ? t('olts.subtitleOverview') : t('olts.subtitle')}
         action={
           <div className="flex items-center gap-2 w-full sm:w-auto">
             {canManage && (
               <Button variant="accent" className="flex-1 sm:flex-none justify-center"
                 icon={<RefreshCw size={16} className={syncingAll ? 'animate-spin' : ''} />}
                 disabled={syncingAll || syncingId !== null} onClick={() => syncAllMutation.mutate()}>
-                Sync All
+                {t('olts.syncAll')}
               </Button>
             )}
             {canManage && (
               <Button variant="primary" className="flex-1 sm:flex-none justify-center"
                 icon={<Plus size={16} />} onClick={() => setModal({ mode: 'add' })}>
-                Add OLT
+                {t('olts.addOlt')}
               </Button>
             )}
           </div>
@@ -253,26 +255,26 @@ export function OltSettings() {
                 <Package size={18} />
               </div>
               <div>
-                <div className="text-sm font-semibold">OLT Limit — {subInfo.package_name}</div>
+                <div className="text-sm font-semibold">{t('olts.limitTitle', { pkg: subInfo.package_name })}</div>
                 <div className="text-xs text-tx3">
                   {subInfo.remaining_olts > 0
-                    ? `${subInfo.remaining_olts} of ${subInfo.max_olts} slots remaining`
-                    : 'OLT limit reached — upgrade your package to add more'}
+                    ? t('olts.limitRemaining', { remaining: subInfo.remaining_olts, max: subInfo.max_olts })
+                    : t('olts.limitReached')}
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-4 self-start sm:self-auto">
               <div className="text-center">
-                <div className="text-[10px] text-tx3 uppercase">Used</div>
+                <div className="text-[10px] text-tx3 uppercase">{t('olts.used')}</div>
                 <div className={cn('text-lg font-bold', subInfo.remaining_olts === 0 ? 'text-danger' : 'text-tx1')}>{subInfo.used_olts}</div>
               </div>
               <div className="text-tx3 text-xl">/</div>
               <div className="text-center">
-                <div className="text-[10px] text-tx3 uppercase">Max</div>
+                <div className="text-[10px] text-tx3 uppercase">{t('olts.max')}</div>
                 <div className="text-lg font-bold text-tx1">{subInfo.max_olts}</div>
               </div>
               <div className="text-center">
-                <div className="text-[10px] text-tx3 uppercase">Remaining</div>
+                <div className="text-[10px] text-tx3 uppercase">{t('olts.remaining')}</div>
                 <div className={cn('text-lg font-bold', subInfo.remaining_olts === 0 ? 'text-danger' : 'text-success')}>{subInfo.remaining_olts}</div>
               </div>
             </div>
@@ -286,7 +288,7 @@ export function OltSettings() {
           <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-3">
             <Loader2 size={18} className="text-accent animate-spin flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">Syncing OLT...</div>
+              <div className="text-sm font-medium">{t('olts.syncingOlt')}</div>
               <div className="text-xs text-tx3 truncate">{syncMessage}</div>
             </div>
             <div className="text-base md:text-lg font-bold text-accent flex-shrink-0">{syncProgress}%</div>
@@ -298,18 +300,18 @@ export function OltSettings() {
       )}
 
       {/* OLT Table */}
-      <Card title="Daftar OLT" icon={<Server size={16} />} bodyClassName="p-0" className="overflow-hidden">
+      <Card title={t('olts.listTitle')} icon={<Server size={16} />} bodyClassName="p-0" className="overflow-hidden">
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-brd">
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">#</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Device</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Information</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Synchronization</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Connection</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-tx3 uppercase">Action</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('olts.colDevice')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('olts.colInfo')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('olts.colSync')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('olts.colConn')}</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-tx3 uppercase">{t('olts.colAction')}</th>
               </tr>
             </thead>
             <tbody>
@@ -336,7 +338,7 @@ export function OltSettings() {
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
                       <span className="flex items-center gap-1"><Thermometer size={12} className="text-warning" /> <strong>{olt.temperature ?? 'N/A'}°C</strong></span>
-                      <span className="flex items-center gap-1"><Server size={12} className="text-tx3" /> <strong>{olt.total_onu}</strong> ONUs</span>
+                      <span className="flex items-center gap-1"><Server size={12} className="text-tx3" /> <strong>{olt.total_onu}</strong> ONU</span>
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-tx3 mt-1">
                       <span>{olt.model}</span>
@@ -363,7 +365,7 @@ export function OltSettings() {
                         <div className="text-xs text-tx3"><Clock size={11} className="inline" /> {formatDate(olt.last_sync)}</div>
                       </div>
                     ) : (
-                      <span className="text-xs text-tx3">Never synced</span>
+                      <span className="text-xs text-tx3">{t('olts.neverSynced')}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -376,18 +378,18 @@ export function OltSettings() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center justify-end gap-1">
-                      {canManage && <ActionBtn icon={<RefreshCw size={14} />} title="Sync" onClick={() => syncMutation.mutate(olt.id)} />}
-                {canManage && <ActionBtn icon={<Settings size={14} />} title="Konfigurasi OLT" onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
+                      {canManage && <ActionBtn icon={<RefreshCw size={14} />} title={t('olts.sync')} onClick={() => syncMutation.mutate(olt.id)} />}
+                {canManage && <ActionBtn icon={<Settings size={14} />} title={t('olts.configure')} onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
                 {canManage && <ActionMenu iconOnly title={olt.name} actions={oltMenu(olt)} />}
-                      {!canManage && <span className="text-xs text-tx3 px-2">View only</span>}
+                      {!canManage && <span className="text-xs text-tx3 px-2">{t('olts.viewOnly')}</span>}
                     </div>
                   </td>
                 </tr>
               ))}
               {olts.length === 0 && (
                 <tr><td colSpan={6}>
-                  <EmptyState icon={Server} title="No OLTs configured"
-                    description={canManage ? 'Click "Add OLT" to add your first device' : undefined} />
+                  <EmptyState icon={Server} title={t('olts.emptyTitle')}
+                    description={canManage ? t('olts.emptyDesc') : undefined} />
                 </td></tr>
               )}
             </tbody>
@@ -407,12 +409,12 @@ export function OltSettings() {
                   <div className="text-xs text-tx3 truncate">{olt.ip_address} • {olt.model}</div>
                 </div>
                 <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0', olt.is_online ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger')}>
-                  {olt.is_online ? 'Online' : 'Offline'}
+                  {olt.is_online ? t('common.online') : t('common.offline')}
                 </span>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
                 <span className="flex items-center gap-1"><Thermometer size={12} className="text-warning" /> <strong>{olt.temperature ?? 'N/A'}°C</strong></span>
-                <span className="flex items-center gap-1"><Server size={12} className="text-tx3" /> <strong>{olt.total_onu}</strong> ONUs</span>
+                <span className="flex items-center gap-1"><Server size={12} className="text-tx3" /> <strong>{olt.total_onu}</strong> ONU</span>
                 <span className="flex items-center gap-1"><Clock size={11} /> {formatDate(olt.last_sync)}</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -431,16 +433,16 @@ export function OltSettings() {
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                {canManage && <ActionBtn icon={<RefreshCw size={16} />} title="Sync" onClick={() => syncMutation.mutate(olt.id)} />}
-                {canManage && <ActionBtn icon={<Settings size={16} />} title="Konfigurasi OLT" onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
+                {canManage && <ActionBtn icon={<RefreshCw size={16} />} title={t('olts.sync')} onClick={() => syncMutation.mutate(olt.id)} />}
+                {canManage && <ActionBtn icon={<Settings size={16} />} title={t('olts.configure')} onClick={() => navigate(`/dashboard/settings/olts/${olt.id}/config`)} />}
                 {canManage && <ActionMenu iconOnly title={olt.name} actions={oltMenu(olt)} />}
-                {!canManage && <span className="text-xs text-tx3 px-2">View only</span>}
+                {!canManage && <span className="text-xs text-tx3 px-2">{t('olts.viewOnly')}</span>}
               </div>
             </div>
           ))}
           {olts.length === 0 && (
-            <EmptyState icon={Server} title="No OLTs configured"
-              description={canManage ? 'Click "Add OLT" to add your first device' : undefined} />
+            <EmptyState icon={Server} title={t('olts.emptyTitle')}
+              description={canManage ? t('olts.emptyDesc') : undefined} />
           )}
         </div>
       </Card>
@@ -450,16 +452,16 @@ export function OltSettings() {
 
       {/* Add/Edit Modal */}
       {modal && <OltModal mode={modal.mode} olt={modal.olt} onClose={() => setModal(null)}
-        onSuccess={() => { setModal(null); qc.invalidateQueries({ queryKey: ['olts'] }); refetch(); toast.success(modal.mode === 'add' ? 'OLT added!' : 'OLT updated!'); }} />}
+        onSuccess={() => { setModal(null); qc.invalidateQueries({ queryKey: ['olts'] }); refetch(); toast.success(modal.mode === 'add' ? t('olts.added') : t('olts.updated')); }} />}
 
       {/* Migrate ONU Modal */}
       {ponCtlOlt && <PonPortControlModal oltId={ponCtlOlt.oltId} oltName={ponCtlOlt.oltName} onClose={() => setPonCtlOlt(null)} />}
       {migrateOlt && <MigrateOnuModal oltId={migrateOlt.oltId} oltName={migrateOlt.oltName} onClose={() => setMigrateOlt(null)}
-        onSuccess={() => { setMigrateOlt(null); qc.invalidateQueries({ queryKey: ['olts'] }); toast.success('ONU migrated successfully!'); }} />}
+        onSuccess={() => { setMigrateOlt(null); qc.invalidateQueries({ queryKey: ['olts'] }); toast.success(t('olts.migrated')); }} />}
 
       {/* Cross-OLT Migrate Modal */}
       {crossMigrateOlt && <CrossOltMigrateModal sourceOltId={crossMigrateOlt.oltId} sourceOltName={crossMigrateOlt.oltName} allOlts={olts} onClose={() => setCrossMigrateOlt(null)}
-        onSuccess={() => { setCrossMigrateOlt(null); qc.invalidateQueries({ queryKey: ['olts'] }); toast.success('Cross-OLT migration completed!'); }} />}
+        onSuccess={() => { setCrossMigrateOlt(null); qc.invalidateQueries({ queryKey: ['olts'] }); toast.success(t('olts.crossDone')); }} />}
     </PageContainer>
   );
 }
@@ -469,6 +471,7 @@ export function OltSettings() {
 function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
   oltId: number; oltName: string; onClose: () => void; onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
   const [structure, setStructure] = useState<{ card: number; ports: number[] }[]>([]);
   const [sourceCard, setSourceCard] = useState('');
   const [sourcePon, setSourcePon] = useState('');
@@ -532,12 +535,12 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
   };
 
   const doMigrate = async () => {
-    if (selectedIds.size === 0 || !targetCard || !targetPon) { toast.error('Select ONUs and target PON'); return; }
+    if (selectedIds.size === 0 || !targetCard || !targetPon) { toast.error(t('migrate.selectFirst')); return; }
     const ids = Array.from(selectedIds);
     const ok = await confirm({
-      title: 'Batch Migrate ONUs',
-      message: `Migrate ${ids.length} ONU${ids.length > 1 ? 's' : ''} from ${sourceCard}/${sourcePon} to ${targetCard}/${targetPon}?\n\nThis will deregister each ONU from its current PON and re-register on the target PON. ONU IDs will be assigned automatically.`,
-      confirmLabel: 'Migrate All', variant: 'warning',
+      title: t('migrate.confirmTitle'),
+      message: t('migrate.confirmMsg', { count: ids.length, from: `${sourceCard}/${sourcePon}`, to: `${targetCard}/${targetPon}` }),
+      confirmLabel: t('migrate.migrateAll'), variant: 'warning',
     });
     if (!ok) return;
     setLoading(true);
@@ -552,22 +555,22 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
         setProgress({ done: d.migrated + d.failed, total: d.total, results: d.details });
       }
       if (d.success) {
-        toast.success(`${d.migrated} ONU${d.migrated !== 1 ? 's' : ''} migrated successfully${d.failed > 0 ? `, ${d.failed} failed` : ''}`);
+        toast.success(d.failed > 0 ? t('migrate.okPartial', { ok: d.migrated, failed: d.failed }) : t('migrate.ok', { ok: d.migrated }));
         onSuccess();
       } else {
-        toast.error(d.message || `Migration failed: ${d.failed} of ${d.total} failed`);
+        toast.error(d.message || t('migrate.failedCount', { failed: d.failed, total: d.total }));
       }
-    } catch { toast.error('Migration failed'); }
+    } catch { toast.error(t('migrate.failed')); }
     setLoading(false);
   };
 
   return (
-    <Modal open onClose={onClose} icon={<ArrowRightLeft size={16} />} title={`Migrate ONU — ${oltName}`} size="md"
+    <Modal open onClose={onClose} icon={<ArrowRightLeft size={16} />} title={t('migrate.title', { name: oltName })} size="md"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
           <Button variant="primary" icon={<ArrowRightLeft size={14} />} loading={loading} disabled={selectedIds.size === 0 || !targetPon} onClick={doMigrate}>
-            {loading ? `Migrating ${progress?.done ?? 0}/${progress?.total ?? 0}...` : `Migrate ${selectedIds.size > 0 ? `(${selectedIds.size})` : 'ONUs'}`}
+            {loading ? t('migrate.migrating', { done: progress?.done ?? 0, total: progress?.total ?? 0 }) : (selectedIds.size > 0 ? t('migrate.migrateN', { n: selectedIds.size }) : t('migrate.migrateOnus'))}
           </Button>
         </>
       }
@@ -576,23 +579,23 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
           {fetchingStruct ? (
             <div className="flex items-center justify-center py-8"><Loader2 size={20} className="animate-spin text-accent" /></div>
           ) : structure.length === 0 ? (
-            <div className="text-center py-8 text-tx3 text-sm">No PON ports found. Sync first.</div>
+            <div className="text-center py-8 text-tx3 text-sm">{t('migrate.noPon')}</div>
           ) : (
             <>
               {/* Step 1: Select source PON */}
               <div className="grid grid-cols-2 gap-3">
                 <Select
-                  label="1. Source Card"
+                  label={t('migrate.sourceCard')}
                   value={sourceCard}
                   onChange={e => { setSourceCard(e.target.value); setSourcePon(''); setOnus([]); setSelectedIds(new Set()); }}
-                  options={[{ value: '', label: '-- Select --' }, ...structure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
+                  options={[{ value: '', label: t('common.selectPlaceholder') }, ...structure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
                 />
                 {sourceCard && (
                   <Select
-                    label="Source PON"
+                    label={t('migrate.sourcePon')}
                     value={sourcePon}
                     onChange={e => { setSourcePon(e.target.value); loadOnus(sourceCard, e.target.value); }}
-                    options={[{ value: '', label: '-- Select --' }, ...sourcePorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
+                    options={[{ value: '', label: t('common.selectPlaceholder') }, ...sourcePorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
                   />
                 )}
               </div>
@@ -603,14 +606,14 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
                   {fetchingOnus ? (
                     <div className="flex items-center justify-center py-4"><Loader2 size={16} className="animate-spin text-accent" /></div>
                   ) : onus.length === 0 ? (
-                    <div className="text-center py-4 text-tx3 text-xs">No ONUs on this PON port.</div>
+                    <div className="text-center py-4 text-tx3 text-xs">{t('migrate.noOnus')}</div>
                   ) : (
                     <>
                       <div className="flex items-center justify-between mb-2">
-                        <label className="label-sm">2. ONUs on {sourceCard}/{sourcePon} ({selectedIds.size} selected)</label>
+                        <label className="label-sm">{t('migrate.onusOn', { pon: `${sourceCard}/${sourcePon}`, n: selectedIds.size })}</label>
                         <button onClick={toggleAll} className="text-xs text-accent hover:text-accent-hover flex items-center gap-1">
                           {selectedIds.size === onus.length ? <CheckSquare size={13} /> : <Square size={13} />}
-                          {selectedIds.size === onus.length ? 'Unselect All' : 'Select All'}
+                          {selectedIds.size === onus.length ? t('migrate.unselectAll') : t('migrate.selectAll')}
                         </button>
                       </div>
                       <div className="max-h-40 overflow-y-auto rounded-lg border border-brd">
@@ -638,30 +641,30 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <Select
-                      label="3. Target Card"
+                      label={t('migrate.targetCard')}
                       value={targetCard}
                       onChange={e => { setTargetCard(e.target.value); setTargetPon(''); }}
-                      options={[{ value: '', label: '-- Select --' }, ...structure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
+                      options={[{ value: '', label: t('common.selectPlaceholder') }, ...structure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
                     />
                     {targetCard && (
                       <Select
-                        label="Target PON"
+                        label={t('migrate.targetPon')}
                         value={targetPon}
                         onChange={e => setTargetPon(e.target.value)}
-                        options={[{ value: '', label: '-- Select --' }, ...targetPorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
+                        options={[{ value: '', label: t('common.selectPlaceholder') }, ...targetPorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
                       />
                     )}
                   </div>
 
                   {targetPon && (
                     <div>
-                      <label className="label-sm mb-2">4. ONU ID on new PON</label>
+                      <label className="label-sm mb-2">{t('migrate.onuIdNew')}</label>
                       <div className="flex gap-5">
                         <label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input type="radio" name="migOnuIdMode" checked={onuIdMode === 'auto'} onChange={() => setOnuIdMode('auto')} /> Automatic
+                          <input type="radio" name="migOnuIdMode" checked={onuIdMode === 'auto'} onChange={() => setOnuIdMode('auto')} /> {t('migrate.auto')}
                         </label>
                         <label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input type="radio" name="migOnuIdMode" checked={onuIdMode === 'manual'} onChange={() => setOnuIdMode('manual')} /> Manually
+                          <input type="radio" name="migOnuIdMode" checked={onuIdMode === 'manual'} onChange={() => setOnuIdMode('manual')} /> {t('migrate.manual')}
                         </label>
                       </div>
                       {onuIdMode === 'manual' && (
@@ -672,17 +675,17 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
 
                   {targetPon && (
                     <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 text-xs">
-                      <div className="font-semibold text-warning mb-1">Migration Summary:</div>
-                      <div>From: <strong>gpon-olt_1/{sourceCard}/{sourcePon}</strong></div>
-                      <div>To: <strong>gpon-olt_1/{targetCard}/{targetPon}</strong></div>
+                      <div className="font-semibold text-warning mb-1">{t('migrate.summary')}</div>
+                      <div>{t('migrate.from')} <strong>gpon-olt_1/{sourceCard}/{sourcePon}</strong></div>
+                      <div>{t('migrate.to')} <strong>gpon-olt_1/{targetCard}/{targetPon}</strong></div>
                       <div>ONUs: <strong>{selectedIds.size}</strong></div>
-                      <div className="text-tx3 mt-1">Each ONU will be deregistered from source PON and re-registered on target PON with auto-assigned ONU IDs.</div>
+                      <div className="text-tx3 mt-1">{t('migrate.summaryNote')}</div>
                     </div>
                   )}
 
                   {progress && progress.results.length > 0 && (
                     <div className="p-3 rounded-lg bg-glass border border-brd text-xs space-y-1 max-h-40 overflow-y-auto">
-                      <div className="font-semibold mb-1">Results ({progress.done}/{progress.total}):</div>
+                      <div className="font-semibold mb-1">{t('migrate.results', { done: progress.done, total: progress.total })}</div>
                       {progress.results.map((r, i) => (
                         <div key={i} className={cn('flex items-start gap-2', r.success ? 'text-success' : 'text-danger')}>
                           <span className="flex-shrink-0">{r.success ? '✓' : '✗'}</span>
@@ -705,6 +708,8 @@ function MigrateOnuModal({ oltId, oltName, onClose, onSuccess }: {
 function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, onSuccess }: {
   sourceOltId: number; sourceOltName: string; allOlts: OltInfo[]; onClose: () => void; onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
+  const [configFailed, setConfigFailed] = useState(false);
   const [sourceStructure, setSourceStructure] = useState<{ card: number; ports: number[] }[]>([]);
   const [sourceCard, setSourceCard] = useState('');
   const [sourcePon, setSourcePon] = useState('');
@@ -782,13 +787,13 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
 
   const doMigrate = async () => {
     if (selectedIds.size === 0 || !targetOltId || !targetCard || !targetPon) {
-      toast.error('Select ONUs, target OLT, and target PON'); return;
+      toast.error(t('cross.selectFirst')); return;
     }
     const ids = Array.from(selectedIds);
     const ok = await confirm({
-      title: 'Cross-OLT Migration',
-      message: `Migrate ${ids.length} ONU${ids.length > 1 ? 's' : ''} from ${sourceOltName} to ${targetOlt?.name || 'target OLT'} (${targetCard}/${targetPon})?\n\nThis will deregister each ONU from the source OLT and re-register on the target OLT. ONU data (name, description) will be preserved.`,
-      confirmLabel: 'Migrate All', variant: 'warning',
+      title: t('cross.confirmTitle'),
+      message: t('cross.confirmMsg', { count: ids.length, from: sourceOltName, to: targetOlt?.name || t('cross.targetOltFallback'), pon: `${targetCard}/${targetPon}` }),
+      confirmLabel: t('migrate.migrateAll'), variant: 'warning',
     });
     if (!ok) return;
     setLoading(true);
@@ -805,12 +810,15 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
         const cfgData = await cfgRes.json();
         if (cfgData.success) {
           const c = cfgData.copied || {};
-          setConfigResult(`Config copied: ${c.vlans || 0} VLANs, ${c.onu_types || 0} ONU Types, ${c.speed_profiles || 0} Speed Profiles, ${c.wan_ip_profiles || 0} WAN IP Profiles` + (cfgData.errors?.length ? ` (${cfgData.errors.length} errors)` : ''));
+          setConfigFailed(false);
+          setConfigResult(t('cross.configCopied', { vlans: c.vlans || 0, types: c.onu_types || 0, speed: c.speed_profiles || 0, wan: c.wan_ip_profiles || 0 }) + (cfgData.errors?.length ? ' ' + t('cross.configErrors', { n: cfgData.errors.length }) : ''));
         } else {
-          setConfigResult(`Config copy failed: ${cfgData.message || 'unknown error'}`);
+          setConfigFailed(true);
+          setConfigResult(t('cross.configFailed', { msg: cfgData.message || t('cross.unknownError') }));
         }
       } catch {
-        setConfigResult('Config copy failed: network error');
+        setConfigFailed(true);
+        setConfigResult(t('cross.configFailed', { msg: t('cross.networkError') }));
       }
     }
 
@@ -833,22 +841,22 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
         setProgress({ done: d.migrated + d.failed, total: d.total, results: d.details });
       }
       if (d.success) {
-        toast.success(`${d.migrated} ONU${d.migrated !== 1 ? 's' : ''} migrated to ${targetOlt?.name}${d.failed > 0 ? `, ${d.failed} failed` : ''}`);
+        toast.success(d.failed > 0 ? t('cross.okPartial', { ok: d.migrated, olt: targetOlt?.name, failed: d.failed }) : t('cross.ok', { ok: d.migrated, olt: targetOlt?.name }));
         onSuccess();
       } else {
-        toast.error(d.message || `Migration failed: ${d.failed} of ${d.total} failed`);
+        toast.error(d.message || t('migrate.failedCount', { failed: d.failed, total: d.total }));
       }
-    } catch { toast.error('Migration failed'); }
+    } catch { toast.error(t('migrate.failed')); }
     setLoading(false);
   };
 
   return (
-    <Modal open onClose={onClose} icon={<Globe size={16} />} title={`Cross-OLT Migration — ${sourceOltName}`} size="md"
+    <Modal open onClose={onClose} icon={<Globe size={16} />} title={t('cross.title', { name: sourceOltName })} size="md"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
           <Button variant="primary" icon={<Globe size={14} />} loading={loading} disabled={selectedIds.size === 0 || !targetPon} onClick={doMigrate}>
-            {loading ? `Migrating ${progress?.done ?? 0}/${progress?.total ?? 0}...` : `Migrate ${selectedIds.size > 0 ? `(${selectedIds.size})` : 'ONUs'}`}
+            {loading ? t('migrate.migrating', { done: progress?.done ?? 0, total: progress?.total ?? 0 }) : (selectedIds.size > 0 ? t('migrate.migrateN', { n: selectedIds.size }) : t('migrate.migrateOnus'))}
           </Button>
         </>
       }
@@ -857,23 +865,23 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
           {fetchingStruct ? (
             <div className="flex items-center justify-center py-8"><Loader2 size={20} className="animate-spin text-accent" /></div>
           ) : sourceStructure.length === 0 ? (
-            <div className="text-center py-8 text-tx3 text-sm">No PON ports found on source OLT. Sync first.</div>
+            <div className="text-center py-8 text-tx3 text-sm">{t('cross.noPonSource')}</div>
           ) : (
             <>
               {/* Step 1: Select source PON */}
               <div className="grid grid-cols-2 gap-3">
                 <Select
-                  label="1. Source Card"
+                  label={t('migrate.sourceCard')}
                   value={sourceCard}
                   onChange={e => { setSourceCard(e.target.value); setSourcePon(''); setOnus([]); setSelectedIds(new Set()); }}
-                  options={[{ value: '', label: '-- Select --' }, ...sourceStructure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
+                  options={[{ value: '', label: t('common.selectPlaceholder') }, ...sourceStructure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
                 />
                 {sourceCard && (
                   <Select
-                    label="Source PON"
+                    label={t('migrate.sourcePon')}
                     value={sourcePon}
                     onChange={e => { setSourcePon(e.target.value); loadOnus(sourceCard, e.target.value); }}
-                    options={[{ value: '', label: '-- Select --' }, ...sourcePorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
+                    options={[{ value: '', label: t('common.selectPlaceholder') }, ...sourcePorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
                   />
                 )}
               </div>
@@ -884,14 +892,14 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
                   {fetchingOnus ? (
                     <div className="flex items-center justify-center py-4"><Loader2 size={16} className="animate-spin text-accent" /></div>
                   ) : onus.length === 0 ? (
-                    <div className="text-center py-4 text-tx3 text-xs">No ONUs on this PON port.</div>
+                    <div className="text-center py-4 text-tx3 text-xs">{t('migrate.noOnus')}</div>
                   ) : (
                     <>
                       <div className="flex items-center justify-between mb-2">
-                        <label className="label-sm">2. ONUs on {sourceCard}/{sourcePon} ({selectedIds.size} selected)</label>
+                        <label className="label-sm">{t('migrate.onusOn', { pon: `${sourceCard}/${sourcePon}`, n: selectedIds.size })}</label>
                         <button onClick={toggleAll} className="text-xs text-accent hover:text-accent-hover flex items-center gap-1">
                           {selectedIds.size === onus.length ? <CheckSquare size={13} /> : <Square size={13} />}
-                          {selectedIds.size === onus.length ? 'Unselect All' : 'Select All'}
+                          {selectedIds.size === onus.length ? t('migrate.unselectAll') : t('migrate.selectAll')}
                         </button>
                       </div>
                       <div className="max-h-40 overflow-y-auto rounded-lg border border-brd">
@@ -902,7 +910,7 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
                             {selectedIds.has(o.id) ? <CheckSquare size={14} className="text-accent flex-shrink-0" /> : <Square size={14} className="text-tx3 flex-shrink-0" />}
                             <div className="flex-1 min-w-0 text-xs">
                               <span className="font-mono font-medium">{o.onu_id_str}</span>
-                              <span className="text-tx3 ml-2">{o.name || 'unnamed'}</span>
+                              <span className="text-tx3 ml-2">{o.name || t('cross.unnamed')}</span>
                             </div>
                             <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0',
                               o.status === 'online' ? 'bg-success/15 text-success' : 'bg-offline/15 text-tx3')}>{o.status}</span>
@@ -918,11 +926,11 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
               {selectedIds.size > 0 && (
                 <>
                   <Select
-                    label="3. Target OLT"
+                    label={t('cross.targetOlt')}
                     value={targetOltId}
                     onChange={e => { setTargetOltId(e.target.value); setTargetCard(''); setTargetPon(''); }}
                     options={[
-                      { value: '', label: '-- Select Target OLT --' },
+                      { value: '', label: t('cross.selectTargetOlt') },
                       ...allOlts.filter(o => o.id !== sourceOltId).map(o => ({ value: String(o.id), label: `${o.name} (${o.ip_address})` })),
                     ]}
                   />
@@ -933,21 +941,21 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
                       {fetchingTargetStruct ? (
                         <div className="flex items-center justify-center py-4"><Loader2 size={16} className="animate-spin text-accent" /></div>
                       ) : targetStructure.length === 0 ? (
-                        <div className="text-center py-4 text-tx3 text-xs">No PON ports found on target OLT. Sync target OLT first.</div>
+                        <div className="text-center py-4 text-tx3 text-xs">{t('cross.noPonTarget')}</div>
                       ) : (
                         <div className="grid grid-cols-2 gap-3">
                           <Select
-                            label="4. Target Card"
+                            label={t('cross.targetCard')}
                             value={targetCard}
                             onChange={e => { setTargetCard(e.target.value); setTargetPon(''); }}
-                            options={[{ value: '', label: '-- Select --' }, ...targetStructure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
+                            options={[{ value: '', label: t('common.selectPlaceholder') }, ...targetStructure.map(s => ({ value: String(s.card), label: `Card ${s.card}` }))]}
                           />
                           {targetCard && (
                             <Select
-                              label="Target PON"
+                              label={t('migrate.targetPon')}
                               value={targetPon}
                               onChange={e => setTargetPon(e.target.value)}
-                              options={[{ value: '', label: '-- Select --' }, ...targetPorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
+                              options={[{ value: '', label: t('common.selectPlaceholder') }, ...targetPorts.map(p => ({ value: String(p), label: `PON ${p}` }))]}
                             />
                           )}
                         </div>
@@ -955,13 +963,13 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
 
                       {targetPon && (
                         <div>
-                          <label className="label-sm mb-2">5. ONU ID on target PON</label>
+                          <label className="label-sm mb-2">{t('cross.onuIdTarget')}</label>
                           <div className="flex gap-5">
                             <label className="flex items-center gap-2 text-sm cursor-pointer">
-                              <input type="radio" name="crossMigOnuIdMode" checked={onuIdMode === 'auto'} onChange={() => setOnuIdMode('auto')} /> Automatic
+                              <input type="radio" name="crossMigOnuIdMode" checked={onuIdMode === 'auto'} onChange={() => setOnuIdMode('auto')} /> {t('migrate.auto')}
                             </label>
                             <label className="flex items-center gap-2 text-sm cursor-pointer">
-                              <input type="radio" name="crossMigOnuIdMode" checked={onuIdMode === 'manual'} onChange={() => setOnuIdMode('manual')} /> Manually
+                              <input type="radio" name="crossMigOnuIdMode" checked={onuIdMode === 'manual'} onChange={() => setOnuIdMode('manual')} /> {t('migrate.manual')}
                             </label>
                           </div>
                           {onuIdMode === 'manual' && (
@@ -974,32 +982,32 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
                         <label className="flex items-center gap-2 text-sm cursor-pointer p-3 rounded-lg bg-accent/10 border border-accent/20">
                           <input type="checkbox" checked={copyConfig} onChange={e => setCopyConfig(e.target.checked)} className="w-4 h-4 rounded accent-accent" />
                           <div>
-                            <div className="font-medium">Copy OLT Config to Target</div>
-                            <div className="text-xs text-tx3">VLANs, ONU Types, Speed Profiles (TCONT/Traffic), WAN IP Profiles — applied via CLI before ONU migration</div>
+                            <div className="font-medium">{t('cross.copyConfig')}</div>
+                            <div className="text-xs text-tx3">{t('cross.copyConfigDesc')}</div>
                           </div>
                         </label>
                       )}
 
                       {configResult && (
-                        <div className={cn('p-3 rounded-lg text-xs', configResult.startsWith('Config copy failed') ? 'bg-danger/10 border border-danger/20 text-danger' : 'bg-success/10 border border-success/20 text-success')}>
+                        <div className={cn('p-3 rounded-lg text-xs', configFailed ? 'bg-danger/10 border border-danger/20 text-danger' : 'bg-success/10 border border-success/20 text-success')}>
                           {configResult}
                         </div>
                       )}
 
                       {targetPon && (
                         <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 text-xs">
-                          <div className="font-semibold text-warning mb-1">Cross-OLT Migration Summary:</div>
-                          <div>From: <strong>{sourceOltName}</strong> — gpon-olt_1/{sourceCard}/{sourcePon}</div>
-                          <div>To: <strong>{targetOlt?.name}</strong> — gpon-olt_1/{targetCard}/{targetPon}</div>
+                          <div className="font-semibold text-warning mb-1">{t('cross.summary')}</div>
+                          <div>{t('migrate.from')} <strong>{sourceOltName}</strong> — gpon-olt_1/{sourceCard}/{sourcePon}</div>
+                          <div>{t('migrate.to')} <strong>{targetOlt?.name}</strong> — gpon-olt_1/{targetCard}/{targetPon}</div>
                           <div>ONUs: <strong>{selectedIds.size}</strong></div>
-                          <div>Copy Config: <strong>{copyConfig ? 'Yes' : 'No'}</strong></div>
-                          <div className="text-tx3 mt-1">Each ONU will be deregistered from the source OLT and re-registered on the target OLT. Name and description will be re-applied.{copyConfig && ' OLT config (VLANs, profiles, ONU types) will be copied first.'}</div>
+                          <div>{t('cross.copyConfigLabel')} <strong>{copyConfig ? t('common.yes') : t('common.no')}</strong></div>
+                          <div className="text-tx3 mt-1">{t('cross.summaryNote')}{copyConfig && ' ' + t('cross.summaryCopyNote')}</div>
                         </div>
                       )}
 
                       {progress && progress.results.length > 0 && (
                         <div className="p-3 rounded-lg bg-glass border border-brd text-xs space-y-1 max-h-40 overflow-y-auto">
-                          <div className="font-semibold mb-1">Results ({progress.done}/{progress.total}):</div>
+                          <div className="font-semibold mb-1">{t('migrate.results', { done: progress.done, total: progress.total })}</div>
                           {progress.results.map((r, i) => (
                             <div key={i} className={cn('flex items-start gap-2', r.success ? 'text-success' : 'text-danger')}>
                               <span className="flex-shrink-0">{r.success ? '✓' : '✗'}</span>
@@ -1024,6 +1032,7 @@ function CrossOltMigrateModal({ sourceOltId, sourceOltName, allOlts, onClose, on
 function OltModal({ mode, olt, onClose, onSuccess }: {
   mode: 'add' | 'edit'; olt?: OltInfo; onClose: () => void; onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     name: olt?.name || '',
     ip_address: olt?.ip_address || '',
@@ -1069,7 +1078,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
           setSnmpStatus(d.snmp_status || '');
           setTelnetStatus(d.telnet_status || '');
         }
-      }).catch(() => toast.error('Failed to load OLT data'))
+      }).catch(() => toast.error(t('oltForm.loadFailed')))
         .finally(() => setLoadingOlt(false));
     }
   }, [mode, olt?.id]);
@@ -1077,7 +1086,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
   const update = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
   const testConnection = async () => {
-    if (!form.ip_address) { toast.error('Please enter IP address'); return; }
+    if (!form.ip_address) { toast.error(t('oltForm.needIp')); return; }
     setTesting(true); setTestResult(null);
     try {
       const payload: Record<string, unknown> = {
@@ -1096,17 +1105,17 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
         if (d.results.telnet) setTelnetStatus(d.results.telnet.ok ? 'connected' : 'disconnected');
         const sOk = d.results.snmp?.ok;
         const tOk = d.results.telnet?.ok;
-        toast[sOk ? 'success' : 'error'](`SNMP: ${sOk ? 'OK' : 'Failed'} | CLI: ${tOk === null ? 'N/A' : tOk ? 'OK' : 'Failed'}`);
+        toast[sOk ? 'success' : 'error'](`SNMP: ${sOk ? 'OK' : t('oltForm.failed')} | CLI: ${tOk === null ? 'N/A' : tOk ? 'OK' : t('oltForm.failed')}`);
       } else {
-        toast.error('Test failed');
+        toast.error(t('oltForm.testFailed'));
       }
-    } catch { toast.error('Connection test failed'); }
+    } catch { toast.error(t('oltForm.connTestFailed')); }
     setTesting(false);
   };
 
   const save = async () => {
-    if (!form.name.trim()) { toast.error('Please enter OLT Name'); return; }
-    if (!form.ip_address.trim()) { toast.error('Please enter IP Address'); return; }
+    if (!form.name.trim()) { toast.error(t('oltForm.needName')); return; }
+    if (!form.ip_address.trim()) { toast.error(t('oltForm.needIp')); return; }
     setSaving(true);
     try {
       const knownPrefixes = [
@@ -1142,7 +1151,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
       });
       const d = await res.json();
       if (d.success) {
-        toast.success('OLT saved! Testing connections...');
+        toast.success(t('oltForm.savedTesting'));
         // Auto-test after save
         try {
           const testPayload: Record<string, unknown> = {
@@ -1158,21 +1167,21 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             const sOk = testD.results.snmp?.ok;
             const tOk = testD.results.telnet?.ok;
             toast[sOk ? 'success' : 'warning'](
-              `SNMP: ${sOk ? 'Connected' : 'Failed'} | CLI: ${tOk === null ? 'N/A (SNMP-only)' : tOk ? 'Connected' : 'Failed'}`
+              `SNMP: ${sOk ? t('oltForm.connected') : t('oltForm.failed')} | CLI: ${tOk === null ? t('oltForm.snmpOnly') : tOk ? t('oltForm.connected') : t('oltForm.failed')}`
             );
           }
         } catch { /* ignore */ }
         onSuccess();
       } else {
-        toast.error(d.message || 'Failed to save OLT');
+        toast.error(d.message || t('oltForm.saveFailed'));
       }
-    } catch { toast.error('Network error'); }
+    } catch { toast.error(t('oltForm.networkError')); }
     setSaving(false);
   };
 
   const OLT_TYPE_GROUPS: { group: string; items: { value: string; label: string }[] }[] = [
     {
-      group: 'ZTE (Full Provisioning + Monitoring)',
+      group: `ZTE (${t('oltForm.grpFull')})`,
       items: [
         { value: 'ZTE-C320', label: 'ZTE C320 (GPON/EPON)' },
         { value: 'ZTE-C300', label: 'ZTE C300' },
@@ -1182,7 +1191,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
       ],
     },
     {
-      group: 'HiOSO (Monitoring & Alert via SNMP)',
+      group: `HiOSO (${t('oltForm.grpSnmpAlert')})`,
       items: [
         { value: 'HIOSO-HA7302CS', label: 'HiOSO HA7302CS (2-Port EPON)' },
         { value: 'HIOSO-HA7304', label: 'HiOSO HA7304 (4-Port EPON)' },
@@ -1194,7 +1203,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
       ],
     },
     {
-      group: 'HSGQ (Monitoring & Alert via SNMP)',
+      group: `HSGQ (${t('oltForm.grpSnmpAlert')})`,
       items: [
         { value: 'HSGQ-E02', label: 'HSGQ E02 (2-Port EPON)' },
         { value: 'HSGQ-E04', label: 'HSGQ E04 (4-Port EPON)' },
@@ -1206,7 +1215,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
       ],
     },
     {
-      group: 'VSOL / C-Data / BDCOM (Monitoring & Alert via SNMP)',
+      group: `VSOL / C-Data / BDCOM (${t('oltForm.grpSnmpAlert')})`,
       items: [
         { value: 'VSOL-V1600D4', label: 'VSOL V1600D4 (4-Port EPON)' },
         { value: 'VSOL-V1600D8', label: 'VSOL V1600D8 (8-Port EPON)' },
@@ -1220,7 +1229,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
       ],
     },
     {
-      group: 'Huawei / FiberHome / Raisecom / Dasan (SNMP Monitoring)',
+      group: `Huawei / FiberHome / Raisecom / Dasan (${t('oltForm.grpSnmp')})`,
       items: [
         { value: 'HUAWEI-MA5608T', label: 'Huawei MA5608T' },
         { value: 'HUAWEI-MA5683T', label: 'Huawei MA5683T' },
@@ -1233,8 +1242,8 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
   ];
 
   const statusBadge = (status: string) => {
-    if (status === 'connected') return <span className="text-success text-xs flex items-center gap-1"><CheckCircle size={12} /> Connected</span>;
-    if (status === 'disconnected') return <span className="text-tx3 text-xs flex items-center gap-1"><XCircle size={12} /> Disconnected</span>;
+    if (status === 'connected') return <span className="text-success text-xs flex items-center gap-1"><CheckCircle size={12} /> {t('oltForm.connected')}</span>;
+    if (status === 'disconnected') return <span className="text-tx3 text-xs flex items-center gap-1"><XCircle size={12} /> {t('oltForm.disconnected')}</span>;
     if (status === 'not_configured') return <span className="text-tx3 text-xs flex items-center gap-1"><Minus size={12} /> N/A</span>;
     return null;
   };
@@ -1251,40 +1260,40 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
   if (loadingOlt) return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="modal-overlay" onClick={onClose} />
-      <div className="relative glass-card p-8 text-center"><Loader2 size={32} className="text-accent animate-spin mx-auto" /><p className="text-tx3 mt-3">Loading OLT data...</p></div>
+      <div className="relative glass-card p-8 text-center"><Loader2 size={32} className="text-accent animate-spin mx-auto" /><p className="text-tx3 mt-3">{t('oltForm.loading')}</p></div>
     </div>
   );
 
   return (
     <Modal open onClose={onClose} icon={<Settings size={16} />}
-      title={mode === 'add' ? 'Add OLT Connection' : 'OLT Connection Settings'} size="lg"
+      title={mode === 'add' ? t('oltForm.titleAdd') : t('oltForm.titleEdit')} size="lg"
       footer={
         <div className="w-full flex items-center justify-between gap-2">
-          <Button variant="secondary" className="text-xs md:text-sm" icon={<X size={14} />} onClick={onClose}>Close</Button>
+          <Button variant="secondary" className="text-xs md:text-sm" icon={<X size={14} />} onClick={onClose}>{t('common.close')}</Button>
           <div className="flex gap-2">
             <Button variant="warning" icon={<Activity size={14} className={testing ? 'animate-spin' : ''} />}
               loading={testing} disabled={!form.ip_address} onClick={testConnection}>
-              Test Connection
+              {t('oltForm.testConn')}
             </Button>
-            <Button variant="primary" loading={saving} onClick={save}>Submit</Button>
+            <Button variant="primary" loading={saving} onClick={save}>{t('common.save')}</Button>
           </div>
         </div>
       }
     >
       <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input label="OLT Name" type="text" value={form.name} onChange={e => update('name', e.target.value)}
-              placeholder="e.g. OLT-Singapore" />
-            <Input label="IP Address" type="text" value={form.ip_address} onChange={e => update('ip_address', e.target.value)}
-              placeholder="e.g. 172.16.1.1" />
+            <Input label={t('oltForm.name')} type="text" value={form.name} onChange={e => update('name', e.target.value)}
+              placeholder={t('oltForm.namePh')} />
+            <Input label={t('oltForm.ip')} type="text" value={form.ip_address} onChange={e => update('ip_address', e.target.value)}
+              placeholder={t('oltForm.ipPh')} />
           </div>
 
           <Select
-            label="Vendor & Model OLT"
+            label={t('oltForm.vendorModel')}
             value={form.type}
             onChange={e => update('type', e.target.value)}
           >
-            <option value="">— Pilih Vendor &amp; Model OLT —</option>
+            <option value="">{t('oltForm.vendorPh')}</option>
             {OLT_TYPE_GROUPS.map(grp => (
               <optgroup key={grp.group} label={grp.group}>
                 {grp.items.map(it => (
@@ -1304,8 +1313,8 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
               {!testing && !testResult && snmpStatus && <span className="ml-2">{statusBadge(snmpStatus)}</span>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Input label="Community (Read)" type="text" value={form.snmp_community} onChange={e => update('snmp_community', e.target.value)} placeholder="public" />
-              <Input label="Community (Write)" type="text" value={form.snmp_community_write} onChange={e => update('snmp_community_write', e.target.value)} placeholder="optional, e.g. SNMPREAD" />
+              <Input label={t('oltForm.commRead')} type="text" value={form.snmp_community} onChange={e => update('snmp_community', e.target.value)} placeholder="public" />
+              <Input label={t('oltForm.commWrite')} type="text" value={form.snmp_community_write} onChange={e => update('snmp_community_write', e.target.value)} placeholder={t('oltForm.commWritePh')} />
               <Input label="Port" type="number" value={form.snmp_port} onChange={e => update('snmp_port', e.target.value)} />
             </div>
           </div>
@@ -1314,33 +1323,33 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
           <div className="p-3 md:p-4 rounded-lg bg-glass border border-brd space-y-3">
             <div className="flex items-center gap-2">
               <Terminal size={16} className={form.cli_username.trim() ? 'text-accent' : 'text-tx3'} />
-              <span className="text-sm font-semibold">CLI Access <span className="text-tx3 font-normal text-xs">(optional)</span></span>
+              <span className="text-sm font-semibold">{t('oltForm.cliAccess')} <span className="text-tx3 font-normal text-xs">({t('oltForm.optional')})</span></span>
               {testing && <Loader2 size={14} className="text-accent animate-spin ml-2" />}
               {!testing && testResult && <span className="ml-2">{testStatusBadge(testResult.telnet)}</span>}
               {!testing && !testResult && telnetStatus && <span className="ml-2">{statusBadge(telnetStatus)}</span>}
             </div>
             {!form.cli_username.trim() && (
-              <p className="text-xs text-tx3 italic">Leave empty for SNMP-only mode. Fill in to enable CLI access.</p>
+              <p className="text-xs text-tx3 italic">{t('oltForm.cliHint')}</p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Input label="Username" type="text" value={form.cli_username} onChange={e => update('cli_username', e.target.value)} placeholder="Optional" />
-              <Input label="Password" type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder={olt ? '•••• (unchanged)' : 'Optional'} />
+              <Input label={t('oltForm.username')} type="text" value={form.cli_username} onChange={e => update('cli_username', e.target.value)} placeholder={t('oltForm.optionalCap')} />
+              <Input label="Password" type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder={olt ? t('oltForm.pwUnchanged') : t('oltForm.optionalCap')} />
               <div>
-                <label className="label-sm mb-1">Connection Mode</label>
+                <label className="label-sm mb-1">{t('oltForm.connMode')}</label>
                 <div className="flex gap-2 items-center">
-                  <label className="flex items-center gap-1 text-xs cursor-pointer" title="Faster — no encryption overhead. Use on private/trusted networks.">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer" title={t('oltForm.telnetTip')}>
                     <input type="radio" checked={!form.ssh_enabled} onChange={() => setForm(prev => ({ ...prev, ssh_enabled: false }))} />
-                    Telnet <span className="text-[10px] opacity-60">(faster)</span>
+                    Telnet <span className="text-[10px] opacity-60">({t('oltForm.faster')})</span>
                   </label>
-                  <label className="flex items-center gap-1 text-xs cursor-pointer" title="Encrypted — safer for non-private networks. Slightly slower due to encryption.">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer" title={t('oltForm.sshTip')}>
                     <input type="radio" checked={form.ssh_enabled} onChange={() => setForm(prev => ({ ...prev, ssh_enabled: true }))} />
-                    SSH <span className="text-[10px] opacity-60">(secure)</span>
+                    SSH <span className="text-[10px] opacity-60">({t('oltForm.secure')})</span>
                   </label>
                 </div>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input label={form.ssh_enabled ? 'SSH Port' : 'Telnet Port'} type="number" value={form.ssh_enabled ? form.ssh_port : form.telnet_port}
+              <Input label={form.ssh_enabled ? t('oltForm.sshPort') : t('oltForm.telnetPort')} type="number" value={form.ssh_enabled ? form.ssh_port : form.telnet_port}
                 onChange={e => form.ssh_enabled ? update('ssh_port', e.target.value) : update('telnet_port', e.target.value)} />
             </div>
           </div>
@@ -1353,10 +1362,11 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
 /* ═══ Sub-components ═══ */
 
 function ConnectionBadge({ icon, label, connected }: { icon: React.ReactNode; label: string; connected: boolean }) {
+  const { t } = useTranslation();
   return (
     <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border',
       connected ? 'bg-success/15 text-success border-success/20' : 'bg-offline/15 text-tx3 border-offline/20')}>
-      {icon} {label} {connected ? 'Connected' : 'Disconnected'}
+      {icon} {label} {connected ? t('oltForm.connected') : t('oltForm.disconnected')}
     </span>
   );
 }
@@ -1387,6 +1397,7 @@ interface BackupEntry {
 function BackupHistoryModal({ oltId, oltName, onClose }: {
   oltId: number; oltName: string; onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [autoEnabled, setAutoEnabled] = useState(false);
   const [interval, setIntervalVal] = useState(24);
   const [unit, setUnit] = useState<'hours' | 'days'>('hours');
@@ -1424,8 +1435,8 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
       if (d.success) {
         setAutoEnabled(d.auto_backup_enabled);
         toast.success(d.message);
-      } else { toast.error(d.message || 'Failed to toggle'); }
-    } catch { toast.error('Failed to toggle'); }
+      } else { toast.error(d.message || t('backup.toggleFailed')); }
+    } catch { toast.error(t('backup.toggleFailed')); }
     setSaving(false);
   };
 
@@ -1437,9 +1448,9 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
         body: JSON.stringify({ interval, unit, time: backupTime }),
       });
       const d = await res.json();
-      if (d.success) { toast.success('Settings saved'); }
-      else { toast.error(d.message || 'Failed'); }
-    } catch { toast.error('Failed'); }
+      if (d.success) { toast.success(t('backup.settingsSaved')); }
+      else { toast.error(d.message || t('oltForm.failed')); }
+    } catch { toast.error(t('oltForm.failed')); }
     setSaving(false);
   };
 
@@ -1449,8 +1460,8 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
       const res = await fetch(`/api/olt/${oltId}/backup-save`, { method: 'POST', credentials: 'include' });
       const d = await res.json();
       if (d.success) { toast.success(d.message); refetch(); }
-      else { toast.error(d.message || 'Backup failed'); }
-    } catch { toast.error('Backup failed'); }
+      else { toast.error(d.message || t('backup.backupFailed')); }
+    } catch { toast.error(t('backup.backupFailed')); }
     setBacking(false);
   };
 
@@ -1460,16 +1471,16 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
 
   const deleteBackup = async (backupId: number) => {
     const ok = await confirm({
-      title: 'Delete Backup', message: 'Delete this config backup? This cannot be undone.',
-      confirmLabel: 'Delete', variant: 'danger',
+      title: t('backup.deleteTitle'), message: t('backup.deleteMsg'),
+      confirmLabel: t('common.delete'), variant: 'danger',
     });
     if (!ok) return;
     try {
       const res = await fetch(`/api/olt/${oltId}/backup/${backupId}`, { method: 'DELETE', credentials: 'include' });
       const d = await res.json();
-      if (d.success) { toast.success('Backup deleted'); refetch(); }
-      else { toast.error(d.message || 'Delete failed'); }
-    } catch { toast.error('Delete failed'); }
+      if (d.success) { toast.success(t('backup.deleted')); refetch(); }
+      else { toast.error(d.message || t('backup.deleteFailed')); }
+    } catch { toast.error(t('backup.deleteFailed')); }
   };
 
   const fmtSize = (bytes: number) => {
@@ -1479,7 +1490,7 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
   };
 
   return (
-    <Modal open onClose={onClose} icon={<History size={16} />} title={`Config Backups — ${oltName}`} size="lg">
+    <Modal open onClose={onClose} icon={<History size={16} />} title={t('backup.title', { name: oltName })} size="lg">
       <div className="space-y-4">
           {/* Auto-backup settings */}
           <Card bodyClassName="p-3 md:p-4">
@@ -1493,40 +1504,40 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
                 <div>
                   <div className="text-sm font-semibold">Auto-Backup</div>
                   <div className="text-xs text-tx3">
-                    {autoEnabled ? `Enabled — every ${interval} ${unit === 'days' ? 'day(s)' : 'hour(s)'}${backupTime ? ` at ${backupTime}` : ''}` : 'Disabled'}
-                    {data?.last_backup_at && ` • Last: ${formatDate(data.last_backup_at)}`}
+                    {autoEnabled ? t(unit === 'days' ? 'backup.enabledDays' : 'backup.enabledHours', { n: interval }) + (backupTime ? ' ' + t('backup.atTime', { time: backupTime }) : '') : t('backup.disabled')}
+                    {data?.last_backup_at && ` • ${t('backup.last', { date: formatDate(data.last_backup_at) })}`}
                   </div>
                 </div>
               </div>
               <Button variant="accent" icon={<HardDriveDownload size={14} />} loading={backing} onClick={doBackup}>
-                Backup Now
+                {t('backup.now')}
               </Button>
             </div>
             {autoEnabled && (
               <div className="space-y-3 mt-3 pt-3 border-t border-brd/50">
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="text-xs text-tx3 font-medium">Every:</label>
+                  <label className="text-xs text-tx3 font-medium">{t('backup.every')}</label>
                   <input type="number" min={1} max={unit === 'days' ? 30 : 168} value={interval}
                     onChange={e => setIntervalVal(Number(e.target.value))}
                     className="w-16 px-2 py-1 rounded-lg bg-glass border border-brd text-sm text-center focus:border-accent/50 outline-none" />
                   <select value={unit} onChange={e => { setUnit(e.target.value as 'hours' | 'days'); setIntervalVal(e.target.value === 'days' ? 1 : 24); }}
                     className="px-2 py-1 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none">
-                    <option value="hours">hour(s)</option>
-                    <option value="days">day(s)</option>
+                    <option value="hours">{t('backup.hours')}</option>
+                    <option value="days">{t('backup.days')}</option>
                   </select>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="text-xs text-tx3 font-medium">At time:</label>
+                  <label className="text-xs text-tx3 font-medium">{t('backup.atTimeLabel')}</label>
                   <input type="time" value={backupTime}
                     onChange={e => setBackupTime(e.target.value)}
                     className="px-2 py-1 rounded-lg bg-glass border border-brd text-sm focus:border-accent/50 outline-none" />
-                  <span className="text-xs text-tx3">(empty = anytime, uses system timezone)</span>
+                  <span className="text-xs text-tx3">{t('backup.timeHint')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button variant="accent" icon={<Save size={12} />} loading={saving} onClick={saveSettings}>
-                    Save Settings
+                    {t('backup.saveSettings')}
                   </Button>
-                  <span className="text-xs text-tx3">Cron runs hourly, backs up when interval + time matched</span>
+                  <span className="text-xs text-tx3">{t('backup.cronHint')}</span>
                 </div>
               </div>
             )}
@@ -1535,15 +1546,15 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
           {/* Backup list */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold">Backup History</h3>
+              <h3 className="text-sm font-semibold">{t('backup.history')}</h3>
               <button onClick={() => refetch()} className="text-xs text-accent hover:text-accent-hover flex items-center gap-1">
-                <RefreshCw size={12} /> Refresh
+                <RefreshCw size={12} /> {t('common.refresh')}
               </button>
             </div>
             {isLoading ? (
               <div className="flex items-center justify-center py-8"><Loader2 size={20} className="animate-spin text-accent" /></div>
             ) : backups.length === 0 ? (
-              <EmptyState icon={History} title="No backups yet" description='Click "Backup Now" to create one.' />
+              <EmptyState icon={History} title={t('backup.empty')} description={t('backup.emptyDesc')} />
             ) : (
               <div className="space-y-1.5 max-h-[40vh] overflow-y-auto">
                 {backups.map((b) => (
@@ -1557,20 +1568,20 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
                         <span className="text-sm font-medium">{formatDate(b.created_at)}</span>
                         <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium',
                           b.backup_type === 'auto' ? 'bg-accent/15 text-accent' : 'bg-glass text-tx3')}>
-                          {b.backup_type === 'auto' ? 'Auto' : 'Manual'}
+                          {b.backup_type === 'auto' ? t('backup.auto') : t('backup.manual')}
                         </span>
                       </div>
                       <div className="text-xs text-tx3 truncate">
-                        {b.status === 'success' ? fmtSize(b.config_size) : (b.error_message || 'Failed')}
+                        {b.status === 'success' ? fmtSize(b.config_size) : (b.error_message || t('oltForm.failed'))}
                       </div>
                     </div>
                     {b.status === 'success' && (
-                      <button onClick={() => downloadBackup(b.id)} title="Download"
+                      <button onClick={() => downloadBackup(b.id)} title={t('backup.download')} aria-label={t('backup.download')}
                         className="p-1.5 rounded-lg hover:bg-glass text-tx3 hover:text-accent transition-colors">
                         <Download size={14} />
                       </button>
                     )}
-                    <button onClick={() => deleteBackup(b.id)} title="Delete"
+                    <button onClick={() => deleteBackup(b.id)} title={t('common.delete')} aria-label={t('common.delete')}
                       className="p-1.5 rounded-lg hover:bg-danger/15 text-tx3 hover:text-danger transition-colors">
                       <Trash2 size={14} />
                     </button>
@@ -1587,6 +1598,7 @@ function BackupHistoryModal({ oltId, oltName, onClose }: {
 
 /* ─── PON Port Control Modal (Fase 8) ─── */
 function PonPortControlModal({ oltId, oltName, onClose }: { oltId: number; oltName: string; onClose: () => void }) {
+  const { t } = useTranslation();
   const [ports, setPorts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
@@ -1607,9 +1619,9 @@ function PonPortControlModal({ oltId, oltName, onClose }: { oltId: number; oltNa
     if (isUp) {
       const n = port.onu_count ?? 0;
       const ok = await confirm({
-        title: `Disable PON ${port.port_name}?`,
-        message: `Semua ${n} ONU di PON ini akan offline. Alert akan ditandai sebagai gangguan disengaja (pon_disabled). Lanjutkan?`,
-        confirmLabel: `Disable (${n} ONU)`, variant: 'danger',
+        title: t('pon.disableTitle', { port: port.port_name }),
+        message: t('pon.disableMsg', { n }),
+        confirmLabel: t('pon.disableConfirm', { n }), variant: 'danger',
       });
       if (!ok) return;
     }
@@ -1621,20 +1633,20 @@ function PonPortControlModal({ oltId, oltName, onClose }: { oltId: number; oltNa
         body: JSON.stringify({ action }),
       }).then(r => r.json());
       if (r.success) {
-        toast.success(`${port.port_name} ${action}d`);
+        toast.success(t(action === 'disable' ? 'pon.disabled' : 'pon.enabled', { port: port.port_name }));
         load();
-      } else toast.error(r.message || 'Gagal');
+      } else toast.error(r.message || t('oltForm.failed'));
     } finally { setBusy(null); }
   };
 
   return (
-    <Modal open onClose={onClose} icon={<Power size={16} />} title={`PON Ports — ${oltName}`} size="lg">
+    <Modal open onClose={onClose} icon={<Power size={16} />} title={t('pon.title', { name: oltName })} size="lg">
       <div className="text-[10px] text-tx3 mb-3">
-        Enable/disable PON via CLI (interface → shutdown/no shutdown). Perintah write dikirim langsung ke OLT — semua aksi diaudit.
+        {t('pon.note')}
       </div>
-      {loading ? <div className="text-xs text-tx3 py-6 text-center">Memuat…</div> : (
+      {loading ? <div className="text-xs text-tx3 py-6 text-center">{t('common.loading')}</div> : (
         <div className="max-h-[60vh] overflow-y-auto space-y-1">
-          {ports.length === 0 && <div className="text-xs text-tx3 py-6 text-center">Tidak ada PON port — sync dulu.</div>}
+          {ports.length === 0 && <div className="text-xs text-tx3 py-6 text-center">{t('pon.empty')}</div>}
           {ports.map(p => {
             const up = (p.admin_status || 'up') === 'up';
             return (
@@ -1650,7 +1662,7 @@ function PonPortControlModal({ oltId, oltName, onClose }: { oltId: number; oltNa
                 <button onClick={() => toggle(p)} disabled={busy === p.id}
                   className={`px-2.5 py-1 text-[11px] rounded font-medium disabled:opacity-50 ${
                     up ? 'bg-danger/15 text-danger hover:bg-danger/25' : 'bg-success/15 text-success hover:bg-success/25'}`}>
-                  {busy === p.id ? '…' : up ? 'Disable' : 'Enable'}
+                  {busy === p.id ? '…' : up ? t('common.disable') : t('common.enable')}
                 </button>
               </div>
             );
