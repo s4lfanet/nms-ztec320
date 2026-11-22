@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, type TechnicianData } from '../lib/api';
@@ -39,10 +40,11 @@ interface WizardData {
 }
 
 const STEPS = [
-  { id: 1, label: 'Pilih OLT' },
-  { id: 2, label: 'Pindai ONU' },
-  { id: 3, label: 'Konfigurasi' },
-  { id: 4, label: 'Tinjau & daftarkan' },
+  // label = kunci terjemahan (diterjemahkan saat render)
+  { id: 1, label: 'wiz.stepSelectOlt' },
+  { id: 2, label: 'wiz.stepScanOnu' },
+  { id: 3, label: 'wiz.stepConfigure' },
+  { id: 4, label: 'wiz.stepReview' },
 ];
 
 function generateRegisterScript(d: WizardData): string {
@@ -516,6 +518,7 @@ function generateRegisterScript(d: WizardData): string {
 }
 
 export function RegisterWizard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [step, setStep] = useState(1);
@@ -675,12 +678,12 @@ export function RegisterWizard() {
       const d = await res.json();
       if (d.success && d.onus) {
         setUnconfiguredOnus(d.onus);
-        if (d.onus.length === 0) toast.warning('No unconfigured ONUs found');
-        else toast.success(`Found ${d.onus.length} unconfigured ONU(s)`);
+        if (d.onus.length === 0) toast.warning(t('wiz.noUnconfigured'));
+        else toast.success(t('wiz.foundN', { count: d.onus.length }));
       } else {
-        toast.error(d.message || 'Scan failed');
+        toast.error(d.message || t('wiz.scanFailed'));
       }
-    } catch { toast.error('Scan failed'); }
+    } catch { toast.error(t('wiz.scanFailed')); }
     setScanning(false);
   };
 
@@ -736,11 +739,11 @@ export function RegisterWizard() {
         });
         const d = await r.json();
         res.push({ sn: onu.sn, success: d.success, message: d.message || '' });
-        if (d.success) toast.success(`ONU ${onu.sn} registered!`);
+        if (d.success) toast.success(t('wiz.onuRegistered', { sn: onu.sn }));
         else toast.error(`ONU ${onu.sn}: ${d.message}`);
       } catch (e: unknown) {
-        res.push({ sn: onu.sn, success: false, message: e instanceof Error ? e.message : 'Failed' });
-        toast.error(`ONU ${onu.sn}: failed`);
+        res.push({ sn: onu.sn, success: false, message: e instanceof Error ? e.message : t('wiz.failed') });
+        toast.error(t('wiz.onuFailed', { sn: onu.sn }));
       }
       // Small delay between registrations
       if (i < data.selectedOnus.length - 1) await new Promise(r => setTimeout(r, 1000));
@@ -753,7 +756,7 @@ export function RegisterWizard() {
     // Auto-sync OLT if any registration succeeded
     const anySuccess = res.some(r => r.success);
     if (anySuccess && data.oltId) {
-      toast.info('Auto-syncing OLT to update ONU status...');
+      toast.info(t('wiz.autoSyncing'));
       try {
         await fetch(`/api/olt/${data.oltId}/sync`, { method: 'POST', credentials: 'include' });
       } catch { /* sync runs in background, ignore errors */ }
@@ -778,8 +781,8 @@ export function RegisterWizard() {
             <ArrowLeft size={18} />
           </Button>
           <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold truncate">Wizard Registrasi ONU</h1>
-            <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">Registrasi ONU langkah demi langkah dengan konfigurasi otomatis</p>
+            <h1 className="text-xl md:text-2xl font-bold truncate">{t('wiz.regTitle')}</h1>
+            <p className="text-tx2 text-xs md:text-sm mt-0.5 hidden sm:block">{t('wiz.regSubtitle')}</p>
           </div>
         </div>
       </div>
@@ -788,7 +791,7 @@ export function RegisterWizard() {
           "Langkah n dari 4" + progress bar di HP. */}
       {step <= 4 && (
         <Stepper
-          steps={STEPS.map(s => ({ label: s.label }))}
+          steps={STEPS.map(s => ({ label: t(s.label) }))}
           current={step - 1}
           onStepClick={i => setStep(i + 1)}
         />
@@ -796,14 +799,14 @@ export function RegisterWizard() {
 
       {step === 1 && (
         <div className="glass-card p-4 md:p-6 space-y-4">
-          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Server size={18} /> Select OLT Device</h2>
-          <p className="text-tx2 text-xs md:text-sm">Choose which OLT to register ONUs on.</p>
+          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Server size={18} /> {t('wiz.selectOltDevice')}</h2>
+          <p className="text-tx2 text-xs md:text-sm">{t('wiz.chooseOlt')}</p>
           <div className="grid gap-2 md:gap-3">
             {olts.length === 0 && (
               <div className="text-center py-8 text-tx3">
                 <Server size={36} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No OLTs available</p>
-                <p className="text-xs mt-1">Add an OLT in OLT Settings first</p>
+                <p className="text-sm">{t('wiz.noOlts')}</p>
+                <p className="text-xs mt-1">{t('wiz.addOltFirst')}</p>
               </div>
             )}
             {olts.map(olt => (
@@ -828,7 +831,7 @@ export function RegisterWizard() {
           {/* Registration Mode */}
           {data.oltId > 0 && (
             <div className="pt-2">
-              <label className="label-sm mb-2">Registration Mode</label>
+              <label className="label-sm mb-2">{t('wiz.regMode')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => update('registerMode', 'cli')}
                   className={cn('flex items-center gap-2 p-2.5 rounded-lg border text-left transition',
@@ -836,7 +839,7 @@ export function RegisterWizard() {
                   <Wrench size={16} className={data.registerMode === 'cli' ? 'text-accent' : 'text-tx3'} />
                   <div>
                     <div className="text-sm font-medium">CLI (SSH/Telnet)</div>
-                    <div className="text-xs text-tx3">Full provisioning</div>
+                    <div className="text-xs text-tx3">{t('wiz.fullProvisioning')}</div>
                   </div>
                 </button>
                 <button type="button" onClick={() => update('registerMode', 'snmp')}
@@ -858,10 +861,10 @@ export function RegisterWizard() {
       {step === 2 && (
         <div className="glass-card p-4 md:p-6 space-y-4">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Search size={18} /> Unconfigured ONUs</h2>
+            <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Search size={18} /> {t('wiz.unconfiguredOnus')}</h2>
             <div className="flex gap-2 flex-shrink-0">
               <Button onClick={scanOnus} loading={scanning} icon={<Search size={14} />} className="text-xs md:text-sm">
-                <span className="hidden sm:inline">{scanning ? 'Scanning...' : 'Scan OLT'}</span>
+                <span className="hidden sm:inline">{scanning ? t('wiz.scanning') : t('wiz.scanOlt')}</span>
                 <span className="sm:hidden">{scanning ? '...' : 'Scan'}</span>
               </Button>
               {unconfiguredOnus.length > 0 && (
@@ -875,14 +878,14 @@ export function RegisterWizard() {
           {unconfiguredOnus.length === 0 && !scanning && (
             <div className="text-center py-12">
               <Radio size={48} className="mx-auto text-tx3 mb-4" />
-              <p className="text-tx3">Click <strong>Scan OLT</strong> to discover unconfigured ONUs</p>
+              <p className="text-tx3">{t('wiz.click')} <strong>{t('wiz.scanOlt')}</strong> {t('wiz.toDiscover')}</p>
             </div>
           )}
 
           {scanning && (
             <div className="text-center py-12">
               <Loader2 size={48} className="mx-auto text-accent mb-4 animate-spin" />
-              <p className="text-tx3">Scanning OLT for unconfigured ONUs...</p>
+              <p className="text-tx3">{t('wiz.scanningOlt')}</p>
             </div>
           )}
 
@@ -921,17 +924,17 @@ export function RegisterWizard() {
       {/* Step 3: Configure */}
       {step === 3 && (
         <div className="glass-card p-4 md:p-6 space-y-4 md:space-y-5">
-          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Settings size={18} /> Configuration</h2>
+          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><Settings size={18} /> {t('wiz.configuration')}</h2>
           <p className="text-tx2 text-xs md:text-sm">Configure registration parameters for {data.selectedOnus.length} ONU(s).</p>
 
           {/* Load Custom Template */}
           {dbTemplates.length > 0 && (
             <Select
-              label="Load Custom Template"
+              label={t('wiz.loadTemplate')}
               onChange={e => { if (e.target.value) loadDbTemplate(Number(e.target.value)); }}
               defaultValue=""
             >
-              <option value="">— Select template —</option>
+              <option value="">{t('wiz.selectTemplate')}</option>
               {dbTemplates.map(t => (
                 <option key={t.id} value={t.id}>{t.name}{t.config ? ` (${t.config})` : ''}</option>
               ))}
@@ -940,7 +943,7 @@ export function RegisterWizard() {
 
           {/* Service Template */}
           <div>
-            <label className="label-sm mb-2">Service Template</label>
+            <label className="label-sm mb-2">{t('wiz.serviceTemplate')}</label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
               {[
                 { v: 'bridge', l: 'Bridge', desc: 'Transparent bridge mode' },
@@ -973,7 +976,7 @@ export function RegisterWizard() {
               value={data.onuType} onChange={e => update('onuType', e.target.value)}
               helperText={onuTypes.length > 0 ? `${onuTypes.length} types available${data.selectedOnus.length > 0 ? ` (${(data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon) ? 'EPON' : 'GPON'})` : ''}` : undefined}
             >
-              <option value="All">All (auto-detect)</option>
+              <option value="All">{t('wiz.allAutoDetect')}</option>
               {(() => {
                 const isEpon = data.selectedOnus.length > 0 &&
                   (data.selectedOnus[0].pon_port.includes('epon') || data.selectedOnus[0].is_epon === true);
@@ -990,11 +993,11 @@ export function RegisterWizard() {
               return isEponUI ? (
                 <div className="grid grid-cols-1 gap-2 md:gap-3">
                   <Select
-                    label={<>EPON SLA Profile <span className="text-tx3">(Speed Limit)</span></>}
+                    label={<>EPON SLA Profile <span className="text-tx3">{t('wiz.speedLimit')}</span></>}
                     value={data.slaProfile} onChange={e => update('slaProfile', e.target.value)}
                     helperText={slaProfiles.length > 0 ? `${slaProfiles.length} SLA profiles` : undefined}
                   >
-                    <option value="">— No SLA (Default) —</option>
+                    <option value="">{t('wiz.noSla')}</option>
                     {slaProfiles.map(p => <option key={p} value={p}>{p}</option>)}
                   </Select>
                 </div>
@@ -1005,7 +1008,7 @@ export function RegisterWizard() {
                     value={data.tcontProfile} onChange={e => update('tcontProfile', e.target.value)}
                     helperText={tcontProfiles.length > 0 ? `${tcontProfiles.length} TCONT profiles` : undefined}
                   >
-                    <option value="">Select profile...</option>
+                    <option value="">{t('wiz.selectProfileLower')}</option>
                     {tcontProfiles.map(p => <option key={p} value={p}>{p}</option>)}
                   </Select>
                   <Select
@@ -1013,7 +1016,7 @@ export function RegisterWizard() {
                     value={data.trafficProfile} onChange={e => update('trafficProfile', e.target.value)}
                     helperText={trafficProfiles.length > 0 ? `${trafficProfiles.length} traffic profiles` : undefined}
                   >
-                    <option value="">None (no DL limit)</option>
+                    <option value="">{t('wiz.noDlLimit')}</option>
                     {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
                   </Select>
                 </div>
@@ -1045,7 +1048,7 @@ export function RegisterWizard() {
               <div className="flex items-center gap-3 h-9">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.configure} onChange={e => update('configure', e.target.checked)} />
-                  <span className="text-sm">Configure TCONT/GEM/Service-Port after registration</span>
+                  <span className="text-sm">{t('wiz.autoConfigDesc')}</span>
                 </label>
               </div>
             </div>
@@ -1054,7 +1057,7 @@ export function RegisterWizard() {
           {/* Template-specific fields */}
           {data.template === 'pppoe' && (
             <div className="p-3 md:p-4 rounded-lg bg-glass border border-accent/20 space-y-3">
-              <h4 className="text-sm font-semibold text-accent">PPPoE Settings</h4>
+              <h4 className="text-sm font-semibold text-accent">{t('wiz.pppoeSettings')}</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input label="Username" type="text" value={String(data.extra.pppoe_user || '')} onChange={e => update('extra', { ...data.extra, pppoe_user: e.target.value })} placeholder="PPPoE Username" />
                 <Input label="Password"
@@ -1073,16 +1076,16 @@ export function RegisterWizard() {
                 const allZte = data.selectedOnus.length > 0 && data.selectedOnus.every(o => o.sn.toUpperCase().startsWith('ZTEG'));
                 const allNonZte = data.selectedOnus.length > 0 && data.selectedOnus.every(o => !o.sn.toUpperCase().startsWith('ZTEG'));
                 if (allZte) {
-                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-accent/10 text-accent font-medium">VEIP: OFF (ZTE ONU detected)</span> — Using iphost mode</div>;
+                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-accent/10 text-accent font-medium">{t('wiz.veipOff')}</span> {t('wiz.usingIphost')}</div>;
                 } else if (allNonZte) {
-                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-success/10 text-success font-medium">VEIP: ON (non-ZTE ONU detected)</span> — Using VEIP mode</div>;
+                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-success/10 text-success font-medium">{t('wiz.veipOn')}</span> {t('wiz.usingVeip')}</div>;
                 } else if (data.selectedOnus.length > 0) {
                   return <div>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={data.extra.use_veip === 'true'} onChange={e => update('extra', { ...data.extra, use_veip: e.target.checked ? 'true' : '' })} />
-                      <span className="text-sm font-medium">Use VEIP mode (mixed vendors)</span>
+                      <span className="text-sm font-medium">{t('wiz.useVeipMixed')}</span>
                     </label>
-                    <p className="text-xs text-tx3 pl-6">Some ONUs are ZTE, some are not. Toggle manually per batch.</p>
+                    <p className="text-xs text-tx3 pl-6">{t('wiz.mixedVendors')}</p>
                   </div>;
                 }
                 return null;
@@ -1092,7 +1095,7 @@ export function RegisterWizard() {
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_pppoe === 'true'} onChange={e => update('extra', { ...data.extra, enable_pppoe: e.target.checked ? 'true' : '' })} />
-                  <span className="text-sm font-medium">Enable PPPoE</span>
+                  <span className="text-sm font-medium">{t('wiz.enablePppoe')}</span>
                 </label>
                 {data.extra.enable_pppoe === 'true' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6">
@@ -1106,19 +1109,19 @@ export function RegisterWizard() {
 
               {/* SSID 2.4GHz (wifi_0/1) */}
               <div className="space-y-2 pl-4 border-l-2 border-accent/20">
-                <div className="text-xs font-semibold text-tx2">WiFi SSID 2.4GHz — opsional (kosong = default ONT)</div>
+                <div className="text-xs font-semibold text-tx2">{t('wiz.ssid24Optional')}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Input wrapperClassName="sm:col-span-2" label="SSID Name" type="text" value={String(data.extra.ssid_name || '')} onChange={e => update('extra', { ...data.extra, ssid_name: e.target.value })} placeholder="Nama WiFi 2.4GHz (tanpa spasi)" />
+                  <Input wrapperClassName="sm:col-span-2" label={t('wiz.ssidName')} type="text" value={String(data.extra.ssid_name || '')} onChange={e => update('extra', { ...data.extra, ssid_name: e.target.value })} placeholder={t('wiz.ssid24Ph')} />
                   <Select label="Auth" value={data.extra.ssid_auth || 'wpa2'} onChange={e => update('extra', { ...data.extra, ssid_auth: e.target.value })}>
                     <option value="wpa2">WPA2-PSK</option>
                     <option value="mixed">WPA/WPA2 Mixed</option>
                     <option value="wpa">WPA-PSK</option>
-                    <option value="open">Open (No Password)</option>
+                    <option value="open">{t('wiz.openAuth')}</option>
                   </Select>
                 </div>
                 {data.extra.ssid_name && data.extra.ssid_auth !== 'open' && (
-                  <Input label="WiFi Password"
-                    type={data.extra._show_ssid_pass === 'true' ? 'text' : 'password'} value={String(data.extra.ssid_pass || '')} onChange={e => update('extra', { ...data.extra, ssid_pass: e.target.value })} placeholder="Min 8 karakter"
+                  <Input label={t('wiz.wifiKeyLabel')}
+                    type={data.extra._show_ssid_pass === 'true' ? 'text' : 'password'} value={String(data.extra.ssid_pass || '')} onChange={e => update('extra', { ...data.extra, ssid_pass: e.target.value })} placeholder={t('wiz.min8')}
                     suffix={<button type="button" onClick={() => update('extra', { ...data.extra, _show_ssid_pass: data.extra._show_ssid_pass === 'true' ? '' : 'true' })} className="hover:text-tx1">{data.extra._show_ssid_pass === 'true' ? '🙈' : '👁'}</button>} />
                 )}
               </div>
@@ -1127,14 +1130,14 @@ export function RegisterWizard() {
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_firewall === 'true'} onChange={e => update('extra', { ...data.extra, enable_firewall: e.target.checked ? 'true' : '' })} />
-                  <span className="text-sm font-medium">Enable Firewall</span>
+                  <span className="text-sm font-medium">{t('wiz.enableFirewall')}</span>
                 </label>
                 {data.extra.enable_firewall === 'true' && (
                   <div className="pl-6">
-                    <Select label="Firewall Level" value={data.extra.firewall_level || 'low'} onChange={e => update('extra', { ...data.extra, firewall_level: e.target.value })}>
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
+                    <Select label={t('wiz.firewallLevel')} value={data.extra.firewall_level || 'low'} onChange={e => update('extra', { ...data.extra, firewall_level: e.target.value })}>
+                      <option value="low">{t('wiz.low')}</option>
+                      <option value="medium">{t('wiz.medium')}</option>
+                      <option value="high">{t('wiz.high')}</option>
                     </Select>
                   </div>
                 )}
@@ -1144,12 +1147,12 @@ export function RegisterWizard() {
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_tr069 === 'true'} onChange={e => update('extra', { ...data.extra, enable_tr069: e.target.checked ? 'true' : '' })} />
-                  <span className="text-sm font-medium">Enable TR069/ACS Remote Management</span>
+                  <span className="text-sm font-medium">{t('wiz.enableTr069')}</span>
                 </label>
                 {data.extra.enable_tr069 === 'true' && (
                   <div className="pl-6 space-y-3">
                     <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
-                      <option value="">Select Profile...</option>
+                      <option value="">{t('wiz.selectProfile')}</option>
                       {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                     </Select>
                     {data.extra.tr069_profile_id && (
@@ -1175,16 +1178,16 @@ export function RegisterWizard() {
                 const allZte = data.selectedOnus.length > 0 && data.selectedOnus.every(o => o.sn.toUpperCase().startsWith('ZTEG'));
                 const allNonZte = data.selectedOnus.length > 0 && data.selectedOnus.every(o => !o.sn.toUpperCase().startsWith('ZTEG'));
                 if (allZte) {
-                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-accent/10 text-accent font-medium">VEIP: OFF (ZTE ONU detected)</span> — Using iphost mode</div>;
+                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-accent/10 text-accent font-medium">{t('wiz.veipOff')}</span> {t('wiz.usingIphost')}</div>;
                 } else if (allNonZte) {
-                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-success/10 text-success font-medium">VEIP: ON (non-ZTE ONU detected)</span> — Using VEIP mode</div>;
+                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-success/10 text-success font-medium">{t('wiz.veipOn')}</span> {t('wiz.usingVeip')}</div>;
                 } else if (data.selectedOnus.length > 0) {
                   return <div>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={data.extra.use_veip === 'true'} onChange={e => update('extra', { ...data.extra, use_veip: e.target.checked ? 'true' : '' })} />
-                      <span className="text-sm font-medium">Use VEIP mode (mixed vendors)</span>
+                      <span className="text-sm font-medium">{t('wiz.useVeipMixed')}</span>
                     </label>
-                    <p className="text-xs text-tx3 pl-6">Some ONUs are ZTE, some are not. Toggle manually per batch.</p>
+                    <p className="text-xs text-tx3 pl-6">{t('wiz.mixedVendors')}</p>
                   </div>;
                 }
                 return null;
@@ -1193,12 +1196,12 @@ export function RegisterWizard() {
               {/* VLANs — Dynamic List */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="label-sm">VLAN List</label>
+                  <label className="label-sm">{t('wiz.vlanList')}</label>
                   <button type="button" onClick={() => {
                     const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans : [];
                     update('extra', { ...data.extra, vlans: [...cur, { vlan: '', label: '' }] });
                   }} className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-1">
-                    <Plus size={12} /> Add VLAN
+                    <Plus size={12} /> {t('wiz.addVlan')}
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -1217,7 +1220,7 @@ export function RegisterWizard() {
                           cur[i] = { ...cur[i], vlan: e.target.value };
                           update('extra', { ...data.extra, vlans: cur });
                         }} className="input-field flex-1">
-                          <option value="">Select VLAN...</option>
+                          <option value="">{t('wiz.selectVlan')}</option>
                           {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                         </select>
                       ) : (
@@ -1232,7 +1235,7 @@ export function RegisterWizard() {
                           }}
                           className="input-field flex-1" min={1} max={4094} />
                       )}
-                      <input type="text" value={v.label || ''} placeholder="Label (opt)"
+                      <input type="text" value={v.label || ''} placeholder={t('wiz.labelOpt')}
                         onChange={e => {
                           const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
                             { vlan: data.extra.primary_vlan || '30', label: 'Internet' },
@@ -1251,14 +1254,14 @@ export function RegisterWizard() {
                     </div>
                   ))}
                 </div>
-                <p className="text-[10px] text-tx3 mt-1">VLAN pertama = Primary (Internet), kedua = Secondary (Voucher). Tambah VLAN lain sesuai kebutuhan.</p>
+                <p className="text-[10px] text-tx3 mt-1">{t('wiz.vlanOrderHint')}</p>
               </div>
 
               {/* PPPoE */}
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_pppoe === 'true'} onChange={e => update('extra', { ...data.extra, enable_pppoe: e.target.checked ? 'true' : '' })} />
-                  <span className="text-sm font-medium">Enable PPPoE</span>
+                  <span className="text-sm font-medium">{t('wiz.enablePppoe')}</span>
                 </label>
                 {data.extra.enable_pppoe === 'true' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-6">
@@ -1273,7 +1276,7 @@ export function RegisterWizard() {
               {/* Dynamic SSID List (up to 8) */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">WiFi SSID List (max 8)</span>
+                  <span className="text-sm font-medium">{t('wiz.ssidList')}</span>
                   <button type="button" onClick={() => {
                     const cur: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }[] = Array.isArray(data.extra.ssids) ? data.extra.ssids as any : [];
                     if (cur.length < 8) {
@@ -1281,7 +1284,7 @@ export function RegisterWizard() {
                       cur.push({ port: defaultPorts[cur.length] || `wifi_0/${cur.length + 1}`, name: '', pass: '', auth: 'wpa2', vlan: '', enabled: true, hidden: false });
                       update('extra', { ...data.extra, ssids: cur });
                     }
-                  }} className="px-2 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover">+ Add SSID</button>
+                  }} className="px-2 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover">{t('wiz.addSsid')}</button>
                 </div>
                 {(() => {
                   const ssids = Array.isArray(data.extra.ssids) ? data.extra.ssids : [];
@@ -1291,7 +1294,7 @@ export function RegisterWizard() {
                     if (data.extra.ssid1_name) oldSsids.push({ port: 'wifi_0/1', name: data.extra.ssid1_name, pass: data.extra.ssid1_pass || '', auth: data.extra.ssid1_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
                     if (data.extra.ssid2_name) oldSsids.push({ port: 'wifi_0/5', name: data.extra.ssid2_name, pass: data.extra.ssid2_pass || '', auth: data.extra.ssid2_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
                     if (oldSsids.length > 0) { update('extra', { ...data.extra, ssids: oldSsids }); return null; }
-                    return <p className="text-xs text-tx3">No SSIDs added. Click "Add SSID" to configure WiFi.</p>;
+                    return <p className="text-xs text-tx3">{t('wiz.noSsid')}</p>;
                   }
                   return ssids.map((s: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }, i: number) => (
                     <div key={i} className={cn("p-3 rounded-lg border border-brd bg-glass space-y-2", s.enabled === false && "opacity-60")}>
@@ -1305,19 +1308,19 @@ export function RegisterWizard() {
                           {s.enabled !== false && (
                             <label className="flex items-center gap-1 cursor-pointer ml-2">
                               <input type="checkbox" checked={s.hidden === true} onChange={e => { const next = [...ssids]; next[i] = { ...s, hidden: e.target.checked }; update('extra', { ...data.extra, ssids: next }); }} className="w-3 h-3 rounded accent-accent" />
-                              <span className="text-[10px] text-tx3">Hidden</span>
+                              <span className="text-[10px] text-tx3">{t('wiz.hidden')}</span>
                             </label>
                           )}
                         </div>
-                        <button type="button" onClick={() => update('extra', { ...data.extra, ssids: ssids.filter((_: unknown, idx: number) => idx !== i) })} className="text-danger hover:text-danger/70 text-xs">Remove</button>
+                        <button type="button" onClick={() => update('extra', { ...data.extra, ssids: ssids.filter((_: unknown, idx: number) => idx !== i) })} className="text-danger hover:text-danger/70 text-xs">{t('wiz.remove')}</button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
                         <div><label className="label-sm mb-1">WiFi Port</label>
                           <select value={s.port || 'wifi_0/1'} onChange={e => { const next = [...ssids]; next[i] = { ...s, port: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field">
                             {['wifi_0/1', 'wifi_0/2', 'wifi_0/3', 'wifi_0/4', 'wifi_0/5', 'wifi_0/6', 'wifi_0/7', 'wifi_0/8'].map(p => <option key={p} value={p}>{p}</option>)}
                           </select></div>
-                        <div className="sm:col-span-1"><label className="label-sm mb-1">SSID Name</label>
-                          <input type="text" value={s.name || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, name: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder="Nama WiFi" disabled={s.enabled === false} /></div>
+                        <div className="sm:col-span-1"><label className="label-sm mb-1">{t('wiz.ssidName')}</label>
+                          <input type="text" value={s.name || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, name: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder={t('wiz.wifiName')} disabled={s.enabled === false} /></div>
                         <div><label className="label-sm mb-1">Auth</label>
                           <select value={s.auth || 'wpa2'} onChange={e => { const next = [...ssids]; next[i] = { ...s, auth: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" disabled={s.enabled === false}>
                             <option value="wpa2">WPA2-PSK</option>
@@ -1328,7 +1331,7 @@ export function RegisterWizard() {
                         <div><label className="label-sm mb-1">VLAN Tag</label>
                           {vlanList.length > 0 ? (
                             <select value={s.vlan || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, vlan: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" disabled={s.enabled === false}>
-                              <option value="">No VLAN tag</option>
+                              <option value="">{t('wiz.noVlanTag')}</option>
                               {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                             </select>
                           ) : (
@@ -1337,7 +1340,7 @@ export function RegisterWizard() {
                       </div>
                       {s.enabled !== false && s.name && s.auth !== 'open' && (
                         <div><label className="label-sm mb-1">Password</label>
-                          <input type="text" value={s.pass || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, pass: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder="Min 8 karakter" /></div>
+                          <input type="text" value={s.pass || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, pass: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder={t('wiz.min8')} /></div>
                       )}
                     </div>
                   ));
@@ -1346,7 +1349,7 @@ export function RegisterWizard() {
 
               {/* LAN Port VLAN Config */}
               <div className="space-y-2">
-                <span className="text-sm font-medium">LAN Port VLAN Tags (opsional — kosong = pakai primary VLAN)</span>
+                <span className="text-sm font-medium">{t('wiz.lanTagsPrimary')}</span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {(() => {
                   const lanVlans = Array.isArray(data.extra.lan_vlans) ? data.extra.lan_vlans : ['', '', '', ''];
@@ -1369,14 +1372,14 @@ export function RegisterWizard() {
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_firewall === 'true'} onChange={e => update('extra', { ...data.extra, enable_firewall: e.target.checked ? 'true' : '' })} />
-                  <span className="text-sm font-medium">Enable Firewall</span>
+                  <span className="text-sm font-medium">{t('wiz.enableFirewall')}</span>
                 </label>
                 {data.extra.enable_firewall === 'true' && (
                   <div className="pl-6">
-                    <Select label="Firewall Level" value={data.extra.firewall_level || 'low'} onChange={e => update('extra', { ...data.extra, firewall_level: e.target.value })}>
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
+                    <Select label={t('wiz.firewallLevel')} value={data.extra.firewall_level || 'low'} onChange={e => update('extra', { ...data.extra, firewall_level: e.target.value })}>
+                      <option value="low">{t('wiz.low')}</option>
+                      <option value="medium">{t('wiz.medium')}</option>
+                      <option value="high">{t('wiz.high')}</option>
                     </Select>
                   </div>
                 )}
@@ -1386,12 +1389,12 @@ export function RegisterWizard() {
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_tr069 === 'true'} onChange={e => update('extra', { ...data.extra, enable_tr069: e.target.checked ? 'true' : '' })} />
-                  <span className="text-sm font-medium">Enable TR069/ACS Remote Management</span>
+                  <span className="text-sm font-medium">{t('wiz.enableTr069')}</span>
                 </label>
                 {data.extra.enable_tr069 === 'true' && (
                   <div className="pl-6 space-y-3">
                     <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
-                      <option value="">Select Profile...</option>
+                      <option value="">{t('wiz.selectProfile')}</option>
                       {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                     </Select>
                     {data.extra.tr069_profile_id && (
@@ -1417,16 +1420,16 @@ export function RegisterWizard() {
                 const allZte = data.selectedOnus.length > 0 && data.selectedOnus.every(o => o.sn.toUpperCase().startsWith('ZTEG'));
                 const allNonZte = data.selectedOnus.length > 0 && data.selectedOnus.every(o => !o.sn.toUpperCase().startsWith('ZTEG'));
                 if (allZte) {
-                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-accent/10 text-accent font-medium">VEIP: OFF (ZTE ONU detected)</span> — Using iphost mode</div>;
+                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-accent/10 text-accent font-medium">{t('wiz.veipOff')}</span> {t('wiz.usingIphost')}</div>;
                 } else if (allNonZte) {
-                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-success/10 text-success font-medium">VEIP: ON (non-ZTE ONU detected)</span> — Using VEIP mode</div>;
+                  return <div className="text-xs text-tx3"><span className="inline-block px-2 py-1 rounded bg-success/10 text-success font-medium">{t('wiz.veipOn')}</span> {t('wiz.usingVeip')}</div>;
                 } else if (data.selectedOnus.length > 0) {
                   return <div>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={data.extra.use_veip === 'true'} onChange={e => update('extra', { ...data.extra, use_veip: e.target.checked ? 'true' : '' })} />
-                      <span className="text-sm font-medium">Use VEIP mode (mixed vendors)</span>
+                      <span className="text-sm font-medium">{t('wiz.useVeipMixed')}</span>
                     </label>
-                    <p className="text-xs text-tx3 pl-6">Some ONUs are ZTE, some are not. Toggle manually per batch.</p>
+                    <p className="text-xs text-tx3 pl-6">{t('wiz.mixedVendors')}</p>
                   </div>;
                 }
                 return null;
@@ -1435,18 +1438,18 @@ export function RegisterWizard() {
               {/* Dynamic Services */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Services (max 4)</span>
+                  <span className="text-sm font-medium">{t('wiz.servicesMax')}</span>
                   <button type="button" onClick={() => {
                     const svcs = JSON.parse(data.extra.services || '[]');
                     if (svcs.length < 4) {
                       svcs.push({ enabled: true, service_type: 'internet', vlans: [], vlan_names: [], wan_mode: 'webpage', wan_ip_mode: 'PPPoE', vlan_profile: '', username: '', password: '', mvlan: 0, profile_upload: '', profile_download: '' });
                       update('extra', { ...data.extra, services: JSON.stringify(svcs) });
                     }
-                  }} className="px-2 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover">+ Add Service</button>
+                  }} className="px-2 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover">{t('wiz.addService')}</button>
                 </div>
                 {(() => {
                   const svcs = JSON.parse(data.extra.services || '[]');
-                  if (svcs.length === 0) return <p className="text-xs text-tx3">No services added. Click "Add Service" to start.</p>;
+                  if (svcs.length === 0) return <p className="text-xs text-tx3">{t('wiz.noServices')}</p>;
                   return svcs.map((svc: Record<string, unknown>, idx: number) => (
                     <div key={idx} className="p-3 rounded-lg border border-brd bg-glass space-y-3">
                       <div className="flex items-center justify-between">
@@ -1456,16 +1459,16 @@ export function RegisterWizard() {
                             <input type="checkbox" checked={svc.enabled as boolean} onChange={e => {
                               const next = [...svcs]; next[idx] = { ...svc, enabled: e.target.checked };
                               update('extra', { ...data.extra, services: JSON.stringify(next) });
-                            }} /> Enabled
+                            }} /> {t('wiz.enabled')}
                           </label>
                           <button type="button" onClick={() => {
                             const next = svcs.filter((_: unknown, i: number) => i !== idx);
                             update('extra', { ...data.extra, services: JSON.stringify(next) });
-                          }} className="text-danger hover:text-danger/70 text-xs">Remove</button>
+                          }} className="text-danger hover:text-danger/70 text-xs">{t('wiz.remove')}</button>
                         </div>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        <div><label className="label-sm mb-1">Service Type</label>
+                        <div><label className="label-sm mb-1">{t('wiz.serviceType')}</label>
                           <select value={String(svc.service_type || 'internet')} onChange={e => {
                             const next = [...svcs]; next[idx] = { ...svc, service_type: e.target.value };
                             update('extra', { ...data.extra, services: JSON.stringify(next) });
@@ -1481,7 +1484,7 @@ export function RegisterWizard() {
                               const next = [...svcs]; next[idx] = { ...svc, vlans: [e.target.value], vlan_names: [vlanList.find(v => String(v.vlan_id) === e.target.value)?.name || ''] };
                               update('extra', { ...data.extra, services: JSON.stringify(next) });
                             }} className="input-field">
-                              <option value="">Select VLAN...</option>
+                              <option value="">{t('wiz.selectVlan')}</option>
                               {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                             </select>
                           ) : (
@@ -1495,7 +1498,7 @@ export function RegisterWizard() {
                             const next = [...svcs]; next[idx] = { ...svc, wan_mode: e.target.value };
                             update('extra', { ...data.extra, services: JSON.stringify(next) });
                           }} className="input-field">
-                            <option value="webpage">Setup via ONT</option>
+                            <option value="webpage">{t('wiz.setupViaOnt')}</option>
                             <option value="nat">PPPoE NAT</option>
                             <option value="wan">WAN-IP</option>
                           </select></div>
@@ -1514,7 +1517,7 @@ export function RegisterWizard() {
                                 update('extra', { ...data.extra, services: JSON.stringify(next) });
                               }} className="input-field">
                                 <option value="wan">WAN-IP DHCP</option>
-                                <option value="webpage">Setup via ONT</option>
+                                <option value="webpage">{t('wiz.setupViaOnt')}</option>
                               </select></div>
                             {svc.wan_mode === 'wan' && (
                               <div><label className="label-sm mb-1">VLAN Profile</label>
@@ -1522,7 +1525,7 @@ export function RegisterWizard() {
                                   const next = [...svcs]; next[idx] = { ...svc, vlan_profile: e.target.value };
                                   update('extra', { ...data.extra, services: JSON.stringify(next) });
                                 }} className="input-field">
-                                  <option value="">Select VLAN Profile...</option>
+                                  <option value="">{t('wiz.selectVlanProfile')}</option>
                                   {wanIpProfiles.map(p => <option key={p.name} value={p.name}>{p.vlan || '—'} — {p.name}</option>)}
                                 </select></div>
                             )}
@@ -1544,7 +1547,7 @@ export function RegisterWizard() {
                                 const next = [...svcs]; next[idx] = { ...svc, vlan_profile: e.target.value };
                                 update('extra', { ...data.extra, services: JSON.stringify(next) });
                               }} className="input-field">
-                                <option value="">Select VLAN Profile...</option>
+                                <option value="">{t('wiz.selectVlanProfile')}</option>
                                 {wanIpProfiles.map(p => <option key={p.name} value={p.name}>{p.vlan || '—'} — {p.name}</option>)}
                               </select></div>
                           </>
@@ -1568,7 +1571,7 @@ export function RegisterWizard() {
                             const next = [...svcs]; next[idx] = { ...svc, profile_upload: e.target.value };
                             update('extra', { ...data.extra, services: JSON.stringify(next) });
                           }} className="input-field">
-                            <option value="">Use global</option>
+                            <option value="">{t('wiz.useGlobal')}</option>
                             {tcontProfiles.map(p => <option key={p} value={p}>{p}</option>)}
                           </select></div>
                         <div><label className="label-sm mb-1">Download Profile</label>
@@ -1576,7 +1579,7 @@ export function RegisterWizard() {
                             const next = [...svcs]; next[idx] = { ...svc, profile_download: e.target.value };
                             update('extra', { ...data.extra, services: JSON.stringify(next) });
                           }} className="input-field">
-                            <option value="">Use global</option>
+                            <option value="">{t('wiz.useGlobal')}</option>
                             {trafficProfiles.map(p => <option key={p} value={p}>{p}</option>)}
                           </select></div>
                       </div>
@@ -1588,7 +1591,7 @@ export function RegisterWizard() {
               {/* Dynamic SSID List (up to 8) */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">WiFi SSID List (max 8)</span>
+                  <span className="text-sm font-medium">{t('wiz.ssidList')}</span>
                   <button type="button" onClick={() => {
                     const cur: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }[] = Array.isArray(data.extra.ssids) ? data.extra.ssids as any : [];
                     if (cur.length < 8) {
@@ -1596,7 +1599,7 @@ export function RegisterWizard() {
                       cur.push({ port: defaultPorts[cur.length] || `wifi_0/${cur.length + 1}`, name: '', pass: '', auth: 'wpa2', vlan: '', enabled: true, hidden: false });
                       update('extra', { ...data.extra, ssids: cur });
                     }
-                  }} className="px-2 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover">+ Add SSID</button>
+                  }} className="px-2 py-1 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover">{t('wiz.addSsid')}</button>
                 </div>
                 {(() => {
                   const ssids = Array.isArray(data.extra.ssids) ? data.extra.ssids : [];
@@ -1606,7 +1609,7 @@ export function RegisterWizard() {
                     if (data.extra.ssid1_name) oldSsids.push({ port: 'wifi_0/1', name: data.extra.ssid1_name, pass: data.extra.ssid1_pass || '', auth: data.extra.ssid1_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
                     if (data.extra.ssid2_name) oldSsids.push({ port: 'wifi_0/5', name: data.extra.ssid2_name, pass: data.extra.ssid2_pass || '', auth: data.extra.ssid2_auth || 'wpa2', vlan: '', enabled: true, hidden: false });
                     if (oldSsids.length > 0) { update('extra', { ...data.extra, ssids: oldSsids }); return null; }
-                    return <p className="text-xs text-tx3">No SSIDs added. Click "Add SSID" to configure WiFi.</p>;
+                    return <p className="text-xs text-tx3">{t('wiz.noSsid')}</p>;
                   }
                   return ssids.map((s: { port: string; name: string; pass: string; auth: string; vlan: string; enabled: boolean; hidden: boolean }, i: number) => (
                     <div key={i} className={cn("p-3 rounded-lg border border-brd bg-glass space-y-2", s.enabled === false && "opacity-60")}>
@@ -1620,19 +1623,19 @@ export function RegisterWizard() {
                           {s.enabled !== false && (
                             <label className="flex items-center gap-1 cursor-pointer ml-2">
                               <input type="checkbox" checked={s.hidden === true} onChange={e => { const next = [...ssids]; next[i] = { ...s, hidden: e.target.checked }; update('extra', { ...data.extra, ssids: next }); }} className="w-3 h-3 rounded accent-accent" />
-                              <span className="text-[10px] text-tx3">Hidden</span>
+                              <span className="text-[10px] text-tx3">{t('wiz.hidden')}</span>
                             </label>
                           )}
                         </div>
-                        <button type="button" onClick={() => update('extra', { ...data.extra, ssids: ssids.filter((_: unknown, idx: number) => idx !== i) })} className="text-danger hover:text-danger/70 text-xs">Remove</button>
+                        <button type="button" onClick={() => update('extra', { ...data.extra, ssids: ssids.filter((_: unknown, idx: number) => idx !== i) })} className="text-danger hover:text-danger/70 text-xs">{t('wiz.remove')}</button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
                         <div><label className="label-sm mb-1">WiFi Port</label>
                           <select value={s.port || 'wifi_0/1'} onChange={e => { const next = [...ssids]; next[i] = { ...s, port: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field">
                             {['wifi_0/1', 'wifi_0/2', 'wifi_0/3', 'wifi_0/4', 'wifi_0/5', 'wifi_0/6', 'wifi_0/7', 'wifi_0/8'].map(p => <option key={p} value={p}>{p}</option>)}
                           </select></div>
-                        <div className="sm:col-span-1"><label className="label-sm mb-1">SSID Name</label>
-                          <input type="text" value={s.name || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, name: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder="Nama WiFi" disabled={s.enabled === false} /></div>
+                        <div className="sm:col-span-1"><label className="label-sm mb-1">{t('wiz.ssidName')}</label>
+                          <input type="text" value={s.name || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, name: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder={t('wiz.wifiName')} disabled={s.enabled === false} /></div>
                         <div><label className="label-sm mb-1">Auth</label>
                           <select value={s.auth || 'wpa2'} onChange={e => { const next = [...ssids]; next[i] = { ...s, auth: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" disabled={s.enabled === false}>
                             <option value="wpa2">WPA2-PSK</option>
@@ -1643,7 +1646,7 @@ export function RegisterWizard() {
                         <div><label className="label-sm mb-1">VLAN Tag</label>
                           {vlanList.length > 0 ? (
                             <select value={s.vlan || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, vlan: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" disabled={s.enabled === false}>
-                              <option value="">No VLAN tag</option>
+                              <option value="">{t('wiz.noVlanTag')}</option>
                               {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                             </select>
                           ) : (
@@ -1652,7 +1655,7 @@ export function RegisterWizard() {
                       </div>
                       {s.enabled !== false && s.name && s.auth !== 'open' && (
                         <div><label className="label-sm mb-1">Password</label>
-                          <input type="text" value={s.pass || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, pass: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder="Min 8 karakter" /></div>
+                          <input type="text" value={s.pass || ''} onChange={e => { const next = [...ssids]; next[i] = { ...s, pass: e.target.value }; update('extra', { ...data.extra, ssids: next }); }} className="input-field" placeholder={t('wiz.min8')} /></div>
                       )}
                     </div>
                   ));
@@ -1661,7 +1664,7 @@ export function RegisterWizard() {
 
               {/* LAN Port VLAN Config */}
               <div className="space-y-2">
-                <span className="text-sm font-medium">LAN Port VLAN Tags (opsional — kosong = auto dari service VLAN)</span>
+                <span className="text-sm font-medium">{t('wiz.lanTagsAuto')}</span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {(() => {
                   const lanVlans = Array.isArray(data.extra.lan_vlans) ? data.extra.lan_vlans : ['', '', '', ''];
@@ -1669,7 +1672,7 @@ export function RegisterWizard() {
                     <div key={ethPort}><label className="label-sm mb-1">ETH 0/{ethPort}</label>
                       {vlanList.length > 0 ? (
                         <select value={lanVlans[ethPort - 1] || ''} onChange={e => { const next = [...lanVlans]; next[ethPort - 1] = e.target.value; update('extra', { ...data.extra, lan_vlans: next }); }} className="input-field">
-                          <option value="">Auto from Service</option>
+                          <option value="">{t('wiz.autoFromService')}</option>
                           {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                         </select>
                       ) : (
@@ -1684,12 +1687,12 @@ export function RegisterWizard() {
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_tr069 === 'true'} onChange={e => update('extra', { ...data.extra, enable_tr069: e.target.checked ? 'true' : '' })} />
-                  <span className="text-sm font-medium">Enable TR069/ACS Remote Management</span>
+                  <span className="text-sm font-medium">{t('wiz.enableTr069')}</span>
                 </label>
                 {data.extra.enable_tr069 === 'true' && (
                   <div className="pl-6 space-y-3">
                     <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
-                      <option value="">Select Profile...</option>
+                      <option value="">{t('wiz.selectProfile')}</option>
                       {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                     </Select>
                     {data.extra.tr069_profile_id && (
@@ -1709,17 +1712,17 @@ export function RegisterWizard() {
           {data.template === 'huawei_full' && (
             <div className="p-3 md:p-4 rounded-lg bg-glass border border-accent/20 space-y-4">
               <h4 className="text-sm font-semibold text-accent">Huawei Full Config</h4>
-              <p className="text-xs text-tx3">WiFi/SSID config via TR069/GenieACS (no OMCI support via ZTE OLT)</p>
+              <p className="text-xs text-tx3">{t('wiz.huaweiWifiNote')}</p>
 
               {/* Dynamic VLAN list */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="label-sm">VLAN List (Service Ports)</label>
+                  <label className="label-sm">{t('wiz.vlanListSp')}</label>
                   <button type="button" onClick={() => {
                     const cur = Array.isArray(data.extra.vlans) ? data.extra.vlans : [];
                     update('extra', { ...data.extra, vlans: [...cur, { vlan: '', label: '' }] });
                   }} className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-1">
-                    <Plus size={12} /> Add VLAN
+                    <Plus size={12} /> {t('wiz.addVlan')}
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -1740,7 +1743,7 @@ export function RegisterWizard() {
                           cur[i] = { ...cur[i], vlan: e.target.value };
                           update('extra', { ...data.extra, vlans: cur });
                         }} className="input-field flex-1">
-                          <option value="">Select VLAN...</option>
+                          <option value="">{t('wiz.selectVlan')}</option>
                           {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                         </select>
                       ) : (
@@ -1756,7 +1759,7 @@ export function RegisterWizard() {
                           }}
                           className="input-field flex-1" min={1} max={4094} />
                       )}
-                      <input type="text" value={v.label || ''} placeholder="Label (opt)"
+                      <input type="text" value={v.label || ''} placeholder={t('wiz.labelOpt')}
                         onChange={e => {
                           const cur = Array.isArray(data.extra.vlans) ? [...data.extra.vlans] : [
                             { vlan: data.extra.mgmt_vlan || '1010', label: 'Mgmt' },
@@ -1776,19 +1779,19 @@ export function RegisterWizard() {
                     </div>
                   ))}
                 </div>
-                <p className="text-[10px] text-tx3 mt-1">Setiap VLAN akan dibuatkan service-port pada ONU. Jumlah VLAN fleksibel sesuai kebutuhan tenant.</p>
+                <p className="text-[10px] text-tx3 mt-1">{t('wiz.vlanServicePortHint')}</p>
               </div>
 
-              <Input label="VLAN Profile Name" type="text" value={String(data.extra.vlan_profile || 'genieacs')} onChange={e => update('extra', { ...data.extra, vlan_profile: e.target.value })} />
+              <Input label={t('wiz.vlanProfileName')} type="text" value={String(data.extra.vlan_profile || 'genieacs')} onChange={e => update('extra', { ...data.extra, vlan_profile: e.target.value })} />
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_tr069 === 'true'} onChange={e => update('extra', { ...data.extra, enable_tr069: e.target.checked ? 'true' : '' })} />
-                  <span className="text-sm font-medium">Enable TR069/ACS</span>
+                  <span className="text-sm font-medium">{t('wiz.enableTr069Short')}</span>
                 </label>
                 {data.extra.enable_tr069 === 'true' && (
                   <div className="pl-6 space-y-3">
                     <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
-                      <option value="">Select Profile...</option>
+                      <option value="">{t('wiz.selectProfile')}</option>
                       {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                     </Select>
                     {data.extra.tr069_profile_id && (
@@ -1810,10 +1813,10 @@ export function RegisterWizard() {
               <h4 className="text-sm font-semibold text-accent">Fiberhome VEIP (HG6145D2)</h4>
 
               {/* WAN Mode */}
-              <Select label="WAN Mode (Internet Service)" value={data.extra.wan_mode || 'bridge'} onChange={e => update('extra', { ...data.extra, wan_mode: e.target.value })}>
-                <option value="bridge">Bridge (transparent — ONT manages WAN)</option>
-                <option value="pppoe">PPPoE (OLT dials PPPoE via VEIP)</option>
-                <option value="dhcp">DHCP (ONT gets IP via DHCP)</option>
+              <Select label={t('wiz.wanModeInternet')} value={data.extra.wan_mode || 'bridge'} onChange={e => update('extra', { ...data.extra, wan_mode: e.target.value })}>
+                <option value="bridge">{t('wiz.wanBridge')}</option>
+                <option value="pppoe">{t('wiz.wanPppoe')}</option>
+                <option value="dhcp">{t('wiz.wanDhcp')}</option>
               </Select>
 
               {/* PPPoE fields */}
@@ -1830,11 +1833,11 @@ export function RegisterWizard() {
               {(data.extra.wan_mode === 'pppoe' || data.extra.wan_mode === 'dhcp') && (
                 <div className="pl-4 border-l-2 border-accent/20">
                   <Select
-                    label={<>WAN-IP VLAN Profile <span className="text-tx3">(from OLT config)</span></>}
+                    label={<>WAN-IP VLAN Profile <span className="text-tx3">{t('wiz.fromOltConfig')}</span></>}
                     value={data.extra.vlan_profile || ''} onChange={e => update('extra', { ...data.extra, vlan_profile: e.target.value })}
                     helperText={wanIpProfiles.length === 0 ? 'No WAN-IP profiles found. Create one in OLT Config → WAN-IP tab.' : undefined}
                   >
-                    <option value="">— Select Profile —</option>
+                    <option value="">{t('wiz.selectProfileDash')}</option>
                     {wanIpProfiles.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
                   </Select>
                 </div>
@@ -1853,11 +1856,11 @@ export function RegisterWizard() {
                 return (
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="label-sm">VLAN List (Service Ports)</label>
+                  <label className="label-sm">{t('wiz.vlanListSp')}</label>
                   <button type="button" onClick={() => {
                     update('extra', { ...data.extra, vlans: [...fhVlans, { vlan: '', label: '' }] });
                   }} className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-1">
-                    <Plus size={12} /> Add VLAN
+                    <Plus size={12} /> {t('wiz.addVlan')}
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -1870,7 +1873,7 @@ export function RegisterWizard() {
                           cur[i] = { ...cur[i], vlan: e.target.value };
                           update('extra', { ...data.extra, vlans: cur });
                         }} className="input-field flex-1">
-                          <option value="">Select VLAN...</option>
+                          <option value="">{t('wiz.selectVlan')}</option>
                           {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                         </select>
                       ) : (
@@ -1882,7 +1885,7 @@ export function RegisterWizard() {
                           }}
                           className="input-field flex-1" min={1} max={4094} />
                       )}
-                      <input type="text" value={v.label || ''} placeholder="Label (opt)"
+                      <input type="text" value={v.label || ''} placeholder={t('wiz.labelOpt')}
                         onChange={e => {
                           const cur = [...fhVlans];
                           cur[i] = { ...cur[i], label: e.target.value };
@@ -1897,7 +1900,7 @@ export function RegisterWizard() {
                     </div>
                   ))}
                 </div>
-                <p className="text-[10px] text-tx3 mt-1">Default: #1=TR069, #2=Internet, #3=VoIP. Bisa tambah/hapus sesuai kebutuhan.</p>
+                <p className="text-[10px] text-tx3 mt-1">{t('wiz.defaultServicesHint')}</p>
               </div>
                 );
               })()}
@@ -1905,12 +1908,12 @@ export function RegisterWizard() {
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_tr069 === 'true'} onChange={e => update('extra', { ...data.extra, enable_tr069: e.target.checked ? 'true' : '' })} />
-                  <span className="text-sm font-medium">Enable TR069/ACS Remote Management</span>
+                  <span className="text-sm font-medium">{t('wiz.enableTr069')}</span>
                 </label>
                 {data.extra.enable_tr069 === 'true' && (
                   <div className="pl-6 space-y-3">
                     <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
-                      <option value="">Select Profile...</option>
+                      <option value="">{t('wiz.selectProfile')}</option>
                       {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                     </Select>
                     {data.extra.tr069_profile_id && (
@@ -1930,13 +1933,13 @@ export function RegisterWizard() {
           {data.template === 'nokia' && (
             <div className="p-3 md:p-4 rounded-lg bg-glass border border-accent/20 space-y-3">
               <h4 className="text-sm font-semibold text-accent">Nokia VEIP (G-010/G-240)</h4>
-              <p className="text-xs text-tx3">Named services on shared gemport 1 (cos 0), VEIP hybrid port, TR069 ACS, web on security-mgmt 212.</p>
+              <p className="text-xs text-tx3">{t('wiz.nokiaNote')}</p>
 
               {/* WAN Mode */}
-              <Select label="WAN Mode (Internet Service)" value={data.extra.wan_mode || 'bridge'} onChange={e => update('extra', { ...data.extra, wan_mode: e.target.value })}>
-                <option value="bridge">Bridge (transparent — ONT manages WAN)</option>
-                <option value="pppoe">PPPoE (OLT dials PPPoE via VEIP)</option>
-                <option value="dhcp">DHCP (ONT gets IP via DHCP)</option>
+              <Select label={t('wiz.wanModeInternet')} value={data.extra.wan_mode || 'bridge'} onChange={e => update('extra', { ...data.extra, wan_mode: e.target.value })}>
+                <option value="bridge">{t('wiz.wanBridge')}</option>
+                <option value="pppoe">{t('wiz.wanPppoe')}</option>
+                <option value="dhcp">{t('wiz.wanDhcp')}</option>
               </Select>
 
               {/* PPPoE fields */}
@@ -1953,11 +1956,11 @@ export function RegisterWizard() {
               {(data.extra.wan_mode === 'pppoe' || data.extra.wan_mode === 'dhcp') && (
                 <div className="pl-4 border-l-2 border-accent/20">
                   <Select
-                    label={<>WAN-IP VLAN Profile <span className="text-tx3">(from OLT config)</span></>}
+                    label={<>WAN-IP VLAN Profile <span className="text-tx3">{t('wiz.fromOltConfig')}</span></>}
                     value={data.extra.vlan_profile || ''} onChange={e => update('extra', { ...data.extra, vlan_profile: e.target.value })}
                     helperText={wanIpProfiles.length === 0 ? 'No WAN-IP profiles found. Create one in OLT Config → WAN-IP tab.' : undefined}
                   >
-                    <option value="">— Select Profile —</option>
+                    <option value="">{t('wiz.selectProfileDash')}</option>
                     {wanIpProfiles.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
                   </Select>
                 </div>
@@ -1977,11 +1980,11 @@ export function RegisterWizard() {
                 return (
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="label-sm">Service VLANs (label = service name)</label>
+                  <label className="label-sm">{t('wiz.serviceVlans')}</label>
                   <button type="button" onClick={() => {
                     update('extra', { ...data.extra, vlans: [...nkVlans, { vlan: '', label: '', cos: '0' }] });
                   }} className="px-2 py-1 text-xs rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors flex items-center gap-1">
-                    <Plus size={12} /> Add VLAN
+                    <Plus size={12} /> {t('wiz.addVlan')}
                   </button>
                 </div>
                 <div className="space-y-2">
@@ -1994,7 +1997,7 @@ export function RegisterWizard() {
                           cur[i] = { ...cur[i], vlan: e.target.value };
                           update('extra', { ...data.extra, vlans: cur });
                         }} className="input-field flex-1">
-                          <option value="">Select VLAN...</option>
+                          <option value="">{t('wiz.selectVlan')}</option>
                           {vlanList.map(v => <option key={v.vlan_id} value={v.vlan_id}>{v.vlan_id} — {v.name || '(unnamed)'}</option>)}
                         </select>
                       ) : (
@@ -2006,7 +2009,7 @@ export function RegisterWizard() {
                           }}
                           className="input-field flex-1" min={1} max={4094} />
                       )}
-                      <input type="text" value={v.label || ''} placeholder="Name (opt)"
+                      <input type="text" value={v.label || ''} placeholder={t('wiz.nameOpt')}
                         onChange={e => {
                           const cur = [...nkVlans];
                           cur[i] = { ...cur[i], label: e.target.value };
@@ -2014,7 +2017,7 @@ export function RegisterWizard() {
                         }}
                         className="input-field flex-1" />
                       <input type="number" value={v.cos ?? '0'} placeholder="cos"
-                        title="CoS priority"
+                        title={t('wiz.cosPriority')}
                         onChange={e => {
                           const cur = [...nkVlans];
                           cur[i] = { ...cur[i], cos: e.target.value };
@@ -2029,7 +2032,7 @@ export function RegisterWizard() {
                     </div>
                   ))}
                 </div>
-                <p className="text-[10px] text-tx3 mt-1">Label 'ACS'/'TR069' menentukan VLAN untuk tr069-mgmt tag. Default: #1=ACS, #2=Internet, #3=VoIP.</p>
+                <p className="text-[10px] text-tx3 mt-1">{t('wiz.acsLabelHint')}</p>
               </div>
                 );
               })()}
@@ -2037,7 +2040,7 @@ export function RegisterWizard() {
               {/* TR069/ACS — Nokia ONTs are ACS-managed */}
               <div className="space-y-2">
                 <Select label="TR069 Profile" value={data.extra.tr069_profile_id || ''} onChange={e => selectTr069Profile(e.target.value)}>
-                  <option value="">Manual / default</option>
+                  <option value="">{t('wiz.manualDefault')}</option>
                   {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                 </Select>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -2057,7 +2060,7 @@ export function RegisterWizard() {
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={data.extra.enable_web !== ''} onChange={e => update('extra', { ...data.extra, enable_web: e.target.checked ? 'true' : '' })} />
-                  <span className="text-sm font-medium">Enable Web GUI</span>
+                  <span className="text-sm font-medium">{t('wiz.enableWebGui')}</span>
                 </label>
                 {data.extra.enable_web !== '' && (
                   <div className="flex items-center gap-2">
@@ -2084,24 +2087,24 @@ export function RegisterWizard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             {/* Name prefix */}
             <Input
-              label="ONU Name (optional)"
+              label={t('wiz.onuNameOpt')}
               type="text" value={data.namePrefix} onChange={e => update('namePrefix', e.target.value)}
-              placeholder="e.g. salsa@rw04"
+              placeholder={t('wiz.onuNamePh')}
               helperText="Name will be saved exactly as input, without auto suffix." />
 
             {/* Description */}
             <Input
-              label="Description (optional)"
+              label={t('wiz.descOpt')}
               type="text" value={data.description} onChange={e => update('description', e.target.value)}
-              placeholder="e.g. Pelanggan RT03" />
+              placeholder={t('wiz.descPh')} />
           </div>
 
           <Select
-            label={<span className="flex items-center gap-1.5"><Wrench size={12} /> Teknisi Lapangan</span>}
+            label={<span className="flex items-center gap-1.5"><Wrench size={12} /> {t('wiz.fieldTech')}</span>}
             value={data.technicianId ?? ''} onChange={e => update('technicianId', e.target.value ? Number(e.target.value) : null)}
             helperText={technicians.length === 0 ? 'Belum ada user dengan role Technician. Tambahkan di User Management.' : undefined}
           >
-            <option value="">— Tidak ada teknisi —</option>
+            <option value="">{t('wiz.noTech')}</option>
             {technicians.map(t => (
               <option key={t.id} value={t.id}>{t.full_name}{t.phone ? ` (${t.phone})` : ''}</option>
             ))}
@@ -2112,31 +2115,31 @@ export function RegisterWizard() {
       {/* Step 4: Review & Register */}
       {step === 4 && (
         <div className="glass-card p-4 md:p-6 space-y-4 md:space-y-5">
-          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><FileText size={18} /> Review & Register</h2>
+          <h2 className="text-base md:text-lg font-semibold flex items-center gap-2"><FileText size={18} /> {t('wiz.reviewRegister')}</h2>
 
           {/* General Settings */}
           <div>
-            <h3 className="text-sm font-semibold mb-2 text-accent">General Settings</h3>
+            <h3 className="text-sm font-semibold mb-2 text-accent">{t('wiz.general')}</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
               <InfoBox label="OLT" value={olts.find(o => o.id === data.oltId)?.name || '-'} />
-              <InfoBox label="ONUs to Register" value={String(data.selectedOnus.length)} />
+              <InfoBox label={t('wiz.onusToRegister')} value={String(data.selectedOnus.length)} />
               <InfoBox label="ONU Type" value={data.onuType} />
               <InfoBox label="Template" value={data.template === 'zte_full' ? 'ZTE Dual Band' : data.template === 'zte_multi' ? 'ZTE Multi-Service' : data.template === 'nokia' ? 'Nokia VEIP' : data.template === 'fiberhome_veip' ? 'Fiberhome VEIP' : data.template === 'huawei_full' ? 'Huawei Full' : data.template.replace('_', ' ')} />
               <InfoBox label="VLAN ID" value={String(data.vlan)} />
               <InfoBox label="TCONT Profile" value={data.tcontProfile || '-'} />
               <InfoBox label="Traffic Profile" value={data.trafficProfile || 'None'} />
               <InfoBox label="Auto-Configure" value={data.configure ? 'Yes' : 'No'} />
-              <InfoBox label="ONU Name" value={data.namePrefix || '-'} />
-              <InfoBox label="Description" value={data.description || '-'} />
+              <InfoBox label={t('wiz.onuName')} value={data.namePrefix || '-'} />
+              <InfoBox label={t('wiz.description')} value={data.description || '-'} />
             </div>
           </div>
 
           {/* Template-specific config summary */}
           <div>
-            <h3 className="text-sm font-semibold mb-2 text-accent">Configuration Details</h3>
+            <h3 className="text-sm font-semibold mb-2 text-accent">{t('wiz.configDetails')}</h3>
             <div className="rounded-lg border border-brd bg-glass p-3 md:p-4 space-y-2 text-xs md:text-sm">
               {data.template === 'bridge' && (
-                <div className="text-tx3">Transparent bridge mode — no additional configuration.</div>
+                <div className="text-tx3">{t('wiz.bridgeNote')}</div>
               )}
 
               {data.template === 'pppoe' && (
@@ -2149,7 +2152,7 @@ export function RegisterWizard() {
               {data.template === 'zte_single' && (
                 <div className="space-y-1">
                   <ConfigRow label="VEIP Mode" value={data.extra.use_veip === 'true' ? 'Enabled (non-ZTE ONU)' : 'Disabled (ZTE ONU)'} />
-                  <ConfigRow label="PPPoE" value={data.extra.enable_pppoe === 'true' ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="PPPoE" value={data.extra.enable_pppoe === 'true' ? t('wiz.enabled') : t('wiz.disabled')} />
                   {data.extra.enable_pppoe === 'true' && (
                     <>
                       <ConfigRow label="PPPoE Username" value={String(data.extra.pppoe_user || '-')} />
@@ -2157,10 +2160,10 @@ export function RegisterWizard() {
                     </>
                   )}
                   {data.extra.ssid_name && <ConfigRow label="SSID 2.4GHz" value={String(data.extra.ssid_name)} />}
-                  {data.extra.ssid_name && <ConfigRow label="SSID Auth" value={{wpa2:'WPA2-PSK',mixed:'WPA/WPA2 Mixed',wpa:'WPA-PSK',open:'Open (No Password)'}[data.extra.ssid_auth as string] || 'WPA2-PSK'} />}
+                  {data.extra.ssid_name && <ConfigRow label="SSID Auth" value={{wpa2:'WPA2-PSK',mixed:'WPA/WPA2 Mixed',wpa:'WPA-PSK',open:t('wiz.openAuth')}[data.extra.ssid_auth as string] || 'WPA2-PSK'} />}
                   {data.extra.ssid_name && data.extra.ssid_auth !== 'open' && data.extra.ssid_pass && <ConfigRow label="SSID Password" value={String(data.extra.ssid_pass)} />}
-                  <ConfigRow label="Firewall" value={data.extra.enable_firewall === 'true' ? `Enabled (${data.extra.firewall_level || 'low'})` : 'Disabled'} />
-                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="Firewall" value={data.extra.enable_firewall === 'true' ? `Enabled (${data.extra.firewall_level || 'low'})` : t('wiz.disabled')} />
+                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? t('wiz.enabled') : t('wiz.disabled')} />
                   {data.extra.enable_tr069 === 'true' && (
                     <>
                       <ConfigRow label="ACS URL" value={String(data.extra.acs_url || '-')} />
@@ -2184,7 +2187,7 @@ export function RegisterWizard() {
                       <ConfigRow key={i} label={`VLAN #${i + 1}${v.label ? ` (${v.label})` : ''}`} value={String(v.vlan || '-')} />
                     ));
                   })()}
-                  <ConfigRow label="PPPoE" value={data.extra.enable_pppoe === 'true' ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="PPPoE" value={data.extra.enable_pppoe === 'true' ? t('wiz.enabled') : t('wiz.disabled')} />
                   {data.extra.enable_pppoe === 'true' && (
                     <>
                       <ConfigRow label="PPPoE Username" value={String(data.extra.pppoe_user || '-')} />
@@ -2208,8 +2211,8 @@ export function RegisterWizard() {
                       return v ? <ConfigRow key={lp} label={`ETH 0/${lp} VLAN`} value={String(v)} /> : null;
                     });
                   })()}
-                  <ConfigRow label="Firewall" value={data.extra.enable_firewall === 'true' ? `Enabled (${data.extra.firewall_level || 'low'})` : 'Disabled'} />
-                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="Firewall" value={data.extra.enable_firewall === 'true' ? `Enabled (${data.extra.firewall_level || 'low'})` : t('wiz.disabled')} />
+                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? t('wiz.enabled') : t('wiz.disabled')} />
                   {data.extra.enable_tr069 === 'true' && (
                     <>
                       <ConfigRow label="ACS URL" value={String(data.extra.acs_url || '-')} />
@@ -2226,7 +2229,7 @@ export function RegisterWizard() {
                   <ConfigRow label="VEIP Mode" value={data.extra.use_veip === 'true' ? 'Enabled (non-ZTE ONU)' : 'Disabled (ZTE ONU)'} />
                   {(() => {
                     const svcs = JSON.parse(data.extra.services || '[]');
-                    if (svcs.length === 0) return <div className="text-tx3">No services configured.</div>;
+                    if (svcs.length === 0) return <div className="text-tx3">{t('wiz.noServicesConfigured')}</div>;
                     return svcs.map((svc: Record<string, unknown>, idx: number) => (
                       <div key={idx} className="space-y-1 pl-2 border-l-2 border-brd">
                         <ConfigRow label={`Service ${idx + 1} Type`} value={String(svc.service_type || 'internet')} />
@@ -2254,7 +2257,7 @@ export function RegisterWizard() {
                       return v ? <ConfigRow key={lp} label={`ETH 0/${lp} VLAN`} value={String(v)} /> : null;
                     });
                   })()}
-                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? t('wiz.enabled') : t('wiz.disabled')} />
                   {data.extra.enable_tr069 === 'true' && (
                     <>
                       <ConfigRow label="ACS URL" value={String(data.extra.acs_url || '-')} />
@@ -2279,7 +2282,7 @@ export function RegisterWizard() {
                     ));
                   })()}
                   <ConfigRow label="VLAN Profile" value={String(data.extra.vlan_profile || 'genieacs')} />
-                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? t('wiz.enabled') : t('wiz.disabled')} />
                   {data.extra.enable_tr069 === 'true' && (
                     <>
                       <ConfigRow label="ACS URL" value={String(data.extra.acs_url || '-')} />
@@ -2302,7 +2305,7 @@ export function RegisterWizard() {
                       <ConfigRow key={i} label={`VLAN #${i + 1}${v.label ? ` (${v.label})` : ''}`} value={String(v.vlan || '-')} />
                     ));
                   })()}
-                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? 'Enabled' : 'Disabled'} />
+                  <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? t('wiz.enabled') : t('wiz.disabled')} />
                   {data.extra.enable_tr069 === 'true' && (
                     <>
                       <ConfigRow label="ACS URL" value={String(data.extra.acs_url || '-')} />
@@ -2329,7 +2332,7 @@ export function RegisterWizard() {
                   <ConfigRow label="WAN Mode" value={String(data.extra.wan_mode || 'bridge')} />
                   <ConfigRow label="ACS URL" value={String(data.extra.acs_url || 'http://192.168.54.254:7547')} />
                   <ConfigRow label="ACS User" value={String(data.extra.acs_user || 'acs')} />
-                  <ConfigRow label="Web GUI" value={data.extra.enable_web !== '' ? `Enabled (security-mgmt ${data.extra.security_web_port || '212'})` : 'Disabled'} />
+                  <ConfigRow label="Web GUI" value={data.extra.enable_web !== '' ? `Enabled (security-mgmt ${data.extra.security_web_port || '212'})` : t('wiz.disabled')} />
                   {(() => {
                     const pm = Array.isArray(data.extra.port_map) ? data.extra.port_map as unknown as PortMapRow[] : [];
                     return pm.map((p, i) => (
@@ -2344,17 +2347,17 @@ export function RegisterWizard() {
           {/* Register Script Preview */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-accent">Register Script Preview</h3>
+              <h3 className="text-sm font-semibold text-accent">{t('wiz.scriptPreview')}</h3>
               <Button
                 variant="secondary"
                 onClick={() => {
                   const script = generateRegisterScript(data);
-                  navigator.clipboard.writeText(script).then(() => toast.success('Script copied!')).catch(() => toast.error('Copy failed'));
+                  navigator.clipboard.writeText(script).then(() => toast.success(t('wiz.scriptCopied'))).catch(() => toast.error(t('wiz.copyFailed')));
                 }}
                 icon={<Copy size={14} />}
                 className="text-xs"
               >
-                Copy Script
+                {t('wiz.copyScript')}
               </Button>
             </div>
             <pre className="code-block text-[10px] md:text-xs overflow-x-auto max-h-72 overflow-y-auto whitespace-pre">
@@ -2364,7 +2367,7 @@ export function RegisterWizard() {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold mb-2">ONUs to Register</h3>
+            <h3 className="text-sm font-semibold mb-2">{t('wiz.onusToRegister')}</h3>
             <div className="space-y-1 max-h-48 overflow-y-auto">
               {data.selectedOnus.map((onu, i) => (
                 <div key={i} className="flex items-center gap-2 md:gap-3 p-2 rounded-lg bg-glass text-xs md:text-sm">
@@ -2378,9 +2381,9 @@ export function RegisterWizard() {
                         value={odpAssignments[onu.sn] ?? ''}
                         onChange={e => setOdpAssignments(prev => ({ ...prev, [onu.sn]: e.target.value ? Number(e.target.value) : null }))}
                         className="input-field !h-7 !text-[11px] max-w-[180px]"
-                        title="Assign ODP port (optional)"
+                        title={t('wiz.assignOdp')}
                       >
-                        <option value="">— ODP (optional) —</option>
+                        <option value="">{t('wiz.odpOptional')}</option>
                         {odpPorts.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                       </select>
                     )}
@@ -2395,17 +2398,17 @@ export function RegisterWizard() {
               <div className="flex items-center gap-3">
                 <Loader2 size={20} className="text-accent animate-spin" />
                 <div>
-                  <div className="text-sm font-medium">Registering ONUs...</div>
-                  <div className="text-xs text-tx3">Please wait, this may take a moment</div>
+                  <div className="text-sm font-medium">{t('wiz.registering')}</div>
+                  <div className="text-xs text-tx3">{t('wiz.pleaseWait')}</div>
                 </div>
               </div>
             </div>
           )}
 
           <StickyActionBar>
-            <Button variant="secondary" onClick={() => setStep(3)} disabled={registering}>Kembali</Button>
+            <Button variant="secondary" onClick={() => setStep(3)} disabled={registering}>{t('common.back')}</Button>
             <Button onClick={registerOnus} disabled={registering || !data.tcontProfile} loading={registering} icon={<Zap size={14} />}>
-              {registering ? 'Mendaftarkan…' : `Daftarkan ${data.selectedOnus.length} ONU`}
+              {registering ? t('wiz.registering') : t('wiz.registerN', { n: data.selectedOnus.length })}
             </Button>
           </StickyActionBar>
         </div>
@@ -2415,17 +2418,17 @@ export function RegisterWizard() {
       {step === 5 && (
         <div className="glass-card p-4 md:p-6 space-y-4 md:space-y-5">
           <h2 className="text-base md:text-lg font-semibold flex items-center gap-2">
-            <Check size={18} className="text-success" /> Registration Results
+            <Check size={18} className="text-success" /> {t('wiz.results')}
           </h2>
 
           <div className="grid grid-cols-3 gap-2 md:gap-4">
             <div className="p-3 md:p-4 rounded-xl bg-success/10 border border-success/20 text-center">
               <div className="text-xl md:text-2xl font-bold text-success">{results.filter(r => r.success).length}</div>
-              <div className="text-[10px] md:text-xs text-tx3">Successful</div>
+              <div className="text-[10px] md:text-xs text-tx3">{t('wiz.successful')}</div>
             </div>
             <div className="p-3 md:p-4 rounded-xl bg-danger/10 border border-danger/20 text-center">
               <div className="text-xl md:text-2xl font-bold text-danger">{results.filter(r => !r.success).length}</div>
-              <div className="text-[10px] md:text-xs text-tx3">Failed</div>
+              <div className="text-[10px] md:text-xs text-tx3">{t('wiz.failed')}</div>
             </div>
             <div className="p-3 md:p-4 rounded-xl bg-glass border border-brd text-center">
               <div className="text-xl md:text-2xl font-bold">{results.length}</div>
@@ -2446,9 +2449,9 @@ export function RegisterWizard() {
 
           <div className="flex justify-end gap-2 md:gap-3">
             <Button variant="secondary" onClick={() => { setStep(1); setResults([]); setData(prev => ({ ...prev, selectedOnus: [] })); }}>
-              Register More
+              {t('wiz.registerMore')}
             </Button>
-            <Button onClick={() => navigate('/dashboard/onus')}>View All ONUs</Button>
+            <Button onClick={() => navigate('/dashboard/onus')}>{t('wiz.viewAllOnus')}</Button>
           </div>
         </div>
       )}
@@ -2456,9 +2459,9 @@ export function RegisterWizard() {
       {/* Navigation */}
       {step >= 1 && step <= 3 && (
         <StickyActionBar>
-          {step > 1 && <Button variant="secondary" onClick={() => setStep(step - 1)}>Kembali</Button>}
+          {step > 1 && <Button variant="secondary" onClick={() => setStep(step - 1)}>{t('common.back')}</Button>}
           <Button onClick={() => setStep(step + 1)} disabled={!canNext()}>
-            Lanjut <ArrowRight size={14} />
+            {t('wiz.next')} <ArrowRight size={14} />
           </Button>
         </StickyActionBar>
       )}

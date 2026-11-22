@@ -1333,7 +1333,7 @@ function OltModal({ mode, olt, onClose, onSuccess }: {
             )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Input label={t('oltForm.username')} type="text" value={form.cli_username} onChange={e => update('cli_username', e.target.value)} placeholder={t('oltForm.optionalCap')} />
-              <Input label="Password" type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder={olt ? t('oltForm.pwUnchanged') : t('oltForm.optionalCap')} />
+              <Input label="Password" type="password" value={form.cli_password} onChange={e => update('cli_password', e.target.value)} placeholder={olt ? t('oltForm.keepCurrentMask') : t('oltForm.optionalCap')} />
               <div>
                 <label className="label-sm mb-1">{t('oltForm.connMode')}</label>
                 <div className="flex gap-2 items-center">
