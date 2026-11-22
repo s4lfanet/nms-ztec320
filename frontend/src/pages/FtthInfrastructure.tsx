@@ -247,7 +247,7 @@ export function FtthInfrastructure() {
         }
       />
       <Tabs
-        className="max-w-full overflow-x-auto"
+        mobileGrid
         tabs={[
           { key: 'overview', label: t('pg_ftth.overview'), icon: <Gauge size={14} /> },
           { key: 'map', label: t('pg_ftth.map'), icon: <MapIcon size={14} /> },
