@@ -613,14 +613,14 @@
     "optionalCap": "Optional",
     "cliHint": "Leave empty for SNMP-only mode. Fill in to enable CLI access.",
     "username": "Username",
-    "pwUnchanged": "•••• (unchanged)",
     "connMode": "Connection mode",
     "telnetTip": "Faster — no encryption overhead. Use on private/trusted networks.",
     "faster": "faster",
     "sshTip": "Encrypted — safer for non-private networks. Slightly slower due to encryption.",
     "secure": "secure",
     "sshPort": "SSH port",
-    "telnetPort": "Telnet port"
+    "telnetPort": "Telnet port",
+    "keepCurrentMask": "•••• (unchanged)"
   },
   "backup": {
     "toggleFailed": "Failed to toggle",
@@ -698,8 +698,6 @@
     "ssid24Optional": "WiFi SSID 2.4GHz — optional (empty = ONT default)",
     "ssidName": "SSID Name",
     "ssid24Ph": "2.4GHz WiFi name (no spaces)",
-    "openNoPw": "Open (No Password)",
-    "wifiPassword": "WiFi Password",
     "min8": "Min 8 characters",
     "enableFirewall": "Enable Firewall",
     "firewallLevel": "Firewall Level",
@@ -851,6 +849,8 @@
     "saveConfig": "Save Config",
     "registerNow": "Register Now",
     "stepScanSelect": "Scan & select",
-    "stepOnuDetail": "ONU details"
+    "stepOnuDetail": "ONU details",
+    "wifiKeyLabel": "WiFi Password",
+    "openAuth": "Open (No Password)"
   }
 }

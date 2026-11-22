@@ -1116,11 +1116,11 @@ export function RegisterWizard() {
                     <option value="wpa2">WPA2-PSK</option>
                     <option value="mixed">WPA/WPA2 Mixed</option>
                     <option value="wpa">WPA-PSK</option>
-                    <option value="open">{t('wiz.openNoPw')}</option>
+                    <option value="open">{t('wiz.openAuth')}</option>
                   </Select>
                 </div>
                 {data.extra.ssid_name && data.extra.ssid_auth !== 'open' && (
-                  <Input label={t('wiz.wifiPassword')}
+                  <Input label={t('wiz.wifiKeyLabel')}
                     type={data.extra._show_ssid_pass === 'true' ? 'text' : 'password'} value={String(data.extra.ssid_pass || '')} onChange={e => update('extra', { ...data.extra, ssid_pass: e.target.value })} placeholder={t('wiz.min8')}
                     suffix={<button type="button" onClick={() => update('extra', { ...data.extra, _show_ssid_pass: data.extra._show_ssid_pass === 'true' ? '' : 'true' })} className="hover:text-tx1">{data.extra._show_ssid_pass === 'true' ? '🙈' : '👁'}</button>} />
                 )}
@@ -2160,7 +2160,7 @@ export function RegisterWizard() {
                     </>
                   )}
                   {data.extra.ssid_name && <ConfigRow label="SSID 2.4GHz" value={String(data.extra.ssid_name)} />}
-                  {data.extra.ssid_name && <ConfigRow label="SSID Auth" value={{wpa2:'WPA2-PSK',mixed:'WPA/WPA2 Mixed',wpa:'WPA-PSK',open:t('wiz.openNoPw')}[data.extra.ssid_auth as string] || 'WPA2-PSK'} />}
+                  {data.extra.ssid_name && <ConfigRow label="SSID Auth" value={{wpa2:'WPA2-PSK',mixed:'WPA/WPA2 Mixed',wpa:'WPA-PSK',open:t('wiz.openAuth')}[data.extra.ssid_auth as string] || 'WPA2-PSK'} />}
                   {data.extra.ssid_name && data.extra.ssid_auth !== 'open' && data.extra.ssid_pass && <ConfigRow label="SSID Password" value={String(data.extra.ssid_pass)} />}
                   <ConfigRow label="Firewall" value={data.extra.enable_firewall === 'true' ? `Enabled (${data.extra.firewall_level || 'low'})` : t('wiz.disabled')} />
                   <ConfigRow label="TR069/ACS" value={data.extra.enable_tr069 === 'true' ? t('wiz.enabled') : t('wiz.disabled')} />

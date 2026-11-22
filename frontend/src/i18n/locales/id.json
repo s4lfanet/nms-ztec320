@@ -613,14 +613,14 @@
     "optionalCap": "Opsional",
     "cliHint": "Kosongkan untuk mode hanya-SNMP. Isi untuk mengaktifkan akses CLI.",
     "username": "Username",
-    "pwUnchanged": "•••• (tidak diubah)",
     "connMode": "Mode koneksi",
     "telnetTip": "Lebih cepat — tanpa enkripsi. Pakai di jaringan privat/terpercaya.",
     "faster": "lebih cepat",
     "sshTip": "Terenkripsi — lebih aman untuk jaringan non-privat, sedikit lebih lambat.",
     "secure": "aman",
     "sshPort": "Port SSH",
-    "telnetPort": "Port Telnet"
+    "telnetPort": "Port Telnet",
+    "keepCurrentMask": "•••• (tidak diubah)"
   },
   "backup": {
     "toggleFailed": "Gagal mengubah",
@@ -698,8 +698,6 @@
     "ssid24Optional": "WiFi SSID 2.4GHz — opsional (kosong = default ONT)",
     "ssidName": "Nama SSID",
     "ssid24Ph": "Nama WiFi 2.4GHz (tanpa spasi)",
-    "openNoPw": "Open (tanpa password)",
-    "wifiPassword": "Password WiFi",
     "min8": "Min 8 karakter",
     "enableFirewall": "Aktifkan Firewall",
     "firewallLevel": "Level Firewall",
@@ -851,6 +849,8 @@
     "saveConfig": "Simpan Config",
     "registerNow": "Daftarkan Sekarang",
     "stepScanSelect": "Pindai & pilih",
-    "stepOnuDetail": "Detail ONU"
+    "stepOnuDetail": "Detail ONU",
+    "wifiKeyLabel": "Password WiFi",
+    "openAuth": "Open (tanpa password)"
   }
 }

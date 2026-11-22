@@ -1051,7 +1051,7 @@ export function OnuWizard({ mode }: { mode: WizardMode }) {
                       <option value="wpa2">WPA2-PSK</option>
                       <option value="mixed">WPA/WPA2 Mixed</option>
                       <option value="wpa">WPA-PSK</option>
-                      <option value="open">{t('wiz.openNoPw')}</option>
+                      <option value="open">{t('wiz.openAuth')}</option>
                     </select></div>
                   <div><label className="label-sm mb-1">VLAN Tag</label>
                     {vlanList.length > 0 ? (
