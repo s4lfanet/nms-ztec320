@@ -41,7 +41,8 @@ const QUICK: [string, string][] = [
 
 /** Format WhatsApp sederhana di chat web: *tebal* → <b>, sisanya teks biasa. */
 function WaText({ text }: { text: string }) {
-  const parts = text.split(/(\*[^*\n]+\*)/g);
+  // *tebal* gaya WhatsApp; bintang yang diikuti spasi (butir daftar) bukan tebal
+  const parts = text.split(/(\*[^*\s](?:[^*\n]*[^*\s])?\*)/g);
   return <>{parts.map((p, i) => (p.length > 2 && p.startsWith('*') && p.endsWith('*') ? <b key={i}>{p.slice(1, -1)}</b> : p))}</>;
 }
 

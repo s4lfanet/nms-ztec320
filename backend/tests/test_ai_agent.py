@@ -323,3 +323,12 @@ def test_connection_diagnoses_models_stage(client, monkeypatch):
     monkeypatch.setattr(ai_agent.httpx, 'post', slow)
     r = client.post('/api/ai/test', headers=H).get_json()
     assert not r['success'] and 'Jaringan & API key OK' in r['message']
+
+
+def test_wa_format_converts_markdown():
+    md = "### Daftar\n1. **NA (HIOSO 1)** - `gpon-onu_1/1/1:41`\n    *   **Status:** LOS\n```\nx\n```"
+    out = ai_agent.wa_format(md)
+    assert out.startswith('*Daftar*')
+    assert '*NA (HIOSO 1)* - gpon-onu_1/1/1:41' in out
+    assert '    - *Status:* LOS' in out
+    assert '`' not in out and '**' not in out
