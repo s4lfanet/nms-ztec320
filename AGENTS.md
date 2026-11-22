@@ -245,6 +245,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 30. **Role teknisi** — default `view_dashboard,view_onus,receive_alerts`: bisa melihat & menangani insiden (`_can_handle` = receive_alerts / manage_users / super admin), tidak bisa membuka Pengaturan Alert (`customization`). Kategori notifikasi `odp_outage`/`outage` termasuk `ALARM_CATEGORIES`; API notifikasi mengirim `incident_id` untuk link lonceng. Panduan teknisi ada di `data/guides.ts` (`technician-field`) — perbarui bila alur insiden berubah.
 
+31. **Kaca hanya untuk kartu di atas latar** — apa pun yang menimpa konten (modal, dialog, menu, toast, sheet, topbar/sidebar/bottom nav, `sticky-action-bar`, kepala tabel) harus solid. Blok "Permukaan yang menimpa konten = SOLID" di akhir `glass.css` menangani `.modal-wrapper > .glass-card` dan `.modal-overlay ~ .glass-card`; untuk popover baru pakai kelas `surface-solid` atau `background: var(--bg-surface)` tanpa `backdrop-filter`. Overlay modal yang di-portal ke body memakai `body > .modal-overlay { z-index: 50 }` agar ikut menutup chrome.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

@@ -88,8 +88,7 @@
     display: flex;
     gap: 0.5rem;
     padding: 0.625rem 0.75rem;
-    background: color-mix(in srgb, var(--bg-surface) 94%, transparent);
-    backdrop-filter: blur(16px);
+    background: var(--bg-surface);
     border-top: 1px solid var(--border-color);
   }
   .sticky-action-bar > * { flex: 1; min-height: var(--touch-min); }

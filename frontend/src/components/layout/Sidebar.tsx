@@ -137,7 +137,7 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
 
       <aside className={cn(
         'sidebar-panel fixed top-0 left-0 h-full z-50 flex flex-col transition-transform duration-300 ease-in-out',
-        'bg-surface/95 backdrop-blur-xl border-r border-brd',
+        'bg-surface border-r border-brd',
         collapsed ? 'lg:w-[70px]' : 'lg:w-[260px]',
         'w-[260px]',
         mobileOpen ? 'sidebar-open' : 'sidebar-closed',

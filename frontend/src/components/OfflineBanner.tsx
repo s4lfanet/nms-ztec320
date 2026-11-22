@@ -20,7 +20,7 @@ export function OfflineBanner() {
   if (online) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500/90 text-black text-xs font-medium text-center py-1 flex items-center justify-center gap-1.5">
+    <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-black text-xs font-medium text-center py-1 flex items-center justify-center gap-1.5">
       <WifiOff size={13} />
       <span>{t('cmp_off.connectionLostDataCan')}</span>
     </div>

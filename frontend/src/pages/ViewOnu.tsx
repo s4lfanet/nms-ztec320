@@ -837,7 +837,7 @@ function SearchableSelect({ label, value, onChange, options, placeholder }: {
       {open && (
         <div
           className="absolute z-[9999] mt-1 w-full rounded-xl border border-brd shadow-2xl shadow-black/40 overflow-hidden"
-          style={{ background: 'var(--bg-surface)', backdropFilter: 'blur(20px)' }}
+          style={{ background: 'var(--bg-surface)' }}
           onMouseDown={e => e.stopPropagation()} // Prevent modal scroll from closing this
         >
           {/* Search input */}

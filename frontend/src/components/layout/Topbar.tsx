@@ -135,7 +135,7 @@ function NotifDropdown({
 
   return (
     <div className="fixed md:absolute left-2 right-2 md:left-auto md:right-0 top-14 md:top-12 w-auto md:w-96 max-h-[80vh] md:max-h-[75vh] rounded-2xl z-50 animate-fade-in overflow-hidden flex flex-col shadow-2xl shadow-black/40 border border-brd"
-      style={{ background: 'var(--bg-surface)', backdropFilter: 'blur(20px)' }}>
+      style={{ background: 'var(--bg-surface)' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-brd">
         <div className="flex items-center gap-2">
@@ -432,7 +432,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   };
 
   return (
-    <header className="sticky top-0 z-30 h-14 md:h-16 flex items-center justify-between px-3 md:px-6 bg-surface/80 backdrop-blur-xl border-b border-brd transition-colors duration-300">
+    <header className="sticky top-0 z-30 h-14 md:h-16 flex items-center justify-between px-3 md:px-6 bg-surface border-b border-brd transition-colors duration-300">
       <div className="flex items-center gap-2">
         <button onClick={onMenuClick} className="p-2 rounded-lg hover:bg-glass transition-colors lg:hidden active:scale-95">
           <Menu size={20} className="text-tx2" />
@@ -492,7 +492,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           </button>
 
           {showMenu && createPortal(
-            <div ref={userMenuDropRef} style={{ position: 'fixed' }} className="top-14 right-2 w-52 max-w-[calc(100vw-1rem)] py-1.5 glass-card rounded-xl z-[999] animate-fade-in shadow-2xl shadow-black/20">
+            <div ref={userMenuDropRef} style={{ position: 'fixed' }} className="top-14 right-2 w-52 max-w-[calc(100vw-1rem)] py-1.5 glass-card surface-solid rounded-xl z-[999] animate-fade-in shadow-2xl shadow-black/20">
               <div className="px-4 py-2.5 border-b border-brd">
                 <div className="text-sm font-medium">{user?.full_name || 'Admin'}</div>
                 <div className="text-xs text-tx3">{user?.username || ''}</div>

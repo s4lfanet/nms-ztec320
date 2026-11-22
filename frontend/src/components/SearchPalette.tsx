@@ -88,7 +88,7 @@ export function SearchPalette() {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60" onClick={() => setOpen(false)}>
       <div className="w-full max-w-lg mx-4 bg-surface border border-brd rounded-xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 px-4 py-3 border-b border-brd">
           <Search size={16} className="text-tx3 flex-shrink-0" />
