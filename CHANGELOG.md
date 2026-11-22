@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Redesign Fase 2: Dashboard
+
+#### Diubah
+- **Dashboard**: daftar OLT dipindah tepat di bawah ringkasan (sebelumnya di bawah panel sinyal, kesehatan, ONU bermasalah, dan alarm). Di HP, 4 kartu statistik diganti satu baris chip — Gangguan, Online, Total ONU, OLT — yang bisa diketuk untuk membuka daftar terfilter; desktop tetap memakai kartu.
+- Chip di baris geser HP tidak lagi menempel ke tepi layar (scroll-snap dihapus).
+
 ### 2026-11-22 — Redesign Fase 2: Pengaturan OLT
 
 #### Diubah
