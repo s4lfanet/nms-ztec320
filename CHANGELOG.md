@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — AI Agent: tes koneksi yang mendiagnosis
+
+#### Diperbaiki
+- **Tes koneksi kini 2 tahap**: (1) ambil daftar model penyedia (maks. 15 detik), lalu (2) kirim pesan uji. Dengan begitu hasilnya langsung menunjuk penyebab: jaringan VPS tidak menjangkau penyedia, API key salah, nama model tidak tersedia untuk key tersebut (disertai saran model, mis. `gemini-3.5-flash-lite`), atau model sekadar lambat membalas.
+- Pesan sukses menampilkan lama balasan dalam detik.
+
 ### 2026-11-22 — AI Agent: Gemini tidak lagi timeout
 
 #### Diperbaiki
