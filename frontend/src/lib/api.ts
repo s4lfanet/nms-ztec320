@@ -38,6 +38,21 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+export interface IncidentSummary {
+  id: number; title: string; status: string; cause: string; category: string;
+  node_type: string; node_id: number; node_name: string; olt_id: number | null; olt_name: string;
+  affected_count: number; peak_affected: number; assigned: string[];
+  acknowledged_by: string; resolved_by: string;
+  opened_at: string | null; acknowledged_at: string | null; en_route_at: string | null;
+  on_site_at: string | null; resolved_at: string | null; recovered_at: string | null;
+  resolution_note: string; merged_into_id: number | null; escalation_level: number;
+}
+export interface IncidentLogEntry { id: number; at: string | null; username: string; action: string; status: string; note: string; photo: string }
+export interface IncidentDetail extends IncidentSummary {
+  maps_url: string; onus: Array<{ id: number; name: string; serial: string; status: string }>;
+  online_now: number; logs: IncidentLogEntry[]; can_handle: boolean;
+}
+
 export const api = {
   // Auth
   login: (username: string, password: string) =>
@@ -48,6 +63,22 @@ export const api = {
   me: () => request<{ user: User }>('/api/auth/me'),
   updateProfile: (data: { full_name?: string; sidebar_name?: string; password?: string; current_password?: string; theme?: 'dark' | 'light' | 'system'; language?: 'id' | 'en' }) =>
     request<{ success: boolean; must_change_password?: boolean }>('/api/profile', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Insiden gangguan (Fase 3)
+  incidents: (status: 'active' | 'closed' | 'all' = 'active') =>
+    request<{ success: boolean; incidents: IncidentSummary[]; active_count: number; closed_count: number }>(`/api/incidents?status=${status}`),
+  incident: (id: number) => request<{ success: boolean; incident: IncidentDetail }>(`/api/incidents/${id}`),
+  incidentStatus: (id: number, status: string, note = '') =>
+    request<{ success: boolean; incident: IncidentSummary }>(`/api/incidents/${id}/status`, { method: 'POST', body: JSON.stringify({ status, note }) }),
+  incidentNote: (id: number, note: string) =>
+    request<{ success: boolean }>(`/api/incidents/${id}/notes`, { method: 'POST', body: JSON.stringify({ note }) }),
+  incidentPhoto: async (id: number, file: File, note = '') => {
+    const fd = new FormData(); fd.append('photo', file); fd.append('note', note);
+    const res = await fetch(`${BASE}/api/incidents/${id}/photos`, { method: 'POST', body: fd, credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(data.message || `HTTP ${res.status}`, data.error_code, res.status, data);
+    return data as { success: boolean; photo: string };
+  },
 
   // Dashboard
   dashboard: (opts?: { nocache?: boolean } | unknown) => request<DashboardData>(`/api/dashboard${opts && typeof opts === 'object' && 'nocache' in opts && opts.nocache ? '?nocache=1' : ''}`),

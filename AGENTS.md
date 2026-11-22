@@ -237,6 +237,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 26. **Wilayah teknisi (`TechnicianArea`, `alert_routing.py`)** — `_send_technician_alerts` memakai `_technician_recipients()`: per alert cari teknisi `primary` terdekat (ONU.technician_id bila alert 1 ONU → node gangguan/ODP ONU → naik topologi → OLT). Alert butuh `olt_id`/`onu_ids`/`target_type`+`target_id` — builder alert baru wajib mengisinya. Teknisi tanpa wilayah = NOC, selalu terima semua. Hasil routing di `alert['assigned_user_ids']` (dipakai insiden/eskalasi). `backup` hanya untuk eskalasi.
 
+27. **Insiden (`Incident`, `IncidentLog`, `incidents.py`, `routes_incidents.py`)** — dibuat/diperbarui di `_check_odp_outages` via `upsert_incident` (satu insiden aktif per node), ditutup di `close_stale_incidents` (merged ke root di atasnya / pulih: auto-resolve bila masih `open`). Status hanya maju: open → acknowledged → en_route → on_site → resolved (resolved wajib catatan). Foto di `instance/incident_photos/<id>/` (bukan static), disajikan lewat `/api/incidents/<id>/photos/<name>` dengan login. Alert punya `incident_id` → link insiden di pesan; penerima hasil routing disimpan di `assigned_user_ids`.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

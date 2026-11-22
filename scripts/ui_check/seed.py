@@ -13,7 +13,7 @@ if 'DATABASE_URL' not in os.environ:
     sys.exit('Set DATABASE_URL ke database uji (mis. sqlite:////tmp/ui-check.db)')
 
 from app import app, db  # noqa: E402
-from models import User, OLT, ONU  # noqa: E402
+from models import User, OLT, ONU, Incident, IncidentLog  # noqa: E402
 
 USER = os.environ.get('UI_CHECK_USER', 'uicheck')
 PASSWORD = os.environ.get('UI_CHECK_PASSWORD', '')
@@ -52,5 +52,16 @@ with app.app_context():
             o.total_onu = 60
             o.online_onu, o.offline_onu = st['online'], st['offline']
             o.los_onu, o.dyinggasp_onu = st['los'], st['dyinggasp']
+    if not Incident.query.first():
+        ids = [o.id for o in ONU.query.filter(ONU.olt_id == 1).limit(9).all()]
+        inc = Incident(node_type='odc', node_id=1, node_name='ODC-RW04-UTARA', category='outage', cause='fiber',
+                       title='Gangguan ODC: ODC-RW04-UTARA (9 ONU down)', olt_id=1, affected_count=9,
+                       peak_affected=9, affected_onu_ids=str(ids), status='en_route', assigned_user_ids='1',
+                       acknowledged_by='UI Check')
+        db.session.add(inc)
+        db.session.flush()
+        db.session.add(IncidentLog(incident_id=inc.id, action='system', status='open', note='Insiden dibuat otomatis: 9 ONU down.'))
+        db.session.add(IncidentLog(incident_id=inc.id, action='note', username='UI Check',
+                                   note='Kabel drop di tiang depan balai warga tertabrak truk, sedang menuju lokasi.'))
     db.session.commit()
 print('seeded')

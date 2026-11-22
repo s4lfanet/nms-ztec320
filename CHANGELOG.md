@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Notifikasi gangguan Fase 3: insiden
+
+#### Ditambahkan
+- **Insiden gangguan** dibuat otomatis untuk setiap gangguan ODP/ODC/JC/OTB hasil korelasi (satu insiden per titik, tidak dobel). Menu baru **Insiden Gangguan** di sidebar: daftar Aktif/Selesai/Semua dan halaman detail.
+- Alur status untuk teknisi: **Terima → Berangkat → Sampai di lokasi → Selesaikan** (tombol tetap di bawah layar HP). Menutup insiden wajib mengisi penyebab/penanganan (ada pilihan cepat).
+- Catatan dan **foto lapangan** (kamera HP, JPG/PNG ≤ 8 MB, hanya bisa dibuka oleh pengguna yang login).
+- Pesan WA gangguan menyertakan link "🛠️ Terima & update insiden".
+- Insiden di ODP digabung otomatis ke insiden ODC/JC/OTB di atasnya bila gangguan meluas. Bila ONU online lagi sebelum ada yang menerima, insiden ditutup otomatis ("pulih sendiri"); bila sudah diterima, teknisi tetap diminta mengisi penyebab.
+
 ### 2026-11-22 — Notifikasi gangguan Fase 2: wilayah teknisi
 
 #### Ditambahkan

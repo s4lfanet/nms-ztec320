@@ -23,7 +23,7 @@ ROUTES = [
     '/dashboard/onus/unconfigured', '/dashboard/onus/register', '/dashboard/onus/provision',
     '/dashboard/settings/olts', '/dashboard/settings/olts/1/config', '/dashboard/settings/mikrotik',
     '/dashboard/ftth', '/dashboard/traffic', '/dashboard/templates', '/dashboard/templates/tr069-profile',
-    '/dashboard/settings/alerts', '/dashboard/alerts/history', '/dashboard/logs', '/dashboard/olt-logs',
+    '/dashboard/settings/alerts', '/dashboard/alerts/history', '/dashboard/incidents', '/dashboard/incidents/1', '/dashboard/logs', '/dashboard/olt-logs',
     '/dashboard/reports', '/dashboard/terminal', '/dashboard/customization', '/dashboard/users',
     '/dashboard/profile', '/dashboard/settings/auto-provision', '/dashboard/settings/cloudflare',
     '/dashboard/settings/ai', '/dashboard/settings/update', '/dashboard/guide',
