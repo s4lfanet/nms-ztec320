@@ -9,7 +9,6 @@ import {
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card, EmptyState, LoadingOverlay } from '../components/ui';
-import { FilterBar } from '../components/shared';
 
 interface AlertHistoryItem {
   id: number;
@@ -66,32 +65,34 @@ export function AlertHistory() {
 
   return (
     <PageContainer className="animate-fade-in">
-      <PageHeader title="Alert History" description="Riwayat semua alert yang terdeteksi oleh sistem monitoring" />
+      <PageHeader title="Riwayat Alert" description="Riwayat semua alert yang terdeteksi oleh sistem monitoring" />
 
-      {/* Filter bar */}
-      <FilterBar>
-        <div className="flex items-center gap-2 text-sm text-tx3">
-          <Filter size={15} />
-          <span>Filter:</span>
-        </div>
-        <button
-          onClick={() => { setTypeFilter(''); setPage(1); }}
-          className={cn('px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-            !typeFilter ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1 border border-brd')}
-        >
-          Semua
-        </button>
-        {allTypes.map(t => (
+      {/* Filter jenis alert (redesign Fase 3): satu baris geser di HP,
+          membungkus di desktop — tidak lagi memakan 3–4 baris layar HP. */}
+      <div className="flex items-center gap-2">
+        <Filter size={15} className="text-tx3 shrink-0 hidden md:block" aria-hidden="true" />
+        <div role="toolbar" aria-label="Filter jenis alert" className="scroll-row md:flex-wrap md:overflow-visible -mx-3 px-3 md:mx-0 md:px-0 flex-1 min-w-0">
           <button
-            key={t.key}
-            onClick={() => { setTypeFilter(t.key); setPage(1); }}
-            className={cn('px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-              typeFilter === t.key ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1 border border-brd')}
+            onClick={() => { setTypeFilter(''); setPage(1); }}
+            aria-pressed={!typeFilter}
+            className={cn('px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-medium transition-all whitespace-nowrap',
+              !typeFilter ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1 border border-brd')}
           >
-            {t.label}
+            Semua
           </button>
-        ))}
-      </FilterBar>
+          {allTypes.map(t => (
+            <button
+              key={t.key}
+              onClick={() => { setTypeFilter(t.key); setPage(1); }}
+              aria-pressed={typeFilter === t.key}
+              className={cn('px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-medium transition-all whitespace-nowrap',
+                typeFilter === t.key ? 'bg-accent text-white' : 'bg-glass text-tx2 hover:text-tx1 border border-brd')}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Table */}
       <Card bodyClassName="p-0">
@@ -100,7 +101,7 @@ export function AlertHistory() {
         ) : history.length === 0 ? (
           <EmptyState
             icon={CheckCircle2}
-            title="Tidak ada alert history"
+            title="Belum ada riwayat alert"
             description="Sistem monitoring belum mendeteksi masalah apapun"
           />
         ) : (
