@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../components/Toast';
 import {
@@ -21,6 +22,7 @@ interface CfStatus {
 }
 
 export function CloudflareTunnel() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [token, setToken] = useState('');
   const [domain, setDomain] = useState('');
@@ -32,7 +34,7 @@ export function CloudflareTunnel() {
     queryKey: ['cf-status'],
     queryFn: async () => {
       const r = await fetch('/api/cloudflare/status', { credentials: 'include' });
-      if (!r.ok) throw new Error('Failed to fetch status');
+      if (!r.ok) throw new Error(t('pg_cf.failedToFetchStatus'));
       return r.json();
     },
     refetchInterval: 10000,
@@ -113,7 +115,7 @@ export function CloudflareTunnel() {
       <PageHeader
         icon={<Cloud size={22} className="text-accent" />}
         title="Cloudflare Tunnel"
-        description="Hubungkan VPS ke domain via Cloudflare Tunnel — tanpa buka port, tanpa IP publik"
+        description={t('pg_cf.connectTheVpsTo')}
         action={
           <Button variant="icon" onClick={() => refetch()}>
             <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
@@ -180,7 +182,7 @@ export function CloudflareTunnel() {
       {installed && (
         <Card
           icon={<span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[10px] font-bold flex items-center justify-center">2</span>}
-          title="Configure Tunnel"
+          title={t('pg_cf.configureTunnel')}
         >
           <p className="text-xs text-tx3 mb-4">
             Buat tunnel di <a href="https://one.dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline inline-flex items-center gap-0.5">Cloudflare Zero Trust <ExternalLink size={9} /></a> → Networks → Tunnels → Create Tunnel.
@@ -193,7 +195,7 @@ export function CloudflareTunnel() {
               type="password"
               value={token}
               onChange={e => setToken(e.target.value)}
-              placeholder="eyJhIjoi... (dari Cloudflare Zero Trust dashboard)"
+              placeholder={t('pg_cf.eyjhijoiFromTheCloudflare')}
               className="font-mono"
             />
             <div className="grid grid-cols-2 gap-3">
@@ -204,7 +206,7 @@ export function CloudflareTunnel() {
                 placeholder="nms.example.com"
               />
               <Input
-                label="Tunnel Name"
+                label={t('pg_cf.tunnelName')}
                 value={tunnelName}
                 onChange={e => setTunnelName(e.target.value)}
                 placeholder="salfanet-nms"
@@ -226,7 +228,7 @@ export function CloudflareTunnel() {
       {installed && configured && (
         <Card
           icon={<span className="w-5 h-5 rounded-full bg-accent/15 text-accent text-[10px] font-bold flex items-center justify-center">3</span>}
-          title="Tunnel Control"
+          title={t('pg_cf.tunnelControl')}
         >
           <div className="flex items-center gap-2">
             <button
@@ -263,11 +265,11 @@ export function CloudflareTunnel() {
         <div className="flex items-start gap-2">
           <Cloud size={16} className="text-info flex-shrink-0 mt-0.5" />
           <div className="text-xs text-tx2 space-y-1">
-            <p><strong className="text-tx1">Cara kerja Cloudflare Tunnel:</strong></p>
-            <p>1. <code className="text-accent">cloudflared</code> di VPS membuat outbound connection ke Cloudflare edge — tidak perlu buka port inbound.</p>
-            <p>2. Traffic dari domain di-route melalui Cloudflare ke tunnel → VPS <code className="text-accent">localhost:80</code> (nginx).</p>
-            <p>3. Nginx proxy ke Flask (5000) + WebSocket (8765) — sudah dikonfigurasi.</p>
-            <p>4. SSL/TLS otomatis dari Cloudflare — tidak perlu certbot.</p>
+            <p><strong className="text-tx1">{t('pg_cf.howCloudflareTunnelWorks')}</strong></p>
+            <p>1. <code className="text-accent">cloudflared</code> {t('pg_cf.onTheVpsOpens')}</p>
+            <p>{t('pg_cf.2DomainTrafficIs')} <code className="text-accent">localhost:80</code> (nginx).</p>
+            <p>{t('pg_cf.3NginxProxiesTo')}</p>
+            <p>{t('pg_cf.4SslTlsComes')}</p>
           </div>
         </div>
       </Card>

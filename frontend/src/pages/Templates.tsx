@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, type OltInfo } from '../lib/api';
@@ -174,6 +175,7 @@ function parseConfig(configStr: string): TemplateConfig {
 }
 
 export default function Templates() {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<string | null>(null);
   const selectedTemplate = templates.find(t => t.id === selected);
   const [dbTemplates, setDbTemplates] = useState<DbTemplate[]>([]);
@@ -249,7 +251,7 @@ export default function Templates() {
   };
 
   const doSave = async () => {
-    if (!form.name.trim()) { toast.error('Name is required'); return; }
+    if (!form.name.trim()) { toast.error(t('pg_templates.nameIsRequired')); return; }
     const configJson = JSON.stringify(cfg);
     const payload = {
       name: form.name, vendor: form.vendor, model: form.model,
@@ -270,27 +272,27 @@ export default function Templates() {
         toast.success(editingId ? 'Template updated' : 'Template created');
         setShowModal(false);
         fetchTemplates();
-      } else { toast.error(data.message || 'Failed to save'); }
-    } catch { toast.error('Network error'); }
+      } else { toast.error(data.message || t('pg_templates.saveFailed')); }
+    } catch { toast.error(t('pg_templates.networkError')); }
     setSaving(false);
   };
 
-  const doDelete = async (t: DbTemplate) => {
-    const ok = await confirm({ title: 'Delete Template', message: `Delete "${t.name}"? This cannot be undone.`, confirmLabel: 'Delete', variant: 'danger' });
+  const doDelete = async (tpl: DbTemplate) => {
+    const ok = await confirm({ title: t('pg_templates.deleteTemplate'), message: t('pg_templates.deleteMsg', { name: tpl.name }), confirmLabel: t('pg_templates.delete'), variant: 'danger' });
     if (!ok) return;
     try {
-      const res = await fetch(`/api/template/${t.id}`, { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' }, credentials: 'include' });
+      const res = await fetch(`/api/template/${tpl.id}`, { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' }, credentials: 'include' });
       const data = await res.json();
-      if (data.success) { toast.success('Template deleted'); fetchTemplates(); }
-      else toast.error('Failed to delete');
-    } catch { toast.error('Network error'); }
+      if (data.success) { toast.success(t('pg_templates.templateDeleted')); fetchTemplates(); }
+      else toast.error(t('pg_templates.failedToDelete'));
+    } catch { toast.error(t('pg_templates.networkError')); }
   };
 
   return (
     <PageContainer>
       <PageHeader
-        title="Template ONU"
-        description="Template konfigurasi ONU untuk provisioning otomatis"
+        title={t('pg_templates.onuTemplates')}
+        description={t('pg_templates.onuConfigurationTemplatesFor')}
         action={
           <>
             <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>
@@ -306,29 +308,29 @@ export default function Templates() {
 
       {/* Built-in Template Cards */}
       <div>
-        <h2 className="text-sm font-semibold text-tx3 uppercase tracking-wider mb-3">Built-in Templates</h2>
+        <h2 className="text-sm font-semibold text-tx3 uppercase tracking-wider mb-3">{t('pg_templates.builtInTemplates')}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-          {templates.map(t => (
+          {templates.map(tpl => (
             <Card
-              key={t.id}
-              onClick={() => setSelected(selected === t.id ? null : t.id)}
+              key={tpl.id}
+              onClick={() => setSelected(selected === tpl.id ? null : tpl.id)}
               className={cn(
                 'cursor-pointer transition-all hover:border-accent/40',
-                selected === t.id ? 'border-accent bg-accent/5' : '',
+                selected === tpl.id ? 'border-accent bg-accent/5' : '',
               )}
               bodyClassName="p-3 md:p-4"
             >
               <div className="flex items-start gap-2.5 md:gap-3">
-                <div className={`p-2 rounded-lg bg-glass flex-shrink-0 ${t.color}`}>{t.icon}</div>
+                <div className={`p-2 rounded-lg bg-glass flex-shrink-0 ${tpl.color}`}>{tpl.icon}</div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-sm">{t.name}</h3>
-                  <p className="text-xs text-tx3 mt-1 line-clamp-2">{t.description}</p>
+                  <h3 className="font-semibold text-sm">{tpl.name}</h3>
+                  <p className="text-xs text-tx3 mt-1 line-clamp-2">{t(`pg_templates.builtin_${tpl.id}`)}</p>
                   <div className="flex flex-wrap gap-1 mt-2">
-                    {t.serviceTypes.map(st => (
+                    {tpl.serviceTypes.map(st => (
                       <span key={st} className="px-1.5 py-0.5 rounded text-[10px] bg-glass border border-brd text-tx3">{st}</span>
                     ))}
-                    {t.ssidSupport && <span className="px-1.5 py-0.5 rounded text-[10px] bg-glass border border-brd text-tx3">SSID</span>}
-                    {t.tr069Support && <span className="px-1.5 py-0.5 rounded text-[10px] bg-glass border border-brd text-tx3">TR069</span>}
+                    {tpl.ssidSupport && <span className="px-1.5 py-0.5 rounded text-[10px] bg-glass border border-brd text-tx3">SSID</span>}
+                    {tpl.tr069Support && <span className="px-1.5 py-0.5 rounded text-[10px] bg-glass border border-brd text-tx3">TR069</span>}
                   </div>
                 </div>
               </div>
@@ -339,11 +341,11 @@ export default function Templates() {
 
       {/* Custom (DB) Templates */}
       <div>
-        <h2 className="text-sm font-semibold text-tx3 uppercase tracking-wider mb-3">Custom Templates</h2>
+        <h2 className="text-sm font-semibold text-tx3 uppercase tracking-wider mb-3">{t('pg_templates.customTemplates')}</h2>
         {loadingDb ? (
-          <div className="flex items-center gap-2 text-tx3 text-sm py-4"><Loader2 size={16} className="animate-spin" /> Loading...</div>
+          <div className="flex items-center gap-2 text-tx3 text-sm py-4"><Loader2 size={16} className="animate-spin" /> {t('pg_templates.loading')}</div>
         ) : dbTemplates.length === 0 ? (
-          <EmptyState title="No custom templates yet" description='Click "Add Template" to create one.' />
+          <EmptyState title={t('pg_templates.noCustomTemplatesYet')} description='Click "Add Template" to create one.' />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
             {dbTemplates.map(t => (
@@ -377,14 +379,14 @@ export default function Templates() {
             <div className={`p-2.5 md:p-3 rounded-lg bg-glass flex-shrink-0 ${selectedTemplate.color}`}>{selectedTemplate.icon}</div>
             <div className="min-w-0">
               <h2 className="text-base md:text-lg font-bold truncate">{selectedTemplate.name}</h2>
-              <p className="text-xs md:text-sm text-tx3">{selectedTemplate.description}</p>
+              <p className="text-xs md:text-sm text-tx3">{t(`pg_templates.builtin_${selectedTemplate.id}`)}</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
             {/* Features */}
             <div className="space-y-2">
-              <h4 className="text-xs font-semibold text-tx3 uppercase tracking-wider">Features</h4>
+              <h4 className="text-xs font-semibold text-tx3 uppercase tracking-wider">{t('pg_templates.features')}</h4>
               <ul className="space-y-1">
                 {selectedTemplate.features.map(f => (
                   <li key={f} className="flex items-start gap-2 text-sm">
@@ -397,7 +399,7 @@ export default function Templates() {
 
             {/* Service Types */}
             <div className="space-y-2">
-              <h4 className="text-xs font-semibold text-tx3 uppercase tracking-wider">Service Types</h4>
+              <h4 className="text-xs font-semibold text-tx3 uppercase tracking-wider">{t('pg_templates.serviceTypes')}</h4>
               <div className="flex flex-wrap gap-2">
                 {selectedTemplate.serviceTypes.map(st => (
                   <span key={st} className="px-2 py-1 rounded-lg text-xs bg-glass border border-brd">{st}</span>
@@ -407,7 +409,7 @@ export default function Templates() {
 
             {/* WAN Modes */}
             <div className="space-y-2">
-              <h4 className="text-xs font-semibold text-tx3 uppercase tracking-wider">WAN Modes</h4>
+              <h4 className="text-xs font-semibold text-tx3 uppercase tracking-wider">{t('pg_templates.wanModes')}</h4>
               <div className="flex flex-wrap gap-2">
                 {selectedTemplate.wanModes.map(wm => (
                   <span key={wm} className="px-2 py-1 rounded-lg text-xs bg-glass border border-brd">{wm}</span>
@@ -416,11 +418,11 @@ export default function Templates() {
               <div className="flex flex-wrap gap-3 md:gap-4 mt-3">
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${selectedTemplate.ssidSupport ? 'bg-success' : 'bg-tx3/30'}`} />
-                  <span className="text-xs">SSID Support</span>
+                  <span className="text-xs">{t('pg_templates.ssidSupport')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${selectedTemplate.tr069Support ? 'bg-success' : 'bg-tx3/30'}`} />
-                  <span className="text-xs">TR069 Support</span>
+                  <span className="text-xs">{t('pg_templates.tr069Support')}</span>
                 </div>
               </div>
             </div>
@@ -443,7 +445,7 @@ export default function Templates() {
         size="lg"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>{t('pg_templates.cancel')}</Button>
             <Button variant="primary" icon={<Check size={14} />} onClick={doSave} loading={saving}>
               {editingId ? 'Update' : 'Create'}
             </Button>
@@ -453,40 +455,40 @@ export default function Templates() {
         <div className="space-y-4">
               {/* Basic Info */}
               <div>
-                <label className="label-sm mb-1">Template Name *</label>
-                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" placeholder="e.g. ZTE-F609 Internet Only" />
+                <label className="label-sm mb-1">{t('pg_templates.templateName')}</label>
+                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" placeholder={t('pg_templates.eGZteF609')} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label-sm mb-1">Vendor</label>
-                  <input value={form.vendor} onChange={e => setForm({ ...form, vendor: e.target.value })} className="input-field" placeholder="ZTE, Huawei, etc." />
+                  <input value={form.vendor} onChange={e => setForm({ ...form, vendor: e.target.value })} className="input-field" placeholder={t('pg_templates.zteHuaweiEtc')} />
                 </div>
                 <div>
                   <label className="label-sm mb-1">Model</label>
-                  <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} className="input-field" placeholder="F609, etc." />
+                  <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} className="input-field" placeholder={t('pg_templates.f609Etc')} />
                 </div>
               </div>
               <div>
-                <label className="label-sm mb-1">Description</label>
-                <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="input-field" placeholder="Brief description" />
+                <label className="label-sm mb-1">{t('pg_templates.description')}</label>
+                <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="input-field" placeholder={t('pg_templates.briefDescription')} />
               </div>
 
               <div className="pt-2">
-                <div className="text-xs font-semibold text-tx3 uppercase tracking-wider mb-3">OLT Configuration</div>
+                <div className="text-xs font-semibold text-tx3 uppercase tracking-wider mb-3">{t('pg_templates.oltConfiguration')}</div>
               </div>
 
               {/* OLT Selector — fetch actual data */}
               <div>
                 <Select
-                  label={<>Source OLT (for actual data) <span className="text-tx3 text-xs font-normal normal-case">— optional</span></>}
+                  label={<>{t('pg_templates.sourceOltForActual')} <span className="text-tx3 text-xs font-normal normal-case">{t('pg_templates.optional')}</span></>}
                   value={selectedOltId}
                   onChange={e => setSelectedOltId(Number(e.target.value))}
                   options={[
-                    { value: '0', label: '— Select OLT to load profiles —' },
+                    { value: '0', label: t('pg_templates.selectOltToLoad') },
                     ...olts.map(o => ({ value: String(o.id), label: `${o.name} (${o.ip_address})` })),
                   ]}
                 />
-                {fetchingOltData && <p className="text-xs text-tx3 mt-1 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Loading OLT data...</p>}
+                {fetchingOltData && <p className="text-xs text-tx3 mt-1 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> {t('pg_templates.loadingOltData')}</p>}
                 {selectedOltId > 0 && !fetchingOltData && (
                   <p className="text-xs text-tx3 mt-1">{onuTypes.length} ONU types, {tcontProfiles.length} TCONT, {trafficProfiles.length} traffic, {vlanList.length} VLANs</p>
                 )}
@@ -494,7 +496,7 @@ export default function Templates() {
 
               {/* Service Template */}
               <div>
-                <label className="label-sm mb-2">Service Template</label>
+                <label className="label-sm mb-2">{t('pg_templates.serviceTemplate')}</label>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {SERVICE_TYPES.map(t => (
                     <button key={t.v} onClick={() => setCfg({ ...cfg, template: t.v })}
@@ -517,14 +519,14 @@ export default function Templates() {
                     value={cfg.onu_type}
                     onChange={e => setCfg({ ...cfg, onu_type: e.target.value })}
                     options={[
-                      { value: 'All', label: 'All (auto-detect)' },
+                      { value: 'All', label: t('pg_templates.allAutoDetect') },
                       ...onuTypes.map(t => ({ value: t, label: t })),
                     ]}
                   />
                 ) : (
                   <>
                     <label className="label-sm mb-1.5">ONU Type</label>
-                    <input value={cfg.onu_type} onChange={e => setCfg({ ...cfg, onu_type: e.target.value })} className="input-field" placeholder="ZTE-F609, All, etc." />
+                    <input value={cfg.onu_type} onChange={e => setCfg({ ...cfg, onu_type: e.target.value })} className="input-field" placeholder={t('pg_templates.zteF609AllEtc')} />
                   </>
                 )}
               </div>
@@ -538,14 +540,14 @@ export default function Templates() {
                       value={cfg.tcont_profile}
                       onChange={e => setCfg({ ...cfg, tcont_profile: e.target.value })}
                       options={[
-                        { value: '', label: 'Select profile...' },
+                        { value: '', label: t('pg_templates.selectProfile') },
                         ...tcontProfiles.map(p => ({ value: p, label: p })),
                       ]}
                     />
                   ) : (
                     <>
                       <label className="label-sm mb-1.5">TCONT Profile <span className="text-tx3 text-xs">(Upload)</span></label>
-                      <input value={cfg.tcont_profile} onChange={e => setCfg({ ...cfg, tcont_profile: e.target.value })} className="input-field" placeholder="1G, 500M, etc." />
+                      <input value={cfg.tcont_profile} onChange={e => setCfg({ ...cfg, tcont_profile: e.target.value })} className="input-field" placeholder={t('pg_templates.1g500mEtc')} />
                     </>
                   )}
                 </div>
@@ -556,14 +558,14 @@ export default function Templates() {
                       value={cfg.traffic_profile}
                       onChange={e => setCfg({ ...cfg, traffic_profile: e.target.value })}
                       options={[
-                        { value: '', label: 'None (no DL limit)' },
+                        { value: '', label: t('pg_templates.noneNoDlLimit') },
                         ...trafficProfiles.map(p => ({ value: p, label: p })),
                       ]}
                     />
                   ) : (
                     <>
                       <label className="label-sm mb-1.5">Traffic Profile <span className="text-tx3 text-xs">(Download)</span></label>
-                      <input value={cfg.traffic_profile} onChange={e => setCfg({ ...cfg, traffic_profile: e.target.value })} className="input-field" placeholder="100M, etc." />
+                      <input value={cfg.traffic_profile} onChange={e => setCfg({ ...cfg, traffic_profile: e.target.value })} className="input-field" placeholder={t('pg_templates.100mEtc')} />
                     </>
                   )}
                 </div>
@@ -592,14 +594,14 @@ export default function Templates() {
               {/* Template-specific config */}
               {cfg.template !== 'bridge' && (
                 <div className="pt-2">
-                  <div className="text-xs font-semibold text-tx3 uppercase tracking-wider mb-3">Service Configuration</div>
+                  <div className="text-xs font-semibold text-tx3 uppercase tracking-wider mb-3">{t('pg_templates.serviceConfiguration')}</div>
                 </div>
               )}
 
               {/* Template-specific: PPPoE */}
               {cfg.template === 'pppoe' && (
                 <div className="p-3 rounded-lg bg-glass border border-accent/20 space-y-3">
-                  <h4 className="text-sm font-semibold text-accent">PPPoE Settings</h4>
+                  <h4 className="text-sm font-semibold text-accent">{t('pg_templates.pppoeSettings')}</h4>
                   <div className="grid grid-cols-2 gap-3">
                     <div><label className="label-sm mb-1">Username</label>
                       <input type="text" value={String(cfg.extra.pppoe_user || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, pppoe_user: e.target.value } })} className="input-field" placeholder="PPPoE Username" /></div>
@@ -616,7 +618,7 @@ export default function Templates() {
                   {/* PPPoE */}
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={cfg.extra.enable_pppoe === 'true'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, enable_pppoe: e.target.checked ? 'true' : '' } })} />
-                    <span className="text-sm font-medium">Enable PPPoE</span>
+                    <span className="text-sm font-medium">{t('pg_templates.enablePppoe')}</span>
                   </label>
                   {cfg.extra.enable_pppoe === 'true' && (
                     <div className="grid grid-cols-2 gap-3 pl-6">
@@ -628,7 +630,7 @@ export default function Templates() {
                   <div className="space-y-2 pl-4 border-l-2 border-accent/20">
                     <div className="text-xs font-semibold text-tx2">WiFi SSID 2.4GHz</div>
                     <div className="grid grid-cols-3 gap-2">
-                      <input type="text" value={String(cfg.extra.ssid_name || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid_name: e.target.value } })} className="input-field col-span-2" placeholder="SSID Name" />
+                      <input type="text" value={String(cfg.extra.ssid_name || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid_name: e.target.value } })} className="input-field col-span-2" placeholder={t('pg_templates.ssidName')} />
                       <select value={cfg.extra.ssid_auth || 'wpa2'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid_auth: e.target.value } })} className="input-field">
                         <option value="wpa2">WPA2-PSK</option>
                         <option value="mixed">WPA/WPA2 Mixed</option>
@@ -637,29 +639,29 @@ export default function Templates() {
                       </select>
                     </div>
                     {cfg.extra.ssid_name && cfg.extra.ssid_auth !== 'open' && (
-                      <input type="text" value={String(cfg.extra.ssid_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid_pass: e.target.value } })} className="input-field" placeholder="WiFi Password (min 8 chars)" />
+                      <input type="text" value={String(cfg.extra.ssid_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid_pass: e.target.value } })} className="input-field" placeholder={t('pg_templates.wifiPasswordMin8')} />
                     )}
                   </div>
                   {/* Firewall */}
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={cfg.extra.enable_firewall === 'true'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, enable_firewall: e.target.checked ? 'true' : '' } })} />
-                    <span className="text-sm font-medium">Enable Firewall</span>
+                    <span className="text-sm font-medium">{t('pg_templates.enableFirewall')}</span>
                   </label>
                   {cfg.extra.enable_firewall === 'true' && (
                     <select value={cfg.extra.firewall_level || 'low'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, firewall_level: e.target.value } })} className="input-field">
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
+                      <option value="low">{t('pg_templates.low')}</option>
+                      <option value="medium">{t('pg_templates.medium')}</option>
+                      <option value="high">{t('pg_templates.high')}</option>
                     </select>
                   )}
                   {/* TR069 */}
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={cfg.extra.enable_tr069 === 'true'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, enable_tr069: e.target.checked ? 'true' : '' } })} />
-                    <span className="text-sm font-medium">Enable TR069/ACS</span>
+                    <span className="text-sm font-medium">{t('pg_templates.enableTr069Acs')}</span>
                   </label>
                   {cfg.extra.enable_tr069 === 'true' && tr069Profiles.length > 0 && (
                     <select value={cfg.extra.tr069_profile_id || ''} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, tr069_profile_id: e.target.value } })} className="input-field">
-                      <option value="">Select Profile...</option>
+                      <option value="">{t('pg_templates.selectProfile2')}</option>
                       {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                     </select>
                   )}
@@ -680,7 +682,7 @@ export default function Templates() {
                       </select>
                     </div>
                     {cfg.extra.ssid1_name && cfg.extra.ssid1_auth !== 'open' && (
-                      <input type="text" value={String(cfg.extra.ssid1_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid1_pass: e.target.value } })} className="input-field" placeholder="WiFi Password 2.4GHz" />
+                      <input type="text" value={String(cfg.extra.ssid1_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid1_pass: e.target.value } })} className="input-field" placeholder={t('pg_templates.wifiPassword24ghz')} />
                     )}
                   </div>
                   {/* SSID 5GHz */}
@@ -693,17 +695,17 @@ export default function Templates() {
                       </select>
                     </div>
                     {cfg.extra.ssid2_name && cfg.extra.ssid2_auth !== 'open' && (
-                      <input type="text" value={String(cfg.extra.ssid2_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid2_pass: e.target.value } })} className="input-field" placeholder="WiFi Password 5GHz" />
+                      <input type="text" value={String(cfg.extra.ssid2_pass || '')} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, ssid2_pass: e.target.value } })} className="input-field" placeholder={t('pg_templates.wifiPassword5ghz')} />
                     )}
                   </div>
                   {/* TR069 */}
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={cfg.extra.enable_tr069 === 'true'} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, enable_tr069: e.target.checked ? 'true' : '' } })} />
-                    <span className="text-sm font-medium">Enable TR069/ACS</span>
+                    <span className="text-sm font-medium">{t('pg_templates.enableTr069Acs')}</span>
                   </label>
                   {cfg.extra.enable_tr069 === 'true' && tr069Profiles.length > 0 && (
                     <select value={cfg.extra.tr069_profile_id || ''} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, tr069_profile_id: e.target.value } })} className="input-field">
-                      <option value="">Select Profile...</option>
+                      <option value="">{t('pg_templates.selectProfile2')}</option>
                       {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                     </select>
                   )}
@@ -727,7 +729,7 @@ export default function Templates() {
                   {tr069Profiles.length > 0 && (
                     <div><label className="label-sm mb-1">TR069 Profile</label>
                       <select value={cfg.extra.tr069_profile_id || ''} onChange={e => setCfg({ ...cfg, extra: { ...cfg.extra, tr069_profile_id: e.target.value } })} className="input-field">
-                        <option value="">Select Profile...</option>
+                        <option value="">{t('pg_templates.selectProfile2')}</option>
                         {tr069Profiles.map(p => <option key={p.id} value={p.id}>{p.name} — {p.acs_url}</option>)}
                       </select></div>
                   )}

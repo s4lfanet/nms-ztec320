@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/utils';
 import { api } from '../lib/api';
 import { toast } from '../components/Toast';
@@ -35,6 +36,7 @@ function formatDate(iso: string | null) {
 }
 
 export function ActionLogs() {
+  const { t } = useTranslation();
   const [page, setPage] = useState(1);
   const [category, setCategory] = useState('');
   const [search, setSearch] = useState('');
@@ -58,9 +60,9 @@ export function ActionLogs() {
 
   const runArchive = useCallback(async () => {
     const ok = await confirm({
-      title: 'Arsipkan log lama?',
-      message: 'Log lebih tua dari 90 hari akan diekspor ke file terkompresi (instance/backups/audit-log/) lalu dihapus dari tabel. Integritas chain tetap terverifikasi dari arsip.',
-      confirmLabel: 'Arsipkan',
+      title: t('pg_actionlogs.archiveOldLogs'),
+      message: t('pg_actionlogs.logsOlderThan90'),
+      confirmLabel: t('pg_actionlogs.archive'),
       variant: 'warning',
     });
     if (!ok) return;
@@ -95,8 +97,8 @@ export function ActionLogs() {
   return (
     <PageContainer className="animate-fade-in">
       <PageHeader
-        title="Log Aktivitas"
-        description="Jejak audit semua aktivitas pengguna"
+        title={t('pg_actionlogs.activityLog')}
+        description={t('pg_actionlogs.auditTrailOfAll')}
         action={
           <>
             {verifyState !== 'idle' && (
@@ -132,16 +134,16 @@ export function ActionLogs() {
             value={searchInput}
             onChange={setSearchInput}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            placeholder="Search action, target, detail..."
+            placeholder={t('pg_actionlogs.searchActionTargetDetail')}
             className="flex-1"
           />
           <Select
             value={category}
             onChange={e => { setCategory(e.target.value); setPage(1); }}
             className="w-auto flex-shrink-0"
-            aria-label="Filter category"
+            aria-label={t('pg_actionlogs.filterCategory')}
             options={[
-              { value: '', label: 'All categories' },
+              { value: '', label: t('pg_actionlogs.allCategories') },
               ...categories.map(c => ({ value: c, label: c })),
             ]}
           />
@@ -169,10 +171,10 @@ export function ActionLogs() {
             <thead>
               <tr className="border-b border-brd bg-glass/30">
                 <th className="px-3 py-3 text-center text-xs font-medium text-tx3 uppercase w-12">#</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Time</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('pg_actionlogs.time')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">User</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Category</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Action</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('pg_actionlogs.category')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('pg_actionlogs.action')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Target</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Detail</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">IP</th>
@@ -180,9 +182,9 @@ export function ActionLogs() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-tx3">Loading...</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-tx3">{t('pg_actionlogs.loading')}</td></tr>
               ) : logs.length === 0 ? (
-                <tr><td colSpan={8}><EmptyState icon={Activity} title="No log entries found" /></td></tr>
+                <tr><td colSpan={8}><EmptyState icon={Activity} title={t('pg_actionlogs.noLogEntriesFound')} /></td></tr>
               ) : logs.map((l, i) => (
                 <tr key={l.id} className="border-b border-brd/50 hover:bg-glass/50 transition-colors">
                   <td className="px-3 py-2.5 text-center text-xs text-tx3 font-mono">{(page - 1) * perPage + i + 1}</td>
@@ -211,9 +213,9 @@ export function ActionLogs() {
         {/* Mobile cards */}
         <div className="md:hidden divide-y divide-brd/50">
           {isLoading ? (
-            <div className="p-6 text-center text-tx3 text-sm">Loading...</div>
+            <div className="p-6 text-center text-tx3 text-sm">{t('pg_actionlogs.loading')}</div>
           ) : logs.length === 0 ? (
-            <EmptyState icon={Activity} title="No log entries found" />
+            <EmptyState icon={Activity} title={t('pg_actionlogs.noLogEntriesFound')} />
           ) : logs.map((l, i) => (
             <div key={l.id} className="p-3.5 space-y-1.5">
               <div className="flex items-center justify-between">
@@ -248,7 +250,7 @@ export function ActionLogs() {
             onClick={() => setPage(1)}
             disabled={page <= 1}
             className="flex items-center justify-center w-8 h-8 rounded-lg bg-glass border border-brd text-sm hover:bg-glass/80 transition-all disabled:opacity-40"
-            title="First page"
+            title={t('pg_actionlogs.firstPage')}
           >
             <ChevronFirst size={14} />
           </button>
@@ -290,7 +292,7 @@ export function ActionLogs() {
             onClick={() => setPage(totalPages)}
             disabled={page >= totalPages}
             className="flex items-center justify-center w-8 h-8 rounded-lg bg-glass border border-brd text-sm hover:bg-glass/80 transition-all disabled:opacity-40"
-            title="Last page"
+            title={t('pg_actionlogs.lastPage')}
           >
             <ChevronLast size={14} />
           </button>

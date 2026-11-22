@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type MikrotikDevice } from '../lib/api';
 import { useHasPerm } from '../hooks/useHasPerm';
@@ -31,6 +32,7 @@ const EMPTY: FormState = {
 };
 
 export function MikrotikSettings() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const hasPerm = useHasPerm();
   const canManage = hasPerm('settings_ip_olts');
@@ -53,13 +55,13 @@ export function MikrotikSettings() {
       modal?.mode === 'edit' && modal.dev
         ? api.mikrotikUpdate(modal.dev.id, f)
         : api.mikrotikCreate(f),
-    onSuccess: () => { toast.success('Mikrotik tersimpan'); setModal(null); invalidate(); },
+    onSuccess: () => { toast.success(t('pg_mikrotik.mikrotikSaved')); setModal(null); invalidate(); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.mikrotikDelete(id),
-    onSuccess: () => { toast.success('Mikrotik dihapus'); invalidate(); },
+    onSuccess: () => { toast.success(t('pg_mikrotik.mikrotikDeleted')); invalidate(); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -77,10 +79,10 @@ export function MikrotikSettings() {
     setTestingId(d.id);
     try {
       const r = await api.mikrotikTest(d.id);
-      if (r.success) toast.success(`${d.name}: connected — "${r.identity}", ${r.active_sessions} sesi PPPoE aktif`);
+      if (r.success) toast.success(t('pg_mikrotik.testOk', { name: d.name, identity: r.identity, n: r.active_sessions }));
       else toast.error(`${d.name}: ${r.message}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Test gagal');
+      toast.error(e instanceof Error ? e.message : t('pg_mikrotik.testFailed'));
     } finally {
       setTestingId(null);
       invalidate();
@@ -93,9 +95,9 @@ export function MikrotikSettings() {
       const s = d.states || {};
       const failed = (d.devices || []).filter(x => !x.ok);
       if (failed.length) {
-        toast.error(`${failed.map(x => x.name).join(', ')}: ${failed[0].error || 'gagal'}`);
+        toast.error(`${failed.map(x => x.name).join(', ')}: ${failed[0].error || t('pg_mikrotik.failedWord')}`);
       } else {
-        toast.success(`Sync link selesai — ${s.ok || 0} ok, ${s.slow || 0} lambat, ${s.down || 0} down, ${s.no_session || 0} tanpa sesi`);
+        toast.success(t('pg_mikrotik.syncDone', { ok: s.ok || 0, slow: s.slow || 0, down: s.down || 0, none: s.no_session || 0 }));
       }
       invalidate();
       qc.invalidateQueries({ queryKey: ['ftth-map'] });
@@ -110,8 +112,8 @@ export function MikrotikSettings() {
   if (!canManage) {
     return (
       <PageContainer>
-        <EmptyState icon={Router} title="Akses ditolak"
-          description="Anda tidak memiliki permission settings_ip_olts." />
+        <EmptyState icon={Router} title={t('pg_mikrotik.accessDenied')}
+          description={t('pg_mikrotik.youDonTHave')} />
       </PageContainer>
     );
   }
@@ -119,20 +121,20 @@ export function MikrotikSettings() {
   return (
     <PageContainer>
       <PageHeader
-        title="Server PPPoE Mikrotik"
-        description="RouterOS devices dipoll untuk sesi PPPoE + ping client — mewarnai garis ODP→ONU di peta FTTH."
+        title={t('pg_mikrotik.mikrotikPppoeServers')}
+        description={t('pg_mikrotik.routerosDevicesArePolled')}
         action={canManage && (
           <div className="flex items-center gap-2">
             <Button
               variant="secondary"
               onClick={() => pollNowMutation.mutate()}
               disabled={pollNowMutation.isPending || devices.length === 0}
-              title="Jalankan match sesi PPPoE + auto-nama ONU + ping sekarang"
+              title={t('pg_mikrotik.runPppoeSessionMatch')}
               icon={<RefreshCw size={15} className={pollNowMutation.isPending ? 'animate-spin' : ''} />}
             >
               {pollNowMutation.isPending ? 'Syncing…' : 'Sync Sekarang'}
             </Button>
-            <Button onClick={openAdd} icon={<Plus size={16} />}>Tambah Mikrotik</Button>
+            <Button onClick={openAdd} icon={<Plus size={16} />}>{t('pg_mikrotik.addMikrotik')}</Button>
           </div>
         )}
       />
@@ -142,22 +144,22 @@ export function MikrotikSettings() {
       ) : devices.length === 0 ? (
         <EmptyState
           icon={Router}
-          title="Belum ada Mikrotik"
-          description="Tambahkan router PPPoE server agar garis ONU di peta menampilkan status link aktual."
-          action={canManage && <Button onClick={openAdd} icon={<Plus size={16} />}>Tambah Mikrotik</Button>}
+          title={t('pg_mikrotik.noMikrotikYet')}
+          description={t('pg_mikrotik.addAPppoeServer')}
+          action={canManage && <Button onClick={openAdd} icon={<Plus size={16} />}>{t('pg_mikrotik.addMikrotik')}</Button>}
         />
       ) : (
         <Card className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-brd text-left">
-                <th className="px-4 py-3">Nama</th>
+                <th className="px-4 py-3">{t('pg_mikrotik.name')}</th>
                 <th className="px-4 py-3">Host</th>
                 <th className="px-4 py-3">API</th>
                 <th className="px-4 py-3">Ping</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Terakhir Poll</th>
-                <th className="px-4 py-3 text-right">Aksi</th>
+                <th className="px-4 py-3">{t('pg_mikrotik.lastPoll')}</th>
+                <th className="px-4 py-3 text-right">{t('pg_mikrotik.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -167,14 +169,14 @@ export function MikrotikSettings() {
                   <td className="px-4 py-3 text-tx2 font-mono text-xs">{d.host}:{d.api_port}</td>
                   <td className="px-4 py-3 text-tx3 text-xs">
                     {d.api_mode === 'rest' ? `REST${d.api_ssl ? 'S' : ''}` : `API${d.api_ssl ? '-SSL' : ''}`}
-                    {!d.enabled && <span className="ml-2 text-warning">(disabled)</span>}
+                    {!d.enabled && <span className="ml-2 text-warning">{t('pg_mikrotik.disabled')}</span>}
                   </td>
                   <td className="px-4 py-3 text-tx3 text-xs">
                     {d.ping_enabled ? `${d.ping_batch}/siklus` : 'off'}
                   </td>
                   <td className="px-4 py-3">
                     {d.last_polled_at == null ? (
-                      <span className="text-tx3 text-xs">belum dipoll</span>
+                      <span className="text-tx3 text-xs">{t('pg_mikrotik.notPolledYet')}</span>
                     ) : d.last_ok ? (
                       <span className="inline-flex items-center gap-1 text-success text-xs"><CheckCircle size={13} /> OK</span>
                     ) : (
@@ -189,14 +191,14 @@ export function MikrotikSettings() {
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex gap-1">
                       <Button variant="icon" onClick={() => testDevice(d)}
-                        disabled={testingId === d.id} title="Test koneksi + hitung sesi">
+                        disabled={testingId === d.id} title={t('pg_mikrotik.testConnectionCountSessions')}>
                         {testingId === d.id ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
                       </Button>
                       {canManage && <>
                         <Button variant="icon" onClick={() => openEdit(d)} title="Edit"><Edit3 size={14} /></Button>
-                        <Button variant="icon" title="Hapus"
+                        <Button variant="icon" title={t('pg_mikrotik.delete')}
                           onClick={async () => {
-                            if (await confirm({ title: 'Hapus Mikrotik', message: `Hapus "${d.name}"? Monitoring link-state untuk PPPoE server ini akan berhenti.`, variant: 'danger' }))
+                            if (await confirm({ title: t('pg_mikrotik.deleteMikrotik'), message: t('pg_mikrotik.deleteMsg', { name: d.name }), variant: 'danger' }))
                               deleteMutation.mutate(d.id);
                           }}>
                           <Trash2 size={14} className="text-danger" />
@@ -215,19 +217,19 @@ export function MikrotikSettings() {
         {devices.some(d => d.enabled) ? <Wifi size={14} className="text-success shrink-0 mt-0.5" /> : <WifiOff size={14} className="shrink-0 mt-0.5" />}
         <span>
           Poller berjalan tiap ~45 detik: membaca <code className="text-tx2">/ppp/active</code> lalu ping per batch (round-robin).
-          Garis ODP→ONU: <span className="text-success">hijau = link OK</span>, <span className="text-warning">kuning = lambat/loss</span>, <span className="text-danger">merah = ping timeout</span>, abu putus = tanpa sesi PPPoE.
+          Garis ODP→ONU: <span className="text-success">{t('pg_mikrotik.greenLinkOk')}</span>, <span className="text-warning">{t('pg_mikrotik.yellowSlowLoss')}</span>, <span className="text-danger">{t('pg_mikrotik.redPingTimeout')}</span>, abu putus = tanpa sesi PPPoE.
         </span>
       </div>
 
       <Modal open={!!modal} onClose={() => setModal(null)}
-        title={modal?.mode === 'edit' ? `Edit ${modal.dev?.name}` : 'Tambah Mikrotik'}>
+        title={modal?.mode === 'edit' ? t('pg_mikrotik.editTitle', { name: modal.dev?.name }) : t('pg_mikrotik.addMikrotik')}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="Nama" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Mikrotik Area A" />
-          <Input label="Host / IP" value={form.host} onChange={e => set('host', e.target.value)} placeholder="10.10.10.1" />
-          <Select label="Mode API" value={form.api_mode}
+          <Input label={t('pg_mikrotik.name')} value={form.name} onChange={e => set('name', e.target.value)} placeholder="Mikrotik Area A" />
+          <Input label={t('pg_mikrotik.hostIp')} value={form.host} onChange={e => set('host', e.target.value)} placeholder="10.10.10.1" />
+          <Select label={t('pg_mikrotik.apiMode')} value={form.api_mode}
             onChange={e => set('api_mode', e.target.value as 'api' | 'rest')}
             options={[
-              { value: 'api', label: 'API klasik (:8728) — v6.43+/v7' },
+              { value: 'api', label: t('pg_mikrotik.classicApi8728V6') },
               { value: 'rest', label: 'REST (:443/:80) — RouterOS v7' },
             ]} />
           <Input label="Port" type="number" value={form.api_port}
@@ -235,7 +237,7 @@ export function MikrotikSettings() {
           <Input label="Username" value={form.api_user} onChange={e => set('api_user', e.target.value)} placeholder="nms-readonly" />
           <Input label={modal?.mode === 'edit' ? 'Password (kosongkan = tetap)' : 'Password'}
             type="password" value={form.api_password} onChange={e => set('api_password', e.target.value)} />
-          <Input label="Ping per siklus" type="number" min={1} max={200} value={form.ping_batch}
+          <Input label={t('pg_mikrotik.pingEachCycle')} type="number" min={1} max={200} value={form.ping_batch}
             onChange={e => set('ping_batch', parseInt(e.target.value) || 25)} />
           <div className="flex items-end gap-4 pb-1">
             <label className="flex items-center gap-2 text-sm text-tx2 cursor-pointer">
@@ -250,7 +252,7 @@ export function MikrotikSettings() {
           </div>
         </div>
         <div className="flex justify-end gap-2 mt-6">
-          <Button variant="ghost" onClick={() => setModal(null)}>Batal</Button>
+          <Button variant="ghost" onClick={() => setModal(null)}>{t('pg_mikrotik.cancel')}</Button>
           <Button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending || !form.name || !form.host}>
             {saveMutation.isPending ? 'Menyimpan…' : 'Simpan'}
           </Button>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FileText, Download, Package, Signal, TimerOff, Bell, Server } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { useHasPerm } from '../hooks/useHasPerm';
@@ -12,6 +13,7 @@ const REPORTS = [
 ];
 
 export function Reports() {
+  const { t } = useTranslation();
   const hasPerm = useHasPerm();
   const canView = hasPerm('view_onus');
   const [oltId, setOltId] = useState('');
@@ -26,18 +28,18 @@ export function Reports() {
     window.open(url, '_blank');
   };
 
-  if (!canView) return <PageContainer><div className="text-xs text-tx3">Anda tidak punya izin view_onus.</div></PageContainer>;
+  if (!canView) return <PageContainer><div className="text-xs text-tx3">{t('pg_reports.youDonTHave')}</div></PageContainer>;
 
   return (
     <PageContainer>
       <div className="mb-4">
-        <h1 className="text-xl font-bold flex items-center gap-2"><FileText size={20} className="text-accent" /> Laporan</h1>
-        <p className="text-xs text-tx3 mt-1">Unduh laporan dalam format CSV atau PDF.</p>
+        <h1 className="text-xl font-bold flex items-center gap-2"><FileText size={20} className="text-accent" /> {t('pg_reports.reports')}</h1>
+        <p className="text-xs text-tx3 mt-1">{t('pg_reports.downloadReportsAsCsv')}</p>
       </div>
 
       <div className="mb-4 flex items-center gap-2">
-        <label className="text-xs text-tx3">Filter OLT:</label>
-        <input value={oltId} onChange={e => setOltId(e.target.value)} placeholder="ID OLT (kosongkan=semua)"
+        <label className="text-xs text-tx3">{t('pg_reports.filterOlt')}</label>
+        <input value={oltId} onChange={e => setOltId(e.target.value)} placeholder={t('pg_reports.oltIdEmptyAll')}
           className="px-2 py-1 text-xs rounded bg-surface border border-brd focus:border-accent outline-none w-40" />
       </div>
 
@@ -49,8 +51,8 @@ export function Reports() {
               <div className="flex items-start gap-3 mb-3">
                 <div className="p-2 rounded bg-glass"><Icon size={18} className="text-accent" /></div>
                 <div className="flex-1">
-                  <div className="text-sm font-semibold">{r.title}</div>
-                  <div className="text-xs text-tx3 mt-0.5">{r.desc}</div>
+                  <div className="text-sm font-semibold">{t(`pg_reports.rep_${r.key.replace(/-/g, '_')}`)}</div>
+                  <div className="text-xs text-tx3 mt-0.5">{t(`pg_reports.rep_${r.key.replace(/-/g, '_')}_desc`)}</div>
                 </div>
               </div>
               {r.extra && (
