@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Teks dialog konfirmasi dirapikan
+
+#### Diubah
+- **Dialog konfirmasi**: judul tidak lagi tertimpa tombol tutup, paragraf pesan dipisah rapi (baris kosong tidak lagi menyatu), teks panjang terbungkus, tombol **Batal** / aksi sama lebar di HP, ikon sesuai jenis aksi, tombol Esc menutup dialog. Label bawaan mengikuti bahasa (sebelumnya selalu "Cancel"/"Confirm").
+- **Lihat ONU**: setiap aksi (Reboot, Reset WiFi, Aktifkan/Nonaktifkan, Hapus Config, Reset Pabrik, Hapus) kini punya judul dan penjelasan akibatnya sendiri, bukan kalimat umum. Teks Resync Config, Reset + Konfigurasi Ulang, aturan akses, dan aksi GenieACS dirapikan; label menu dalam bahasa Indonesia (Reset Pabrik, Nonaktifkan/Aktifkan ONU, Reset + Konfigurasi Ulang).
+- Judul modal Lihat ONU yang masih bahasa Inggris (Onu Type, Service, Remote Access, Edit …) kini diterjemahkan; judul konfirmasi di semua halaman konsisten berbentuk pertanyaan.
+
 ### 2026-11-22 — Pop-up & menu tidak lagi tembus pandang
 
 #### Diperbaiki
