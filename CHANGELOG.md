@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Tab FTTH terlihat semua di HP
+
+#### Diubah
+- Di HP, delapan tab Infrastruktur FTTH (Ringkasan, Peta, Pohon, PON, OTB/ODF, JC, ODC, ODP) kini tampil sebagai kotak 4 × 2 dengan ikon di atas label — semuanya terlihat tanpa geser ke samping. Di tablet/desktop tetap satu baris.
+- Komponen `Tabs` mendapat opsi `mobileGrid` (bisa dipakai halaman lain) dan atribut aksesibilitas `role="tab"`/`aria-selected`.
+
 ### 2026-11-22 — Tidak ada lagi reload halaman mendadak
 
 #### Diperbaiki
