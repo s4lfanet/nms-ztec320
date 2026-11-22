@@ -8,7 +8,11 @@ export interface StatusStripItem {
   label: string;
   count: number | string;
   tone?: StatusTone;
+  /** warna CSS khusus (mis. warna rentang RX dari Customization); menimpa tone */
+  color?: string;
   icon?: ReactNode;
+  /** keterangan tambahan saat kursor di atas chip (mis. rentang dBm) */
+  title?: string;
 }
 
 const toneVar: Record<StatusTone, string> = {
@@ -42,7 +46,7 @@ export function StatusStrip({ items, active, onSelect, className, ...rest }: Sta
       className={cn('scroll-row md:flex-wrap md:overflow-visible -mx-3 px-3 md:mx-0 md:px-0', className)}
     >
       {items.map(it => {
-        const tone = toneVar[it.tone || 'idle'];
+        const tone = it.color || toneVar[it.tone || 'idle'];
         const isActive = active === it.key;
         const body = (
           <>
@@ -60,13 +64,14 @@ export function StatusStrip({ items, active, onSelect, className, ...rest }: Sta
             className="status-chip"
             data-active={isActive}
             aria-pressed={isActive}
+            title={it.title}
             style={style}
             onClick={() => onSelect(it.key)}
           >
             {body}
           </button>
         ) : (
-          <span key={it.key} role="listitem" className="status-chip" data-active={isActive} style={style}>
+          <span key={it.key} role="listitem" className="status-chip" data-active={isActive} title={it.title} style={style}>
             {body}
           </span>
         );

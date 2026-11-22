@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Redesign Fase 2: Semua ONU
+
+#### Diubah
+- **Semua ONU**: 8 kartu statistik diganti dua baris chip (status dan sinyal RX) yang tetap berfungsi sebagai filter — di HP daftar ONU kini langsung terlihat di layar pertama. Rentang dBm dan persentase tampil saat kursor di atas chip. Tombol Export CSV, Link PPPoE, dan Match MAC dipindah ke menu "Lainnya"; tombol Sinyal tetap di luar.
+- Tabel desktop tidak lagi melipat nama OLT, RX, dan jarak menjadi dua baris; kolom Aksi menempel di kanan saat tabel perlu digeser (layar 1024 px).
+
 ### 2026-11-22 — Redesign Fase 1: fondasi + navigasi HP
 
 #### Ditambahkan

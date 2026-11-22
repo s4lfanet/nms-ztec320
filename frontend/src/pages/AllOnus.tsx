@@ -8,7 +8,6 @@ import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
   Eye, Edit3, Trash2,
-  CheckCircle2, AlertTriangle, XCircle, HelpCircle, Wifi,
   Satellite, Download, Split, Radio, Wrench, MapPin, RefreshCw, Fingerprint
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
@@ -17,7 +16,7 @@ import { useDashboardWs } from '../hooks/useDashboardWs';
 import { LocationPicker } from '../components/LocationPicker';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, EmptyState, Select, Input, Modal } from '../components/ui';
+import { Button, Card, EmptyState, Select, Input, Modal, StatusStrip, ActionMenu } from '../components/ui';
 import { useStatusFlash, flashClass } from '../hooks/useStatusFlash';
 import { FilterBar, SearchBar, StatusBadge } from '../components/shared';
 
@@ -259,93 +258,84 @@ export function AllOnus() {
           <>
             <Button
               variant="secondary"
-              icon={<Download size={15} />}
-              onClick={() => {
-                const params = new URLSearchParams();
-                if (oltFilter !== 'all') params.set('olt', oltFilter);
-                if (statusFilter !== 'all') params.set('status', statusFilter);
-                if (signalFilter !== 'all') params.set('signal', signalFilter);
-                if (ponFilter !== 'all') params.set('pon', ponFilter);
-                else if (slotFilter !== 'all') params.set('pon', `slot/${slotFilter}`);
-                if (debouncedSearch) params.set('search', debouncedSearch);
-                if (sortBy) { params.set('sort_by', sortBy); params.set('sort_dir', sortDir); }
-                const qs = params.toString();
-                window.open(`/api/all-onus/export${qs ? '?' + qs : ''}`, '_blank');
-              }}
-            >
-              <span className="hidden sm:inline">{t('allOnus.exportCsv')}</span><span className="sm:hidden">{t('allOnus.export')}</span>
-            </Button>
-            <Button
-              variant="secondary"
               icon={<Satellite size={15} className={refreshSignalMutation.isPending ? 'animate-spin' : ''} />}
               onClick={() => olts.forEach(o => refreshSignalMutation.mutate(o.id))}
               disabled={refreshSignalMutation.isPending}
             >
               {refreshSignalMutation.isPending ? t('allOnus.refreshing') : t('allOnus.signal')}
             </Button>
-            {hasPerm('settings_ip_olts') && (
-              <Button
-                variant="secondary"
-                title={t('allOnus.linkPppoeTitle')}
-                icon={<RefreshCw size={15} className={linkSyncMutation.isPending ? 'animate-spin' : ''} />}
-                onClick={() => linkSyncMutation.mutate()}
-                disabled={linkSyncMutation.isPending}
-              >
-                {linkSyncMutation.isPending ? t('dashboard.syncing') : t('allOnus.linkPppoe')}
-              </Button>
-            )}
-            {hasPerm('settings_ip_olts') && (
-              <Button
-                variant="secondary"
-                title={t('allOnus.matchMacTitle')}
-                icon={<Fingerprint size={15} />}
-                onClick={() => setShowMacMatch(true)}
-              >
-                {t('allOnus.matchMac')}
-              </Button>
-            )}
+            <ActionMenu
+              actions={[
+                {
+                  key: 'export', label: t('allOnus.exportCsv'), icon: <Download size={16} />,
+                  onClick: () => {
+                    const params = new URLSearchParams();
+                    if (oltFilter !== 'all') params.set('olt', oltFilter);
+                    if (statusFilter !== 'all') params.set('status', statusFilter);
+                    if (signalFilter !== 'all') params.set('signal', signalFilter);
+                    if (ponFilter !== 'all') params.set('pon', ponFilter);
+                    else if (slotFilter !== 'all') params.set('pon', `slot/${slotFilter}`);
+                    if (debouncedSearch) params.set('search', debouncedSearch);
+                    if (sortBy) { params.set('sort_by', sortBy); params.set('sort_dir', sortDir); }
+                    const qs = params.toString();
+                    window.open(`/api/all-onus/export${qs ? '?' + qs : ''}`, '_blank');
+                  },
+                },
+                ...(hasPerm('settings_ip_olts') ? [
+                  {
+                    key: 'link', label: linkSyncMutation.isPending ? t('dashboard.syncing') : t('allOnus.linkPppoe'),
+                    hint: t('allOnus.linkPppoeTitle'), icon: <RefreshCw size={16} />,
+                    disabled: linkSyncMutation.isPending, onClick: () => linkSyncMutation.mutate(),
+                  },
+                  {
+                    key: 'mac', label: t('allOnus.matchMac'), hint: t('allOnus.matchMacTitle'),
+                    icon: <Fingerprint size={16} />, onClick: () => setShowMacMatch(true),
+                  },
+                ] : []),
+              ]}
+            />
           </>
         }
       />
 
-      {/* Signal Stats Cards — dynamic from RX color ranges */}
-      <div className={`grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 transition-opacity ${isFilterFetching ? 'opacity-40' : ''}`}>
-        {rxColorRanges.map((r, i) => {
-          const colorKey = r.color || 'gray';
-          const stats = (signal_stats as Record<string, { count: number; pct: number; label?: string }>)[colorKey];
-          const cardColor = RX_COLOR_TO_CARD[colorKey] || 'muted';
-          const icons: Record<string, React.ReactNode> = {
-            green: <CheckCircle2 size={18} />, yellow: <AlertTriangle size={18} />,
-            red: <XCircle size={18} />, gray: <HelpCircle size={18} />,
-          };
-          return (
-            <SignalCard key={i}
-              icon={icons[colorKey] || <HelpCircle size={18} />}
-              label={`${r.label || colorKey} ${r.min}~${r.max} dBm`}
-              count={stats?.count ?? 0}
-              pct={stats?.pct ?? 0}
-              color={cardColor}
-              active={signalFilter === colorKey}
-              onClick={() => applySignalFilter(colorKey)}
-            />
-          );
-        })}
-        <SignalCard icon={<HelpCircle size={18} />} label={t('allOnus.losNa')}
-          count={signal_stats.los_na ?? (signal_stats.los + signal_stats.na)} pct={signal_stats.los_na_pct ?? signal_stats.na_pct} color="muted"
-          active={signalFilter === 'los_na'}
-          onClick={() => applySignalFilter('los_na')} />
-      </div>
-
-      {/* Status Summary Cards */}
-      <div className={`grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 transition-opacity ${isFilterFetching ? 'opacity-40' : ''}`}>
-        <StatusCard icon={<Wifi size={16} />} label={t('dashboard.statTotalOnu')} count={signal_stats.total} color="accent"
-          active={statusFilter === 'all'} onClick={() => applyStatusFilter('all')} />
-        <StatusCard icon={<Wifi size={16} />} label={t('common.online')} count={signal_stats.online} color="success"
-          active={statusFilter === 'online'} onClick={() => applyStatusFilter(statusFilter === 'online' ? 'all' : 'online')} />
-        <StatusCard icon={<XCircle size={16} />} label={t('common.los')} count={signal_stats.los} color="danger"
-          active={statusFilter === 'los'} onClick={() => applyStatusFilter(statusFilter === 'los' ? 'all' : 'los')} />
-        <StatusCard icon={<AlertTriangle size={16} />} label={t('common.dyinggasp')} count={signal_stats.dyinggasp} color="warning"
-          active={statusFilter === 'dyinggasp'} onClick={() => applyStatusFilter(statusFilter === 'dyinggasp' ? 'all' : 'dyinggasp')} />
+      {/* Status & sinyal: chip berisi jumlah, diklik = filter (redesign Fase 2) */}
+      <div className={cn('flex flex-col gap-2 transition-opacity', isFilterFetching && 'opacity-40')}>
+        <StatusStrip
+          aria-label={t('allOnus.allStatus')}
+          active={statusFilter}
+          onSelect={k => applyStatusFilter(k === 'all' || statusFilter === k ? 'all' : k)}
+          items={[
+            { key: 'all', label: t('dashboard.statTotalOnu'), count: signal_stats.total, tone: 'info' },
+            { key: 'online', label: t('common.online'), count: signal_stats.online, tone: 'ok' },
+            { key: 'offline', label: t('common.offline'), count: signal_stats.offline, tone: 'idle' },
+            { key: 'los', label: t('common.los'), count: signal_stats.los, tone: 'crit' },
+            { key: 'dyinggasp', label: t('common.dyinggasp'), count: signal_stats.dyinggasp, tone: 'warn' },
+          ]}
+        />
+        <StatusStrip
+          aria-label={t('allOnus.signal')}
+          active={signalFilter}
+          onSelect={k => applySignalFilter(k)}
+          items={[
+            ...rxColorRanges.map(r => {
+              const colorKey = r.color || 'gray';
+              const stats = (signal_stats as Record<string, { count: number; pct: number } | undefined>)[colorKey];
+              return {
+                key: colorKey,
+                label: r.label || colorKey,
+                count: stats?.count ?? 0,
+                color: RX_CHIP_COLOR[colorKey] || 'var(--status-idle)',
+                title: `${r.min} ~ ${r.max} dBm · ${stats?.pct ?? 0}%`,
+              };
+            }),
+            {
+              key: 'los_na', label: t('allOnus.losNa'),
+              count: signal_stats.los_na ?? (signal_stats.los + signal_stats.na),
+              tone: 'idle' as const,
+              title: `${signal_stats.los_na_pct ?? signal_stats.na_pct}%`,
+            },
+          ]}
+        />
       </div>
 
       {/* Filters */}
@@ -425,7 +415,7 @@ export function AllOnus() {
       >
         <div className="overflow-x-auto">
           {/* Desktop table */}
-          <table className="hidden md:table w-full">
+          <table className="hidden md:table w-full whitespace-nowrap">
             <thead>
               <tr className="border-b border-brd bg-glass/50">
                 <SortTh col="olt" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>{t('allOnus.colOlt')}</SortTh>
@@ -434,11 +424,11 @@ export function AllOnus() {
                 <SortTh col="rx_onu" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>{t('allOnus.colRxOnu')}</SortTh>
                 <SortTh col="sn" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>{t('allOnus.colSn')}</SortTh>
                 <SortTh col="type" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>{t('allOnus.colType')}</SortTh>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold text-tx3 uppercase tracking-wider">{t('allOnus.colDistance')}</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold text-tx3 uppercase tracking-wider">{t('allOnus.colTechnician')}</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold text-tx3 uppercase tracking-wider">{t('allOnus.colOdp')}</th>
+                <th className="px-3 py-3 text-left text-[11px] font-semibold text-tx3 uppercase tracking-wider">{t('allOnus.colDistance')}</th>
+                <th className="px-3 py-3 text-left text-[11px] font-semibold text-tx3 uppercase tracking-wider">{t('allOnus.colTechnician')}</th>
+                <th className="px-3 py-3 text-left text-[11px] font-semibold text-tx3 uppercase tracking-wider">{t('allOnus.colOdp')}</th>
                 <SortTh col="onu_id" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort}>{t('allOnus.colId')}</SortTh>
-                <th className="px-4 py-3 text-right text-[11px] font-semibold text-tx3 uppercase tracking-wider">{t('allOnus.colActions')}</th>
+                <th className="sticky right-0 z-[1] bg-surface px-3 py-3 text-right text-[11px] font-semibold text-tx3 uppercase tracking-wider shadow-[-8px_0_12px_-10px_rgb(0_0_0/0.35)]">{t('allOnus.colActions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -456,31 +446,31 @@ export function AllOnus() {
                   key={onu.id}
                   className={`border-b border-brd/50 hover:bg-glass/50 transition-colors ${onuFlash.has(onu.id) ? flashClass(onuFlash.get(onu.id)) : ''}`}
                 >
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className="text-sm text-tx2">{onu.olt_name}</span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <div className="text-sm font-medium text-tx1">{onu.name || '-'}</div>
                     {onu.description && <div className="text-xs text-tx3 mt-0.5">{onu.description}</div>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <StatusBadge status={onu.status} />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <PowerBadge value={onu.status === 'online' ? onu.onu_rx_power : null} ranges={rxColorRanges} />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <code className="text-sm font-mono text-tx2">{formatSn(onu.serial_number)}</code>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className="text-sm text-tx2">{onu.actual_type || '-'}</span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     {onu.distance != null ? (
                       <span className="text-sm font-mono text-tx2">{onu.distance} m</span>
                     ) : <span className="text-sm text-tx3">-</span>}
                   </td>
-                  <td className="px-4 py-3 cursor-pointer hover:bg-accent/5" onClick={() => setInlineEdit({ onuId: onu.id, field: 'technician' })}>
+                  <td className="px-3 py-3 cursor-pointer hover:bg-accent/5" onClick={() => setInlineEdit({ onuId: onu.id, field: 'technician' })}>
                     {inlineEdit?.onuId === onu.id && inlineEdit.field === 'technician' ? (
                       <select
                         value={onu.technician_id ?? ''}
@@ -504,7 +494,7 @@ export function AllOnus() {
                       </div>
                     ) : <span className="text-sm text-tx3 italic">{t('allOnus.assign')}</span>}
                   </td>
-                  <td className="px-4 py-3 cursor-pointer hover:bg-accent/5" onClick={() => setInlineEdit({ onuId: onu.id, field: 'odp' })}>
+                  <td className="px-3 py-3 cursor-pointer hover:bg-accent/5" onClick={() => setInlineEdit({ onuId: onu.id, field: 'odp' })}>
                     {inlineEdit?.onuId === onu.id && inlineEdit.field === 'odp' ? (
                       <select
                         value={onu.odp_port_id ?? ''}
@@ -528,10 +518,10 @@ export function AllOnus() {
                       </div>
                     ) : <span className="text-sm text-tx3 italic">{t('allOnus.assign')}</span>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <code className="text-sm font-mono text-accent">{onu.onu_id_str}</code>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="sticky right-0 bg-surface px-3 py-3 shadow-[-8px_0_12px_-10px_rgb(0_0_0/0.35)]">
                     <div className="flex items-center justify-end gap-1">
                       <ActionBtn icon={<Eye size={14} />} title={t('common.view')} onClick={() => navigate(`/dashboard/onus/${onu.id}`)} />
                       {hasPerm('edit_onu_name') && <ActionBtn icon={<Edit3 size={14} />} title={t('common.edit')} onClick={() => openEdit(onu)} />}
@@ -774,82 +764,11 @@ export function AllOnus() {
 
 /* ─── Sub-components ─── */
 
-function SignalCard({ icon, label, count, pct, color, active, onClick }: {
-  icon: React.ReactNode; label: string; count: number; pct: number; color: string;
-  active?: boolean; onClick?: () => void;
-}) {
-  const colors: Record<string, string> = {
-    success: 'border-success/20 bg-success/5',
-    warning: 'border-warning/20 bg-warning/5',
-    danger: 'border-danger/20 bg-danger/5',
-    muted: 'border-offline/20 bg-offline/5',
-  };
-  const textColors: Record<string, string> = {
-    success: 'text-success', warning: 'text-warning', danger: 'text-danger', muted: 'text-tx3',
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'glass-card p-4 border text-left transition-all',
-        colors[color],
-        onClick && 'cursor-pointer hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
-        active && 'ring-2 ring-accent/70 border-accent/50',
-      )}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <span className={textColors[color]}>{icon}</span>
-        <span className="text-xs text-tx3">{label}</span>
-      </div>
-      <div className="flex items-end justify-between mb-2">
-        <span className={cn('text-2xl font-bold', textColors[color])}>{pct}%</span>
-        <span className="text-sm text-tx3">{count} ONU{count !== 1 ? 's' : ''}</span>
-      </div>
-    </button>
-  );
-}
-
-function StatusCard({ icon, label, count, color, active, onClick }: {
-  icon: React.ReactNode; label: string; count: number; color: string;
-  active?: boolean; onClick?: () => void;
-}) {
-  const colors: Record<string, string> = {
-    success: 'border-success/20 bg-success/5',
-    warning: 'border-warning/20 bg-warning/5',
-    danger: 'border-danger/20 bg-danger/5',
-    accent: 'border-accent/20 bg-accent/5',
-  };
-  const textColors: Record<string, string> = {
-    success: 'text-success', warning: 'text-warning', danger: 'text-danger', accent: 'text-accent',
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'glass-card p-3 border flex items-center gap-3 text-left transition-all',
-        colors[color],
-        onClick && 'cursor-pointer hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
-        active && 'ring-2 ring-accent/70 border-accent/50',
-      )}
-    >
-      <span className={textColors[color]}>{icon}</span>
-      <div className="flex flex-col">
-        <span className={cn('text-lg font-bold', textColors[color])}>{count}</span>
-        <span className="text-xs text-tx3">{label}</span>
-      </div>
-    </button>
-  );
-}
-
-const RX_COLOR_TO_CARD: Record<string, string> = {
-  green: 'success', yellow: 'warning', red: 'danger',
-  blue: 'info', purple: 'info', orange: 'warning', gray: 'muted',
+// Warna chip sinyal = warna rentang RX di Customization
+const RX_CHIP_COLOR: Record<string, string> = {
+  green: 'var(--color-success)', yellow: 'var(--color-warning)', red: 'var(--color-danger)',
+  blue: 'var(--color-rx-blue)', purple: 'var(--color-rx-purple)', orange: 'var(--color-rx-orange)',
+  gray: 'var(--color-rx-gray)',
 };
 
 const RX_COLOR_MAP: Record<string, string> = {
