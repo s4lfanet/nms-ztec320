@@ -104,9 +104,10 @@ export function UserManagement() {
       />
 
       <Tabs
+        mobileGrid={2}
         tabs={[
-          { key: 'users', label: 'Users', icon: <Users size={14} /> },
-          { key: 'roles', label: 'Roles', icon: <Shield size={14} /> },
+          { key: 'users', label: t('pg_users.tabUsers'), icon: <Users size={14} /> },
+          { key: 'roles', label: t('pg_users.tabRoles'), icon: <Shield size={14} /> },
         ]}
         active={tab}
         onChange={key => setTab(key as 'users' | 'roles')}

@@ -8,17 +8,20 @@ interface TabsProps {
   className?: string;
   /** Di HP (< md) tampilkan semua tab sebagai grid 4 kolom (ikon di atas label)
    *  supaya tidak perlu geser ke samping. Di tablet/desktop tetap satu baris. */
-  mobileGrid?: boolean;
+  mobileGrid?: boolean | 2 | 3 | 4;
 }
 
+const GRID_COLS = { 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' } as const;
+
 export function Tabs({ tabs, active, onChange, className, mobileGrid }: TabsProps) {
+  const cols = GRID_COLS[mobileGrid === true ? 4 : (mobileGrid || 4)];
   return (
     <div
       role="tablist"
       className={cn(
         'gap-1 p-1 rounded-lg bg-glass border border-brd max-w-full',
         mobileGrid
-          ? 'grid grid-cols-4 w-full md:flex md:w-fit md:overflow-x-auto tab-scroll'
+          ? `grid ${cols} w-full md:flex md:w-fit md:overflow-x-auto tab-scroll`
           : 'flex w-full sm:w-fit overflow-x-auto tab-scroll',
         className,
       )}
@@ -38,7 +41,7 @@ export function Tabs({ tabs, active, onChange, className, mobileGrid }: TabsProp
             active === tab.key && 'tab-btn-active',
           )}
         >
-          {tab.icon}<span className={cn(mobileGrid && 'truncate max-w-full')}>{tab.label}</span>
+          {tab.icon}<span className={cn(mobileGrid && 'max-w-full text-center line-clamp-2 md:line-clamp-none')}>{tab.label}</span>
         </button>
       ))}
     </div>

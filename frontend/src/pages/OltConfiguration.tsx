@@ -127,6 +127,7 @@ export function OltConfiguration() {
       <div className="glass-card">
         <div className="p-3 md:p-4 border-b border-brd overflow-x-auto scrollbar-thin">
           <Tabs
+            mobileGrid={4}
             tabs={TABS.map(tb => ({ key: tb.id, label: t(`oc.tab_${tb.id.replace(/-/g, '_')}`), icon: tb.icon }))}
             active={activeTab}
             onChange={setActiveTab}

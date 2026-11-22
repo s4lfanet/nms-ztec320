@@ -1190,7 +1190,9 @@
     "permissions": "Hak akses",
     "usernameReq": "Username *",
     "deleteUserMsg": "Hapus user \"{{name}}\"? Tindakan ini tidak bisa dibatalkan.",
-    "deleteRoleMsg": "Hapus role \"{{name}}\"? User dengan role ini akan kehilangan akses."
+    "deleteRoleMsg": "Hapus role \"{{name}}\"? User dengan role ini akan kehilangan akses.",
+    "tabUsers": "Pengguna",
+    "tabRoles": "Peran"
   },
   "pg_actionlogs": {
     "archiveOldLogs": "Arsipkan log lama?",

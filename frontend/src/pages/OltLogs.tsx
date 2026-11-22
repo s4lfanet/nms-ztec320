@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { OnuStatusHistoryRecord } from '../lib/api';
+import { Tabs } from '../components/ui/Tabs';
 import { cn } from '../lib/utils';
 import { Bell, Terminal, FileText, RefreshCw, AlertTriangle, Info, Activity } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
@@ -138,24 +139,13 @@ export function OltLogs() {
         }
       />
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-brd overflow-x-auto">
-        {TAB_CONFIG.map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0',
-              activeTab === tab.key
-                ? 'border-accent text-accent'
-                : 'border-transparent text-tx3 hover:text-tx2'
-            )}
-          >
-            {tab.icon}
-            {t(`pg_oltlogs.tab_${tab.key}`)}
-          </button>
-        ))}
-      </div>
+      {/* Tabs — grid 3 kolom di HP supaya semua terlihat tanpa geser */}
+      <Tabs
+        mobileGrid={3}
+        tabs={TAB_CONFIG.map(tab => ({ key: tab.key, label: t(`pg_oltlogs.tab_${tab.key}`), icon: tab.icon }))}
+        active={activeTab}
+        onChange={(k) => setActiveTab(k as LogTab)}
+      />
 
       {/* Tab description */}
       <div className="flex items-center gap-2 text-xs text-tx3">

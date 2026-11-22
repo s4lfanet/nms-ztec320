@@ -169,3 +169,6 @@
     line-height: 1.2;
   }
 }
+@media (max-width: 767px) {
+  .tab-btn.tab-btn-grid { white-space: normal; }
+}

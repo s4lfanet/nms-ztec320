@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Semua tab terlihat di HP
+
+#### Diubah
+- Tab di **Konfigurasi OLT** (7 tab, grid 4 kolom), **Pengaturan Alert** (grid 3 kolom), **Log OLT** (grid 3 kolom), dan **Manajemen User** (2 kolom) kini tampil semua di HP tanpa geser ke samping; label panjang dibungkus dua baris. Di tablet/desktop tetap satu baris.
+- Tab Log OLT memakai komponen tab yang sama dengan halaman lain; tab Manajemen User berbahasa Indonesia (Pengguna, Peran).
+- Pilihan OLT di **Semua ONU** dibungkus ke baris berikutnya bila banyak, bukan digeser.
+
 ### 2026-11-22 — Tab FTTH terlihat semua di HP
 
 #### Diubah

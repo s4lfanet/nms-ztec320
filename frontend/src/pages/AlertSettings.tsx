@@ -171,6 +171,7 @@ export function AlertSettings() {
       </div>
 
       <Tabs
+        mobileGrid={3}
         tabs={visibleTabs}
         active={activeSection}
         onChange={(key) => setActiveSection(key as SectionKey)}
