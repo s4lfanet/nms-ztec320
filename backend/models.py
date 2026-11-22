@@ -1238,6 +1238,34 @@ class PppoeSessionEvent(db.Model):
     at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
 
 
+class AcsBulkJob(db.Model):
+    """Operasi massal TR-069 lewat GenieACS (refresh/reboot/inform/firmware/param)."""
+    __tablename__ = 'acs_bulk_jobs'
+    id = db.Column(db.Integer, primary_key=True)
+    action = db.Column(db.String(30), nullable=False)
+    params = db.Column(db.Text, default='{}')     # JSON parameter aksi
+    filters = db.Column(db.Text, default='{}')    # JSON filter target (untuk riwayat)
+    total = db.Column(db.Integer, default=0)
+    done = db.Column(db.Integer, default=0)       # dijalankan modem (HTTP 200)
+    queued = db.Column(db.Integer, default=0)     # antre sampai modem inform (HTTP 202)
+    failed = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(12), default='running')  # running | finished | cancelled
+    created_by = db.Column(db.String(100), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    finished_at = db.Column(db.DateTime, nullable=True)
+
+
+class AcsBulkJobItem(db.Model):
+    __tablename__ = 'acs_bulk_job_items'
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey('acs_bulk_jobs.id'), nullable=False, index=True)
+    onu_id = db.Column(db.Integer, nullable=True)   # tanpa FK: riwayat tetap ada walau ONU dihapus
+    onu_name = db.Column(db.String(150), default='')
+    device_id = db.Column(db.String(128), default='')
+    status = db.Column(db.String(10), default='pending')  # pending | done | queued | failed | skipped
+    message = db.Column(db.String(300), default='')
+
+
 class OnuStatusHistory(db.Model):
     """Track every ONU status change (online -> offline/dyinggasp/los and back)"""
     __tablename__ = 'onu_status_history'

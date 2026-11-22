@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-23 — GenieACS: operasi massal modem
+
+#### Ditambahkan
+- Kartu **Operasi massal modem** di halaman TR069 Profile: kirim satu perintah ke banyak modem sekaligus — **refresh parameter, reboot, set periodic inform, upgrade firmware** (file dari GenieACS), atau **set parameter** tunggal (lanjutan).
+- Target dipilih per **OLT, model ONU, titik FTTH** (semua pelanggan di hilir OTB/JC/ODC/ODP), dan status (default online saja); hanya ONU yang terpetakan ke GenieACS.
+- Pengaman: **pratinjau wajib** (termasuk tanda modem yang tidak lapor ke ACS), konfirmasi dengan **jumlah target** (ditolak bila jumlahnya berubah sejak pratinjau), maks **500 modem**, satu operasi berjalan pada satu waktu, eksekusi bertahap (4 paralel + jeda), status per modem (berhasil/antre/gagal), bisa **dibatalkan**, dan dicatat di Activity Log. Operasi yang terputus karena restart ditandai dibatalkan otomatis.
+
 ### 2026-11-23 — Integrasi MikroTik & GenieACS: tahap 3 (kesehatan & pemantauan)
 
 #### Ditambahkan

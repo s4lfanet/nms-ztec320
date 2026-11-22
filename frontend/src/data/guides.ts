@@ -568,6 +568,10 @@ export const guides: Guide[] = [
         content: 'Kartu **Pemantauan GenieACS** di halaman ini menampilkan:\n**Modem tidak lapor** — ONU online tetapi modemnya tidak inform ke GenieACS lebih dari 24 jam. Perintah TR-069 tidak akan sampai ke modem ini; cek VLAN/IP manajemen dan setelan ACS di modem.\n**Fault GenieACS** — perintah/preset yang gagal. Selama fault ada, perintah berikutnya di jalur yang sama ditahan; klik **Hapus & coba lagi** setelah penyebabnya dibereskan.\n\nPemetaan ONU ↔ modem disinkronkan otomatis tiap 30 menit (tombol Sync tetap bisa dipakai kapan saja).'
       },
       {
+        title: 'Operasi massal modem',
+        content: 'Kartu **Operasi massal modem** mengirim satu perintah ke banyak modem: refresh, reboot, set periodic inform, upgrade firmware, atau set parameter.\n\n1. Pilih target: OLT, model ONU, dan/atau titik FTTH (semua pelanggan di bawahnya).\n2. Klik **Pratinjau target** — periksa daftar; modem bertanda *tidak lapor* akan menerima perintah saat lapor berikutnya.\n3. Klik **Jalankan ke N modem** lalu konfirmasi.\n\nPerintah dikirim bertahap (maks 500 modem), progres dan hasil per modem tampil di **Riwayat operasi massal**, dan bisa dibatalkan. Untuk reboot/firmware, sebaiknya di luar jam sibuk dan coba dulu pada satu ODP.'
+      },
+      {
         title: 'Perintah ke modem (GenieACS)',
         content: 'Di Detail ONU → panel TR-069, perintah (refresh, reboot, ganti SSID, dll.) dikirim lewat GenieACS. Bila modem langsung merespons, muncul **dikirim**. Bila modem tidak menjawab *connection request* (mis. di balik NAT), muncul **antre** — perintah tetap dijalankan otomatis saat modem lapor (inform) berikutnya, tidak perlu diulang.\n\nModem TR-181 (parameter Device.*) didukung untuk melihat info, ganti SSID/password, PPPoE, dan refresh; tambah/hapus SSID dan WAN untuk TR-181 diatur langsung dari GenieACS.'
       },

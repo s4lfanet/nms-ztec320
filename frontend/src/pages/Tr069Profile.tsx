@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Server, Lock, Unlock, FileText, Globe, RefreshCw, Link2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
-import { api } from '../lib/api';
+import { Plus, Pencil, Trash2, Server, Lock, Unlock, FileText, Globe, RefreshCw, Link2, CheckCircle2, XCircle, AlertTriangle, Layers, Play, Eye } from 'lucide-react';
+import { api, type AcsBulkFilters, type AcsBulkJob } from '../lib/api';
 import { toast } from '../components/Toast';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { PageContainer } from '../components/layout/PageContainer';
@@ -78,6 +78,7 @@ export default function Tr069Profile() {
 
       <GenieAcsSettings />
       <GenieAcsHealth />
+      <AcsBulkOps />
 
       {/* Table */}
       <Card bodyClassName="p-0">
@@ -495,6 +496,155 @@ function GenieAcsHealth() {
           )}
         </div>
       </div>
+    </Card>
+  );
+}
+
+const BULK_ACTIONS = ['refresh', 'reboot', 'inform_interval', 'firmware', 'set_param'] as const;
+
+function AcsBulkOps() {
+  const { t } = useTranslation();
+  const hasPerm = useHasPerm();
+  const canManage = hasPerm('genieacs_manage');
+  const { data: cfg } = useQuery({ queryKey: ['genieacs-settings'], queryFn: api.genieacsGetSettings, enabled: canManage });
+  const on = canManage && !!cfg?.nbi_url;
+  const { data: opt } = useQuery({ queryKey: ['acs-bulk-options'], queryFn: api.acsBulkOptions, enabled: on });
+  const [f, setF] = useState<AcsBulkFilters>({ status: 'online' });
+  const [action, setAction] = useState<typeof BULK_ACTIONS[number]>('refresh');
+  const [seconds, setSeconds] = useState('3600');
+  const [file, setFile] = useState('');
+  const [param, setParam] = useState({ path: '', value: '', type: 'xsd:string' });
+  const [pv, setPv] = useState<Awaited<ReturnType<typeof api.acsBulkPreview>> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [detail, setDetail] = useState<AcsBulkJob | null>(null);
+  const jobs = useQuery({
+    queryKey: ['acs-bulk-jobs'], queryFn: api.acsBulkJobs, enabled: on,
+    refetchInterval: q => (q.state.data?.jobs?.some(j => j.status === 'running') ? 3000 : false),
+  });
+  if (!on) return null;
+
+  const setFilter = (patch: Partial<AcsBulkFilters>) => { setF(prev => ({ ...prev, ...patch })); setPv(null); };
+  const params = (): Record<string, unknown> =>
+    action === 'inform_interval' ? { seconds: parseInt(seconds) || 0 }
+      : action === 'firmware' ? { file }
+        : action === 'set_param' ? param : {};
+  const preview = async () => {
+    setBusy(true);
+    try { setPv(await api.acsBulkPreview(f)); } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
+  };
+  const run = async () => {
+    if (!pv) return;
+    const label = t(`pg_tr069.bulkAct_${action}`);
+    const ok = await confirmDialog({
+      title: t('pg_tr069.bulkConfirmTitle', { action: label, n: pv.count }),
+      message: t('pg_tr069.bulkConfirmMsg', { n: pv.count, stale: pv.stale }),
+      confirmLabel: t('pg_tr069.bulkRunN', { n: pv.count }),
+      variant: action === 'reboot' || action === 'firmware' || action === 'set_param' ? 'danger' : 'warning',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const r = await api.acsBulkRun({ filters: f, action, params: params(), confirm_count: pv.count });
+      if (r.success) { toast.success(t('pg_tr069.bulkStarted', { id: r.job.id })); setPv(null); jobs.refetch(); }
+      else toast.error(r.message || 'Gagal');
+    } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
+  };
+  const nodeValue = f.node_type && f.node_id ? `${f.node_type}:${f.node_id}` : '';
+  return (
+    <Card icon={<Layers size={16} />} title={t('pg_tr069.bulkTitle')}>
+      <p className="text-xs text-tx3 mb-3">{t('pg_tr069.bulkHint', { max: opt?.max ?? 500 })}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <Select label="OLT" value={f.olt_id ? String(f.olt_id) : ''} onChange={e => setFilter({ olt_id: e.target.value ? Number(e.target.value) : undefined })}
+          options={[{ value: '', label: t('pg_tr069.bulkAll') }, ...(opt?.olts || []).map(o => ({ value: String(o.id), label: o.name }))]} />
+        <Select label={t('pg_tr069.bulkModel')} value={f.model || ''} onChange={e => setFilter({ model: e.target.value || undefined })}
+          options={[{ value: '', label: t('pg_tr069.bulkAll') }, ...(opt?.models || []).map(m => ({ value: m, label: m }))]} />
+        <Select label={t('pg_tr069.bulkNode')} value={nodeValue} onChange={e => {
+          const [nt, id] = e.target.value.split(':');
+          setFilter({ node_type: nt || undefined, node_id: id ? Number(id) : undefined });
+        }} options={[{ value: '', label: t('pg_tr069.bulkAll') }, ...(opt?.nodes || []).map(n => ({ value: `${n.type}:${n.id}`, label: `${n.type.toUpperCase()} · ${n.name}` }))]} />
+        <Select label={t('pg_tr069.bulkStatus')} value={f.status || 'online'} onChange={e => setFilter({ status: e.target.value })}
+          options={[{ value: 'online', label: t('pg_tr069.bulkOnline') }, { value: 'all', label: t('pg_tr069.bulkAllStatus') }]} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+        <Select label={t('pg_tr069.bulkAction')} value={action} onChange={e => setAction(e.target.value as typeof action)}
+          options={BULK_ACTIONS.map(a => ({ value: a, label: t(`pg_tr069.bulkAct_${a}`) }))} />
+        {action === 'inform_interval' && (
+          <Input label={t('pg_tr069.bulkSeconds')} type="number" min={60} max={86400} value={seconds} onChange={e => setSeconds(e.target.value)} />
+        )}
+        {action === 'firmware' && (
+          <Select label={t('pg_tr069.bulkFile')} value={file} onChange={e => setFile(e.target.value)}
+            options={[{ value: '', label: (opt?.files?.length ? t('pg_tr069.bulkPickFile') : t('pg_tr069.bulkNoFiles')) },
+              ...(opt?.files || []).map(x => ({ value: x.name, label: `${x.name}${x.product_class ? ` (${x.product_class}${x.version ? ' ' + x.version : ''})` : ''}` }))]} />
+        )}
+        {action === 'set_param' && (<>
+          <Input label={t('pg_tr069.bulkPath')} value={param.path} onChange={e => setParam({ ...param, path: e.target.value })} placeholder="InternetGatewayDevice.ManagementServer.PeriodicInformInterval" />
+          <Input label={t('pg_tr069.bulkValue')} value={param.value} onChange={e => setParam({ ...param, value: e.target.value })} />
+          <Select label={t('pg_tr069.bulkType')} value={param.type} onChange={e => setParam({ ...param, type: e.target.value })}
+            options={['xsd:string', 'xsd:unsignedInt', 'xsd:int', 'xsd:boolean'].map(x => ({ value: x, label: x }))} />
+        </>)}
+      </div>
+      <div className="flex flex-wrap gap-2 mt-3">
+        <Button variant="secondary" icon={<Eye size={14} />} onClick={preview} loading={busy && !pv}>{t('pg_tr069.bulkPreview')}</Button>
+        {pv && pv.count > 0 && !pv.too_many && (
+          <Button variant="primary" icon={<Play size={14} />} onClick={run} loading={busy}>{t('pg_tr069.bulkRunN', { n: pv.count })}</Button>
+        )}
+      </div>
+      {pv && (
+        <div className="mt-3 text-xs">
+          <div className={pv.too_many ? 'text-danger' : 'text-tx2'}>
+            {pv.too_many ? t('pg_tr069.bulkTooMany', { n: pv.count, max: pv.max }) : t('pg_tr069.bulkPreviewCount', { n: pv.count })}
+            {pv.stale > 0 && <span className="text-warning"> · {t('pg_tr069.bulkStale', { n: pv.stale })}</span>}
+          </div>
+          {pv.count > 0 && (
+            <div className="mt-1.5 max-h-48 overflow-y-auto space-y-0.5">
+              {pv.items.map(i => (
+                <div key={i.onu_id} className="flex justify-between gap-2 px-2 py-0.5 rounded bg-glass">
+                  <Link to={`/dashboard/onus/${i.onu_id}`} className="text-accent hover:underline truncate">{i.name || i.onu_id}</Link>
+                  <span className={i.stale ? 'text-warning shrink-0' : 'text-tx3 shrink-0'}>{i.olt} · {i.model || '-'}{i.stale ? ` · ${t('pg_tr069.bulkStaleTag')}` : ''}</span>
+                </div>
+              ))}
+              {pv.count > pv.items.length && <div className="text-tx3">+{pv.count - pv.items.length}…</div>}
+            </div>
+          )}
+        </div>
+      )}
+      {(jobs.data?.jobs?.length ?? 0) > 0 && (
+        <div className="mt-4">
+          <div className="text-xs font-semibold text-tx2 mb-1">{t('pg_tr069.bulkHistory')}</div>
+          <div className="space-y-1.5">
+            {jobs.data!.jobs.slice(0, 8).map(j => {
+              const pct = j.total ? Math.round(((j.done + j.queued + j.failed) / j.total) * 100) : 0;
+              return (
+                <div key={j.id} className="text-xs p-2 rounded bg-glass">
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <span className="text-tx1">#{j.id} {t(`pg_tr069.bulkAct_${j.action}`)} · {j.total} modem · {j.created_by}</span>
+                    <span className="text-tx3">{t(`pg_tr069.bulkSt_${j.status}`)} · {formatDate(j.created_at)}</span>
+                  </div>
+                  <div className="h-1.5 rounded bg-bg2 mt-1 overflow-hidden"><div className="h-full bg-accent" style={{ width: `${pct}%` }} /></div>
+                  <div className="flex flex-wrap justify-between gap-2 mt-1">
+                    <span className="text-tx3">{t('pg_tr069.bulkCounts', { done: j.done, queued: j.queued, failed: j.failed })}</span>
+                    <span className="flex gap-3">
+                      <button className="text-accent hover:underline" onClick={() => api.acsBulkJob(j.id).then(r => setDetail(r.job))}>{t('pg_tr069.bulkDetail')}</button>
+                      {j.status === 'running' && <button className="text-danger hover:underline" onClick={() => api.acsBulkCancel(j.id).then(() => jobs.refetch())}>{t('pg_tr069.bulkCancel')}</button>}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail ? `#${detail.id} ${t(`pg_tr069.bulkAct_${detail.action}`)}` : ''}>
+        <div className="space-y-0.5 max-h-[60vh] overflow-y-auto text-xs">
+          {(detail?.items || []).map((i, k) => (
+            <div key={k} className="flex justify-between gap-2 px-2 py-1 rounded bg-glass">
+              <span className="truncate">{i.name || i.onu_id}</span>
+              <span className={i.status === 'failed' ? 'text-danger' : i.status === 'queued' ? 'text-warning' : i.status === 'done' ? 'text-success' : 'text-tx3'}
+                title={i.message}>{t(`pg_tr069.bulkItem_${i.status}`)}{i.status === 'failed' && i.message ? `: ${i.message.slice(0, 60)}` : ''}</span>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </Card>
   );
 }

@@ -257,6 +257,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 36. **Kesehatan MikroTik & pemantauan GenieACS (`integration_health.py`)** — `link_state_poller.read_health()` mengisi `MikrotikDevice.cpu_load/mem_used_pct/temperature/ros_*/health_at/last_ok_at` (kegagalan baca tidak menggagalkan poll). `check_mikrotik_health()` dipanggil di siklus alert setelah `_check_odp_outages`: notifikasi `mikrotik_down/cpu/temp` di-dedupe per `target_type='mikrotik', target_id` yang belum resolved, pulih → resolved + pesan `*_recovery`. GenieACS: `sync_device_maps()` juga menyimpan `GenieacsDeviceMap.last_inform`, dijalankan otomatis oleh link poller tiap `genieacs_sync_minutes` (default 30); `stale_devices()` = ONU online dengan inform > `genieacs_stale_hours`; `fetch_faults()/delete_fault()` (DELETE `/faults/<id>` di-URL-encode). `_to_dbm()` menormalkan RX modem (dBm, ×10, ×100, ×1000).
 
+37. **Operasi massal TR-069 (`acs_bulk.py`, `AcsBulkJob/AcsBulkJobItem`)** — alur wajib: `/api/genieacs/bulk/preview` → `/bulk/run` dengan `confirm_count` = jumlah target saat ini (409 bila berubah), maks `MAX_TARGETS` (500), satu job berjalan (`running_job()` juga merapikan job 'running' tanpa thread hidup setelah restart). Eksekusi di thread `acs-bulk-<id>`, `WORKERS`=4 + `PAUSE_S`; tiap perintah lewat `genieacs_client._post_task` (202 → item `queued`). Aksi: refresh/reboot/inform_interval/firmware (task `download`, fileType `1 Firmware Upgrade Image`)/set_param (path lengkap, tipe xsd terbatas). Item menyimpan `onu_id` tanpa FK (riwayat tetap ada walau ONU dihapus). Jangan menambah aksi tanpa `validate_action()`.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

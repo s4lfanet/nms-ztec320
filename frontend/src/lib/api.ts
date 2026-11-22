@@ -127,6 +127,12 @@ export const api = {
   genieacsFaults: () => request<{ success: boolean; faults: AcsFault[] }>('/api/genieacs/faults'),
   genieacsDeleteFault: (id: string) => request<{ success: boolean; message: string }>(`/api/genieacs/faults/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   genieacsStale: () => request<{ success: boolean; hours: number; devices: { onu_id: number; name: string; device_id: string; last_inform: string }[] }>('/api/genieacs/stale'),
+  acsBulkOptions: () => request<{ success: boolean; olts: { id: number; name: string }[]; models: string[]; nodes: { type: string; id: number; name: string }[]; files: { name: string; type: string; oui: string; product_class: string; version: string }[]; max: number }>('/api/genieacs/bulk/options'),
+  acsBulkPreview: (filters: AcsBulkFilters) => request<{ success: boolean; count: number; stale: number; too_many: boolean; max: number; items: { onu_id: number; name: string; olt: string; model: string; last_inform: string | null; stale: boolean }[] }>('/api/genieacs/bulk/preview', { method: 'POST', body: JSON.stringify({ filters }) }),
+  acsBulkRun: (data: { filters: AcsBulkFilters; action: string; params: Record<string, unknown>; confirm_count: number }) => request<{ success: boolean; message?: string; job: AcsBulkJob }>('/api/genieacs/bulk/run', { method: 'POST', body: JSON.stringify(data) }),
+  acsBulkJobs: () => request<{ success: boolean; jobs: AcsBulkJob[] }>('/api/genieacs/bulk/jobs'),
+  acsBulkJob: (id: number) => request<{ success: boolean; job: AcsBulkJob }>(`/api/genieacs/bulk/jobs/${id}`),
+  acsBulkCancel: (id: number) => request<{ success: boolean }>(`/api/genieacs/bulk/jobs/${id}/cancel`, { method: 'POST' }),
   genieacsSync: () => request<{ success: boolean; matched: number; total: number; errors: string[] }>('/api/genieacs/sync', { method: 'POST' }),
   onuTr069: (id: number) => request<{ success: boolean; connected: boolean; match_method?: string; pinned?: boolean; last_synced?: string; params: Tr069Params | null; faults?: AcsFault[] }>(`/api/onu/${id}/tr069`),
   aiSettings: () => request<{ success: boolean; config: Record<string, unknown> }>('/api/ai/settings'),
@@ -358,6 +364,14 @@ export interface RxHistoryPoint {
   tx_avg?: number | null;
   onu_rx_avg?: number | null;
   samples?: number;
+}
+
+export interface AcsBulkFilters { olt_id?: number; model?: string; node_type?: string; node_id?: number; status?: string }
+export interface AcsBulkJob {
+  id: number; action: string; params: Record<string, unknown>; filters: AcsBulkFilters;
+  total: number; done: number; queued: number; failed: number;
+  status: 'running' | 'finished' | 'cancelled'; created_by: string; created_at: string | null; finished_at: string | null;
+  items?: { onu_id: number; name: string; status: string; message: string }[];
 }
 
 export interface AcsFault {
