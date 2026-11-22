@@ -241,7 +241,17 @@ export function ViewOnu() {
 
   const doAction = async (action: string, label: string) => {
     const variant = action === 'delete' ? 'danger' : 'warning';
-    const ok = await confirm({ title: `${label}?`, message: `${label} ONU "${onu.name}"?`, confirmLabel: label, variant });
+    // Teks khusus per aksi bila ada; selain itu kalimat umum.
+    const known: Record<string, string> = {
+      reset: 'reboot', 'restore-wifi': 'wifi', enable: 'enable', disable: 'disable',
+      'clear-config': 'clear', 'restore-factory': 'factory', delete: 'delete',
+    };
+    const k = known[action];
+    const ok = await confirm({
+      title: k ? t(`vo.act_${k}_title`) : t('vo.actionConfirmTitle', { action: label }),
+      message: k ? t(`vo.act_${k}_msg`, { name: onu.name }) : t('vo.actionConfirmMsg', { action: label, name: onu.name }),
+      confirmLabel: label, variant,
+    });
     if (ok) actionMut.mutate(action);
   };
   const openFieldEdit = (label: string, field: string, value: string) => setModal({ type: 'editField', data: { label, field, value } });
@@ -422,7 +432,7 @@ export function ViewOnu() {
               key: 'resync', label: t('viewOnu.resyncConfig'), icon: <RefreshCw size={16} />,
               disabled: !!pendingAction,
               onClick: async () => {
-                const ok = await confirm({ title: t('vo.resyncTitle'), message: t('vo.resyncMsg', { name: onu.name }), confirmLabel: 'Resync', variant: 'warning' });
+                const ok = await confirm({ title: t('vo.resyncTitle'), message: t('vo.resyncMsg', { name: onu.name }), confirmLabel: t('vo.resyncConfirm'), variant: 'warning' });
                 if (ok) {
                   setPendingAction('resync');
                   try {
@@ -449,7 +459,7 @@ export function ViewOnu() {
                 const ok = await confirm({
                   title: t('vo.resetReconfigTitle'),
                   message: t('vo.resetReconfigMsg', { name: onu.name }),
-                  confirmLabel: 'Reset + Reconfig',
+                  confirmLabel: t('vo.resetReconfigConfirm'),
                   variant: 'warning',
                 });
                 if (ok) actionMut.mutate('restore-factory-keep');
@@ -894,7 +904,7 @@ function EditFieldModal({ data, onSave, onClose, loading }: { data: Record<strin
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
   return (
-    <Modal open onClose={onClose} title={`Edit ${data.label as string}`}
+    <Modal open onClose={onClose} title={t('vo.editFieldTitle', { label: data.label as string })}
       footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={loading} onClick={() => onSave(val)}>{t('vo.saveChanges')}</Button></>}
     >
       <input ref={ref} type="text" value={val} onChange={e => setVal(e.target.value)} className="input-field" onKeyDown={e => { if (e.key === 'Enter') onSave(val); }} />
@@ -1081,7 +1091,7 @@ function OnuTypeModal({ onuId, oltId, currentType, onClose, onSuccess }: { onuId
   }, [oltId]);
   const save = async () => { if (!selected) { toast.error(t('vo.selectTypeFirst')); return; } setLoading(true); try { const res = await fetch(`/api/onu/${onuId}/update-field`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ field: 'onu_type', value: selected }) }); const d = await res.json(); if (d.success) { onSuccess(); toast.success(t('vo.typeUpdated')); } else { toast.error(d.message || 'Failed to update ONU type'); } } catch { toast.error('Failed'); } setLoading(false); };
   return (
-    <Modal open onClose={onClose} title="Onu Type"
+    <Modal open onClose={onClose} title={t('vo.onuTypeTitle')}
       footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={loading} onClick={save}>{t('vo.saveChanges')}</Button></>}
     >
       <p className="text-xs text-tx3 mb-3">{status}</p>
@@ -1151,7 +1161,7 @@ function WanEditModal({ data, onuId, oltId, serialNumber, onClose, onSuccess }: 
   );
 
   return (
-    <Modal open onClose={onClose} icon={<Globe size={16} />} title={`Service ${svcIdx}`} size="md"
+    <Modal open onClose={onClose} icon={<Globe size={16} />} title={t('vo.serviceTitle', { n: svcIdx })} size="md"
       footer={<><Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={loading} onClick={save}>{t('vo.saveChanges')}</Button></>}
     >
       <div className="space-y-3 md:space-y-4">
@@ -1481,7 +1491,7 @@ function AclEditModal({ data, onuId, onClose, onSuccess }: { data: Record<string
   };
 
   const deleteAcl = async () => {
-    const ok = await confirm({ title: t('vo.deleteAcl'), message: t('vo.deleteAclMsg'), confirmLabel: 'Delete', variant: 'danger' });
+    const ok = await confirm({ title: t('vo.deleteAcl'), message: t('vo.deleteAclMsg'), confirmLabel: t('common.delete'), variant: 'danger' });
     if (ok) {
       try {
         const res = await fetch(`/api/onu/${onuId}/section-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ section: 'acl', action: 'delete', index: data.index, data: {} }) });
@@ -1492,7 +1502,7 @@ function AclEditModal({ data, onuId, onClose, onSuccess }: { data: Record<string
   };
 
   return (
-    <Modal open onClose={onClose} icon={<Shield size={16} />} title="Remote Access" size="md"
+    <Modal open onClose={onClose} icon={<Shield size={16} />} title={t('vo.remoteAccessTitle')} size="md"
       footer={
         <div className="w-full flex items-center justify-between gap-2">
           {!isNew ? <Button variant="danger" icon={<Trash2 size={14} />} onClick={deleteAcl}>Delete</Button> : <span />}
@@ -2039,10 +2049,10 @@ function Tr069Panel({ onuId }: { onuId: number }) {
             <Button variant="ghost" onClick={() => api.onuTr069Refresh(onuId).then(() => { toast.success(t('vo.refreshSent')); refetch(); })}>
               Refresh
             </Button>
-            <Button variant="ghost" onClick={async () => { if (await confirm({ title: 'Reboot via GenieACS', message: t('vo.rebootAcsMsg'), variant: 'warning' })) api.onuTr069Reboot(onuId).then(r => r.success ? toast.success(t('vo.rebootSent')) : toast.error(r.message)); }}>
+            <Button variant="ghost" onClick={async () => { if (await confirm({ title: t('vo.rebootAcsTitle'), message: t('vo.rebootAcsMsg'), confirmLabel: 'Reboot', variant: 'warning' })) api.onuTr069Reboot(onuId).then(r => r.success ? toast.success(t('vo.rebootSent')) : toast.error(r.message)); }}>
               Reboot
             </Button>
-            <Button variant="ghost" onClick={async () => { if (await confirm({ title: 'Factory Reset via GenieACS', message: t('vo.factoryAcsMsg'), variant: 'warning' })) api.onuTr069FactoryReset(onuId).then(r => r.success ? toast.success(t('vo.factorySent')) : toast.error(r.message)); }}>
+            <Button variant="ghost" onClick={async () => { if (await confirm({ title: t('vo.factoryAcsTitle'), message: t('vo.factoryAcsMsg'), confirmLabel: t('vo.factoryReset'), variant: 'danger' })) api.onuTr069FactoryReset(onuId).then(r => r.success ? toast.success(t('vo.factorySent')) : toast.error(r.message)); }}>
               {t('vo.factoryReset')}
             </Button>
             <Button variant="ghost" onClick={() => setShowCfg(v => !v)}>
