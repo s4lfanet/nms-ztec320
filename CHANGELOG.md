@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Redesign Fase 2: Pengaturan OLT
+
+#### Diubah
+- **Pengaturan OLT**: 11 ikon kecil tanpa label per OLT diringkas jadi **Sync**, **Konfigurasi OLT**, dan menu **Lainnya** berlabel (Edit koneksi, Save Config, Export, Backup, Deteksi slot, Port PON, Migrasi PON, Migrasi antar-OLT) — di HP menu tampil sebagai bottom sheet. **Hapus OLT** dipisah di bagian bawah menu sebagai aksi merusak. Fungsi dan konfirmasi tidak berubah.
+- CI: `.gitguardian.yaml` mengabaikan `frontend/dist` (hasil build minified) — sumber di `frontend/src` tetap dipindai.
+
 ### 2026-11-22 — Redesign Fase 2: Detail ONU
 
 #### Diubah
