@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Zap, ToggleLeft, ToggleRight, Server, Terminal, RefreshCw, Save, X } from 'lucide-react';
 import { toast } from '../components/Toast';
@@ -30,6 +31,7 @@ const DEFAULT_FORM: ZtpConfig = {
 };
 
 export function AutoProvision() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [form, setForm] = useState<ZtpConfig>(DEFAULT_FORM);
   const [vlanSelect, setVlanSelect] = useState('');
@@ -130,13 +132,13 @@ export function AutoProvision() {
       <PageHeader
         icon={<Zap size={22} className="text-accent" />}
         title="Auto Provisioning (ZTP)"
-        description="Registrasi otomatis modem GPON & EPON yang belum terkonfigurasi — tanpa perlu registrasi manual satu-satu."
+        description={t('pg_autoprov.automaticallyRegisterUnconfiguredGpon')}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-5">
         <div className="xl:col-span-1">
           <Card
-            title="Status Auto-Register"
+            title={t('pg_autoprov.autoRegisterStatus')}
             icon={<Server size={16} className="mr-2" />}
             action={
               <button
@@ -149,11 +151,11 @@ export function AutoProvision() {
               </button>
             }
           >
-            <p className="text-xs text-tx3 -mt-2 mb-4">Bot mengecek ONU baru tiap 1 menit saat aktif. VLAN & profile diambil dari data actual OLT (hasil sync).</p>
+            <p className="text-xs text-tx3 -mt-2 mb-4">{t('pg_autoprov.whenEnabledTheBot')}</p>
 
             <div className="space-y-4">
               <div>
-                <label className="label-sm mb-2 block">OLT yang Diizinkan (Target)</label>
+                <label className="label-sm mb-2 block">{t('pg_autoprov.allowedOltsTarget')}</label>
                 <div className="bg-black/20 border border-brd rounded-xl p-3 max-h-40 overflow-y-auto space-y-2">
                   {olts.map(o => (
                     <label key={o.id} className="flex items-center gap-2 text-sm cursor-pointer hover:text-accent transition-colors">
@@ -162,19 +164,19 @@ export function AutoProvision() {
                       {o.name}
                     </label>
                   ))}
-                  {olts.length === 0 && <p className="text-xs text-tx3 italic">Tidak ada OLT tersedia.</p>}
+                  {olts.length === 0 && <p className="text-xs text-tx3 italic">{t('pg_autoprov.noOltsAvailable')}</p>}
                 </div>
                 <div className="flex gap-3 mt-2">
                   <button type="button" disabled={!form.ztp_enabled} onClick={() => setForm(f => ({ ...f, ztp_allowed_olts: olts.map(o => o.id) }))}
-                    className="text-[10px] text-accent hover:underline disabled:opacity-40">Pilih Semua</button>
+                    className="text-[10px] text-accent hover:underline disabled:opacity-40">{t('pg_autoprov.selectAll')}</button>
                   <button type="button" disabled={!form.ztp_enabled} onClick={() => setForm(f => ({ ...f, ztp_allowed_olts: [] }))}
-                    className="text-[10px] text-tx3 hover:underline disabled:opacity-40">Hapus Semua</button>
+                    className="text-[10px] text-tx3 hover:underline disabled:opacity-40">{t('pg_autoprov.clearAll')}</button>
                 </div>
               </div>
 
               <div className="border-t border-brd pt-4">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="label-sm block">VLAN Internet (boleh lebih dari 1)</label>
+                  <label className="label-sm block">{t('pg_autoprov.internetVlanMoreThan')}</label>
                   <button type="button" onClick={() => refetchOptions()} disabled={!form.ztp_enabled}
                     className="text-[10px] text-accent hover:underline disabled:opacity-40 flex items-center gap-1">
                     <RefreshCw size={10} /> Refresh
@@ -217,14 +219,14 @@ export function AutoProvision() {
                     Tambah
                   </Button>
                 </div>
-                <p className="text-[10px] text-tx3 mt-1">Tiap VLAN akan dibuatkan satu service pada ONU yang ter-register.</p>
+                <p className="text-[10px] text-tx3 mt-1">{t('pg_autoprov.eachVlanGetsOne')}</p>
               </div>
 
               <div className="border-t border-brd pt-4">
-                <Select label="Mode VLAN" value={form.ztp_vlan_mode}
+                <Select label={t('pg_autoprov.vlanMode')} value={form.ztp_vlan_mode}
                   onChange={e => setForm(f => ({ ...f, ztp_vlan_mode: e.target.value }))}
                   disabled={!form.ztp_enabled}
-                  options={[{ value: 'tag', label: 'Tag (Standar)' }, { value: 'untag', label: 'Untag (Transparan)' }]} />
+                  options={[{ value: 'tag', label: t('pg_autoprov.tagStandard') }, { value: 'untag', label: t('pg_autoprov.untagTransparent') }]} />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-brd pt-4">
@@ -237,7 +239,7 @@ export function AutoProvision() {
                 ) : (
                   <Input label="GPON Upload (TCONT)" value={form.ztp_profile}
                     onChange={e => setForm(f => ({ ...f, ztp_profile: e.target.value }))}
-                    disabled={!form.ztp_enabled} placeholder="mis. UP-1G" />
+                    disabled={!form.ztp_enabled} placeholder={t('pg_autoprov.eGUp1g')} />
                 )}
                 {trafficOpts.length > 0 ? (
                   <Select label="GPON Download (Traffic)"
@@ -248,7 +250,7 @@ export function AutoProvision() {
                 ) : (
                   <Input label="GPON Download (Traffic)" value={form.ztp_traffic_profile}
                     onChange={e => setForm(f => ({ ...f, ztp_traffic_profile: e.target.value }))}
-                    disabled={!form.ztp_enabled} placeholder="mis. DOWN-1G" />
+                    disabled={!form.ztp_enabled} placeholder={t('pg_autoprov.eGDown1g')} />
                 )}
                 {slaOpts.length > 0 ? (
                   <Select label="EPON SLA"
@@ -259,7 +261,7 @@ export function AutoProvision() {
                 ) : (
                   <Input label="EPON SLA" value={form.ztp_epon_sla}
                     onChange={e => setForm(f => ({ ...f, ztp_epon_sla: e.target.value }))}
-                    disabled={!form.ztp_enabled} placeholder="mis. UP-1G" />
+                    disabled={!form.ztp_enabled} placeholder={t('pg_autoprov.eGUp1g')} />
                 )}
               </div>
 
@@ -273,7 +275,7 @@ export function AutoProvision() {
 
         <div className="xl:col-span-2">
           <Card
-            title="Live Logs"
+            title={t('pg_autoprov.liveLogs')}
             icon={<Terminal size={16} className="mr-2" />}
             action={
               <Button variant="icon" onClick={() => refetchLogs()} disabled={loadingLogs}>

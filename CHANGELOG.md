@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Terjemahan kelompok 4a: halaman sistem & alat
+
+#### Diubah
+- **Template ONU, Profil TR069 (+ GenieACS), Monitoring Trafik, Server PPPoE Mikrotik, Manajemen User, Log Aktivitas, Log OLT, Terminal OLT, Laporan, Update Sistem, Cloudflare Tunnel, Auto Provisioning, AI Agent** kini mengikuti pilihan bahasa. Deskripsi template bawaan, tab Log OLT, dan daftar laporan diterjemahkan saat ditampilkan.
+
 ### 2026-11-22 — Terjemahan kelompok 3: Detail ONU, Konfigurasi OLT
 
 #### Diubah

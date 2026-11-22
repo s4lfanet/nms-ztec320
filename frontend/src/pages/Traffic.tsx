@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Activity, ArrowDown, ArrowUp, Server, Radio, Clock } from 'lucide-react';
@@ -72,6 +73,7 @@ function MiniTrafficChart({ points, portName }: { points: TrafficPoint[]; portNa
 function HistorySection({ title, subtitle, oltId, portType, portName, period }: {
   title: string; subtitle: string; oltId: number; portType: 'uplink' | 'pon'; portName: string; period: string;
 }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['traffic-history', oltId, portType, portName, period],
     queryFn: () => api.trafficHistory({ olt_id: oltId, port_type: portType, port_name: portName, period }),
@@ -92,9 +94,9 @@ function HistorySection({ title, subtitle, oltId, portType, portName, period }: 
         </div>
       </div>
       {isLoading ? (
-        <div className="h-[160px] flex items-center justify-center text-tx3 text-xs">Loading...</div>
+        <div className="h-[160px] flex items-center justify-center text-tx3 text-xs">{t('pg_traffic.loading')}</div>
       ) : chartData.length === 0 ? (
-        <div className="h-[160px] flex items-center justify-center text-tx3 text-xs">No Data</div>
+        <div className="h-[160px] flex items-center justify-center text-tx3 text-xs">{t('pg_traffic.noData')}</div>
       ) : (
         <ResponsiveContainer width="100%" height={160}>
           <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -126,6 +128,7 @@ function HistorySection({ title, subtitle, oltId, portType, portName, period }: 
 
 /* ─── Live traffic section (polls every 5s via real telnet read) ─── */
 function LiveTrafficSection({ oltId, portType, portName }: { oltId: number; portType: 'uplink' | 'pon'; portName: string }) {
+  const { t } = useTranslation();
   const [samples, setSamples] = useState<{ t: string; dl: number; ul: number }[]>([]);
   const [current, setCurrent] = useState<{ rx: number; tx: number } | null>(null);
   const [error, setError] = useState(false);
@@ -154,8 +157,8 @@ function LiveTrafficSection({ oltId, portType, portName }: { oltId: number; port
     <div>
       <div className="flex items-center justify-between mb-2">
         <div>
-          <div className="text-sm font-semibold text-tx1">Live Traffic</div>
-          <div className="text-xs text-tx3">Real-time — update every 5s</div>
+          <div className="text-sm font-semibold text-tx1">{t('pg_traffic.liveTraffic')}</div>
+          <div className="text-xs text-tx3">{t('pg_traffic.realTimeUpdatesEvery')}</div>
         </div>
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5 text-sm font-bold text-danger"><ArrowDown size={14} /> {current ? fmtMbps(current.rx) : '—'}</span>
@@ -163,9 +166,9 @@ function LiveTrafficSection({ oltId, portType, portName }: { oltId: number; port
         </div>
       </div>
       {error && samples.length === 0 ? (
-        <div className="h-[160px] flex items-center justify-center text-tx3 text-xs">No Data (device unreachable)</div>
+        <div className="h-[160px] flex items-center justify-center text-tx3 text-xs">{t('pg_traffic.noDataDeviceUnreachable')}</div>
       ) : samples.length < 2 ? (
-        <div className="h-[160px] flex items-center justify-center text-tx3 text-xs">Collecting live data...</div>
+        <div className="h-[160px] flex items-center justify-center text-tx3 text-xs">{t('pg_traffic.collectingLiveData')}</div>
       ) : (
         <ResponsiveContainer width="100%" height={160}>
           <AreaChart data={samples} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -199,21 +202,22 @@ function LiveTrafficSection({ oltId, portType, portName }: { oltId: number; port
 function TrafficDetailModal({ oltId, oltName, portType, portName, onClose }: {
   oltId: number; oltName: string; portType: 'uplink' | 'pon'; portName: string; onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Modal open onClose={onClose} title={`${oltName} · ${portName}`} icon={<Activity size={18} className="mr-2" />} size="lg">
       <div className="space-y-6">
         <LiveTrafficSection oltId={oltId} portType={portType} portName={portName} />
         <div className="border-t border-brd pt-5">
-          <HistorySection title="Last 1 Day" subtitle="30-minute interval" oltId={oltId} portType={portType} portName={portName} period="1d" />
+          <HistorySection title={t('pg_traffic.last1Day')} subtitle="30-minute interval" oltId={oltId} portType={portType} portName={portName} period="1d" />
         </div>
         <div className="border-t border-brd pt-5">
-          <HistorySection title="Last 3 Days" subtitle="1-hour interval" oltId={oltId} portType={portType} portName={portName} period="3d" />
+          <HistorySection title={t('pg_traffic.last3Days')} subtitle="1-hour interval" oltId={oltId} portType={portType} portName={portName} period="3d" />
         </div>
         <div className="border-t border-brd pt-5">
-          <HistorySection title="Last 7 Days" subtitle="2-hour interval" oltId={oltId} portType={portType} portName={portName} period="7d" />
+          <HistorySection title={t('pg_traffic.last7Days')} subtitle="2-hour interval" oltId={oltId} portType={portType} portName={portName} period="7d" />
         </div>
         <div className="border-t border-brd pt-5">
-          <HistorySection title="Last 30 Days" subtitle="6-hour interval" oltId={oltId} portType={portType} portName={portName} period="30d" />
+          <HistorySection title={t('pg_traffic.last30Days')} subtitle="6-hour interval" oltId={oltId} portType={portType} portName={portName} period="30d" />
         </div>
       </div>
     </Modal>
@@ -222,6 +226,7 @@ function TrafficDetailModal({ oltId, oltName, portType, portName, onClose }: {
 
 /* ─── Main Traffic page ─── */
 export function Traffic() {
+  const { t } = useTranslation();
   const [oltId, setOltId] = useState<number | null>(null);
   const [portType, setPortType] = useState<'uplink' | 'pon'>('pon');
   const [period, setPeriod] = useState('6h');
@@ -260,8 +265,8 @@ export function Traffic() {
     <PageContainer className="animate-fade-in">
       <PageHeader
         icon={<Activity size={22} className="text-accent" />}
-        title="Monitoring Trafik"
-        description="Pemakaian bandwidth real-time dan riwayat per OLT / port PON"
+        title={t('pg_traffic.trafficMonitoring')}
+        description={t('pg_traffic.realTimeAndHistorical')}
       />
 
       {/* Filters */}
@@ -273,10 +278,10 @@ export function Traffic() {
               value={oltId ?? ''}
               onChange={e => setOltId(Number(e.target.value))}
               className="w-auto"
-              aria-label="Pilih OLT"
+              aria-label={t('pg_traffic.selectOlt')}
               options={olts.length > 0
                 ? olts.map(o => ({ value: String(o.id), label: o.name }))
-                : [{ value: '', label: 'No OLT available' }]}
+                : [{ value: '', label: t('pg_traffic.noOltAvailable') }]}
             />
 
             <div className="flex items-center rounded-lg bg-glass border border-brd p-0.5 ml-1">
@@ -296,7 +301,7 @@ export function Traffic() {
           </div>
 
           <div className="flex items-center gap-2 text-xs text-tx3">
-            <Clock size={13} /> Timezone: <span className="font-medium text-tx2">{timezoneLabel}</span>
+            <Clock size={13} /> {t('pg_traffic.timezone')} <span className="font-medium text-tx2">{timezoneLabel}</span>
           </div>
         </div>
 
@@ -316,7 +321,7 @@ export function Traffic() {
           <SearchBar
             value={search}
             onChange={setSearch}
-            placeholder="Search interface..."
+            placeholder={t('pg_traffic.searchInterface')}
             className="flex-1 md:flex-none md:w-64"
           />
         </div>
@@ -329,11 +334,11 @@ export function Traffic() {
 
       {/* Grid */}
       {isLoading ? (
-        <div className="glass-card p-10 text-center text-tx3 text-sm">Loading traffic data...</div>
+        <div className="glass-card p-10 text-center text-tx3 text-sm">{t('pg_traffic.loadingTrafficData')}</div>
       ) : !oltId ? (
-        <EmptyState icon={Server} title="No OLT with CLI access configured yet" description="Add CLI credentials to an OLT in OLT Settings to monitor its traffic." />
+        <EmptyState icon={Server} title={t('pg_traffic.noOltWithCli')} description={t('pg_traffic.addCliCredentialsTo')} />
       ) : cards.length === 0 ? (
-        <EmptyState icon={Radio} title={`No ${portType === 'uplink' ? 'uplink' : 'PON'} ports found`} description="This OLT has no ports of this type, or it hasn't synced yet." />
+        <EmptyState icon={Radio} title={t(portType === 'uplink' ? 'pg_traffic.noUplinkPorts' : 'pg_traffic.noPonPorts')} description={t('pg_traffic.thisOltHasNo')} />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {cards.map(card => (
@@ -357,7 +362,7 @@ export function Traffic() {
               {card.has_data ? (
                 <MiniTrafficChart points={card.points} portName={card.port_name} />
               ) : (
-                <div className="h-[130px] flex items-center justify-center text-tx3 text-xs">No Data</div>
+                <div className="h-[130px] flex items-center justify-center text-tx3 text-xs">{t('pg_traffic.noData')}</div>
               )}
             </Card>
           ))}

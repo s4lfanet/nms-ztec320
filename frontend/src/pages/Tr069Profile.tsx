@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Server, Lock, Unlock, FileText, Globe, RefreshCw, Link2, CheckCircle2, XCircle } from 'lucide-react';
 import { api } from '../lib/api';
@@ -21,6 +22,7 @@ interface Tr069Profile {
 }
 
 export default function Tr069Profile() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const hasPerm = useHasPerm();
   const canManage = hasPerm('manage_tr069');
@@ -52,18 +54,18 @@ export default function Tr069Profile() {
   const deleteMut = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`/api/tr069/${id}`, { method: 'DELETE', credentials: 'include' });
-      if (!res.ok) throw new Error('Delete failed');
+      if (!res.ok) throw new Error(t('pg_tr069.deleteFailed'));
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tr069-profiles'] }); toast.success('Profile deleted'); },
-    onError: () => toast.error('Delete failed'),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tr069-profiles'] }); toast.success(t('pg_tr069.profileDeleted')); },
+    onError: () => toast.error(t('pg_tr069.deleteFailed')),
   });
 
   return (
     <PageContainer>
       <PageHeader
-        title="Profil TR069"
-        description="Kelola profil ACS untuk manajemen jarak jauh TR069"
+        title={t('pg_tr069.tr069Profiles')}
+        description={t('pg_tr069.manageAcsProfilesFor')}
         action={canManage && (
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setModal({ mode: 'add' })}>
             Create
@@ -76,23 +78,23 @@ export default function Tr069Profile() {
       {/* Table */}
       <Card bodyClassName="p-0">
         {isLoading ? (
-          <div className="p-8 text-center text-tx3 text-sm">Loading...</div>
+          <div className="p-8 text-center text-tx3 text-sm">{t('pg_tr069.loading')}</div>
         ) : profiles.length === 0 ? (
-          <EmptyState icon={FileText} title="No TR069 profiles yet" description='Click "Create" to add one.' />
+          <EmptyState icon={FileText} title={t('pg_tr069.noTr069ProfilesYet')} description='Click "Create" to add one.' />
         ) : (
           <>
           <table className="hidden md:table w-full text-sm">
             <thead>
               <tr className="border-b border-brd text-tx3 text-xs uppercase tracking-wider">
                 <th className="px-4 py-3 text-left">#</th>
-                <th className="px-4 py-3 text-left">Profile Name</th>
+                <th className="px-4 py-3 text-left">{t('pg_tr069.profileName')}</th>
                 <th className="px-4 py-3 text-left">ACS URL</th>
                 <th className="px-4 py-3 text-left">Username</th>
                 <th className="px-4 py-3 text-left">Password</th>
-                <th className="px-4 py-3 text-left">Default OLT</th>
+                <th className="px-4 py-3 text-left">{t('pg_tr069.defaultOlt')}</th>
                 <th className="px-4 py-3 text-left">VLAN</th>
                 <th className="px-4 py-3 text-left">Mode</th>
-                <th className="px-4 py-3 text-right">Action</th>
+                <th className="px-4 py-3 text-right">{t('pg_tr069.action')}</th>
               </tr>
             </thead>
             <tbody>
@@ -130,7 +132,7 @@ export default function Tr069Profile() {
                       {canManage && <button
                         onClick={() => { if (confirm(`Delete profile "${p.name}"?`)) deleteMut.mutate(p.id); }}
                         className="p-1.5 rounded-lg hover:bg-danger/10 text-tx3 hover:text-danger"
-                        title="Delete"
+                        title={t('pg_tr069.delete')}
                       >
                         <Trash2 size={16} />
                       </button>}
@@ -213,6 +215,7 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     name: profile?.name || '',
     acs_url: profile?.acs_url || '',
@@ -236,10 +239,10 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
         credentials: 'include',
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error('Failed');
+      if (!res.ok) throw new Error(t('pg_tr069.failed'));
       onSuccess();
     } catch {
-      toast.error('Failed to save profile');
+      toast.error(t('pg_tr069.failedToSaveProfile'));
     } finally {
       setSubmitting(false);
     }
@@ -252,7 +255,7 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
       title={mode === 'add' ? 'Add TR069 Profile' : 'Edit TR069 Profile'}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Close</Button>
+          <Button variant="ghost" onClick={onClose}>{t('pg_tr069.close')}</Button>
           <Button variant="primary" onClick={submit} loading={submitting} disabled={!form.name || !form.acs_url}>
             {submitting ? 'Saving...' : 'Submit'}
           </Button>
@@ -261,8 +264,8 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
     >
       <div className="space-y-3">
         <div>
-          <label className="label-sm mb-1">Profile Name</label>
-          <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" placeholder="e.g. ACS-SVR-MAIN" />
+          <label className="label-sm mb-1">{t('pg_tr069.profileName')}</label>
+          <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-field" placeholder={t('pg_tr069.eGAcsSvr')} />
         </div>
         <div>
           <label className="label-sm mb-1">ACS URL</label>
@@ -298,7 +301,7 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
                   onChange={e => setForm({ ...form, vlan: parseInt(e.target.value) || 0 })}
                   className="flex-1"
                   options={[
-                    { value: '0', label: 'Select VLAN...' },
+                    { value: '0', label: t('pg_tr069.selectVlan') },
                     ...vlanList.map(v => ({ value: String(v.vlan_id), label: `${v.vlan_id} — ${v.name || '(unnamed)'}` })),
                   ]}
                 />
@@ -307,15 +310,15 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
               )
             )}
           </div>
-          {form.vlan_mode === 'untag' && <p className="text-xs text-tx3 mt-1">Untag mode: no VLAN tag applied to TR069 traffic.</p>}
+          {form.vlan_mode === 'untag' && <p className="text-xs text-tx3 mt-1">{t('pg_tr069.untagModeNoVlan')}</p>}
         </div>
         <Select
-          label="Default OLT (optional)"
+          label={t('pg_tr069.defaultOltOptional')}
           value={form.default_olt_id || ''}
           onChange={e => setForm({ ...form, default_olt_id: e.target.value ? parseInt(e.target.value) : null })}
           helperText="If selected, this profile will be automatically applied when registering an ONT on that OLT."
           options={[
-            { value: '', label: '— None —' },
+            { value: '', label: t('pg_tr069.none') },
             ...olts.map(o => ({ value: String(o.id), label: o.name })),
           ]}
         />
@@ -325,6 +328,7 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
 }
 
 function GenieAcsSettings() {
+  const { t } = useTranslation();
   const hasPerm = useHasPerm();
   const canManage = hasPerm('genieacs_manage');
   const [nbiUrl, setNbiUrl] = useState('');
@@ -362,7 +366,7 @@ function GenieAcsSettings() {
       });
       setHasPassword(hasPassword || !!nbiPassword);
       setNbiPassword('');
-      toast.success('Pengaturan GenieACS disimpan');
+      toast.success(t('pg_tr069.genieacsSettingsSaved'));
     } catch (e) {
       toast.error((e as Error).message || 'Gagal menyimpan');
     } finally {
@@ -389,8 +393,8 @@ function GenieAcsSettings() {
     setSyncing(true);
     try {
       const r = await api.genieacsSync();
-      toast.success(`Sync selesai: ${r.matched}/${r.total} ONU tertaut ke device GenieACS`);
-      if (r.errors?.length) toast.error(`${r.errors.length} error — lihat log`);
+      toast.success(t('pg_tr069.syncDone', { matched: r.matched, total: r.total }));
+      if (r.errors?.length) toast.error(t('pg_tr069.syncErrors', { n: r.errors.length }));
     } catch (e) {
       toast.error((e as Error).message || 'Sync gagal');
     } finally {
@@ -412,22 +416,22 @@ function GenieAcsSettings() {
         Hubungkan ke server GenieACS untuk panel TR-069 per ONU di View ONU (reboot, refresh params, set WiFi).
       </p>
       {isLoading ? (
-        <div className="text-xs text-tx3">Loading…</div>
+        <div className="text-xs text-tx3">{t('pg_tr069.loading2')}</div>
       ) : (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="NBI URL" value={nbiUrl} onChange={e => setNbiUrl(e.target.value)}
               placeholder="http://genieacs:7557" />
-            <Input label="Username (opsional)" value={nbiUser} onChange={e => setNbiUser(e.target.value)}
+            <Input label={t('pg_tr069.usernameOptional')} value={nbiUser} onChange={e => setNbiUser(e.target.value)}
               placeholder="admin" />
             <Input label={hasPassword ? 'Password (tersimpan — isi untuk ganti)' : 'Password (opsional)'}
               type="password" value={nbiPassword} onChange={e => setNbiPassword(e.target.value)}
               placeholder={hasPassword ? '••••••••' : ''} />
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" icon={<Server size={14} />} onClick={save} loading={saving}>Simpan</Button>
-            <Button variant="secondary" icon={<RefreshCw size={14} />} onClick={test} loading={testing}>Test Koneksi</Button>
-            <Button variant="secondary" icon={<Link2 size={14} />} onClick={sync} loading={syncing}>Sync Devices</Button>
+            <Button variant="primary" icon={<Server size={14} />} onClick={save} loading={saving}>{t('pg_tr069.save')}</Button>
+            <Button variant="secondary" icon={<RefreshCw size={14} />} onClick={test} loading={testing}>{t('pg_tr069.testConnection')}</Button>
+            <Button variant="secondary" icon={<Link2 size={14} />} onClick={sync} loading={syncing}>{t('pg_tr069.syncDevices')}</Button>
           </div>
         </div>
       )}

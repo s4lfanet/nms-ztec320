@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from '../components/Toast';
 import {
   GitBranch, Download, CheckCircle2, AlertCircle,
@@ -26,6 +27,7 @@ interface UpdateApplyResult {
 }
 
 export function SystemUpdate() {
+  const { t } = useTranslation();
   const [checking, setChecking] = useState(false);
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
@@ -40,7 +42,7 @@ export function SystemUpdate() {
       setResult(d);
       if (!d.success) toast.error(d.message || 'Check failed');
     } catch {
-      toast.error('Failed to check for updates');
+      toast.error(t('pg_sysupdate.failedToCheckFor'));
     }
     setChecking(false);
   };
@@ -64,7 +66,7 @@ export function SystemUpdate() {
         toast.error(d.message || 'Update failed');
       }
     } catch {
-      toast.error('Failed to apply update');
+      toast.error(t('pg_sysupdate.failedToApplyUpdate'));
     }
     setApplying(false);
   };
@@ -77,8 +79,8 @@ export function SystemUpdate() {
             <GitBranch size={20} className="text-accent" />
           </div>
         }
-        title="Update Sistem"
-        description="Cek dan pasang pembaruan dari repository GitHub"
+        title={t('pg_sysupdate.systemUpdate')}
+        description={t('pg_sysupdate.checkAndApplyUpdates')}
       />
 
       {/* Check section */}
@@ -86,8 +88,8 @@ export function SystemUpdate() {
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold">Check for Updates</h3>
-              <p className="text-xs text-tx3 mt-0.5">Compare local version with GitHub remote</p>
+              <h3 className="text-sm font-semibold">{t('pg_sysupdate.checkForUpdates')}</h3>
+              <p className="text-xs text-tx3 mt-0.5">{t('pg_sysupdate.compareLocalVersionWith')}</p>
             </div>
             <Button
               variant="primary"
@@ -106,12 +108,12 @@ export function SystemUpdate() {
                 {result.up_to_date ? (
                   <>
                     <CheckCircle2 size={18} className="text-success" />
-                    <span className="text-sm text-success font-medium">System is up to date</span>
+                    <span className="text-sm text-success font-medium">{t('pg_sysupdate.systemIsUpTo')}</span>
                   </>
                 ) : (
                   <>
                     <AlertCircle size={18} className="text-warning" />
-                    <span className="text-sm text-warning font-medium">Update available</span>
+                    <span className="text-sm text-warning font-medium">{t('pg_sysupdate.updateAvailable')}</span>
                   </>
                 )}
                 <div className="ml-auto text-xs text-tx3 font-mono">
@@ -190,10 +192,10 @@ export function SystemUpdate() {
           <Download size={14} /> How It Works
         </h4>
         <ul className="text-xs text-tx3 space-y-1.5 pl-4 list-disc">
-          <li><strong>Check</strong>: Fetches latest from GitHub and compares commit hashes</li>
-          <li><strong>Apply</strong>: Runs <code className="text-tx2">git pull</code>, rebuilds frontend with <code className="text-tx2">pnpm build</code>, and restarts the service</li>
-          <li>The app will be briefly unavailable during restart (a few seconds)</li>
-          <li>Only super admin can perform updates</li>
+          <li><strong>{t('pg_sysupdate.check')}</strong>{t('pg_sysupdate.fetchesLatestFromGithub')}</li>
+          <li><strong>Apply</strong>{t('pg_sysupdate.runs')} <code className="text-tx2">git pull</code>{t('pg_sysupdate.rebuildsFrontendWith')} <code className="text-tx2">pnpm build</code>{t('pg_sysupdate.andRestartsTheService')}</li>
+          <li>{t('pg_sysupdate.theAppWillBe')}</li>
+          <li>{t('pg_sysupdate.onlySuperAdminCan')}</li>
         </ul>
       </Card>
     </PageContainer>

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import { api, type RoleData } from '../lib/api';
@@ -11,6 +12,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, Tabs, Modal, Input, Select } from '../components/ui';
 
 export function UserManagement() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const hasPerm = useHasPerm();
@@ -36,56 +38,56 @@ export function UserManagement() {
   // User mutations
   const createUserMut = useMutation({
     mutationFn: api.createUser,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success('User created'); setUserModal(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('pg_users.userCreated')); setUserModal(null); },
     onError: (e: Error) => toast.error(e.message || 'Create failed'),
   });
 
   const updateUserMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Parameters<typeof api.updateUser>[1] }) => api.updateUser(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success('User updated'); setUserModal(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('pg_users.userUpdated')); setUserModal(null); },
     onError: (e: Error) => toast.error(e.message || 'Update failed'),
   });
 
   const deleteUserMut = useMutation({
     mutationFn: async (id: number) => {
       const u = userList.find(x => x.id === id);
-      const ok = await confirm({ title: 'Delete User', message: `Delete user "${u?.full_name}"? This cannot be undone.`, confirmLabel: 'Delete', variant: 'danger' });
+      const ok = await confirm({ title: t('pg_users.deleteUser'), message: t('pg_users.deleteUserMsg', { name: u?.full_name }), confirmLabel: t('pg_users.delete'), variant: 'danger' });
       if (!ok) throw new Error('cancelled');
       return api.deleteUser(id);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success('User deleted'); },
-    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error('Delete failed'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('pg_users.userDeleted')); },
+    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error(t('pg_users.deleteFailed')); },
   });
 
   // Role mutations
   const createRoleMut = useMutation({
     mutationFn: api.createRole,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success('Role created'); setRoleModal(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('pg_users.roleCreated')); setRoleModal(null); },
     onError: (e: Error) => toast.error(e.message || 'Create failed'),
   });
 
   const updateRoleMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Parameters<typeof api.updateRole>[1] }) => api.updateRole(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success('Role updated'); setRoleModal(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('pg_users.roleUpdated')); setRoleModal(null); },
     onError: (e: Error) => toast.error(e.message || 'Update failed'),
   });
 
   const deleteRoleMut = useMutation({
     mutationFn: async (id: number) => {
       const r = roleList.find(x => x.id === id);
-      const ok = await confirm({ title: 'Delete Role', message: `Delete role "${r?.name}"? Users with this role will lose access.`, confirmLabel: 'Delete', variant: 'danger' });
+      const ok = await confirm({ title: t('pg_users.deleteRole'), message: t('pg_users.deleteRoleMsg', { name: r?.name }), confirmLabel: t('pg_users.delete'), variant: 'danger' });
       if (!ok) throw new Error('cancelled');
       return api.deleteRole(id);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success('Role deleted'); },
-    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error('Delete failed'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('pg_users.roleDeleted')); },
+    onError: (e: Error) => { if (e.message !== 'cancelled') toast.error(t('pg_users.deleteFailed')); },
   });
 
   return (
     <PageContainer className="animate-fade-in">
       <PageHeader
-        title="Manajemen User"
-        description="Kelola akun pengguna dan hak akses (role)"
+        title={t('pg_users.userManagement')}
+        description={t('pg_users.manageUserAccountsAnd')}
         action={
           canManage && (
             tab === 'users' ? (
@@ -119,8 +121,8 @@ export function UserManagement() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">User</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Username</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Role</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Phone</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-tx3 uppercase">Actions</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('pg_users.phone')}</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-tx3 uppercase">{t('pg_users.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -142,12 +144,12 @@ export function UserManagement() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {canManage && <button onClick={() => setUserModal({ mode: 'edit', id: u.id })}
-                        className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent transition-colors" title="Edit">
+                        className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent transition-colors" title={t('pg_users.edit')}>
                         <Edit3 size={14} />
                       </button>}
                       {canManage && u.id !== currentUser?.id && (
                         <button onClick={() => deleteUserMut.mutate(u.id)}
-                          className="p-1.5 rounded-lg hover:bg-danger/15 text-tx3 hover:text-danger transition-colors" title="Delete">
+                          className="p-1.5 rounded-lg hover:bg-danger/15 text-tx3 hover:text-danger transition-colors" title={t('pg_users.delete')}>
                           <Trash2 size={14} />
                         </button>
                       )}
@@ -199,16 +201,16 @@ export function UserManagement() {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-sm md:text-base">{r.name}</h3>
-                    {r.is_system && <span className="px-2 py-0.5 rounded-full text-xs bg-info/15 text-info">System</span>}
+                    {r.is_system && <span className="px-2 py-0.5 rounded-full text-xs bg-info/15 text-info">{t('pg_users.system')}</span>}
                   </div>
                   <div className="flex items-center gap-1">
                     {canManage && <button onClick={() => setRoleModal({ mode: 'edit', id: r.id })}
-                      className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent transition-colors" title="Edit">
+                      className="p-1.5 rounded-lg hover:bg-accent/15 text-tx3 hover:text-accent transition-colors" title={t('pg_users.edit')}>
                       <Edit3 size={14} />
                     </button>}
                     {canManage && !r.is_system && (
                       <button onClick={() => deleteRoleMut.mutate(r.id)}
-                        className="p-1.5 rounded-lg hover:bg-danger/15 text-tx3 hover:text-danger transition-colors" title="Delete">
+                        className="p-1.5 rounded-lg hover:bg-danger/15 text-tx3 hover:text-danger transition-colors" title={t('pg_users.delete')}>
                         <Trash2 size={14} />
                       </button>
                     )}
@@ -269,6 +271,7 @@ function UserModal({ mode, id, roles, onClose, onSave, loading }: {
   onSave: (data: { full_name: string; username: string; password: string; role_id: number | null; phone: string }) => void;
   loading: boolean;
 }) {
+  const { t } = useTranslation();
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -291,7 +294,7 @@ function UserModal({ mode, id, roles, onClose, onSave, loading }: {
 
   const handleSubmit = () => {
     if (!fullName || !username || (!password && mode === 'add')) {
-      toast.error('Please fill all required fields');
+      toast.error(t('pg_users.pleaseFillAllRequired'));
       return;
     }
     onSave({ full_name: fullName, username, password, role_id: roleId, phone });
@@ -307,7 +310,7 @@ function UserModal({ mode, id, roles, onClose, onSave, loading }: {
       icon={<User size={18} className="text-accent mr-2" />}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={onClose}>{t('pg_users.cancel')}</Button>
           <Button variant="primary" icon={<Save size={14} />} onClick={handleSubmit} loading={loading}>
             {loading ? 'Saving...' : 'Save'}
           </Button>
@@ -315,8 +318,8 @@ function UserModal({ mode, id, roles, onClose, onSave, loading }: {
       }
     >
       <div className="space-y-3">
-        <Input label="Full Name *" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Enter full name" />
-        <Input label="Username *" value={username} onChange={e => setUsername(e.target.value)} placeholder="Enter username" disabled={mode === 'edit'} />
+        <Input label={t('pg_users.fullName')} value={fullName} onChange={e => setFullName(e.target.value)} placeholder={t('pg_users.enterFullName')} />
+        <Input label={t('pg_users.usernameReq')} value={username} onChange={e => setUsername(e.target.value)} placeholder={t('pg_users.enterUsername')} disabled={mode === 'edit'} />
         <Input
           label={`Password ${mode === 'add' ? '*' : '(leave blank to keep)'}`}
           type="password" value={password} onChange={e => setPassword(e.target.value)}
@@ -327,12 +330,12 @@ function UserModal({ mode, id, roles, onClose, onSave, loading }: {
           value={roleId ?? ''}
           onChange={e => setRoleId(e.target.value ? Number(e.target.value) : null)}
           options={[
-            { value: '', label: '— Select role —' },
+            { value: '', label: t('pg_users.selectRole') },
             ...roles.map(r => ({ value: String(r.id), label: r.name })),
           ]}
         />
         <Input
-          label={<>Phone Number <span className="text-tx3/60">(for WA alerts)</span></>}
+          label={<>{t('pg_users.phoneNumber')} <span className="text-tx3/60">{t('pg_users.forWaAlerts')}</span></>}
           value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 628123456789"
         />
       </div>
@@ -349,6 +352,7 @@ function RoleModal({ mode, id, roles, permissions, onClose, onSave, loading }: {
   onSave: (data: { name: string; description: string; permissions: string[] }) => void;
   loading: boolean;
 }) {
+  const { t } = useTranslation();
   const role = mode === 'edit' ? roles.find(r => r.id === id) : null;
   const [name, setName] = useState(role?.name || '');
   const [description, setDescription] = useState(role?.description || '');
@@ -362,7 +366,7 @@ function RoleModal({ mode, id, roles, permissions, onClose, onSave, loading }: {
 
   const handleSubmit = () => {
     if (!name) {
-      toast.error('Role name is required');
+      toast.error(t('pg_users.roleNameIsRequired'));
       return;
     }
     onSave({ name, description, permissions: selectedPerms });
@@ -379,7 +383,7 @@ function RoleModal({ mode, id, roles, permissions, onClose, onSave, loading }: {
       size="lg"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={onClose}>{t('pg_users.cancel')}</Button>
           <Button variant="primary" icon={<Save size={14} />} onClick={handleSubmit} loading={loading}>
             {loading ? 'Saving...' : 'Save'}
           </Button>
@@ -387,10 +391,10 @@ function RoleModal({ mode, id, roles, permissions, onClose, onSave, loading }: {
       }
     >
       <div className="space-y-3">
-        <Input label="Role Name *" value={name} onChange={e => setName(e.target.value)} placeholder="Enter role name" disabled={isSystem} />
-        <Input label="Description" value={description} onChange={e => setDescription(e.target.value)} placeholder="Enter description" />
+        <Input label={t('pg_users.roleName')} value={name} onChange={e => setName(e.target.value)} placeholder={t('pg_users.enterRoleName')} disabled={isSystem} />
+        <Input label={t('pg_users.description')} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('pg_users.enterDescription')} />
         <div>
-          <label className="label-sm block">Permissions</label>
+          <label className="label-sm block">{t('pg_users.permissions')}</label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
             {Object.entries(permissions).map(([key, label]) => (
               <label key={key} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-glass border border-brd cursor-pointer hover:border-accent/30 transition-all">

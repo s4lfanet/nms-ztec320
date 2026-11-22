@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { OnuStatusHistoryRecord } from '../lib/api';
@@ -49,6 +50,7 @@ function formatTime(iso: string | null): string {
 }
 
 export function OltLogs() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<LogTab>('statushistory');
   const [lineLimit, setLineLimit] = useState(200);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -95,8 +97,8 @@ export function OltLogs() {
   return (
     <PageContainer className="p-4 md:p-6">
       <PageHeader
-        title="Log OLT"
-        description="Log perangkat OLT dan aktivitas sinkronisasi NMS"
+        title={t('pg_oltlogs.oltLogs')}
+        description={t('pg_oltlogs.oltDeviceLogsAnd')}
         action={
           <>
             {olts.length > 0 && (
@@ -104,7 +106,7 @@ export function OltLogs() {
                 value={selectedOltId ?? ''}
                 onChange={(e) => setOltId(Number(e.target.value))}
                 className="w-auto"
-                aria-label="Pilih OLT"
+                aria-label={t('pg_oltlogs.selectOlt')}
                 options={olts.map(o => ({ value: String(o.id), label: o.name }))}
               />
             )}
@@ -113,7 +115,7 @@ export function OltLogs() {
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-auto"
-                aria-label="Filter status"
+                aria-label={t('pg_oltlogs.filterStatus')}
                 options={STATUS_FILTERS.map(s => ({ value: s, label: s === 'all' ? 'All Status' : s }))}
               />
             )}
@@ -121,7 +123,7 @@ export function OltLogs() {
               value={lineLimit}
               onChange={(e) => setLineLimit(Number(e.target.value))}
               className="w-auto"
-              aria-label="Line limit"
+              aria-label={t('pg_oltlogs.lineLimit')}
               options={LINE_LIMITS.map(n => ({ value: String(n), label: `${n} ${isStatusHistory ? 'records' : 'lines'}` }))}
             />
             <Button
@@ -150,7 +152,7 @@ export function OltLogs() {
             )}
           >
             {tab.icon}
-            {tab.label}
+            {t(`pg_oltlogs.tab_${tab.key}`)}
           </button>
         ))}
       </div>
@@ -158,7 +160,7 @@ export function OltLogs() {
       {/* Tab description */}
       <div className="flex items-center gap-2 text-xs text-tx3">
         <Info size={12} />
-        {currentTab.desc}
+        {t(`pg_oltlogs.tab_${currentTab.key}_desc`)}
       </div>
 
       {/* Content area */}
@@ -168,27 +170,27 @@ export function OltLogs() {
             <span className="text-xs text-tx3">
               {isLoading ? 'Loading...' : `${records.length} records`}
             </span>
-            <span className="text-xs text-tx3 font-mono">ONU Status History</span>
+            <span className="text-xs text-tx3 font-mono">{t('pg_oltlogs.onuStatusHistory')}</span>
           </div>
           <div className="max-h-[70vh] overflow-y-auto">
             {isLoading ? (
-              <LoadingOverlay label="Loading history..." />
+              <LoadingOverlay label={t('pg_oltlogs.loadingHistory')} />
             ) : error ? (
               <div className="flex items-center gap-2 text-danger py-4 px-4">
                 <AlertTriangle size={14} />
                 {(error as Error).message}
               </div>
             ) : records.length === 0 ? (
-              <EmptyState icon={Activity} title="No status changes recorded yet" />
+              <EmptyState icon={Activity} title={t('pg_oltlogs.noStatusChangesRecorded')} />
             ) : (
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-bg3 z-10">
                   <tr className="text-left text-xs text-tx3 border-b border-border">
-                    <th className="px-3 py-2 font-medium">Time</th>
+                    <th className="px-3 py-2 font-medium">{t('pg_oltlogs.time')}</th>
                     <th className="px-3 py-2 font-medium">ONU</th>
-                    <th className="px-3 py-2 font-medium">Name</th>
-                    <th className="px-3 py-2 font-medium">Change</th>
-                    <th className="px-3 py-2 font-medium">Reason</th>
+                    <th className="px-3 py-2 font-medium">{t('pg_oltlogs.name')}</th>
+                    <th className="px-3 py-2 font-medium">{t('pg_oltlogs.change')}</th>
+                    <th className="px-3 py-2 font-medium">{t('pg_oltlogs.reason')}</th>
                     <th className="px-3 py-2 font-medium">RX</th>
                     <th className="px-3 py-2 font-medium">Src</th>
                   </tr>
@@ -227,14 +229,14 @@ export function OltLogs() {
           </div>
           <div className="font-mono text-xs leading-relaxed max-h-[70vh] overflow-y-auto p-3">
             {isLoading ? (
-              <LoadingOverlay label="Loading logs..." />
+              <LoadingOverlay label={t('pg_oltlogs.loadingLogs')} />
             ) : error ? (
               <div className="flex items-center gap-2 text-danger py-4 px-2">
                 <AlertTriangle size={14} />
                 {(error as Error).message}
               </div>
             ) : lines.length === 0 ? (
-              <EmptyState icon={FileText} title="No log entries found" description={logData?.message} />
+              <EmptyState icon={FileText} title={t('pg_oltlogs.noLogEntriesFound')} description={logData?.message} />
             ) : (
               <div className="space-y-0">
                 {lines.map((line, i) => (

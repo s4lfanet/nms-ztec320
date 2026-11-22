@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -12,6 +13,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import 'xterm/css/xterm.css';
 
 export function Terminal() {
+  const { t } = useTranslation();
   const hasPerm = useHasPerm();
   const canUse = hasPerm('olt_terminal');
   const [params, setParams] = useSearchParams();
@@ -51,7 +53,7 @@ export function Terminal() {
       // Get WS token
       const tokResp = await fetch('/api/ws-token', { credentials: 'include' });
       const { token } = await tokResp.json();
-      if (!token) { toast.error('Gagal ambil WS token'); return; }
+      if (!token) { toast.error(t('pg_terminal.failedToGetWs')); return; }
       // Init terminal
       if (term.current) { term.current.dispose(); }
       term.current = new XTerm({
@@ -86,15 +88,15 @@ export function Terminal() {
     setStatus('closed');
   };
 
-  if (!canUse) return <PageContainer><div className="text-xs text-tx3">Anda tidak punya izin olt_terminal.</div></PageContainer>;
+  if (!canUse) return <PageContainer><div className="text-xs text-tx3">{t('pg_terminal.youDonTHave')}</div></PageContainer>;
 
   return (
     <PageContainer>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-bold flex items-center gap-2"><TermIcon size={20} className="text-accent" /> Terminal OLT</h1>
+        <h1 className="text-xl font-bold flex items-center gap-2"><TermIcon size={20} className="text-accent" /> {t('pg_terminal.oltTerminal')}</h1>
         <select value={oltId} onChange={e => setParams({ olt: e.target.value }, { replace: true })}
           className="px-2 py-1.5 text-xs rounded bg-surface border border-brd focus:border-accent outline-none">
-          <option value={0}>— pilih OLT —</option>
+          <option value={0}>{t('pg_terminal.selectOlt')}</option>
           {Array.isArray(oltList) && oltList.map((o: any) => (
             <option key={o.id} value={o.id}>{o.name} ({o.ip_address})</option>
           ))}
@@ -108,12 +110,12 @@ export function Terminal() {
           <button onClick={connect} disabled={!oltId || status === 'connecting'}
             className="px-3 py-1.5 text-xs rounded bg-accent text-white hover:bg-accent/80 disabled:opacity-50 flex items-center gap-1.5">
             <RefreshCw size={12} className={status === 'connecting' ? 'animate-spin' : ''} />
-            {status === 'connecting' ? 'Menghubungkan…' : 'Hubungkan'}
+            {status === 'connecting' ? t('pg_terminal.connecting') : t('pg_terminal.connect')}
           </button>
         ) : (
           <button onClick={disconnect}
             className="px-3 py-1.5 text-xs rounded bg-danger text-white hover:bg-danger/80 flex items-center gap-1.5">
-            <Power size={12} /> Putus
+            <Power size={12} /> {t('pg_terminal.disconnect')}
           </button>
         )}
         {currentOlt && <span className="text-xs text-tx3">{currentOlt.vendor} • {currentOlt.ip_address}</span>}
@@ -123,7 +125,7 @@ export function Terminal() {
           'bg-glass text-tx3'}`}>{status}</span>
       </div>
       <div className="text-[10px] text-tx3 mb-2">
-        Idle timeout: 10 menit • Max session: 60 menit • Semua command diaudit (password tidak dicatat)
+        {t('pg_terminal.limits')}
       </div>
       <div className="relative">
         <div ref={termRef} className="rounded-lg border border-brd overflow-hidden" style={{ minHeight: 480, background: '#0d1117' }} />
@@ -132,8 +134,8 @@ export function Terminal() {
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center">
             <div className="max-w-xs text-sm text-slate-400">
               <TermIcon size={28} className="mx-auto mb-3 text-slate-500" aria-hidden="true" />
-              {oltId ? <>Tekan <strong className="text-slate-200">Hubungkan</strong> untuk membuka sesi {proto.toUpperCase()} ke {currentOlt?.name || 'OLT'}.</>
-                : <>Pilih OLT di atas, lalu tekan <strong className="text-slate-200">Hubungkan</strong>.</>}
+              {oltId ? <>{t('pg_terminal.press')} <strong className="text-slate-200">{t('pg_terminal.connect')}</strong> {t('pg_terminal.toOpenSession', { proto: proto.toUpperCase(), olt: currentOlt?.name || 'OLT' })}</>
+                : <>{t('pg_terminal.selectAnOltAbove')} <strong className="text-slate-200">{t('pg_terminal.connect')}</strong>.</>}
             </div>
           </div>
         )}
