@@ -1316,6 +1316,7 @@ def _deep_link_url(target_type, target_id):
         'jc': f'/dashboard/ftth?tab=jc&jc={target_id}',
         'otb': f'/dashboard/ftth?tab=otb&otb={target_id}',
         'pon': f'/dashboard/onus?pon={target_id}',
+        'incident': f'/dashboard/incidents/{target_id}',
     }
     path = routes.get(target_type)
     return f'{base}{path}' if path else ''
@@ -1327,6 +1328,9 @@ def _inject_deep_link(alerts):
         url = _deep_link_url(a.get('target_type'), a.get('target_id'))
         if url and url not in (a.get('message') or ''):
             a['message'] = (a.get('message') or '') + f"\n🔗 Lihat detail: {url}"
+        inc_url = _deep_link_url('incident', a.get('incident_id'))
+        if inc_url and inc_url not in (a.get('message') or ''):
+            a['message'] = (a.get('message') or '') + f"\n🛠️ Terima & update insiden: {inc_url}"
 
 
 _OUTAGE_LABEL = {'odp': 'ODP', 'odc': 'ODC', 'jc': 'JC', 'otb': 'OTB/ODF'}
@@ -1430,44 +1434,6 @@ def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force
         roots = list(qualifying)
     root_set = set(roots)
 
-    # ── Resolve outage notifications whose node is no longer the root ──
-    open_notifs = Notification.query.filter(
-        Notification.category.in_(['odp_outage', 'outage']),
-        Notification.resolved == False,  # noqa: E712
-        Notification.olt_id.in_(list(olt_by_id.keys())),
-    ).all()
-    for n in open_notifs:
-        key = (n.target_type or '', n.target_id)
-        if key in root_set:
-            continue
-        n.resolved = True
-        n.resolved_at = now
-        still_down = len(covered.get(key, {})) or (len(direct_odp.get(key[1], [])) if key[0] == 'odp' else 0)
-        if still_down >= threshold:
-            continue  # superseded by an alert on a node above it — not a recovery
-        node = get_node(key[0], key[1])
-        label = _OUTAGE_LABEL.get(key[0], key[0].upper())
-        name = getattr(node, 'name', None) or f"#{key[1]}"
-        olt = olt_by_id.get(n.olt_id)
-        alerts_to_send.append({
-            'type': f"{n.category}_recovery",
-            'severity': 'info',
-            'title': f"✅ Pulih: {label} {name}",
-            'message': (
-                f"✅ GANGGUAN {label.upper()} PULIH\n\n"
-                f"{label}: {name}\n"
-                f"OLT: {olt.name if olt else '?'}\n"
-                f"ONU yang tadinya down sudah kembali online.\n"
-                f"🕒 {_fmt_time(now)}"
-            ),
-            'olt_name': olt.name if olt else '',
-            'olt_ip': olt.ip_address if olt else '',
-            'olt_id': n.olt_id,
-            'is_recovery': True,
-            'target_type': key[0],
-            'target_id': key[1],
-        })
-
     # ── Emit one alert per root node ──
     for node_type, node_id in roots:
         node = get_node(node_type, node_id)
@@ -1531,6 +1497,15 @@ def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force
                 f"🕒 {_fmt_time(now)}"
             )
 
+        incident_id = None
+        try:
+            from incidents import upsert_incident
+            inc, _created = upsert_incident(node_type, node_id, node.name, category, _cause,
+                                            title, olt, down, now)
+            incident_id = inc.id
+        except Exception as e:
+            logger.warning(f"[ALERT] incident upsert failed: {e}")
+
         existing = Notification.query.filter_by(
             category=category, target_type=node_type, target_id=node_id, resolved=False
         ).first()
@@ -1565,6 +1540,7 @@ def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force
                 'target_type': node_type,
                 'target_id': node_id,
                 'cause': _cause,
+                'incident_id': incident_id,
             })
 
         hist = AlertHistory.query.filter_by(olt_id=olt, alert_type=category).first()
@@ -1576,6 +1552,59 @@ def _check_odp_outages(olts, now, notifications_to_create, alerts_to_send, force
                 olt_id=olt, alert_type=category,
                 last_value=str(len(down)), last_alert_at=now
             ))
+
+    # ── Resolve outage notifications whose node is no longer the root ──
+    open_notifs = Notification.query.filter(
+        Notification.category.in_(['odp_outage', 'outage']),
+        Notification.resolved == False,  # noqa: E712
+        Notification.olt_id.in_(list(olt_by_id.keys())),
+    ).all()
+    for n in open_notifs:
+        key = (n.target_type or '', n.target_id)
+        if key in root_set:
+            continue
+        n.resolved = True
+        n.resolved_at = now
+        still_down = len(covered.get(key, {})) or (len(direct_odp.get(key[1], [])) if key[0] == 'odp' else 0)
+        if still_down >= threshold:
+            continue  # superseded by an alert on a node above it — not a recovery
+        node = get_node(key[0], key[1])
+        label = _OUTAGE_LABEL.get(key[0], key[0].upper())
+        name = getattr(node, 'name', None) or f"#{key[1]}"
+        olt = olt_by_id.get(n.olt_id)
+        alerts_to_send.append({
+            'type': f"{n.category}_recovery",
+            'severity': 'info',
+            'title': f"✅ Pulih: {label} {name}",
+            'message': (
+                f"✅ GANGGUAN {label.upper()} PULIH\n\n"
+                f"{label}: {name}\n"
+                f"OLT: {olt.name if olt else '?'}\n"
+                f"ONU yang tadinya down sudah kembali online.\n"
+                f"🕒 {_fmt_time(now)}"
+            ),
+            'olt_name': olt.name if olt else '',
+            'olt_ip': olt.ip_address if olt else '',
+            'olt_id': n.olt_id,
+            'is_recovery': True,
+            'target_type': key[0],
+            'target_id': key[1],
+        })
+
+    # ── Incidents (Fase 3): merge into the node above / mark recovered ──
+    def _still_down(key):
+        return len(covered.get(key, {})) or (len(direct_odp.get(key[1], [])) if key[0] == 'odp' else 0)
+
+    def _parent_root(key):
+        anc = ancestors(key[0], key[1], anc_cache)
+        return next((r for r in roots if r in anc), None)
+
+    try:
+        from incidents import close_stale_incidents
+        close_stale_incidents(set(olt_by_id), root_set, _still_down, threshold, _parent_root, now)
+    except Exception as e:
+        logger.warning(f"[ALERT] incident update failed: {e}")
+
 
 
 # ─── Unregistered ONU alert (from Telnet show pon onu uncfg) ───
@@ -1761,7 +1790,25 @@ def _technician_recipients(alerts):
             targets = list(technicians)
         for u in targets:
             out.setdefault(u, []).append(alert)
+    _record_incident_assignees(alerts)
     return out
+
+
+def _record_incident_assignees(alerts):
+    """Store who an incident was routed to (Fase 3)."""
+    try:
+        from models import db, Incident
+        changed = False
+        for a in alerts:
+            if a.get('incident_id') and a.get('assigned_user_ids'):
+                inc = db.session.get(Incident, a['incident_id'])
+                if inc and not inc.assigned_user_ids:
+                    inc.assigned_user_ids = ','.join(str(i) for i in a['assigned_user_ids'])
+                    changed = True
+        if changed:
+            db.session.commit()
+    except Exception as e:
+        logger.warning(f"[ALERT] incident assignee update failed: {e}")
 
 
 def _send_technician_alerts(alerts):

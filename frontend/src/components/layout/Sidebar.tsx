@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Radio,
-  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart
+  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, FileText, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart, Siren
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
@@ -36,6 +36,7 @@ const navItems: NavItem[] = [
     ],
   },
   { labelKey: 'nav.traffic', icon: <Activity size={20} />, path: '/dashboard/traffic', permission: 'view_dashboard' },
+  { labelKey: 'nav.incidents', icon: <Siren size={20} />, path: '/dashboard/incidents', permission: 'view_dashboard' },
   {
     labelKey: 'nav.infrastructure', icon: <Server size={20} />, permission: 'view_dashboard',
     children: [

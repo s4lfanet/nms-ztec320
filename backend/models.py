@@ -770,6 +770,51 @@ class TechnicianArea(db.Model):
     user = db.relationship('User', backref=db.backref('areas', lazy=True, cascade='all, delete-orphan'))
 
 
+class Incident(db.Model):
+    """Insiden gangguan (Fase 3): dibuat otomatis dari korelasi gangguan
+    ODP/ODC/JC/OTB. Status: open → acknowledged → en_route → on_site → resolved
+    (atau merged bila digantikan insiden di node atasnya)."""
+    __tablename__ = 'incidents'
+    id = db.Column(db.Integer, primary_key=True)
+    node_type = db.Column(db.String(10), nullable=False)
+    node_id = db.Column(db.Integer, nullable=False)
+    node_name = db.Column(db.String(150), default='')
+    category = db.Column(db.String(20), default='outage')  # odp_outage | outage
+    cause = db.Column(db.String(10), default='')  # power | fiber | mixed
+    title = db.Column(db.String(256), default='')
+    olt_id = db.Column(db.Integer, nullable=True, index=True)
+    affected_count = db.Column(db.Integer, default=0)
+    peak_affected = db.Column(db.Integer, default=0)
+    affected_onu_ids = db.Column(db.Text, default='[]')  # JSON list
+    status = db.Column(db.String(15), default='open', index=True)
+    assigned_user_ids = db.Column(db.String(200), default='')  # comma separated
+    opened_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    acknowledged_at = db.Column(db.DateTime, nullable=True)
+    acknowledged_by = db.Column(db.String(100), default='')
+    en_route_at = db.Column(db.DateTime, nullable=True)
+    on_site_at = db.Column(db.DateTime, nullable=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    resolved_by = db.Column(db.String(100), default='')
+    recovered_at = db.Column(db.DateTime, nullable=True)  # ONU terdampak kembali online
+    resolution_note = db.Column(db.Text, default='')
+    merged_into_id = db.Column(db.Integer, nullable=True)
+    escalation_level = db.Column(db.Integer, default=0)  # Fase 4
+    last_escalated_at = db.Column(db.DateTime, nullable=True)  # Fase 4
+
+
+class IncidentLog(db.Model):
+    """Riwayat insiden: perubahan status, catatan, foto."""
+    __tablename__ = 'incident_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    incident_id = db.Column(db.Integer, db.ForeignKey('incidents.id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    username = db.Column(db.String(100), default='')  # '' = sistem
+    action = db.Column(db.String(20), default='note')  # status/note/photo/system
+    status = db.Column(db.String(15), default='')
+    note = db.Column(db.Text, default='')
+    photo = db.Column(db.String(120), default='')
+
+
 class FTTHOTB(db.Model):
     """OTB/ODF at server room — top of FTTH chain, fed by OLT PON port
     (feed_source='pon', via FTTHPonPort.otb_id) or, on a distributed feeder
