@@ -1907,7 +1907,9 @@
     "downtimeNote": "Updating pulls the latest code from GitHub and restarts the service — the app is unavailable for a few seconds and the page reloads automatically. \"Ignore\" hides this notice until the next update.",
     "details": "See details on the System Update page",
     "applying": "Fetching the update from GitHub…",
-    "restarting": "Service restarting — the page will reload automatically…"
+    "restarting": "Service restarting — the page will reload automatically…",
+    "swReady": "A new app version is ready — it applies when you open another page.",
+    "swReload": "Reload"
   },
   "cmp_search": {
     "searchOnusOltsOdps": "Search ONUs, OLTs, ODPs, ODCs, users…",

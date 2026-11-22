@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Tidak ada lagi reload halaman mendadak
+
+#### Diperbaiki
+- **Dashboard (dan halaman lain) kadang memuat ulang seluruh halaman sendiri.** Penyebabnya bukan refresh otomatis dashboard — itu hanya memperbarui data tiap 30 detik tanpa reload — melainkan service worker PWA yang memuat ulang halaman seketika setiap kali versi aplikasi baru terpasang (setelah Apply Update/deploy). Sekarang versi baru menunggu: muncul pemberitahuan kecil "Versi baru aplikasi siap" dengan tombol **Muat ulang**, dan otomatis diterapkan saat Anda pindah halaman.
+- Setelah update, bila sebuah halaman gagal dibuka karena file versi lama sudah tidak ada di server, aplikasi memuat ulang sekali secara otomatis (bukan layar error).
+- Alur **Update sekarang** di dialog update mengaktifkan versi baru dengan benar sebelum memuat ulang.
+
+Catatan: perangkat yang masih memakai versi lama akan mengalami satu kali reload otomatis terakhir saat update ini terpasang.
+
 ### 2026-11-22 — Menu sidebar dikelompokkan
 
 #### Diubah

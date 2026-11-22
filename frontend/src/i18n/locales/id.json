@@ -1907,7 +1907,9 @@
     "downtimeNote": "Update mengambil kode terbaru dari GitHub lalu me-restart service — aplikasi tidak bisa diakses beberapa detik dan halaman dimuat ulang otomatis. \"Abaikan\" menyembunyikan pemberitahuan ini sampai ada update berikutnya.",
     "details": "Lihat detail di halaman Update Sistem",
     "applying": "Mengambil update dari GitHub…",
-    "restarting": "Service memulai ulang — halaman dimuat ulang otomatis…"
+    "restarting": "Service memulai ulang — halaman dimuat ulang otomatis…",
+    "swReady": "Versi baru aplikasi siap — diterapkan saat Anda pindah halaman.",
+    "swReload": "Muat ulang"
   },
   "cmp_search": {
     "searchOnusOltsOdps": "Cari ONU, OLT, ODP, ODC, user…",

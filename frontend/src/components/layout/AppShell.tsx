@@ -11,6 +11,7 @@ import { OfflineBanner } from '../OfflineBanner';
 import { ForcePasswordChange } from '../ForcePasswordChange';
 import { PushPrompt } from '../PushPrompt';
 import { UpdatePrompt } from '../UpdatePrompt';
+import { SwUpdateNotice } from '../SwUpdateNotice';
 
 // Navigasi bawah HP (redesign Fase 1): Gangguan langsung terjangkau dari
 // lapangan, "Lainnya" membuka menu samping (semua halaman lain, termasuk
@@ -64,6 +65,7 @@ export function AppShell() {
         <ForcePasswordChange />
         <PushPrompt />
         <UpdatePrompt />
+        <SwUpdateNotice />
         <div className="app-mesh-bg" aria-hidden="true" />
 
         <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onToggle={() => setCollapsed(!collapsed)} onMobileClose={() => setMobileOpen(false)} />
