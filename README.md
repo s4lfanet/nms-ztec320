@@ -84,7 +84,7 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 - **Sensitive config masking**: Password/token di-mask untuk non-admin (termasuk di log, bukan cuma response API)
 - **Password policy & enforcement**: Minimal 8 karakter, menolak password umum/default. Login dengan password bawaan memaksa popup ganti password (`must_change_password` di-enforce server-side — semua API diblokir sampai diganti). Ganti password sendiri wajib `current_password`
 - **Loopback binds**: WebSocket/terminal dan WhatsApp gateway di-bind ke `127.0.0.1` di installer VPS (nginx yang me-proxy ke luar)
-- **System update from web UI**: Check dan apply GitHub updates langsung dari browser — updater memakai `frontend/dist` yang ter-commit (tanpa Node di server) dan build fallback yang aman. Pop-up **Update tersedia** untuk super admin (cek GitHub tiap 6 jam, tidak auto-apply)
+- **System update from web UI**: Check dan apply GitHub updates langsung dari browser — updater memakai `frontend/dist` yang ter-commit (tanpa Node di server) dan build fallback yang aman. Dialog **Update tersedia** di tengah halaman untuk super admin — **Update sekarang** atau **Abaikan** langsung dari dialog (cek GitHub tiap 6 jam, tidak auto-apply)
 
 ### FTTH Infrastructure
 - Manajemen hierarki OTB → ODC → ODP

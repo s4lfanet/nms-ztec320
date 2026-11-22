@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Pemberitahuan update jadi dialog di tengah halaman
+
+#### Diubah
+- Pemberitahuan **Update tersedia** (super admin) kini muncul sebagai dialog di tengah halaman (di HP dari bawah), bukan kartu kecil di pojok. Isinya daftar perubahan, keterangan bahwa service akan restart sebentar, tombol **Update sekarang** (langsung memasang tanpa konfirmasi tambahan) dan **Abaikan** (disembunyikan sampai ada update berikutnya), plus link ke halaman Update Sistem. Teks dialog mengikuti bahasa.
+
 ### 2026-11-22 — Teks dialog konfirmasi dirapikan
 
 #### Diubah
