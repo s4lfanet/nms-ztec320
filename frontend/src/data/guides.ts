@@ -206,6 +206,7 @@ export const guides: Guide[] = [
       'Column visibility & order bisa diatur di Customization page',
       'Export CSV include semua ONU (tidak terfilter by pagination)',
       'Match MAC butuh MikroTik yang sudah ditambahkan di menu Mikrotik — mulai dari mode Selisih ±1, naikkan bila banyak yang tidak cocok',
+      'Untuk MikroTik buat user khusus NMS dengan group policy read,api,test saja (cukup untuk /ppp/active dan ping), dan pakai api-ssl (port 8729) agar login tidak lewat jaringan tanpa enkripsi',
     ],
   },
   {
@@ -559,6 +560,10 @@ export const guides: Guide[] = [
       {
         title: 'Usage',
         content: 'TR069 profile dipakai oleh 4 template: ZTE Single, ZTE Dual Band, ZTE Multi-Service, dan Fiberhome VEIP — dipilih dari dropdown saat konfigurasi ONU di Register/Provision Wizard.',
+      },
+      {
+        title: 'Perintah ke modem (GenieACS)',
+        content: 'Di Detail ONU → panel TR-069, perintah (refresh, reboot, ganti SSID, dll.) dikirim lewat GenieACS. Bila modem langsung merespons, muncul **dikirim**. Bila modem tidak menjawab *connection request* (mis. di balik NAT), muncul **antre** — perintah tetap dijalankan otomatis saat modem lapor (inform) berikutnya, tidak perlu diulang.\n\nModem TR-181 (parameter Device.*) didukung untuk melihat info, ganti SSID/password, PPPoE, dan refresh; tambah/hapus SSID dan WAN untuk TR-181 diatur langsung dari GenieACS.'
       },
     ],
   },

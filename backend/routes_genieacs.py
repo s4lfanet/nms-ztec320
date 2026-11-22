@@ -11,6 +11,14 @@ bp = Blueprint('genieacs', __name__)
 _PERM = 'genieacs_manage'
 
 
+
+def _task_resp(ok, err):
+    """queued=True: GenieACS menerima perintah tetapi modem belum merespons
+    (dijalankan saat inform berikutnya) — UI menampilkannya berbeda dari 'terkirim'."""
+    return jsonify({'success': ok, 'message': err,
+                    'queued': bool(ok and err == genieacs_client.QUEUED_MSG)})
+
+
 @bp.route('/api/genieacs/settings', methods=['GET'])
 @login_required
 def get_settings():
@@ -35,11 +43,13 @@ def save_settings():
         else:
             db.session.add(SystemConfig(key=key, value=val))
     if data.get('nbi_password'):
+        from models import encrypt_field
+        enc = encrypt_field(data['nbi_password']) or data['nbi_password']
         row = SystemConfig.query.filter_by(key='genieacs_nbi_password').first()
         if row:
-            row.value = data['nbi_password']
+            row.value = enc
         else:
-            db.session.add(SystemConfig(key='genieacs_nbi_password', value=data['nbi_password']))
+            db.session.add(SystemConfig(key='genieacs_nbi_password', value=enc))
     db.session.commit()
     log_action('genieacs_settings', 'settings', detail='Updated GenieACS NBI settings')
     return jsonify({'success': True})
@@ -89,7 +99,7 @@ def tr069_reboot(onu_id):
         return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
     ok, err = genieacs_client.reboot_device(mapping.device_id)
     log_action('tr069_reboot', 'onu', target=str(onu_id), detail=f'ok={ok} {err}')
-    return jsonify({'success': ok, 'message': err})
+    return _task_resp(ok, err)
 
 
 @bp.route('/api/onu/<int:onu_id>/tr069/refresh', methods=['POST'])
@@ -101,7 +111,7 @@ def tr069_refresh(onu_id):
         return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
     ok, err = genieacs_client.refresh_params(mapping.device_id)
     log_action('tr069_refresh', 'onu', target=str(onu_id), detail=f'ok={ok} {err}')
-    return jsonify({'success': ok, 'message': err})
+    return _task_resp(ok, err)
 
 
 @bp.route('/api/onu/<int:onu_id>/tr069/wifi', methods=['POST'])
@@ -117,7 +127,7 @@ def tr069_set_wifi(onu_id):
         data.get('band', '2.4g'), data.get('index'))
     log_action('tr069_set_wifi', 'onu', target=str(onu_id),
                detail=f'ssid={data.get("ssid","")} band={data.get("band","")} ok={ok}')
-    return jsonify({'success': ok, 'message': err})
+    return _task_resp(ok, err)
 
 
 @bp.route('/api/onu/<int:onu_id>/tr069/pin', methods=['POST'])
@@ -172,7 +182,7 @@ def tr069_set_params(onu_id):
     ok, err = genieacs_client.set_params(mapping.device_id, pairs)
     log_action('tr069_set_params', 'onu', target=str(onu_id),
                detail=f'{len(pairs)} params ok={ok}')
-    return jsonify({'success': ok, 'message': err})
+    return _task_resp(ok, err)
 
 
 @bp.route('/api/onu/<int:onu_id>/tr069/pppoe', methods=['POST'])
@@ -187,7 +197,7 @@ def tr069_set_pppoe(onu_id):
         mapping.device_id, data.get('username', ''), data.get('password'))
     log_action('tr069_set_pppoe', 'onu', target=str(onu_id),
                detail=f'user={data.get("username","")} ok={ok} {err}')
-    return jsonify({'success': ok, 'message': err})
+    return _task_resp(ok, err)
 
 
 @bp.route('/api/onu/<int:onu_id>/tr069/factory-reset', methods=['POST'])
@@ -199,7 +209,7 @@ def tr069_factory_reset(onu_id):
         return jsonify({'success': False, 'message': 'No TR-069 mapping'}), 404
     ok, err = genieacs_client.factory_reset(mapping.device_id)
     log_action('tr069_factory_reset', 'onu', target=str(onu_id), detail=f'ok={ok}')
-    return jsonify({'success': ok, 'message': err})
+    return _task_resp(ok, err)
 
 
 @bp.route('/api/onu/<int:onu_id>/tr069/tasks', methods=['GET'])
@@ -241,7 +251,7 @@ def tr069_del_object(onu_id):
         return jsonify({'success': False, 'message': 'object_name required'}), 400
     ok, err = genieacs_client.delete_object(mapping.device_id, obj)
     log_action('tr069_del_object', 'onu', target=str(onu_id), detail=f'{obj} ok={ok}')
-    return jsonify({'success': ok, 'message': err})
+    return _task_resp(ok, err)
 
 
 @bp.route('/api/onu/<int:onu_id>/tr069/add-wan', methods=['POST'])
@@ -276,4 +286,4 @@ def tr069_wan_bind(onu_id):
     ok, err = genieacs_client.bind_wan_vlan(mapping.device_id, d['conn_key'], d['vlan_id'])
     log_action('tr069_wan_bind', 'onu', target=str(onu_id),
                detail=f'{d["conn_key"]} vlan={d["vlan_id"]} ok={ok}')
-    return jsonify({'success': ok, 'message': err})
+    return _task_resp(ok, err)

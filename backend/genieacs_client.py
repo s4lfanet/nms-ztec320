@@ -20,7 +20,8 @@ def _nbi_config():
     cfg = {c.key: c.value for c in SystemConfig.query.all()}
     url = (cfg.get('genieacs_nbi_url') or '').rstrip('/')
     user = cfg.get('genieacs_nbi_user') or ''
-    pwd = cfg.get('genieacs_nbi_password') or ''
+    from models import decrypt_field
+    pwd = decrypt_field(cfg.get('genieacs_nbi_password') or '')  # plaintext lama tetap terbaca
     return url, user, pwd
 
 
@@ -52,6 +53,67 @@ def _norm_mac(v):
     return h if len(h) == 12 else ''
 
 
+QUEUED_MSG = ('Perintah antre di GenieACS: modem belum merespons connection request, '
+              'perintah dijalankan saat modem lapor (inform) berikutnya.')
+
+# device_id -> 'tr098' | 'tr181' (diisi saat fetch/get params; cukup per proses)
+_DM_CACHE = {}
+_PROJECTION = ','.join([
+    '_id', '_lastInform',
+    'InternetGatewayDevice.DeviceInfo.ModelName', 'InternetGatewayDevice.DeviceInfo.Manufacturer',
+    'Device.DeviceInfo.ModelName', 'Device.DeviceInfo.Manufacturer',
+])
+_PAGE = 500
+
+
+def _dm_of_doc(d):
+    if isinstance(d, dict) and 'Device' in d and 'InternetGatewayDevice' not in d:
+        return 'tr181'
+    return 'tr098'
+
+
+def data_model(device_id):
+    """'tr098' (InternetGatewayDevice.*) atau 'tr181' (Device.*) untuk device ini."""
+    if device_id in _DM_CACHE:
+        return _DM_CACHE[device_id]
+    url, user, pwd = _nbi_config()
+    dm = 'tr098'
+    if url and device_id:
+        try:
+            r = httpx.get(f'{url}/devices', params={'query': json.dumps({'_id': device_id}),
+                                                    'projection': 'InternetGatewayDevice.DeviceInfo.ModelName,'
+                                                                  'Device.DeviceInfo.ModelName'},
+                          auth=_auth(user, pwd), timeout=_TIMEOUT)
+            arr = r.json() if r.status_code == 200 else []
+            if isinstance(arr, list) and arr:
+                dm = _dm_of_doc(arr[0])
+        except Exception:
+            pass
+    _DM_CACHE[device_id] = dm
+    return dm
+
+
+def _post_task(device_id, body):
+    """Kirim task ke GenieACS. 200 = dijalankan modem; 202 = antre (modem tidak
+    merespons connection request). Return (ok, pesan) — pesan QUEUED_MSG bila antre."""
+    url, user, pwd = _nbi_config()
+    if not url or not device_id:
+        return False, 'NBI not configured'
+    try:
+        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
+                       json=body, auth=_auth(user, pwd), timeout=_TIMEOUT)
+    except Exception as e:
+        return False, str(e)[:200]
+    if r.status_code == 202:
+        return True, QUEUED_MSG
+    if r.status_code in (200, 204):
+        return True, ''
+    return False, f'HTTP {r.status_code}'
+
+
+TR181_UNSUPPORTED = ('Belum didukung untuk modem TR-181 (Device.*) — atur langsung dari GenieACS.')
+
+
 def fetch_devices():
     """Fetch all devices from GenieACS NBI with minimal projection.
     Returns list of dicts: {_id, serial, mac, model, vendor, last_inform, ...}"""
@@ -60,26 +122,39 @@ def fetch_devices():
         return []
     devices = []
     try:
-        r = httpx.get(f'{url}/devices', auth=_auth(user, pwd), timeout=_TIMEOUT)
-        if r.status_code != 200:
-            logger.warning('genieacs NBI /devices returned %s', r.status_code)
-            return []
-        data = r.json()
-        if not isinstance(data, list):
-            return []
+        data, skip = [], 0
+        # Hanya kolom yang dipakai untuk pencocokan (projection) dan per halaman —
+        # tanpa ini NBI mengirim seluruh pohon parameter semua modem (berat/timeout).
+        for _ in range(200):
+            r = httpx.get(f'{url}/devices', params={'projection': _PROJECTION, 'limit': _PAGE, 'skip': skip},
+                          auth=_auth(user, pwd), timeout=_TIMEOUT)
+            if r.status_code != 200:
+                logger.warning('genieacs NBI /devices returned %s', r.status_code)
+                return devices
+            page = r.json()
+            if not isinstance(page, list):
+                break
+            data.extend(page)
+            if len(page) < _PAGE:
+                break
+            skip += _PAGE
         for d in data:
             props = d.get('_props', d)  # NBI returns {_id, _props} or flat
             serial = str(props.get('SerialNumber') or props.get('X_ZTE_TECOM.SerialNumber') or '')
             mac = str(props.get('InternetGatewayDevice.DeviceInfo.ManufacturerCPE.MACAddress') or
                        props.get('MACAddress') or '')
+            dm = _dm_of_doc(d)
+            root = 'Device' if dm == 'tr181' else 'InternetGatewayDevice'
             model = str(props.get('InternetGatewayDevice.DeviceInfo.ModelName') or
-                        props.get('ModelName') or '')
+                        props.get('ModelName') or _param(d, f'{root}.DeviceInfo.ModelName') or '')
             vendor = str(props.get('InternetGatewayDevice.DeviceInfo.Manufacturer') or
-                         props.get('Manufacturer') or '')
+                         props.get('Manufacturer') or _param(d, f'{root}.DeviceInfo.Manufacturer') or '')
             last_inform = props.get('LastInform') or props.get('_lastInform')
             # Fallback: parse identity dari _id "OUI-ProductClass-SerialHex".
             # Segmen serial 16-hex: 4 byte ASCII + 4 byte hex → '4857544390D5ADAA' = 'HWTC90D5ADAA'.
             did = d.get('_id', '')
+            if did:
+                _DM_CACHE[did] = dm
             if not serial and did:
                 seg = did.rsplit('-', 1)[-1]
                 if re.fullmatch(r'[0-9A-Fa-f]{16}', seg):
@@ -174,6 +249,27 @@ def _param(tree, path):
     return node
 
 
+def _node(tree, path):
+    """Seperti _param, tetapi mengembalikan node objek (dict) apa adanya."""
+    node = tree
+    for part in path.split('.'):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(part)
+    return node if isinstance(node, dict) else None
+
+
+def _count_hosts(host_node):
+    """Jumlah perangkat terhubung: instance Host yang Active (atau semua bila
+    modem tidak melaporkan Active)."""
+    if not isinstance(host_node, dict):
+        return 0
+    inst = [v for k, v in host_node.items() if k.isdigit() and isinstance(v, dict)]
+    if any('Active' in h for h in inst):
+        return sum(1 for h in inst if str(_param(h, 'Active')).lower() in ('true', '1'))
+    return len(inst)
+
+
 def _collect(tree, path=''):
     """Yield (path, value) untuk semua leaf ber-_value di device doc."""
     if isinstance(tree, dict):
@@ -203,6 +299,10 @@ def get_device_params(device_id):
         if not isinstance(arr, list) or not arr:
             return None
         d = arr[0]
+        dm = _dm_of_doc(d)
+        _DM_CACHE[device_id] = dm
+        if dm == 'tr181':
+            return _tr181_params(device_id, d)
         # Fallback model/vendor dari _id (OUI-ProductClass-...) bila param
         # TR-069 belum ada nilainya (umum di device yang belum full refresh).
         model = _param(d, 'InternetGatewayDevice.DeviceInfo.ModelName')
@@ -213,8 +313,7 @@ def get_device_params(device_id):
         if not vendor and id_parts:
             vendor = id_parts[0]
         # Jumlah klien WiFi dari Hosts table
-        hosts = _param(d, 'InternetGatewayDevice.LANDevice.1.Hosts.Host') or {}
-        wifi_clients = len(hosts) if isinstance(hosts, dict) else 0
+        wifi_clients = _count_hosts(_node(d, 'InternetGatewayDevice.LANDevice.1.Hosts.Host'))
         uptime_s = _param(d, 'InternetGatewayDevice.DeviceInfo.UpTime')
 
         # Kumpulkan semua leaf sekaligus — PPPoE/WAN IP bisa di index
@@ -282,89 +381,118 @@ def get_device_params(device_id):
             'wan_conns': wan_list,
             'ssid_24g': str(next((s['ssid'] for s in ssid_list if s['band'] == '2.4g'), '')),
             'ssid_5g': str(next((s['ssid'] for s in ssid_list if s['band'] == '5g'), '')),
+            'data_model': 'tr098',
         }
     except Exception as e:
         logger.error('genieacs get_device_params failed: %s', e)
         return None
 
 
+def _tr181_params(device_id, d):
+    """Versi get_device_params untuk modem TR-181 (root Device.*)."""
+    def p(path):
+        return _param(d, path)
+    id_parts = (device_id or '').split('-')
+    model = p('Device.DeviceInfo.ModelName') or (id_parts[1] if len(id_parts) >= 2 else '')
+    vendor = p('Device.DeviceInfo.Manufacturer') or (id_parts[0] if id_parts else '')
+    wan_list = []
+    for idx, c in sorted((_node(d, 'Device.PPP.Interface') or {}).items(), key=lambda kv: kv[0]):
+        if not idx.isdigit() or not isinstance(c, dict):
+            continue
+        en = _param(c, 'Enable')
+        wan_list.append({'key': f'PPP.Interface.{idx}', 'index': int(idx), 'type': 'pppoe',
+                         'username': str(_param(c, 'Username') or ''),
+                         'ip': str(_param(c, 'IPCP.LocalIPAddress') or ''),
+                         'status': str(_param(c, 'ConnectionStatus') or ''),
+                         'enabled': bool(en) if en is not None else None, 'service': ''})
+    wan_ip = next((w['ip'] for w in wan_list if w['ip']), '')
+    if not wan_ip:
+        for idx, c in (_node(d, 'Device.IP.Interface') or {}).items():
+            for _, a in ((_node(c, 'IPv4Address') or {}) if isinstance(c, dict) else {}).items():
+                ip = str(_param(a, 'IPAddress') or '') if isinstance(a, dict) else ''
+                if ip and not ip.startswith(('127.', '192.168.', '169.254.')):
+                    wan_ip = ip
+                    break
+            if wan_ip:
+                break
+    radios = {}
+    for idx, r in (_node(d, 'Device.WiFi.Radio') or {}).items():
+        if idx.isdigit() and isinstance(r, dict):
+            radios[idx] = '5g' if '5' in str(_param(r, 'OperatingFrequencyBand') or '') else '2.4g'
+    ap_adv = {}
+    for idx, a in (_node(d, 'Device.WiFi.AccessPoint') or {}).items():
+        if idx.isdigit() and isinstance(a, dict):
+            v = _param(a, 'SSIDAdvertisementEnabled')
+            ap_adv[idx] = True if v is None else bool(v)
+    ssid_list = []
+    for idx, c in sorted((_node(d, 'Device.WiFi.SSID') or {}).items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0):
+        if not idx.isdigit() or not isinstance(c, dict):
+            continue
+        ssid = _param(c, 'SSID')
+        if not ssid:
+            continue
+        m = re.search(r'Radio\.(\d+)', str(_param(c, 'LowerLayers') or ''))
+        band = radios.get(m.group(1)) if m else ('2.4g' if int(idx) == 1 else '5g')
+        ssid_list.append({'ssid': str(ssid), 'band': band or '2.4g', 'index': int(idx),
+                          'active': bool(_param(c, 'Enable')) and ap_adv.get(idx, True)})
+    return {
+        '_id': device_id,
+        'last_inform': str(d.get('_lastInform') or ''),
+        'software_version': str(p('Device.DeviceInfo.SoftwareVersion') or ''),
+        'hardware_version': str(p('Device.DeviceInfo.HardwareVersion') or ''),
+        'uptime': str(p('Device.DeviceInfo.UpTime') or ''),
+        'model': str(model or ''), 'vendor': str(vendor or ''),
+        'wifi_clients': _count_hosts(_node(d, 'Device.Hosts.Host')),
+        'wan_ip': wan_ip,
+        'pppoe_username': next((w['username'] for w in wan_list if w['username']), ''),
+        'ssids': ssid_list, 'wan_conns': wan_list,
+        'ssid_24g': next((x['ssid'] for x in ssid_list if x['band'] == '2.4g'), ''),
+        'ssid_5g': next((x['ssid'] for x in ssid_list if x['band'] == '5g'), ''),
+        'data_model': 'tr181',
+    }
+
+
 def reboot_device(device_id):
     """Reboot ONU via GenieACS NBI task."""
-    url, user, pwd = _nbi_config()
-    if not url or not device_id:
-        return False, 'NBI not configured'
-    try:
-        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
-                       json={'name': 'reboot'},
-                       auth=_auth(user, pwd), timeout=_TIMEOUT)
-        if r.status_code in (200, 202, 204):
-            return True, ''
-        return False, f'HTTP {r.status_code}'
-    except Exception as e:
-        return False, str(e)[:200]
+    return _post_task(device_id, {'name': 'reboot'})
 
 
 def refresh_params(device_id):
     """Trigger a parameter refresh (GetParameterValues) via GenieACS."""
-    url, user, pwd = _nbi_config()
-    if not url or not device_id:
-        return False, 'NBI not configured'
-    try:
-        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
-                       json={'name': 'refreshObject',
-                             'objectName': 'InternetGatewayDevice.'},
-                       auth=_auth(user, pwd), timeout=_TIMEOUT)
-        if r.status_code in (200, 202, 204):
-            return True, ''
-        return False, f'HTTP {r.status_code}'
-    except Exception as e:
-        return False, str(e)[:200]
+    root = 'Device.' if data_model(device_id) == 'tr181' else 'InternetGatewayDevice.'
+    return _post_task(device_id, {'name': 'refreshObject', 'objectName': root})
 
 
 def set_wifi_ssid(device_id, ssid, password=None, band='2.4g', index=None):
     """Set WiFi SSID (and optionally password) via GenieACS NBI task.
-    index = nomor instance WLANConfiguration (prioritas atas band)."""
-    url, user, pwd = _nbi_config()
-    if not url or not device_id:
-        return False, 'NBI not configured'
+    index = nomor instance WLANConfiguration / WiFi.SSID (prioritas atas band)."""
     idx = str(index) if index else ('1' if band == '2.4g' else '2')
+    if data_model(device_id) == 'tr181':
+        pv = [[f'Device.WiFi.SSID.{idx}.SSID', ssid, 'xsd:string'],
+              [f'Device.WiFi.SSID.{idx}.Enable', True, 'xsd:boolean'],
+              [f'Device.WiFi.AccessPoint.{idx}.SSIDAdvertisementEnabled', True, 'xsd:boolean']]
+        if password:
+            pv.append([f'Device.WiFi.AccessPoint.{idx}.Security.KeyPassphrase', password, 'xsd:string'])
+        return _post_task(device_id, {'name': 'setParameterValues', 'parameterValues': pv})
     base = f'InternetGatewayDevice.LANDevice.1.WLANConfiguration.{idx}'
     params = {f'{base}.SSID': ssid, f'{base}.Enable': True,
               f'{base}.SSIDAdvertisementEnabled': True}
     if password:
         params[f'{base}.KeyPassphrase'] = password
-    try:
-        # parameterValues harus list [path, value, type] per GenieACS NBI
-        pv = [[k, v, 'xsd:string'] for k, v in params.items()]
-        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
-                       json={'name': 'setParameterValues', 'parameterValues': pv},
-                       auth=_auth(user, pwd), timeout=_TIMEOUT)
-        if r.status_code in (200, 202, 204):
-            return True, ''
-        return False, f'HTTP {r.status_code}'
-    except Exception as e:
-        return False, str(e)[:200]
+    # parameterValues harus list [path, value, type] per GenieACS NBI
+    pv = [[k, v, 'xsd:string'] for k, v in params.items()]
+    return _post_task(device_id, {'name': 'setParameterValues', 'parameterValues': pv})
 
 
 def set_params(device_id, pairs):
     """Generic setParameterValues task. pairs = {tr069_path: value}."""
-    url, user, pwd = _nbi_config()
-    if not url or not device_id:
-        return False, 'NBI not configured'
     pv = [[k, v, 'xsd:string'] for k, v in pairs.items()]
-    try:
-        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
-                       json={'name': 'setParameterValues', 'parameterValues': pv},
-                       auth=_auth(user, pwd), timeout=_TIMEOUT)
-        if r.status_code in (200, 202, 204):
-            return True, ''
-        return False, f'HTTP {r.status_code}'
-    except Exception as e:
-        return False, str(e)[:200]
+    return _post_task(device_id, {'name': 'setParameterValues', 'parameterValues': pv})
 
 
 def set_pppoe(device_id, username, password):
-    """Set PPPoE credentials — temukan prefix WANPPPConnection dari device doc."""
+    """Set PPPoE credentials pada koneksi PPP yang ada di device (TR-098:
+    WANPPPConnection index mana pun; TR-181: PPP.Interface)."""
     url, user, pwd = _nbi_config()
     if not url or not device_id:
         return False, 'NBI not configured'
@@ -375,18 +503,18 @@ def set_pppoe(device_id, username, password):
         arr = r.json()
         if not arr:
             return False, 'device not found'
-        # cari path Username aktif di WANPPPConnection index manapun
-        prefix = None
+        # Path lengkap Username yang benar-benar ada (bukan hardcode WANConnectionDevice.1)
+        base = None
         for p, _ in _collect(arr[0]):
-            m = re.search(r'(WANPPPConnection\.\d+)\.Username$', p)
+            m = re.match(r'(.*(?:WANPPPConnection|PPP\.Interface)\.\d+)\.Username$', p)
             if m:
-                prefix = m.group(1)
+                base = m.group(1)
                 break
-        if not prefix:
-            return False, 'no WANPPPConnection on device'
-        pairs = {f'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.{prefix}.Username': username}
+        if not base:
+            return False, 'no PPPoE connection on device'
+        pairs = {f'{base}.Username': username}
         if password:
-            pairs[f'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.{prefix}.Password'] = password
+            pairs[f'{base}.Password'] = password
         return set_params(device_id, pairs)
     except Exception as e:
         return False, str(e)[:200]
@@ -394,18 +522,7 @@ def set_pppoe(device_id, username, password):
 
 def factory_reset(device_id):
     """Factory reset via GenieACS task."""
-    url, user, pwd = _nbi_config()
-    if not url or not device_id:
-        return False, 'NBI not configured'
-    try:
-        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
-                       json={'name': 'factoryReset'},
-                       auth=_auth(user, pwd), timeout=_TIMEOUT)
-        if r.status_code in (200, 202, 204):
-            return True, ''
-        return False, f'HTTP {r.status_code}'
-    except Exception as e:
-        return False, str(e)[:200]
+    return _post_task(device_id, {'name': 'factoryReset'})
 
 
 def fetch_tasks(device_id, limit=10):
@@ -434,6 +551,8 @@ def fetch_tasks(device_id, limit=10):
 
 def add_object(device_id, object_name):
     """AddObject task (trailing '.' = instance baru). Return (ok, instance_or_err)."""
+    if data_model(device_id) == 'tr181' and object_name.startswith('InternetGatewayDevice.'):
+        return False, TR181_UNSUPPORTED
     url, user, pwd = _nbi_config()
     if not url or not device_id:
         return False, 'NBI not configured'
@@ -453,18 +572,7 @@ def add_object(device_id, object_name):
 
 def delete_object(device_id, object_name):
     """DeleteObject task (object_name = instance path, mis. '...WLANConfiguration.3.')."""
-    url, user, pwd = _nbi_config()
-    if not url or not device_id:
-        return False, 'NBI not configured'
-    try:
-        r = httpx.post(f'{url}/devices/{device_id}/tasks?connection_request',
-                       json={'name': 'deleteObject', 'objectName': object_name},
-                       auth=_auth(user, pwd), timeout=_TIMEOUT)
-        if r.status_code in (200, 202, 204):
-            return True, ''
-        return False, f'HTTP {r.status_code}'
-    except Exception as e:
-        return False, str(e)[:200]
+    return _post_task(device_id, {'name': 'deleteObject', 'objectName': object_name})
 
 
 def _vlan_param_name(leaves):
@@ -481,6 +589,8 @@ def add_wan(device_id, conn_type='pppoe', vlan_id='', username='', password='',
             service='INTERNET', nat=True, addressing='DHCP'):
     """Tambah WAN connection lengkap: addObject + setParameterValues (vlan/nat/user).
     conn_type: 'pppoe' | 'ip'. Return (ok, msg_or_instance)."""
+    if data_model(device_id) == 'tr181':
+        return False, TR181_UNSUPPORTED
     url, user, pwd = _nbi_config()
     if not url or not device_id:
         return False, 'NBI not configured'
@@ -534,6 +644,8 @@ def add_wan(device_id, conn_type='pppoe', vlan_id='', username='', password='',
 
 def bind_wan_vlan(device_id, conn_key, vlan_id):
     """Bind VLAN ke WAN instance existing. conn_key = 'WANPPPConnection.3'."""
+    if data_model(device_id) == 'tr181':
+        return False, TR181_UNSUPPORTED
     url, user, pwd = _nbi_config()
     if not url or not device_id:
         return False, 'NBI not configured'

@@ -638,6 +638,14 @@ if os.environ.get('NMS_SERVER_PROCESS') == '1' or __name__ == '__main__':
         migrate_schema()
         db.create_all()
         seed_initial_data()
+        try:
+            from secrets_migration import encrypt_legacy_secrets
+            n = encrypt_legacy_secrets()
+            if n:
+                logger.info(f'Encrypted {n} legacy integration credential(s)')
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(f'encrypt_legacy_secrets failed: {e}')
         # Sync threads are daemonized — a service restart mid-sync leaves
         # OLTSyncStatus stuck at 'running' forever; mark them interrupted.
         try:
