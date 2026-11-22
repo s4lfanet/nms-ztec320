@@ -16,7 +16,7 @@ import { useDashboardWs } from '../hooks/useDashboardWs';
 import { useCountUp } from '../hooks/useCountUp';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, EmptyState, Select } from '../components/ui';
+import { Button, Card, EmptyState, Select, StatusStrip } from '../components/ui';
 import { FilterBar, SearchBar } from '../components/shared';
 import { useStatusFlash, flashClass } from '../hooks/useStatusFlash';
 
@@ -321,8 +321,21 @@ export function Dashboard() {
         }
       />
 
+      {/* HP: ringkasan sebagai chip — ketuk untuk membuka daftar ONU terfilter
+          (redesign Fase 2). Desktop tetap memakai kartu statistik di bawah. */}
+      <StatusStrip
+        className="md:hidden"
+        aria-label={t('dashboard.title')}
+        onSelect={k => navigate(k === 'olt' ? '/dashboard/settings/olts' : k === 'all' ? '/dashboard/onus' : `/dashboard/onus?filter=${k}`)}
+        items={[
+          { key: 'problem', label: t('nav.problems'), count: totalProblem, tone: totalProblem > 0 ? 'crit' : 'idle' },
+          { key: 'online', label: t('common.online'), count: `${stats.online} · ${stats.online_pct}%`, tone: 'ok' },
+          { key: 'all', label: t('dashboard.statTotalOnu'), count: stats.total_onu, tone: 'info' },
+          { key: 'olt', label: 'OLT', count: `${onlineCount}/${olts.length}`, tone: onlineCount < olts.length ? 'warn' : 'ok' },
+        ]}
+      />
       {/* Summary Stats — 4 cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+      <div className="hidden md:grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
         <StatCard icon={<Server size={18} />} label={t('dashboard.statOlt')} value={olts.length}
           sub={t('dashboard.statOltSub', { online: onlineCount, offline: olts.length - onlineCount })} color="accent" delay={0} />
         <StatCard icon={<Radio size={18} />} label={t('dashboard.statTotalOnu')} value={stats.total_onu}
@@ -335,6 +348,83 @@ export function Dashboard() {
           color={totalProblem > 0 ? 'danger' : 'muted'} delay={180} />
       </div>
 
+      {/* Urutan baru: ringkasan → daftar OLT → sinyal, kesehatan, ONU
+          bermasalah, alert. Daftar OLT naik supaya terlihat tanpa scroll jauh. */}
+      {/* Sync Progress Bar */}
+      {syncingOlt !== null && (
+        <Card className="border-accent/30">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 text-sm">
+              <RefreshCw size={14} className="animate-spin text-accent" />
+              <span className="font-medium">{t('dashboard.syncing')}</span>
+              <span className="text-tx3 text-xs">{syncMessage}</span>
+            </div>
+            <span className="text-sm font-bold text-accent">{syncProgress}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-glass overflow-hidden">
+            <div className="h-full bg-accent transition-all duration-500 rounded-full" style={{ width: `${syncProgress}%` }} />
+          </div>
+        </Card>
+      )}
+
+      {/* Filter / Sort Bar */}
+      <Card bodyClassName="p-3">
+        <FilterBar className="flex-nowrap flex-col sm:flex-row items-stretch sm:items-center">
+          <SearchBar
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder={t('dashboard.searchOlt')}
+            className="flex-1"
+          />
+          <div className="flex gap-2">
+            <Select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              aria-label={t('common.status')}
+              options={[
+                { value: 'all', label: t('dashboard.allStatus') },
+                { value: 'online', label: t('dashboard.onlineOnly') },
+                { value: 'offline', label: t('dashboard.offlineOnly') },
+              ]}
+            />
+            <Select
+              value={sortKey}
+              onChange={e => setSortKey(e.target.value as SortKey)}
+              aria-label={t('dashboard.sortName')}
+              options={[
+                { value: 'status', label: t('dashboard.sortStatus') },
+                { value: 'name', label: t('dashboard.sortName') },
+                { value: 'problems', label: t('dashboard.sortProblems') },
+                { value: 'offline', label: t('dashboard.sortOffline') },
+              ]}
+            />
+          </div>
+        </FilterBar>
+      </Card>
+
+      {/* OLT Grid */}
+      {sortedOlts.length === 0 ? (
+        <EmptyState
+          icon={Server}
+          title={searchTerm || statusFilter !== 'all' ? t('dashboard.noOltMatch') : t('dashboard.noOlt')}
+          description={searchTerm || statusFilter !== 'all' ? t('dashboard.adjustFilter') : t('dashboard.noOltHint')}
+        />
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {sortedOlts.map((olt, i) => (
+            <OltCard
+              key={olt.id}
+              olt={olt}
+              igniteDelay={ignite ? i * 120 : undefined}
+              flash={oltFlash.get(olt.id)}
+              onSync={hasPerm('settings_ip_olts') ? () => syncMutation.mutate(olt.id) : undefined}
+              syncing={syncingOlt === olt.id}
+              syncProgress={syncingOlt === olt.id ? syncProgress : undefined}
+              onConfig={hasPerm('settings_ip_olts') ? () => navigate(`/dashboard/settings/olts/${olt.id}/config`) : undefined}
+            />
+          ))}
+        </div>
+      )}
       {/* Signal Distribution Bar */}
       <Card title={t('dashboard.signalDist')}>
         <div className="flex h-2.5 rounded-full overflow-hidden bg-glass">
@@ -465,81 +555,6 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Sync Progress Bar */}
-      {syncingOlt !== null && (
-        <Card className="border-accent/30">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 text-sm">
-              <RefreshCw size={14} className="animate-spin text-accent" />
-              <span className="font-medium">{t('dashboard.syncing')}</span>
-              <span className="text-tx3 text-xs">{syncMessage}</span>
-            </div>
-            <span className="text-sm font-bold text-accent">{syncProgress}%</span>
-          </div>
-          <div className="h-2 rounded-full bg-glass overflow-hidden">
-            <div className="h-full bg-accent transition-all duration-500 rounded-full" style={{ width: `${syncProgress}%` }} />
-          </div>
-        </Card>
-      )}
-
-      {/* Filter / Sort Bar */}
-      <Card bodyClassName="p-3">
-        <FilterBar className="flex-nowrap flex-col sm:flex-row items-stretch sm:items-center">
-          <SearchBar
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder={t('dashboard.searchOlt')}
-            className="flex-1"
-          />
-          <div className="flex gap-2">
-            <Select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              aria-label={t('common.status')}
-              options={[
-                { value: 'all', label: t('dashboard.allStatus') },
-                { value: 'online', label: t('dashboard.onlineOnly') },
-                { value: 'offline', label: t('dashboard.offlineOnly') },
-              ]}
-            />
-            <Select
-              value={sortKey}
-              onChange={e => setSortKey(e.target.value as SortKey)}
-              aria-label={t('dashboard.sortName')}
-              options={[
-                { value: 'status', label: t('dashboard.sortStatus') },
-                { value: 'name', label: t('dashboard.sortName') },
-                { value: 'problems', label: t('dashboard.sortProblems') },
-                { value: 'offline', label: t('dashboard.sortOffline') },
-              ]}
-            />
-          </div>
-        </FilterBar>
-      </Card>
-
-      {/* OLT Grid */}
-      {sortedOlts.length === 0 ? (
-        <EmptyState
-          icon={Server}
-          title={searchTerm || statusFilter !== 'all' ? t('dashboard.noOltMatch') : t('dashboard.noOlt')}
-          description={searchTerm || statusFilter !== 'all' ? t('dashboard.adjustFilter') : t('dashboard.noOltHint')}
-        />
-      ) : (
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {sortedOlts.map((olt, i) => (
-            <OltCard
-              key={olt.id}
-              olt={olt}
-              igniteDelay={ignite ? i * 120 : undefined}
-              flash={oltFlash.get(olt.id)}
-              onSync={hasPerm('settings_ip_olts') ? () => syncMutation.mutate(olt.id) : undefined}
-              syncing={syncingOlt === olt.id}
-              syncProgress={syncingOlt === olt.id ? syncProgress : undefined}
-              onConfig={hasPerm('settings_ip_olts') ? () => navigate(`/dashboard/settings/olts/${olt.id}/config`) : undefined}
-            />
-          ))}
-        </div>
-      )}
     </PageContainer>
   );
 }
