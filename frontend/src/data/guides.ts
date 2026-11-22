@@ -16,6 +16,7 @@ export interface Guide {
 
 export const guideCategories = [
   'Dashboard',
+  'Gangguan & Teknisi',
   'ONU Management',
   'Templates',
   'Traffic',
@@ -48,8 +49,127 @@ export const guides: Guide[] = [
     ],
     tips: [
       'Dashboard auto-refresh setiap 30 detik — tidak perlu manual refresh',
+      'Banner merah "N gangguan aktif" muncul di atas bila ada insiden gangguan yang belum selesai',
       'WebSocket aktif: alert baru dan hasil sync akan otomatis muncul tanpa refresh',
       'Sort OLT cards by status/name/problems/offline count lewat dropdown di atas grid',
+    ],
+  },
+  {
+    id: 'technician-field',
+    category: 'Gangguan & Teknisi',
+    page: '/dashboard/incidents',
+    title: 'Panduan Teknisi Lapangan',
+    description: 'Dari notifikasi WA sampai insiden selesai — langkah untuk akun role Technician',
+    prerequisites: [
+      'Akun dengan role Technician (izin "Receive Alert Notifications")',
+      'Nomor WhatsApp terisi di akun Anda (diisi admin di Manajemen User)',
+    ],
+    steps: [
+      {
+        title: '1. Cek nomor WA & wilayah Anda',
+        content: 'Buka **Profil Saya** (menu avatar di kanan atas). Kartu **Wilayah & notifikasi saya** menunjukkan nomor WA tujuan alert dan wilayah (OLT/OTB/JC/ODC/ODP) yang menjadi tanggung jawab Anda.\n\nBila nomor WA kosong, Anda tidak menerima alert lewat WhatsApp — minta admin mengisinya. Tanpa wilayah, Anda menerima semua alert seperti NOC.',
+      },
+      {
+        title: '2. Terima notifikasi gangguan',
+        content: 'Saat banyak pelanggan di satu titik mati bersamaan, Anda menerima **satu** pesan WA berisi: titik dugaan (mis. **ODC Utara**), jumlah pelanggan terdampak, **dugaan penyebab** (⚡ listrik padam bila mayoritas Dying Gasp, ✂️ kabel putus bila mayoritas LOS), link **Google Maps**, dan link **Terima & update insiden**.\n\nBaris **👷 Penanggung jawab** menyebut siapa teknisi wilayah yang ditugaskan.',
+      },
+      {
+        title: '3. Terima insiden',
+        content: 'Klik link di WA (login bila diminta) atau buka menu **Insiden Gangguan**. Di halaman insiden, tekan **Terima** — tombolnya ada di bawah layar HP. Sejak itu eskalasi berhenti dan admin melihat nama Anda sebagai penangan.\n\nBila insiden tidak diterima dalam batas waktu (default 15 menit), pesan naik ke **teknisi cadangan**, lalu ke **admin**.',
+      },
+      {
+        title: '4. Berangkat & sampai di lokasi',
+        content: 'Tekan **Berangkat** saat menuju lokasi dan **Sampai di lokasi** setelah tiba. Gunakan **Buka di Maps** untuk navigasi dan **Lihat di FTTH** untuk melihat daftar pelanggan di bawah titik itu.\n\nDaftar **Pelanggan terdampak** di halaman insiden menunjukkan status tiap ONU secara langsung (titik hijau = sudah online lagi).',
+      },
+      {
+        title: '5. Catatan & foto',
+        content: 'Tulis catatan (mis. "kabel putus di tiang depan balai warga") lalu **Kirim catatan**. Tombol **Foto** membuka kamera HP — foto tersimpan di insiden dan hanya bisa dilihat pengguna yang login.',
+      },
+      {
+        title: '6. Selesaikan',
+        content: 'Setelah diperbaiki, tekan **Selesaikan**, pilih penyebab cepat (kabel disambung, listrik PLN, adaptor, splitter, konektor, pulih sendiri) atau tulis sendiri. Penyebab **wajib diisi** — dipakai untuk laporan MTTR dan titik rawan.\n\nBila ONU sudah online lagi sebelum Anda menutup insiden, halaman menampilkan pengingat untuk mengisi penyebab.',
+      },
+      {
+        title: 'Tanya lewat WhatsApp',
+        content: 'Bila AI Agent aktif dan nomor Anda diizinkan, kirim **/insiden** ke nomor WA NMS untuk melihat gangguan yang sedang ditangani, atau **/gangguan** untuk daftar ONU yang mati.',
+      },
+    ],
+    tips: [
+      'Lonceng 🔔 di topbar: notifikasi gangguan ODP/ODC/JC/OTB langsung membuka insidennya',
+      'Banner merah "N gangguan aktif" di Dashboard membawa ke daftar insiden',
+      'Status hanya bisa maju (Terima → Berangkat → Sampai → Selesai); tombol yang dilewati otomatis tercatat',
+      'Insiden dengan dugaan listrik padam: cek info PLN/adaptor dulu sebelum berangkat',
+    ],
+  },
+  {
+    id: 'incidents',
+    category: 'Gangguan & Teknisi',
+    page: '/dashboard/incidents',
+    title: 'Panduan Insiden Gangguan',
+    description: 'Insiden otomatis dari gangguan massal: alur status, peta, laporan, info pelanggan',
+    steps: [
+      {
+        title: 'Dari mana insiden muncul',
+        content: 'Setiap siklus alert, NMS mengelompokkan ONU yang mati per titik topologi FTTH. Bila ≥ N ONU di satu **ODP** mati, atau sebagian besar (default 80%) ONU di bawah satu **ODC/JC/OTB** mati, dibuat **satu insiden** untuk titik tertinggi yang cocok — bukan satu per pelanggan.\n\nBila gangguan meluas (ODP → ODC), insiden ODP otomatis **digabung** ke insiden ODC. Bila ONU kembali online sebelum ada yang menerima, insiden ditutup otomatis sebagai "pulih sendiri".',
+      },
+      {
+        title: 'Daftar & detail',
+        content: 'Menu **Insiden Gangguan**: filter **Aktif / Selesai / Semua**. Detail berisi status, dugaan penyebab, jumlah terdampak (sekarang & puncak), penanggung jawab, perjalanan waktu (terdeteksi → diterima → berangkat → sampai → selesai), catatan, foto, dan daftar pelanggan terdampak.',
+      },
+      {
+        title: 'Peta gangguan',
+        content: 'Di **FTTH → Peta**, titik insiden aktif tampil sebagai lingkaran berdenyut (merah = dugaan kabel putus, kuning = dugaan listrik padam). Klik untuk melihat jumlah terdampak dan membuka insidennya. Tombol **N gangguan aktif** di atas peta membuka daftar insiden. Titik perlu koordinat (latitude/longitude) agar muncul di peta.',
+      },
+      {
+        title: 'Info ke pelanggan',
+        content: 'Tombol **Info ke pelanggan** di insiden aktif menyiapkan template pesan (bisa disunting) dan link WhatsApp per pelanggan terdampak yang **nomornya diisi di port ODP**. Pesan dikirim manual dari WA Anda — NMS tidak mengirim ke pelanggan secara otomatis.',
+      },
+      {
+        title: 'Laporan',
+        content: 'Tab **Laporan** (7/30/90/365 hari): jumlah insiden, rata-rata waktu **diterima** (MTTA) dan **selesai** (MTTR — hanya insiden yang ditutup teknisi), jumlah yang melewati target TTR, yang pulih sendiri, perbandingan penyebab, **titik paling sering gangguan**, dan kinerja per teknisi.',
+      },
+    ],
+    tips: [
+      'Akurasi insiden bergantung pada data FTTH: ONU harus terhubung ke port ODP, dan ODP ke ODC/JC/OTB',
+      'ONU yang belum dipetakan ke ODP tetap mendapat alert biasa per PON',
+      'Insiden hanya dibaca dari database — tidak ada perintah tambahan ke OLT',
+    ],
+  },
+  {
+    id: 'outage-setup',
+    category: 'Gangguan & Teknisi',
+    page: '/dashboard/settings/alerts',
+    title: 'Panduan Admin: Korelasi, Wilayah, Eskalasi, Maintenance',
+    description: 'Pengaturan agar gangguan sampai ke teknisi yang tepat dan cepat ditangani',
+    prerequisites: [
+      'Izin Customization (halaman Pengaturan Alert); mengatur wilayah butuh izin Kelola User',
+      'Topologi FTTH terisi: ONU ↔ port ODP, ODP ↔ ODC/JC, ODC ↔ OTB',
+    ],
+    steps: [
+      {
+        title: 'Korelasi gangguan massal',
+        content: 'Pengaturan Alert → tab **Aturan** → kartu **Korelasi gangguan massal**: sakelar naik ke ODC/JC/OTB, **minimal ONU mati** (default 3) dan **persentase ONU mati** untuk ODC/JC/OTB (default 80%). Mematikan sakelar mengembalikan perilaku lama (hanya per ODP).',
+      },
+      {
+        title: 'Wilayah teknisi',
+        content: 'Kartu **Wilayah teknisi**: pilih teknisi, wilayah (OLT/OTB/JC/ODC/ODP), dan peran **Utama** atau **Cadangan**. Alert dikirim ke teknisi utama terdekat: teknisi yang ditugaskan ke ONU (kolom Technician di Semua ONU) → ODP → ODC/JC → OTB → OLT.\n\nTeknisi **tanpa wilayah** (admin/NOC) tetap menerima semua alert. Selama belum ada wilayah sama sekali, semua teknisi menerima semua alert seperti sebelumnya.',
+      },
+      {
+        title: 'Eskalasi & target TTR',
+        content: 'Kartu **Eskalasi insiden**: bila insiden belum diterima dalam **N menit** (default 15), WA dikirim ke teknisi **cadangan** wilayah; N menit kemudian ke **admin** (super admin atau izin Kelola User yang punya nomor WA). Tanpa cadangan langsung ke admin.\n\n**Target TTR** (default 3 jam): insiden yang belum selesai setelah sekian jam mendapat satu pengingat ke penanggung jawab dan admin.',
+      },
+      {
+        title: 'Mode maintenance',
+        content: 'Kartu **Mode maintenance**: jadwalkan pekerjaan terencana untuk **semua OLT**, **satu OLT**, atau **satu OTB/JC/ODC/ODP**. Selama jadwal berjalan, pelanggan di bawah titik itu tidak memicu alert atau insiden, dan insiden yang sedang berjalan tidak dianggap "pulih".',
+      },
+      {
+        title: 'Nomor WA teknisi',
+        content: 'Isi nomor WhatsApp setiap teknisi dan admin di **Manajemen User**. Pesan dikirim lewat WA Gateway (bila aktif) lalu WA Native. Teknisi bisa mengecek nomor & wilayahnya sendiri di Profil Saya.',
+      },
+    ],
+    tips: [
+      'Mulai dari satu ODC: isi wilayahnya, lalu pantau satu-dua gangguan sebelum menambah wilayah lain',
+      'Isi koordinat ODC/ODP agar pesan WA membawa link Google Maps dan titik muncul di peta gangguan',
     ],
   },
   {
@@ -365,6 +485,8 @@ export const guides: Guide[] = [
       },
     ],
     tips: [
+      'Topologi FTTH yang lengkap (ONU ↔ port ODP ↔ ODC/JC ↔ OTB) dipakai untuk korelasi gangguan massal dan wilayah teknisi — lihat panduan Gangguan & Teknisi',
+      'Peta: lingkaran merah/kuning berdenyut = insiden gangguan aktif di titik itu; link dari WA (?tab=odc&odc=ID) langsung membuka daftar pelanggan terdampak',
       'JC bersifat opsional — kalau jalur fiber memang langsung tanpa titik sambungan, tidak perlu dibuat JC sama sekali, cukup OTB → ODC → ODP seperti biasa',
       'JC di segmen OLT→OTB dan ODP→pelanggan jarang dipakai (biasanya OLT-OTB satu lokasi, drop cable langsung) — tapi kalau memang ada sambungan fisik di situ, sekarang bisa dicatat juga, bukan cuma di OTB→ODC / ODC→ODP',
       'Menghapus JC tidak menghapus OTB/ODC/ODP/port pelanggan/JC lain yang tersambung ke situ — mereka cuma "dilepas" (feed source-nya jadi kosong), supaya data infrastruktur riil tidak ikut hilang',
@@ -458,6 +580,8 @@ export const guides: Guide[] = [
     ],
     tips: [
       'Technician bisa di-assign ke ONU spesifik via kolom Technician di All ONUs',
+      'Isi nomor WhatsApp teknisi — tanpa nomor, teknisi tidak menerima alert/insiden/eskalasi lewat WA',
+      'Wilayah teknisi (OLT/OTB/JC/ODC/ODP) diatur di Pengaturan Alert → Aturan → Wilayah teknisi',
       'Berhati-hati memberi permission "Kelola User" ke role kustom — user dengan permission ini bisa mengubah role atau menghapus akun manapun termasuk akun super admin, sistem saat ini tidak mengecualikan akun super admin dari itu',
     ],
   },
@@ -475,6 +599,10 @@ export const guides: Guide[] = [
       {
         title: 'Notifikasi Push di Perangkat Ini',
         content: 'Kartu **Web Push** di halaman ini bisa dipakai semua role: klik **Aktifkan Web Push** untuk menerima alert gangguan sebagai notifikasi HP/desktop walau aplikasi ditutup, lalu **Kirim Test** untuk mencoba. Lihat panduan Notifikasi Push untuk detailnya.',
+      },
+      {
+        title: 'Wilayah & notifikasi saya',
+        content: 'Untuk akun yang menerima alert (role Technician), kartu **Wilayah & notifikasi saya** menampilkan nomor WA tujuan alert dan wilayah tanggung jawab (utama/cadangan). Nomor WA dan wilayah diatur oleh admin.',
       },
       {
         title: 'Branding (Super Admin)',
@@ -509,6 +637,10 @@ export const guides: Guide[] = [
         content: '**Debounce**: alert ONU offline/dyinggasp/los baru fire setelah kondisi tersebut bertahan kurang lebih 120 detik sejak pertama kali terdeteksi (berapa kali "cek" yang dilewati tergantung interval cron yang dikonfigurasi di tab Cron Job). Mencegah false alert dari status flap sesaat.\n\n**Auto-Resolve**: ONU kembali online → alert lama otomatis di-resolve. OLT health normal → alert auto-resolved.',
       },
       {
+        title: 'Gangguan massal, wilayah, eskalasi, maintenance',
+        content: 'Di tab **Aturan** ada empat kartu tambahan: **Korelasi gangguan massal**, **Wilayah teknisi**, **Eskalasi insiden**, dan **Mode maintenance**. Lihat panduan **Admin: Korelasi, Wilayah, Eskalasi, Maintenance** untuk penjelasan lengkap.',
+      },
+      {
         title: 'Cron Job (Super Admin)',
         content: 'Tab khusus super admin untuk atur interval pengecekan alert (10-3600 detik, ada shortcut 30/60/120/300/600s), timezone sistem, dan tombol **Re-check Now** untuk trigger pengecekan manual di luar jadwal.',
       },
@@ -529,7 +661,7 @@ export const guides: Guide[] = [
     steps: [
       {
         title: 'Alert Log',
-        content: 'Lihat riwayat alert dengan kolom: Tipe, OLT, ONU, Value, dan Waktu.\n\nFilter tersedia berdasarkan **tipe alert** saja (tombol pilihan tipe + "Semua") — belum ada filter date range, severity, atau OLT terpisah di halaman ini.',
+        content: 'Lihat riwayat alert dengan kolom: Tipe, OLT, ONU, Value, dan Waktu. Tipe **GANGGUAN ODP** dan **GANGGUAN ODC/JC/OTB** mencatat gangguan massal hasil korelasi (nilai = jumlah ONU mati); penanganannya ada di menu Insiden Gangguan.\n\nFilter tersedia berdasarkan **tipe alert** saja (tombol pilihan tipe + "Semua") — belum ada filter date range, severity, atau OLT terpisah di halaman ini.',
       },
     ],
   },
@@ -699,7 +831,7 @@ export const guides: Guide[] = [
       },
       {
         title: 'Perintah Cepat (hemat token)',
-        content: 'Perintah berawalan **/** dijawab langsung dari database NMS **tanpa AI** — gratis, instan, dan tetap jalan walau API key belum diisi:\n**/ringkasan** — status semua OLT\n**/gangguan [OLT]** — ONU offline/LOS/dying gasp\n**/redaman [OLT]** — ONU online dengan RX < -27 dBm\n**/alert [jam]** — alert terbaru (default 6 jam)\n**/cari <nama/PPPoE/SN>** — cari pelanggan\n**/onu <ID atau nama>** — detail satu ONU\n**/menu** — daftar perintah\n\nGunakan pertanyaan bebas (tanpa /) hanya untuk analisis yang butuh AI, mis. "kenapa budi sering putus?".',
+        content: 'Perintah berawalan **/** dijawab langsung dari database NMS **tanpa AI** — gratis, instan, dan tetap jalan walau API key belum diisi:\n**/ringkasan** — status semua OLT\n**/gangguan [OLT]** — ONU offline/LOS/dying gasp\n**/redaman [OLT]** — ONU online dengan RX < -27 dBm\n**/alert [jam]** — alert terbaru (default 6 jam)\n**/insiden** — gangguan massal yang sedang ditangani\n**/cari <nama/PPPoE/SN>** — cari pelanggan\n**/onu <ID atau nama>** — detail satu ONU\n**/menu** — daftar perintah\n\nGunakan pertanyaan bebas (tanpa /) hanya untuk analisis yang butuh AI, mis. "kenapa budi sering putus?".',
       },
       {
         title: 'Pilih Penyedia AI',

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { api, type DashboardData, type OltInfo, type NotificationsResponse } from '../lib/api';
 import { formatDate, cn } from '../lib/utils';
 import { toast } from '../components/Toast';
@@ -16,7 +16,7 @@ import { useDashboardWs } from '../hooks/useDashboardWs';
 import { useCountUp } from '../hooks/useCountUp';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, EmptyState, Select, StatusStrip } from '../components/ui';
+import { Button, Card, EmptyState, Select, StatusStrip, Notice } from '../components/ui';
 import { FilterBar, SearchBar } from '../components/shared';
 import { useStatusFlash, flashClass } from '../hooks/useStatusFlash';
 
@@ -42,6 +42,10 @@ function tempColor(t: number | null | undefined): string {
 
 export function Dashboard() {
   const { t } = useTranslation();
+  const { data: incidentData } = useQuery({
+    queryKey: ['incidents', 'active'], queryFn: () => api.incidents('active'), refetchInterval: 30000,
+  });
+  const activeIncidentCount = incidentData?.active_count ?? 0;
   const queryClient = useQueryClient();
   const hasPerm = useHasPerm();
   const navigate = useNavigate();
@@ -320,6 +324,12 @@ export function Dashboard() {
           </>
         }
       />
+      {activeIncidentCount > 0 && (
+        <Notice className="mb-4" tone="crit" title={t('dashboard.activeIncidents', { n: activeIncidentCount })}
+          action={<Link to="/dashboard/incidents" className="text-xs font-semibold underline">{t('dashboard.openIncidents')}</Link>}>
+          {t('dashboard.activeIncidentsHint')}
+        </Notice>
+      )}
 
       {/* HP: ringkasan sebagai chip — ketuk untuk membuka daftar ONU terfilter
           (redesign Fase 2). Desktop tetap memakai kartu statistik di bawah. */}

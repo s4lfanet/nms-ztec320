@@ -4,6 +4,20 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Audit role teknisi + panduan gangguan
+
+#### Diperbaiki
+- Notifikasi gangguan ODP/ODC/JC/OTB kini masuk tab **Alarm** di lonceng (sebelumnya tercampur di "Umum") dan klik langsung membuka insidennya.
+- Riwayat Alert menampilkan label **GANGGUAN ODP** dan **GANGGUAN ODC/JC/OTB**.
+
+#### Ditambahkan
+- **Profil Saya → Wilayah & notifikasi saya** (akun penerima alert): nomor WA tujuan alert, peringatan bila nomor kosong, dan wilayah utama/cadangan.
+- Banner **"N gangguan aktif"** di Dashboard menuju daftar insiden.
+- AI agent: perintah cepat **/insiden** dan tool `incidents` (baca-saja) untuk menanyakan gangguan yang sedang ditangani lewat WA/Telegram.
+- Panduan baru (kategori **Gangguan & Teknisi**): **Panduan Teknisi Lapangan**, **Insiden Gangguan**, dan **Admin: Korelasi, Wilayah, Eskalasi, Maintenance**; panduan Dashboard, FTTH, Manajemen User, Profil, Pengaturan Alert, Riwayat Alert, dan AI Agent diperbarui.
+- Dokumentasi API (`/docs`) untuk insiden, wilayah teknisi, dan maintenance per titik; README diperbarui.
+- `/api/auth/me` menyertakan `phone`.
+
 ### 2026-11-22 — Notifikasi gangguan Fase 5: peta gangguan, laporan, info pelanggan
 
 #### Ditambahkan

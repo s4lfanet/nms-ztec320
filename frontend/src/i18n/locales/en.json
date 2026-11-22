@@ -161,7 +161,10 @@
     "someSyncFailed": "Some OLTs failed to sync",
     "allSynced": "All OLTs synced!",
     "startingSync": "Starting sync...",
-    "sec": "s"
+    "sec": "s",
+    "activeIncidents": "{{n}} active outages",
+    "activeIncidentsHint": "Some incidents are not resolved yet. Open them to see the location, affected customers and who is handling it.",
+    "openIncidents": "Open incidents"
   },
   "allOnus": {
     "title": "All ONUs",
@@ -361,7 +364,12 @@
     "langEn": "English",
     "allAccess": "All access (Super Admin)",
     "logoBadFormat": "Unsupported format. Use PNG, JPG, WEBP or GIF.",
-    "logoTooBig": "Maximum file size is 2MB."
+    "logoTooBig": "Maximum file size is 2MB.",
+    "myAreas": "My areas & alerts",
+    "noPhone": "No WhatsApp number — you will not receive alerts/incidents on WhatsApp. Ask an admin to add it in User Management.",
+    "alertPhone": "Alerts & incidents are sent to WhatsApp {{phone}}.",
+    "noAreas": "No areas yet — you receive every alert like the NOC.",
+    "areaBackup": "backup"
   },
   "error": {
     "invalid_credentials": "Invalid username or password",

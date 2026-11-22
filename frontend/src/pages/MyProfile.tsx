@@ -5,11 +5,11 @@ import { useAuth } from '../stores/auth';
 import { useTheme, type Theme } from '../stores/theme';
 import { api, ApiError, type User as UserType } from '../lib/api';
 import { toast } from '../components/Toast';
-import { User, Lock, Save, Eye, EyeOff, Image, Upload, RotateCcw, ShieldAlert, Palette, Languages } from 'lucide-react';
+import { User, Lock, Save, Eye, EyeOff, Image, Upload, RotateCcw, ShieldAlert, Palette, Languages, MapPin } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PushDeviceCard } from '../components/PushDeviceCard';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, Input, Select } from '../components/ui';
+import { Button, Card, Input, Select, Notice } from '../components/ui';
 
 const MAX_LOGO_SIZE = 2 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
@@ -190,6 +190,8 @@ export function MyProfile() {
             </div>
           </Card>
 
+          <MyAreasCard userId={user?.id} phone={user?.phone || ''} receivesAlerts={!!user?.permissions?.includes('receive_alerts')} />
+
           {user?.is_super_admin && (
             <Card title={t('profile.companyLogo')} icon={<Image size={18} />}>
               <div className="flex items-center gap-5">
@@ -289,5 +291,38 @@ export function MyProfile() {
       </div>
       <div className="mt-6 max-w-xl"><PushDeviceCard /></div>
     </PageContainer>
+  );
+}
+
+
+function MyAreasCard({ userId, phone, receivesAlerts }: { userId?: number; phone: string; receivesAlerts: boolean }) {
+  const { t } = useTranslation();
+  const { data } = useQuery({
+    queryKey: ['technician-areas'],
+    queryFn: async () => { const r = await fetch('/api/technician-areas', { credentials: 'include' }); return r.json(); },
+    enabled: receivesAlerts,
+  });
+  if (!receivesAlerts) return null;
+  const mine: { id: number; node_type: string; node_name: string; role: string; user_id: number }[] =
+    (data?.areas || []).filter((a: { user_id: number }) => a.user_id === userId);
+  return (
+    <Card title={t('profile.myAreas')} icon={<MapPin size={18} />}>
+      <div className="space-y-3 text-sm">
+        {!phone && <Notice tone="warn">{t('profile.noPhone')}</Notice>}
+        {phone && <div className="text-xs text-tx3">{t('profile.alertPhone', { phone })}</div>}
+        {mine.length === 0 ? (
+          <p className="text-xs text-tx3">{t('profile.noAreas')}</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {mine.map(a => (
+              <span key={a.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-brd bg-glass text-xs">
+                <span className="font-mono text-[10px] text-tx3">{a.node_type.toUpperCase()}</span>{a.node_name}
+                {a.role === 'backup' && <span className="text-[10px] text-tx3">({t('profile.areaBackup')})</span>}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }

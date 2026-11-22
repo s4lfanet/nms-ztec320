@@ -488,6 +488,7 @@ export interface User {
   must_change_password?: boolean;
   theme?: 'dark' | 'light' | 'system';
   language?: 'id' | 'en';
+  phone?: string;
   tenant_id?: number | null;
   subscription?: {
     is_active: boolean;

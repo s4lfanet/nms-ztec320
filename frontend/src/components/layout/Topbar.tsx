@@ -25,6 +25,7 @@ interface NotifItem {
   resolved: boolean;
   resolved_at?: string;
   olt_id?: number;
+  incident_id?: number | null;
   onu_id?: number;
   created_at: string;
 }
@@ -115,6 +116,11 @@ function NotifDropdown({
 
   const handleNotifClick = (n: NotifItem) => {
     if (!n.is_read) markReadMut.mutate(n.id);
+    if (n.incident_id) {
+      onClose();
+      onNavigate(`/dashboard/incidents/${n.incident_id}`);
+      return;
+    }
     if (type === 'alarm') {
       const status = categoryToStatus[n.category];
       if (status) {
