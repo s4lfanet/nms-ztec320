@@ -1190,7 +1190,9 @@
     "permissions": "Permissions",
     "usernameReq": "Username *",
     "deleteUserMsg": "Delete user \"{{name}}\"? This cannot be undone.",
-    "deleteRoleMsg": "Delete role \"{{name}}\"? Users with this role will lose access."
+    "deleteRoleMsg": "Delete role \"{{name}}\"? Users with this role will lose access.",
+    "tabUsers": "Users",
+    "tabRoles": "Roles"
   },
   "pg_actionlogs": {
     "archiveOldLogs": "Archive old logs?",

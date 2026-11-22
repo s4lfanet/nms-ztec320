@@ -347,7 +347,7 @@ export function AllOnus() {
         />
 
         <FilterBar>
-          <div className="flex gap-1 p-1 rounded-xl bg-glass border border-brd overflow-x-auto max-w-full">
+          <div className="flex flex-wrap gap-1 p-1 rounded-xl bg-glass border border-brd max-w-full">
             <FilterBtn active={oltFilter === 'all'} onClick={() => { setOltFilter('all'); setPonFilter('all'); setSlotFilter('all'); }}>{t('common.all')}</FilterBtn>
             {olts.map(o => (
               <FilterBtn key={o.id} active={oltFilter === String(o.id)} onClick={() => { setOltFilter(String(o.id)); setPonFilter('all'); setSlotFilter('all'); }}>
