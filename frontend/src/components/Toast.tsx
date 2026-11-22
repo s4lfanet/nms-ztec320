@@ -38,11 +38,13 @@ const icons: Record<ToastType, React.ReactNode> = {
   info: <Info size={18} className="text-accent" />,
 };
 
+// Latar solid (warna status dicampur ke permukaan) — toast muncul di atas
+// konten, jadi tidak boleh tembus pandang.
 const styles: Record<ToastType, string> = {
-  success: 'border-success/30 bg-success/10',
-  error: 'border-danger/30 bg-danger/10',
-  warning: 'border-warning/30 bg-warning/10',
-  info: 'border-accent/30 bg-accent/10',
+  success: 'border-success/40 [background:color-mix(in_srgb,var(--color-success)_14%,var(--bg-surface))]',
+  error: 'border-danger/40 [background:color-mix(in_srgb,var(--color-danger)_14%,var(--bg-surface))]',
+  warning: 'border-warning/40 [background:color-mix(in_srgb,var(--color-warning)_14%,var(--bg-surface))]',
+  info: 'border-accent/40 [background:color-mix(in_srgb,var(--color-accent)_14%,var(--bg-surface))]',
 };
 
 export function Toaster() {
@@ -86,7 +88,7 @@ export function Toaster() {
         <div
           key={t.id}
           className={cn(
-            'pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-xl',
+            'pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border',
             'shadow-lg transition-all duration-250',
             styles[t.type],
             t.exiting ? 'opacity-0 translate-x-4' : 'animate-slide-in opacity-100',

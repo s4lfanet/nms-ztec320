@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-22 — Pop-up & menu tidak lagi tembus pandang
+
+#### Diperbaiki
+- Semua permukaan yang muncul **di atas** konten kini solid (tidak transparan): modal (mis. Running Config, Get Status, edit), dialog konfirmasi (mis. Resync Config, Hapus), menu "Lainnya", menu akun, panel notifikasi, pencarian cepat, toast, tombol aksi tetap di bawah layar HP, topbar, sidebar, bottom nav, dan kepala tabel yang lengket. Sebelumnya isi halaman di belakang ikut terlihat dan membuat tampilan berantakan.
+- Latar gelap di belakang modal kini juga menutup topbar, sidebar, dan bottom nav (sebelumnya bagian itu tetap terang di atas latar gelap), dan tidak lagi di-blur.
+- Kartu biasa di halaman tetap bergaya kaca di atas latar aurora.
+
 ### 2026-11-22 — Audit role teknisi + panduan gangguan
 
 #### Diperbaiki
