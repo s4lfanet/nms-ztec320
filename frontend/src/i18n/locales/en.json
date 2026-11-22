@@ -1007,7 +1007,8 @@
     "act_factory_title": "Factory reset ONU?",
     "act_factory_msg": "ONU \"{{name}}\" will be reset to factory settings.",
     "act_delete_title": "Delete ONU?",
-    "act_delete_msg": "ONU \"{{name}}\" will be deleted from the OLT and NMS. This cannot be undone."
+    "act_delete_msg": "ONU \"{{name}}\" will be deleted from the OLT and NMS. This cannot be undone.",
+    "acsQueued": "Command queued: the modem has not responded yet; it runs on the modem's next GenieACS inform."
   },
   "oc": {
     "notFound": "OLT not found",

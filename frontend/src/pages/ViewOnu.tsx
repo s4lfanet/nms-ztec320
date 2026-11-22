@@ -1972,6 +1972,13 @@ function Tr069Panel({ onuId }: { onuId: number }) {
     refetchInterval: 15_000,
   });
   const tasks = taskData?.tasks || [];
+  const tr181 = p?.data_model === 'tr181';
+  // queued = GenieACS menerima perintah tapi modem belum merespons (jalan saat inform berikutnya)
+  const acsDone = (r: { success: boolean; message: string; queued?: boolean }, okMsg: string) => {
+    if (!r.success) { toast.error(r.message); return false; }
+    if (r.queued) toast.info(t('vo.acsQueued')); else toast.success(okMsg);
+    return true;
+  };
   if (isLoading) return null;
   if (!data?.connected && !data?.params) {
     return (
@@ -2046,13 +2053,13 @@ function Tr069Panel({ onuId }: { onuId: number }) {
       {canManage && (
         <div className="mt-3 pt-3 border-t border-brd space-y-3">
           <div className="flex flex-wrap gap-2">
-            <Button variant="ghost" onClick={() => api.onuTr069Refresh(onuId).then(() => { toast.success(t('vo.refreshSent')); refetch(); })}>
+            <Button variant="ghost" onClick={() => api.onuTr069Refresh(onuId).then(r => { if (acsDone(r, t('vo.refreshSent'))) refetch(); })}>
               Refresh
             </Button>
-            <Button variant="ghost" onClick={async () => { if (await confirm({ title: t('vo.rebootAcsTitle'), message: t('vo.rebootAcsMsg'), confirmLabel: 'Reboot', variant: 'warning' })) api.onuTr069Reboot(onuId).then(r => r.success ? toast.success(t('vo.rebootSent')) : toast.error(r.message)); }}>
+            <Button variant="ghost" onClick={async () => { if (await confirm({ title: t('vo.rebootAcsTitle'), message: t('vo.rebootAcsMsg'), confirmLabel: 'Reboot', variant: 'warning' })) api.onuTr069Reboot(onuId).then(r => acsDone(r, t('vo.rebootSent'))); }}>
               Reboot
             </Button>
-            <Button variant="ghost" onClick={async () => { if (await confirm({ title: t('vo.factoryAcsTitle'), message: t('vo.factoryAcsMsg'), confirmLabel: t('vo.factoryReset'), variant: 'danger' })) api.onuTr069FactoryReset(onuId).then(r => r.success ? toast.success(t('vo.factorySent')) : toast.error(r.message)); }}>
+            <Button variant="ghost" onClick={async () => { if (await confirm({ title: t('vo.factoryAcsTitle'), message: t('vo.factoryAcsMsg'), confirmLabel: t('vo.factoryReset'), variant: 'danger' })) api.onuTr069FactoryReset(onuId).then(r => acsDone(r, t('vo.factorySent'))); }}>
               {t('vo.factoryReset')}
             </Button>
             <Button variant="ghost" onClick={() => setShowCfg(v => !v)}>
@@ -2065,10 +2072,10 @@ function Tr069Panel({ onuId }: { onuId: number }) {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-tx3 uppercase tracking-wider">WiFi SSID</span>
-                  <button className="text-[10px] text-accent hover:underline" onClick={() =>
+                  {!tr181 && <button className="text-[10px] text-accent hover:underline" onClick={() =>
                     api.onuTr069AddObject(onuId, 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.')
                       .then(r => { if (r.success) { toast.success(t('vo.wifiCreated', { n: r.instance || '' })); refetch(); } else toast.error(r.message); })
-                  }>{t('wiz.addSsid')}</button>
+                  }>{t('wiz.addSsid')}</button>}
                 </div>
                 {(p?.ssids || []).map(s => {
                   const ed = wifiEdit[s.index] || { ssid: s.ssid, pass: '' };
@@ -2083,13 +2090,13 @@ function Tr069Panel({ onuId }: { onuId: number }) {
                       <Button variant="primary" className="w-full sm:w-auto" onClick={() => {
                         if (!ed.ssid.trim()) { toast.error(t('vo.ssidRequired')); return; }
                         api.onuTr069SetWifi(onuId, { ssid: ed.ssid.trim(), password: ed.pass || undefined, index: s.index })
-                          .then(r => r.success ? toast.success(t('vo.wifiSent', { n: s.index })) : toast.error(r.message));
+                          .then(r => acsDone(r, t('vo.wifiSent', { n: s.index })));
                       }}>Set</Button>
-                      {s.index > 2 && (
+                      {s.index > 2 && !tr181 && (
                         <Button variant="ghost" className="w-full sm:w-auto" onClick={async () => {
                           if (await confirm({ title: t('vo.delSsidTitle', { n: s.index }), message: t('vo.delSsidMsg', { ssid: s.ssid }), variant: 'warning' }))
                             api.onuTr069DelObject(onuId, `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${s.index}.`)
-                              .then(r => { if (r.success) { toast.success(t('vo.deleteObjSent')); refetch(); } else toast.error(r.message); });
+                              .then(r => { if (acsDone(r, t('vo.deleteObjSent'))) refetch(); });
                         }}>Hapus</Button>
                       )}
                     </div>

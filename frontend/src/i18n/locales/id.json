@@ -1007,7 +1007,8 @@
     "act_factory_title": "Reset pabrik ONU?",
     "act_factory_msg": "ONU \"{{name}}\" akan dikembalikan ke pengaturan pabrik.",
     "act_delete_title": "Hapus ONU?",
-    "act_delete_msg": "ONU \"{{name}}\" akan dihapus dari OLT dan NMS. Tindakan ini tidak bisa dibatalkan."
+    "act_delete_msg": "ONU \"{{name}}\" akan dihapus dari OLT dan NMS. Tindakan ini tidak bisa dibatalkan.",
+    "acsQueued": "Perintah antre: modem belum merespons, akan dijalankan saat modem lapor ke GenieACS berikutnya."
   },
   "oc": {
     "notFound": "OLT tidak ditemukan",

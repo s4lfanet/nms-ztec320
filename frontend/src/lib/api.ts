@@ -130,16 +130,16 @@ export const api = {
   aiSaveSettings: (data: Record<string, unknown>) => request<{ success: boolean; config: Record<string, unknown> }>('/api/ai/settings', { method: 'POST', body: JSON.stringify(data) }),
   aiTest: () => request<{ success: boolean; message: string }>('/api/ai/test', { method: 'POST' }),
   aiAsk: (question: string) => request<{ success: boolean; answer: string }>('/api/ai/ask', { method: 'POST', body: JSON.stringify({ question }) }),
-  onuTr069Reboot: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/reboot`, { method: 'POST' }),
-  onuTr069Refresh: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/refresh`, { method: 'POST' }),
-  onuTr069SetWifi: (id: number, data: { ssid: string; password?: string; band?: string; index?: number }) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/wifi`, { method: 'POST', body: JSON.stringify(data) }),
+  onuTr069Reboot: (id: number) => request<{ success: boolean; message: string; queued?: boolean }>(`/api/onu/${id}/tr069/reboot`, { method: 'POST' }),
+  onuTr069Refresh: (id: number) => request<{ success: boolean; message: string; queued?: boolean }>(`/api/onu/${id}/tr069/refresh`, { method: 'POST' }),
+  onuTr069SetWifi: (id: number, data: { ssid: string; password?: string; band?: string; index?: number }) => request<{ success: boolean; message: string; queued?: boolean }>(`/api/onu/${id}/tr069/wifi`, { method: 'POST', body: JSON.stringify(data) }),
   onuTr069AddObject: (id: number, object_name: string) => request<{ success: boolean; instance: string; message: string }>(`/api/onu/${id}/tr069/add-object`, { method: 'POST', body: JSON.stringify({ object_name }) }),
-  onuTr069DelObject: (id: number, object_name: string) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/del-object`, { method: 'POST', body: JSON.stringify({ object_name }) }),
+  onuTr069DelObject: (id: number, object_name: string) => request<{ success: boolean; message: string; queued?: boolean }>(`/api/onu/${id}/tr069/del-object`, { method: 'POST', body: JSON.stringify({ object_name }) }),
   onuTr069AddWan: (id: number, data: { type: string; vlan_id?: string; username?: string; password?: string; service?: string; nat?: boolean; addressing?: string }) => request<{ success: boolean; instance: string; message: string }>(`/api/onu/${id}/tr069/add-wan`, { method: 'POST', body: JSON.stringify(data) }),
-  onuTr069WanBind: (id: number, conn_key: string, vlan_id: string) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/wan-bind`, { method: 'POST', body: JSON.stringify({ conn_key, vlan_id }) }),
-  onuTr069SetParams: (id: number, params: Record<string, string>) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/params`, { method: 'POST', body: JSON.stringify({ params }) }),
-  onuTr069SetPppoe: (id: number, data: { username: string; password?: string }) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/pppoe`, { method: 'POST', body: JSON.stringify(data) }),
-  onuTr069FactoryReset: (id: number) => request<{ success: boolean; message: string }>(`/api/onu/${id}/tr069/factory-reset`, { method: 'POST' }),
+  onuTr069WanBind: (id: number, conn_key: string, vlan_id: string) => request<{ success: boolean; message: string; queued?: boolean }>(`/api/onu/${id}/tr069/wan-bind`, { method: 'POST', body: JSON.stringify({ conn_key, vlan_id }) }),
+  onuTr069SetParams: (id: number, params: Record<string, string>) => request<{ success: boolean; message: string; queued?: boolean }>(`/api/onu/${id}/tr069/params`, { method: 'POST', body: JSON.stringify({ params }) }),
+  onuTr069SetPppoe: (id: number, data: { username: string; password?: string }) => request<{ success: boolean; message: string; queued?: boolean }>(`/api/onu/${id}/tr069/pppoe`, { method: 'POST', body: JSON.stringify(data) }),
+  onuTr069FactoryReset: (id: number) => request<{ success: boolean; message: string; queued?: boolean }>(`/api/onu/${id}/tr069/factory-reset`, { method: 'POST' }),
   onuTr069Tasks: (id: number) => request<{ success: boolean; tasks: { _id: string; name: string; timestamp: string; retries: number }[] }>(`/api/onu/${id}/tr069/tasks`),
   onuMapLock: (id: number, locked: boolean) => request<{ success: boolean; map_locked: boolean }>(`/api/onu/${id}/map-lock`, { method: 'POST', body: JSON.stringify({ locked }) }),
   parseMapsLink: (text: string) => request<{ success: boolean; lat?: number; lng?: number; message?: string }>('/api/ftth/parse-maps-link', { method: 'POST', body: JSON.stringify({ text }) }),
@@ -371,6 +371,7 @@ export interface Tr069Params {
   pppoe_username: string;
   ssid_24g: string;
   ssid_5g: string;
+  data_model?: 'tr098' | 'tr181';
 }
 
 export interface OnuPin {

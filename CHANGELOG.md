@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-23 — Integrasi MikroTik & GenieACS: tahap 1 (keamanan & ketepatan data)
+
+#### Keamanan
+- Password API MikroTik dan password NBI GenieACS kini disimpan **terenkripsi** (Fernet, sama seperti kredensial OLT). Data lama yang masih polos tetap terbaca dan dienkripsi otomatis saat server start.
+
+#### Diperbaiki
+- **Sinkron GenieACS jauh lebih ringan**: hanya mengambil kolom yang dibutuhkan (projection) dan per halaman 500 perangkat, bukan seluruh parameter semua modem.
+- **Modem TR-181 (Device.\*)** kini terbaca: model, firmware, uptime, PPPoE/WAN IP, SSID per band, jumlah perangkat. Ganti SSID/password, PPPoE, dan refresh memakai path TR-181; tambah/hapus SSID dan WAN untuk TR-181 ditolak dengan pesan jelas (bukan diam-diam mengirim path yang salah).
+- **Status perintah jujur**: bila modem tidak merespons connection request, perintah ditampilkan sebagai **antre** (dijalankan saat inform berikutnya), bukan "terkirim". Tombol Refresh kini juga menampilkan error bila gagal.
+- Jumlah perangkat terhubung di panel TR-069 sebelumnya selalu 0 — kini dihitung dari tabel Hosts (yang aktif).
+- Ganti PPPoE lewat TR-069 kini menulis ke koneksi PPP yang benar-benar ada (sebelumnya selalu `WANConnectionDevice.1`).
+- Panduan: saran user MikroTik baca-saja (`read,api,test`) dan api-ssl.
+
 ### 2026-11-22 — AI Agent membaca seluruh data NMS
 
 #### Ditambahkan

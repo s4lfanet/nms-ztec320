@@ -1155,13 +1155,24 @@ class MikrotikDevice(db.Model):
     api_port = db.Column(db.Integer, default=8728)
     api_ssl = db.Column(db.Boolean, default=False)
     api_user = db.Column(db.String(80), default='')
-    api_password = db.Column(db.String(200), default='')
+    # Disimpan terenkripsi (Fernet); kolom DB tetap bernama api_password.
+    # Nilai plaintext lama tetap terbaca (decrypt_field) dan dienkripsi ulang
+    # saat start oleh secrets_migration.encrypt_legacy_secrets().
+    _api_password_enc = db.Column('api_password', db.String(500), default='')
     enabled = db.Column(db.Boolean, default=True)
     ping_enabled = db.Column(db.Boolean, default=True)
     ping_batch = db.Column(db.Integer, default=25)  # max clients pinged per cycle
     last_ok = db.Column(db.Boolean, default=False)
     last_error = db.Column(db.String(300), default='')
     last_polled_at = db.Column(db.DateTime)
+
+    @property
+    def api_password(self):
+        return decrypt_field(self._api_password_enc or '')
+
+    @api_password.setter
+    def api_password(self, value):
+        self._api_password_enc = encrypt_field(value or '') if value else ''
 
 
 class OnuLinkState(db.Model):

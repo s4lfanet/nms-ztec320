@@ -249,6 +249,10 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 32. **PWA tanpa reload mendadak (`lib/swUpdate.ts`)** — `registerType: 'prompt'`, `skipWaiting: false`. Versi SW baru memicu `onNeedRefresh` → `SwUpdateNotice` (pemberitahuan kecil) dan diterapkan saat pindah halaman / tombol Muat ulang (`applySwUpdate()` → SKIP_WAITING → reload). Jangan kembali ke `autoUpdate` + `updateSW(true)` di `onNeedRefresh`: itu memuat ulang halaman di tengah user membaca. Alur Update Sistem memakai `refreshAfterServerUpdate()`. `vite:preloadError` di `main.tsx` me-reload sekali (maks per 30 detik) bila chunk lama hilang setelah deploy.
 
+33. **Kredensial integrasi terenkripsi** — `MikrotikDevice.api_password` adalah property (kolom DB tetap `api_password`, isi token Fernet via `_api_password_enc`); `genieacs_nbi_password` di SystemConfig juga terenkripsi (dibaca `decrypt_field` di `genieacs_client._nbi_config`). Plaintext lama tetap terbaca; `secrets_migration.encrypt_legacy_secrets()` mengenkripsi ulang saat start. Jangan menulis password integrasi baru tanpa `encrypt_field`.
+
+34. **GenieACS (`genieacs_client.py`)** — `fetch_devices()` wajib pakai `projection` + paging (`_PAGE`); jangan ambil dokumen penuh semua modem. Data model per device (`data_model()`, cache `_DM_CACHE`): `tr098` = `InternetGatewayDevice.*`, `tr181` = `Device.*` — fungsi tulis harus memilih path sesuai model; yang belum didukung TR-181 mengembalikan `TR181_UNSUPPORTED`. Semua task lewat `_post_task()`: HTTP 202 = antre → pesan `QUEUED_MSG`, route mengirim `queued: true` (UI: toast info, bukan sukses). `_param()` hanya untuk leaf (`_value`); untuk objek (mis. Hosts.Host) pakai `_node()`.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |
