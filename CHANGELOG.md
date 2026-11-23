@@ -4,6 +4,20 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Desain "Jalur Cahaya" tahap 1: fondasi & dashboard
+
+#### Diubah
+- **Dashboard** dirancang ulang agar data terasa hidup:
+  - Penanda **live** di header ("diperbarui N dtk lalu", meredup bila data basi) menggantikan hitung mundur, dan cahaya melintas di garis header setiap data diperbarui.
+  - **Panel denyut**: jumlah ONU online besar (bergerak saat berubah) + **sparkline 24 jam** + selisih dibanding 24 jam lalu + jumlah putus; di sebelahnya **LOS / Dying gasp / Offline** sebagai tombol besar berwarna status yang langsung membuka daftar ONU terfilter, plus skor kesehatan.
+  - **Baris OLT** dengan **strip riwayat 24 jam** per jam (gaya Uptime Kuma: hijau tenang, amber banyak putus, merah parah), meter ONU online, suhu/CPU/RAM, kipas mati, tombol Config & Sync.
+  - Kartu statistik seragam, kartu kesehatan, dan bar distribusi sinyal digabung ke panel denyut.
+- Latar aplikasi lebih tenang (tanpa blob ungu); **tema terang** memakai kartu solid bertepi jelas (sebelumnya kaca pucat).
+
+#### Ditambahkan
+- Endpoint `GET /api/dashboard/pulse?hours=24` (baca DB saja): putus/pulih per jam per OLT dan rekonstruksi jumlah online dari `OnuStatusHistory`.
+- Komponen bersama `LivePulse`, `Sparkline`, `Heartbeat` dan `lightpath.css`.
+
 ### 2026-11-23 — Rute server NMS ke pelanggan PPPoE dari web
 
 #### Ditambahkan

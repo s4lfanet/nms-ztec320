@@ -18,3 +18,6 @@ export { Stepper } from './Stepper';
 export { DataList, type DataColumn } from './DataList';
 export { Notice } from './Notice';
 export { StickyActionBar } from './StickyActionBar';
+export { LivePulse } from './LivePulse';
+export { Sparkline } from './Sparkline';
+export { Heartbeat, type HeartbeatBeat } from './Heartbeat';
