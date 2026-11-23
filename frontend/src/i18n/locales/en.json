@@ -1160,7 +1160,15 @@
     "deleteCommunityMsg": "Delete community \"{{community}}\" from OLT?",
     "deleteUserMsg": "Delete user \"{{username}}\" from OLT?",
     "neverSyncedBody1": "Cards, ports, CPU, memory and the port map stay empty until the first sync finishes. Run",
-    "neverSyncedBody2": "from the OLT Settings page."
+    "neverSyncedBody2": "from the OLT Settings page.",
+    "imageUpload": "Upload photo",
+    "imageChange": "Change photo",
+    "imageRemove": "Remove",
+    "imageSaved": "OLT photo saved",
+    "imageFailed": "Photo upload failed",
+    "imageRemoved": "OLT photo removed, back to illustration",
+    "imageRemoveTitle": "Remove OLT photo?",
+    "imageRemoveMsg": "The view goes back to the model illustration."
   },
   "pg_traffic": {
     "loading": "Loading…",

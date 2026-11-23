@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api, type OltInfo } from '../lib/api';
 import { useAuth } from '../stores/auth';
+import { OltDeviceArt } from '../components/OltDeviceArt';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { cn, formatDate } from '../lib/utils';
 import { toast } from '../components/Toast';
@@ -320,9 +321,8 @@ export function OltSettings() {
                   <td className="px-4 py-3 text-tx3">{i + 1}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-lg bg-glass flex items-center justify-center flex-shrink-0">
-                        <Server size={20} className={olt.is_online ? 'text-success' : 'text-danger'} />
-                      </div>
+                      <OltDeviceArt vendor={olt.vendor} model={olt.model} cards={olt.cards} online={olt.is_online}
+                        problems={(olt.offline_onu || 0) + (olt.los_onu || 0) > 0} imageUrl={olt.image_url} className="w-[72px] h-[44px]" />
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-sm">{olt.name}</span>
@@ -401,9 +401,8 @@ export function OltSettings() {
             <div key={olt.id} className="p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <span className="text-tx3 text-xs flex-shrink-0">{i + 1}</span>
-                <div className="w-10 h-10 rounded-lg bg-glass flex items-center justify-center flex-shrink-0">
-                  <Server size={18} className={olt.is_online ? 'text-success' : 'text-danger'} />
-                </div>
+                <OltDeviceArt vendor={olt.vendor} model={olt.model} cards={olt.cards} online={olt.is_online}
+                  problems={(olt.offline_onu || 0) + (olt.los_onu || 0) > 0} imageUrl={olt.image_url} className="w-[60px] h-[36px]" />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{olt.name}</div>
                   <div className="text-xs text-tx3 truncate">{olt.ip_address} • {olt.model}</div>

@@ -228,3 +228,18 @@ main .text-\[9px\] { font-size: 10.5px; }
 }
 .empty-state-title { font-size: 15px; color: var(--text-1); }
 .empty-state-desc { font-size: 13.5px; line-height: 1.5; }
+
+/* ─── Ilustrasi perangkat OLT (OltDeviceArt) — SVG orisinal per kelas perangkat ─── */
+.olt-art {
+  --olt-body: color-mix(in srgb, var(--text-3) 30%, var(--bg-surface));
+  --olt-edge: color-mix(in srgb, var(--text-3) 55%, transparent);
+  --olt-slot: color-mix(in srgb, var(--bg-primary) 70%, var(--olt-body));
+  --olt-port: color-mix(in srgb, var(--text-3) 35%, var(--bg-primary));
+  --olt-sheen: color-mix(in srgb, #ffffff 10%, transparent);
+  display: block; flex-shrink: 0;
+}
+.olt-art.is-offline { opacity: .7; }
+img.olt-art { border-radius: 8px; background: var(--bg-glass); }
+.olt-art .olt-led { animation: oltLed 2.4s ease-in-out infinite; }
+@keyframes oltLed { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .olt-art .olt-led { animation: none; } }

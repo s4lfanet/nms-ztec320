@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Gambar perangkat OLT
+
+#### Ditambahkan
+- **Ilustrasi OLT sesuai model** di Dashboard (baris OLT), Pengaturan OLT (desktop & HP), dan header Konfigurasi OLT. Gambar SVG orisinal per kelas perangkat — sasis besar (ZTE C300/C600/C650, Huawei MA5800-X7/X15/X17, MA5680T/MA5683T, FiberHome AN5516-01/06), sasis mini (ZTE C320/C610/C620, Huawei MA5608T/MA5800-X2, FiberHome AN5516-04) dan box 1U (HSGQ, VSOL, HIOSO, C-Data, BDCOM, dll., jumlah port PON dari nama model). LED status hijau/kuning/merah mengikuti kondisi OLT, port menyala sesuai `ports_up` kartu.
+- **Foto OLT sendiri**: tombol *Unggah foto / Ganti foto / Hapus* di header Konfigurasi OLT (izin `settings_ip_olts`). PNG/JPG/WebP maks 1,5 MB, disimpan di `instance/olt_images/` dan ditampilkan menggantikan ilustrasi. API `GET/POST/DELETE /api/olt/<id>/image`, `image_url` di `/api/dashboard` dan `GET /api/olt/<id>`.
+- Foto produk vendor dari internet sengaja tidak dipakai (hak cipta) — tidak ada logo/merek vendor di ilustrasi.
+
 ### 2026-11-24 — Desain "Jalur Cahaya" tahap 3: semua halaman
 
 #### Diubah

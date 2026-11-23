@@ -7,7 +7,7 @@ import { cn, formatDate } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
-  Server, Activity, HardDrive, Network, Globe, Gauge, Settings,
+  Activity, HardDrive, Network, Globe, Gauge, Settings,
   CheckCircle, XCircle, ChevronDown, ChevronRight, RefreshCw,
   Edit3, Trash2, Pause, Play, Wifi, Plus, ArrowUp, ArrowDown, Filter,
   Terminal, Check, X, Loader2,
@@ -16,6 +16,7 @@ import { RackDiagramRouter } from '../components/rack/RackDiagramRouter';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { api } from '../lib/api';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
+import { OltDeviceArt } from '../components/OltDeviceArt';
 import { Button, EmptyState, Input, Modal, Select, Tabs, Notice } from '../components/ui';
 
 const TABS = [
@@ -27,6 +28,53 @@ const TABS = [
   { id: 'speed', label: 'Speed Profiles', icon: <Gauge size={15} /> },
   { id: 'system', label: 'System', icon: <Settings size={15} /> },
 ];
+
+type OltHeaderInfo = {
+  id: number; vendor?: string; model?: string; is_online: boolean; image_url?: string | null;
+  cards?: { total_ports?: number; ports_up?: number }[]; offline_onu?: number; los_onu?: number;
+};
+
+/** Ilustrasi/foto OLT di header + tombol unggah/hapus foto sendiri. */
+function OltImageSlot({ olt, canManage }: { olt: OltHeaderInfo; canManage: boolean }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['dashboard'] }); };
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setBusy(true);
+    try { await api.oltImageUpload(olt.id, f); toast.success(t('oc.imageSaved')); refresh(); }
+    catch (err) { toast.error((err as Error).message || t('oc.imageFailed')); }
+    finally { setBusy(false); }
+  };
+  const onRemove = async () => {
+    if (!(await confirm({ title: t('oc.imageRemoveTitle'), message: t('oc.imageRemoveMsg'), variant: 'danger' }))) return;
+    setBusy(true);
+    try { await api.oltImageDelete(olt.id); toast.success(t('oc.imageRemoved')); refresh(); }
+    catch (err) { toast.error((err as Error).message); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="flex flex-col items-center gap-1 flex-shrink-0">
+      <OltDeviceArt vendor={olt.vendor} model={olt.model} cards={olt.cards} online={olt.is_online}
+        problems={(olt.offline_onu || 0) + (olt.los_onu || 0) > 0} imageUrl={olt.image_url}
+        className="w-[84px] h-[50px] md:w-[120px] md:h-[72px]" />
+      {canManage && (
+        <div className="flex items-center gap-2 text-[11px]">
+          <label className={cn('text-accent hover:underline cursor-pointer', busy && 'opacity-50 pointer-events-none')}>
+            {olt.image_url ? t('oc.imageChange') : t('oc.imageUpload')}
+            <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={onFile} />
+          </label>
+          {olt.image_url && (
+            <button type="button" onClick={onRemove} disabled={busy} className="text-tx3 hover:text-danger">{t('oc.imageRemove')}</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function OltConfiguration() {
   const { t } = useTranslation();
@@ -50,10 +98,7 @@ export function OltConfiguration() {
       <div className="glass-card p-4 md:p-5">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
           <div className="flex items-center gap-3 md:gap-4">
-            <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl bg-glass flex items-center justify-center border-2 border-brd flex-shrink-0">
-              <Server size={24} className={cn(olt.is_online ? 'text-success' : 'text-danger', 'md:hidden')} />
-              <Server size={32} className={cn(olt.is_online ? 'text-success' : 'text-danger', 'hidden md:block')} />
-            </div>
+            <OltImageSlot olt={olt} canManage={canManage} />
             <div className="min-w-0">
               <div className="flex items-center gap-2 md:gap-3">
                 <h2 className="text-lg md:text-xl font-bold truncate">{olt.name}</h2>
