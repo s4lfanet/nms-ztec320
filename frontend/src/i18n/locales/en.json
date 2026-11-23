@@ -2106,7 +2106,9 @@
     "applying": "Fetching the update from GitHub…",
     "restarting": "Service restarting — the page will reload automatically…",
     "swReady": "A new app version is ready — it applies when you open another page.",
-    "swReload": "Reload"
+    "swReload": "Reload",
+    "downloadingUi": "Downloading the new version…",
+    "reloading": "Reloading…"
   },
   "cmp_search": {
     "searchOnusOltsOdps": "Search ONUs, OLTs, ODPs, ODCs, users…",

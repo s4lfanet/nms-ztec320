@@ -2106,7 +2106,9 @@
     "applying": "Mengambil update dari GitHub…",
     "restarting": "Service memulai ulang — halaman dimuat ulang otomatis…",
     "swReady": "Versi baru aplikasi siap — diterapkan saat Anda pindah halaman.",
-    "swReload": "Muat ulang"
+    "swReload": "Muat ulang",
+    "downloadingUi": "Mengunduh tampilan versi baru…",
+    "reloading": "Memuat ulang tampilan…"
   },
   "cmp_search": {
     "searchOnusOltsOdps": "Cari ONU, OLT, ODP, ODC, user…",

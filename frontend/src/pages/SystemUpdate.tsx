@@ -8,7 +8,7 @@ import {
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card } from '../components/ui';
-import { refreshAfterServerUpdate } from '../lib/swUpdate';
+import { refreshAfterServerUpdate, type RefreshPhase } from '../lib/swUpdate';
 import { confirm as confirmDialog } from '../components/ConfirmDialog';
 
 interface UpdateCheckResult {
@@ -34,6 +34,7 @@ export function SystemUpdate() {
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
   const [applyResult, setApplyResult] = useState<UpdateApplyResult | null>(null);
+  const [reloadPhase, setReloadPhase] = useState<RefreshPhase | null>(null);
 
   const handleCheck = async () => {
     setChecking(true);
@@ -64,6 +65,11 @@ export function SystemUpdate() {
       if (d.success) {
         toast.success(d.message);
         setResult(null);
+        if (d.restarted) {
+          // Langsung muat ulang tampilan begitu service hidup & versi baru terunduh.
+          setReloadPhase('server');
+          refreshAfterServerUpdate({ waitServer: true, onPhase: setReloadPhase });
+        }
       } else {
         toast.error(d.message || 'Update failed');
       }
@@ -189,10 +195,16 @@ export function SystemUpdate() {
           {applyResult.pull_output && (
             <pre className="text-xs font-mono text-tx3 bg-black/30 rounded-lg p-2 mt-2 overflow-x-auto">{applyResult.pull_output}</pre>
           )}
-          {applyResult.restarted && (
-            <p className="text-xs text-tx3 mt-2 flex items-center gap-1.5">
-              <RefreshCw size={12} /> Service has been restarted. The page may need a manual refresh.
-            </p>
+          {applyResult.success && applyResult.restarted && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 p-3 rounded-lg bg-glass border border-brd">
+              <Loader2 size={14} className="animate-spin text-accent flex-shrink-0" />
+              <span className="flex-1 min-w-[12rem] text-xs text-tx2">
+                {reloadPhase === 'download' ? t('cmp_update.downloadingUi') : reloadPhase === 'reload' ? t('cmp_update.reloading') : t('cmp_update.restarting')}
+              </span>
+              <Button variant="primary" icon={<RefreshCw size={14} />} onClick={() => refreshAfterServerUpdate()}>
+                {t('pg_sysupdate.reloadUi')}
+              </Button>
+            </div>
           )}
         </Card>
       )}

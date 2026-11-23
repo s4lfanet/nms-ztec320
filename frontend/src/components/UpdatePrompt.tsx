@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Download, Loader2 } from 'lucide-react';
 import { Modal } from './ui/Modal';
-import { refreshAfterServerUpdate } from '../lib/swUpdate';
+import { refreshAfterServerUpdate, type RefreshPhase } from '../lib/swUpdate';
 import { toast } from './Toast';
 import { useAuth } from '../stores/auth';
 
@@ -27,29 +27,13 @@ const FIRST_DELAY_MS = 15_000;            // tunggu halaman selesai dimuat
  * halaman Update Sistem. "Abaikan" menyembunyikan pop-up sampai ada commit
  * baru lagi.
  */
-/** Tunggu service mati lalu hidup lagi (maks ±90 dtk). */
-async function waitForRestart() {
-  const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
-  const up = async () => {
-    try {
-      const r = await fetch('/api/public/branding', { cache: 'no-store' });
-      return r.ok;
-    } catch { return false; }
-  };
-  await sleep(4000);
-  for (let i = 0; i < 45; i++) {
-    if (await up()) { await sleep(1500); return; }
-    await sleep(2000);
-  }
-}
-
 export function UpdatePrompt() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [info, setInfo] = useState<CheckResult | null>(null);
-  const [phase, setPhase] = useState<'idle' | 'applying' | 'restarting'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'applying' | RefreshPhase>('idle');
   const isSuper = !!user?.is_super_admin;
 
   useEffect(() => {
@@ -89,9 +73,8 @@ export function UpdatePrompt() {
       const d = await r.json();
       if (!d.success) { toast.error(d.message || t('cmp_update.failedToApplyThe')); setPhase('idle'); return; }
       if (!d.restarted) { toast.success(d.message); setPhase('idle'); setInfo(null); return; }
-      setPhase('restarting');
-      await waitForRestart();
-      await refreshAfterServerUpdate();
+      setPhase('server');
+      await refreshAfterServerUpdate({ waitServer: true, onPhase: setPhase });
     } catch {
       toast.error(t('cmp_update.failedToApplyThe'));
       setPhase('idle');
@@ -133,7 +116,7 @@ export function UpdatePrompt() {
         {busy ? (
           <p className="flex items-center gap-2 text-tx2">
             <Loader2 size={16} className="animate-spin text-accent" />
-            {phase === 'applying' ? t('cmp_update.applying') : t('cmp_update.restarting')}
+            {phase === 'applying' ? t('cmp_update.applying') : phase === 'server' ? t('cmp_update.restarting') : phase === 'download' ? t('cmp_update.downloadingUi') : t('cmp_update.reloading')}
           </p>
         ) : (
           <>
