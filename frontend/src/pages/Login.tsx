@@ -67,8 +67,8 @@ export function Login() {
     <AuthLayout brandName={brandName} logoUrl={logoUrl}>
       {/* Login Card */}
       <Card bodyClassName="p-6 sm:p-8">
-        <h2 className="text-xl font-semibold mb-1 font-display">{t('login.signIn')}</h2>
-        <p className="text-xs text-tx3 mb-6">{t('login.subtitle')}</p>
+        <h2 className="text-2xl font-semibold mb-1 font-display">{t('login.signIn')}</h2>
+        <p className="text-sm text-tx3 mb-6">{t('login.subtitle')}</p>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <Input
