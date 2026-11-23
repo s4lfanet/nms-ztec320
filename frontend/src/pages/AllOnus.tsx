@@ -65,7 +65,7 @@ export function AllOnus() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['all-onus', oltFilter, statusFilter, signalFilter, ponFilter, slotFilter, debouncedSearch, page, pageSize, sortBy, sortDir],
     queryFn: () => api.allOnus({ olt: oltFilter, status: statusFilter, signal: signalFilter, pon: ponFilter !== 'all' ? ponFilter : (slotFilter !== 'all' ? `slot/${slotFilter}` : 'all'), search: debouncedSearch, page, page_size: pageSize, sort_by: sortBy || undefined, sort_dir: sortDir }),
     refetchInterval: 30000,
@@ -254,6 +254,7 @@ export function AllOnus() {
       <PageHeader
         title={t('allOnus.title')}
         description={t('allOnus.subtitle', { count: total })}
+        live={{ updatedAt: dataUpdatedAt, fetching: isFetching }}
         action={
           <>
             <Button

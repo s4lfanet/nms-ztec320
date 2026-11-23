@@ -207,3 +207,24 @@ html.light .auth-panel > .glass-card { box-shadow: 0 30px 60px -34px rgba(15, 23
   background: radial-gradient(closest-side, var(--bg-primary) 55%, transparent);
   opacity: 0.92;
 }
+
+/* ─── Keterbacaan di konten: label kecil berhuruf KAPITAL jadi kalimat biasa;
+   kepala tabel (th) tetap. Teks 9px dinaikkan sedikit. ─── */
+main :is(p, span, div, label, h3, h4).uppercase:not(th *, th) {
+  text-transform: none; letter-spacing: -0.005em;
+}
+main .text-\[9px\] { font-size: 10.5px; }
+
+/* ─── Keadaan kosong: ikon di "ujung serat" — undangan bertindak, bukan kotak abu ─── */
+.empty-state-icon {
+  position: relative; border-radius: 999px; width: 52px; height: 52px;
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--color-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+.empty-state-icon::before {
+  content: ''; position: absolute; right: 100%; top: 50%; width: 56px; height: 1px; margin-right: 6px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-accent) 45%, transparent));
+}
+.empty-state-title { font-size: 15px; color: var(--text-1); }
+.empty-state-desc { font-size: 13.5px; line-height: 1.5; }

@@ -9,6 +9,7 @@ import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card } from '../components/ui';
 import { refreshAfterServerUpdate } from '../lib/swUpdate';
+import { confirm as confirmDialog } from '../components/ConfirmDialog';
 
 interface UpdateCheckResult {
   success: boolean;
@@ -49,7 +50,7 @@ export function SystemUpdate() {
   };
 
   const handleApply = async () => {
-    if (!confirm('This will pull latest code from GitHub, rebuild the frontend, and restart the service. The app will be briefly unavailable. Continue?')) return;
+    if (!(await confirmDialog({ title: t('ui.applyConfirmTitle'), message: t('ui.applyConfirmMsg'), confirmLabel: t('ui.applyUpdate'), variant: 'warning' }))) return;
     setApplying(true);
     setApplyResult(null);
     try {
@@ -98,7 +99,7 @@ export function SystemUpdate() {
               onClick={handleCheck}
               disabled={checking}
             >
-              {checking ? 'Checking...' : 'Check Now'}
+              {checking ? t('ui.checking') : t('ui.checkNow')}
             </Button>
           </div>
 
@@ -157,7 +158,7 @@ export function SystemUpdate() {
                   className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-success text-white text-sm font-medium hover:bg-success/90 disabled:opacity-50 transition-colors w-full justify-center"
                 >
                   {applying ? <Loader2 size={16} className="animate-spin" /> : <ArrowUpCircle size={16} />}
-                  {applying ? 'Applying update...' : 'Apply Update'}
+                  {applying ? t('ui.applying') : t('ui.applyUpdate')}
                 </button>
               )}
             </div>
@@ -199,11 +200,11 @@ export function SystemUpdate() {
       {/* Info card */}
       <Card className="border-accent/20 bg-accent/5">
         <h4 className="text-xs font-semibold text-accent mb-2 flex items-center gap-1.5">
-          <Download size={14} /> How It Works
+          <Download size={14} /> {t('ui.howItWorks')}
         </h4>
         <ul className="text-xs text-tx3 space-y-1.5 pl-4 list-disc">
           <li><strong>{t('pg_sysupdate.check')}</strong>{t('pg_sysupdate.fetchesLatestFromGithub')}</li>
-          <li><strong>Apply</strong>{t('pg_sysupdate.runs')} <code className="text-tx2">git pull</code>{t('pg_sysupdate.rebuildsFrontendWith')} <code className="text-tx2">pnpm build</code>{t('pg_sysupdate.andRestartsTheService')}</li>
+          <li>{t('ui.applyExplain')}</li>
           <li>{t('pg_sysupdate.theAppWillBe')}</li>
           <li>{t('pg_sysupdate.onlySuperAdminCan')}</li>
         </ul>
