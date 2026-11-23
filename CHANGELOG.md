@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Desain "Jalur Cahaya" tahap 2: halaman login
+
+#### Diubah
+- **Login** dirancang ulang: medan serat optik berwarna kode TIA-598 (biru, oranye, hijau, cokelat, abu, putih, merah, hitam) yang menyatu ke form, dengan cahaya melintas pelan di tiap serat — satu-satunya animasi halaman (statis bila *reduce motion*). Empat kartu fitur diganti satu kalimat utama yang jelas; form ringkas dan solid; versi HP menampilkan serat di bagian atas.
+- Teks login dirapikan (judul, subjudul, status pengumpul, "Koneksi terenkripsi").
+
 ### 2026-11-24 — Desain "Jalur Cahaya" tahap 1: fondasi & dashboard
 
 #### Diubah

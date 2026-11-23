@@ -163,3 +163,47 @@ html.light {
   .lightpath-rule.run::after { animation: none; }
   .heartbeat-beat:hover, .trouble-seg:hover { transform: none; }
 }
+
+/* ─── Login: medan serat (kode warna TIA-598) + cahaya melintas ─── */
+.fiber-field { position: absolute; inset: 0 auto 0 0; width: 62%; height: 100%; pointer-events: none; }
+.fiber-field-mobile { inset: 0 0 auto 0; width: 100%; height: 260px; opacity: 0.7;
+  mask-image: linear-gradient(180deg, #000 40%, transparent); -webkit-mask-image: linear-gradient(180deg, #000 40%, transparent); }
+.fiber-core { fill: none; stroke-width: 2; stroke-opacity: 0.34; vector-effect: non-scaling-stroke; }
+html.light .fiber-core { stroke-opacity: 0.45; }
+.fiber-light {
+  fill: none; stroke: #ffffff; stroke-width: 2.5; stroke-linecap: round; vector-effect: non-scaling-stroke;
+  stroke-dasharray: 70 1600; stroke-dashoffset: 1670;
+  filter: drop-shadow(0 0 4px var(--color-accent)) drop-shadow(0 0 10px var(--color-accent));
+  animation-name: fiberLight; animation-timing-function: cubic-bezier(.45, 0, .25, 1); animation-iteration-count: infinite;
+}
+html.light .fiber-light { stroke: var(--color-accent); }
+@keyframes fiberLight {
+  0% { stroke-dashoffset: 1670; opacity: 0; }
+  8% { opacity: 1; }
+  60% { opacity: 1; }
+  72%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+.auth-hero { font-size: clamp(2.2rem, 3.4vw, 3.1rem); line-height: 1.05; letter-spacing: -0.03em; font-weight: 700; }
+.auth-panel > .glass-card {
+  background: var(--bg-surface); backdrop-filter: none; -webkit-backdrop-filter: none;
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--border-color);
+}
+html.light .auth-panel > .glass-card { box-shadow: 0 30px 60px -34px rgba(15, 23, 42, 0.35), 0 0 0 1px var(--border-color); }
+/* Titik masuk serat ke form: sedikit cahaya di tepi kiri panel */
+@media (min-width: 1024px) {
+  .auth-panel::before {
+    content: ''; position: absolute; left: -6px; top: 50%; width: 12px; height: 12px; border-radius: 999px;
+    transform: translateY(-50%); background: var(--color-accent);
+    box-shadow: 0 0 12px 3px color-mix(in srgb, var(--color-accent) 60%, transparent); z-index: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fiber-light { animation: none; opacity: 0; }
+}
+/* Teks hero tetap terbaca di atas serat */
+.auth-copy { position: relative; }
+.auth-copy::before {
+  content: ''; position: absolute; inset: -40px -60px -40px -48px; z-index: -1; pointer-events: none;
+  background: radial-gradient(closest-side, var(--bg-primary) 55%, transparent);
+  opacity: 0.92;
+}
