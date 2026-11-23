@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Foto per model OLT dipindah ke Kustomisasi
+
+#### Diubah
+- Pengaturan **Foto per model OLT** dipindah dari halaman Pengaturan OLT ke **Kustomisasi → tab Foto OLT** (bisa dibuka langsung lewat `/dashboard/customization?tab=oltphotos`). Daftar OLT kini hanya menampilkan gambarnya. Unggah/hapus tetap butuh izin `settings_ip_olts`.
+
 ### 2026-11-24 — Foto asli per model OLT
 
 #### Ditambahkan

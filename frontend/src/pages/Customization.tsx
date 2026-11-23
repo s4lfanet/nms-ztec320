@@ -6,12 +6,13 @@ import { cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import {
   Eye, EyeOff, Monitor, Smartphone, Save, ArrowUp, ArrowDown,
-  RotateCcw, Signal, AlertTriangle, CheckCircle, AlertCircle, Palette, Plus, Trash2, Globe, Clock, Key
+  RotateCcw, Signal, AlertTriangle, CheckCircle, AlertCircle, Palette, Plus, Trash2, Globe, Clock, Key, ImageIcon
 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, Select } from '../components/ui';
+import { OltModelPhotos } from '../components/OltModelPhotos';
 
 interface Column { id: string; column_name: string; column_key: string; visible_desktop: boolean; visible_mobile: boolean; sort_order: number; }
 
@@ -41,8 +42,10 @@ function getCellValue(key: string, row: typeof PREVIEW_DATA[0]) {
 export function Customization() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'desktop' | 'mobile' | 'signal' | 'rxcolors' | 'timezone' | 'tokens'>('desktop');
+  const [activeTab, setActiveTab] = useState<'desktop' | 'mobile' | 'signal' | 'rxcolors' | 'oltphotos' | 'timezone' | 'tokens'>(() => (new URLSearchParams(window.location.search).get('tab') === 'oltphotos' ? 'oltphotos' : 'desktop'));
   const [localColumns, setLocalColumns] = useState<Column[]>([]);
+  const hasPermTop = useHasPerm();
+  const canManageOlts = hasPermTop('settings_ip_olts');
   const [hasChanges, setHasChanges] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -137,6 +140,11 @@ export function Customization() {
             className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
               activeTab === 'rxcolors' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
             <Palette size={16} /> RX Colors
+          </button>
+          <button onClick={() => setActiveTab('oltphotos')}
+            className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
+              activeTab === 'oltphotos' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
+            <ImageIcon size={16} /> {t('olts.modelPhotosTab')}
           </button>
           <button onClick={() => setActiveTab('timezone')}
             className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
@@ -321,6 +329,10 @@ export function Customization() {
         {/* RX Colors Tab */}
         {activeTab === 'rxcolors' && (
           <RxColorsTab />
+        )}
+
+        {activeTab === 'oltphotos' && (
+          <OltModelPhotos canManage={canManageOlts} bare />
         )}
 
         {/* Timezone Tab */}
