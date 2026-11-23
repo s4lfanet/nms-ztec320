@@ -91,6 +91,7 @@ def api_dashboard():
         'offline': offline_onu, 'offline_pct': round(offline_onu / t * 100, 2),
         'other': other_onu,
     }
+    images = {o.id: olt_images.resolve(o) for o in olts}
     olt_list = [{
         'id': o.id, 'name': o.name, 'ip_address': o.ip_address, 'model': o.model,
         'firmware_version': o.firmware_version, 'is_online': o.is_online,
@@ -104,7 +105,8 @@ def api_dashboard():
         'cards': [{'slot': c.slot, 'card_type': c.card_type, 'status': c.status, 'total_ports': c.total_ports, 'ports_up': c.ports_up, 'ports_down': c.ports_down,
                    'cpu_usage': c.cpu_usage or 0, 'memory_usage': c.memory_usage or 0, 'memory_total': c.memory_total or 0, 'temperature': c.temperature} for c in cards_by_olt.get(o.id, [])],
         'uplink_count': uplink_counts.get(o.id, 0),
-        'image_url': olt_images.url(o.id),
+        'image_url': images[o.id][0],
+        'image_source': images[o.id][1],
         'uptime': o.uptime or 0,
         'snmp_status': o.snmp_status or 'disconnected',
         'telnet_status': o.telnet_status or 'disconnected',
