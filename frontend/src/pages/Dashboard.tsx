@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
-import { api, type DashboardData, type OltInfo, type NotificationsResponse } from '../lib/api';
-import { formatDate, cn } from '../lib/utils';
+import { api, type DashboardData, type OltInfo, type NotificationsResponse, type PulseOlt } from '../lib/api';
+import { timeAgo, cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
-  Server, Wifi, WifiOff, AlertTriangle, Thermometer, Cpu, MemoryStick,
-  RefreshCw, Radio, Clock, Fan, Zap, Activity, ExternalLink,
-  TrendingUp, Shield, Bell, ArrowRight,
+  Server, Wifi, WifiOff, Thermometer, RefreshCw, Zap, ExternalLink,
+  TrendingUp, Bell, ArrowRight,
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useTranslation } from 'react-i18next';
@@ -16,7 +15,7 @@ import { useDashboardWs } from '../hooks/useDashboardWs';
 import { useCountUp } from '../hooks/useCountUp';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, EmptyState, Select, StatusStrip, Notice } from '../components/ui';
+import { Button, Card, EmptyState, Select, Notice, LivePulse, Sparkline, Heartbeat, type HeartbeatBeat } from '../components/ui';
 import { FilterBar, SearchBar } from '../components/shared';
 import { useStatusFlash, flashClass } from '../hooks/useStatusFlash';
 
@@ -56,12 +55,10 @@ export function Dashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortKey, setSortKey] = useState<SortKey>('status');
-  const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
-  const countdownRef = useRef(REFRESH_INTERVAL);
 
   const manualRefreshRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.dashboard({ nocache: manualRefreshRef.current }),
     refetchInterval: REFRESH_INTERVAL * 1000,
@@ -82,6 +79,12 @@ export function Dashboard() {
     enabled: !!data,
   });
 
+  // Denyut 24 jam (sparkline online + strip putus per OLT) — dari riwayat status di DB
+  const { data: pulse } = useQuery({
+    queryKey: ['dashboard-pulse'], queryFn: () => api.dashboardPulse(24),
+    refetchInterval: 120_000, enabled: !!data,
+  });
+
   // Fetch recent alarm notifications
   const { data: notifData } = useQuery({
     queryKey: ['dashboard-alerts'],
@@ -100,27 +103,6 @@ export function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     }
   }, [alertWsMsg, queryClient]);
-
-  // Countdown ticker
-  useEffect(() => {
-    const tick = setInterval(() => {
-      countdownRef.current -= 1;
-      setCountdown(countdownRef.current);
-      if (countdownRef.current <= 0) {
-        countdownRef.current = REFRESH_INTERVAL;
-        setCountdown(REFRESH_INTERVAL);
-      }
-    }, 1000);
-    return () => clearInterval(tick);
-  }, []);
-
-  // Reset countdown on data refresh
-  useEffect(() => {
-    if (!isFetching) {
-      countdownRef.current = REFRESH_INTERVAL;
-      setCountdown(REFRESH_INTERVAL);
-    }
-  }, [isFetching]);
 
   const syncMutation = useMutation({
     mutationFn: async (oltId: number) => {
@@ -239,15 +221,7 @@ export function Dashboard() {
     return a.name.localeCompare(b.name);
   }), [filteredOlts, sortKey]);
 
-  // Animasi: kartu OLT "menyala" sekali per sesi browser; kartu berkedip saat
-  // kondisi OLT berubah (down/naik, ada/hilang gangguan) pada refresh otomatis.
-  const [ignite] = useState(() => {
-    try {
-      if (sessionStorage.getItem('nms-dash-ignited')) return false;
-      sessionStorage.setItem('nms-dash-ignited', '1');
-    } catch { /* ignore */ }
-    return true;
-  });
+  // Kartu berkedip saat kondisi OLT berubah (down/naik, ada/hilang gangguan).
   const oltFlash = useStatusFlash(
     olts,
     o => o.id,
@@ -272,26 +246,32 @@ export function Dashboard() {
 
   const healthColor = healthScore >= 80 ? 'text-success' : healthScore >= 50 ? 'text-warning' : 'text-danger';
   const healthLabel = healthScore >= 80 ? t('dashboard.healthy') : healthScore >= 50 ? t('dashboard.warning') : t('dashboard.critical');
-  const healthBg = healthScore >= 80 ? 'bg-success/15' : healthScore >= 50 ? 'bg-warning/15' : 'bg-danger/15';
 
   const recentAlerts = useMemo(() => (notifData as NotificationsResponse | undefined)?.notifications || [], [notifData]);
   const problemList = useMemo(() => (problemOnus || []).slice(0, 5), [problemOnus]);
 
+  const onlineDisplay = useCountUp(stats?.online ?? 0);
   if (isLoading) return <DashboardSkeleton />;
   if (!stats) return null;
 
   const totalProblem = (stats.offline || 0) + (stats.dyinggasp || 0) + (stats.los || 0);
 
+  const pulseSeries = pulse ? [...pulse.online, stats.online] : [];
+  const dayAgo = pulse?.online?.[0];
+  const delta = dayAgo != null ? stats.online - dayAgo : null;
+  const drops24 = pulse ? pulse.drops.reduce((a, b) => a + b, 0) : null;
+  const goodSignal = Math.max(0, stats.online - stats.los - stats.dyinggasp);
+  const pct = (n: number) => (stats.total_onu > 0 ? (n / stats.total_onu) * 100 : 0);
+
   return (
     <PageContainer>
       <PageHeader
-        icon={<Activity size={20} className="text-accent" />}
         title={t('dashboard.title')}
         description={
-          <>
-            {t('dashboard.refreshIn', { online: onlineCount, total: olts.length })}{' '}
-            <span className={countdown <= 5 ? 'text-warning font-semibold' : 'text-tx2'}>{countdown}{t('dashboard.sec')}</span>
-          </>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <LivePulse updatedAt={dataUpdatedAt} fetching={isFetching} />
+            <span>{t('dashboard.oltOnline', { online: onlineCount, total: olts.length })}</span>
+          </span>
         }
         action={
           <>
@@ -324,43 +304,70 @@ export function Dashboard() {
           </>
         }
       />
+      {/* Satu momen cahaya: melintas tiap kali data dashboard diperbarui */}
+      <div key={dataUpdatedAt} className="lightpath-rule run" aria-hidden />
+
       {activeIncidentCount > 0 && (
-        <Notice className="mb-4" tone="crit" title={t('dashboard.activeIncidents', { n: activeIncidentCount })}
+        <Notice tone="crit" title={t('dashboard.activeIncidents', { n: activeIncidentCount })}
           action={<Link to="/dashboard/incidents" className="text-xs font-semibold underline">{t('dashboard.openIncidents')}</Link>}>
           {t('dashboard.activeIncidentsHint')}
         </Notice>
       )}
 
-      {/* HP: ringkasan sebagai chip — ketuk untuk membuka daftar ONU terfilter
-          (redesign Fase 2). Desktop tetap memakai kartu statistik di bawah. */}
-      <StatusStrip
-        className="md:hidden"
-        aria-label={t('dashboard.title')}
-        onSelect={k => navigate(k === 'olt' ? '/dashboard/settings/olts' : k === 'all' ? '/dashboard/onus' : `/dashboard/onus?filter=${k}`)}
-        items={[
-          { key: 'problem', label: t('nav.problems'), count: totalProblem, tone: totalProblem > 0 ? 'crit' : 'idle' },
-          { key: 'online', label: t('common.online'), count: `${stats.online} · ${stats.online_pct}%`, tone: 'ok' },
-          { key: 'all', label: t('dashboard.statTotalOnu'), count: stats.total_onu, tone: 'info' },
-          { key: 'olt', label: 'OLT', count: `${onlineCount}/${olts.length}`, tone: onlineCount < olts.length ? 'warn' : 'ok' },
-        ]}
-      />
-      {/* Summary Stats — 4 cards */}
-      <div className="hidden md:grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-        <StatCard icon={<Server size={18} />} label={t('dashboard.statOlt')} value={olts.length}
-          sub={t('dashboard.statOltSub', { online: onlineCount, offline: olts.length - onlineCount })} color="accent" delay={0} />
-        <StatCard icon={<Radio size={18} />} label={t('dashboard.statTotalOnu')} value={stats.total_onu}
-          sub={`${stats.online_pct}% ${t('common.online').toLowerCase()}`} color="info"
-          progress={stats.total_onu > 0 ? stats.online_pct : 0} delay={60} />
-        <StatCard icon={<Wifi size={18} />} label={t('dashboard.statOnuOnline')} value={stats.online}
-          sub={`${stats.online_pct}%`} color="success" delay={120} />
-        <StatCard icon={<AlertTriangle size={18} />} label={t('dashboard.statOnuProblem')} value={totalProblem}
-          sub={totalProblem > 0 ? t('dashboard.problemSub', { offline: stats.offline, dg: stats.dyinggasp, los: stats.los }) : t('dashboard.allNormal')}
-          color={totalProblem > 0 ? 'danger' : 'muted'} delay={180} />
-      </div>
+      {/* ── Denyut jaringan: online + tren 24 jam | yang perlu perhatian ── */}
+      <section className="pulse-panel" aria-label={t('dashboard.pulseTitle')}>
+        <div className="min-w-0 flex flex-col gap-3">
+          <div className="text-sm text-tx2">{t('dashboard.onuOnlineNow')}</div>
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+            <span className="pulse-figure text-tx1">{onlineDisplay}</span>
+            <span className="pulse-unit pb-1">{t('dashboard.ofTotalOnu', { total: stats.total_onu, pct: stats.online_pct })}</span>
+          </div>
+          <Sparkline values={pulseSeries} height={56} tone={stats.online_pct >= 90 ? 'success' : stats.online_pct >= 70 ? 'warning' : 'danger'}
+            label={t('dashboard.trend24h')} />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-tx3">
+            <span>{t('dashboard.trend24h')}</span>
+            {delta != null && (
+              <span className={cn('pulse-delta', delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat')}>
+                {delta > 0 ? `↑${delta}` : delta < 0 ? `↓${Math.abs(delta)}` : '±0'} {t('dashboard.vs24h')}
+              </span>
+            )}
+            {drops24 != null && <span>{t('dashboard.drops24h', { n: drops24 })}</span>}
+          </div>
+        </div>
 
-      {/* Urutan baru: ringkasan → daftar OLT → sinyal, kesehatan, ONU
-          bermasalah, alert. Daftar OLT naik supaya terlihat tanpa scroll jauh. */}
-      {/* Sync Progress Bar */}
+        <div className="min-w-0 flex flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-sm text-tx2">{t('dashboard.needsAttention')}</span>
+            <span className={cn('text-xs font-semibold', healthColor)}>{t('dashboard.healthLine', { score: healthScore, label: healthLabel })}</span>
+          </div>
+          <div className="trouble-grid">
+            {([
+              ['los', stats.los, 'var(--color-danger)', t('common.los')],
+              ['dyinggasp', stats.dyinggasp, 'var(--color-warning)', t('common.dyinggasp')],
+              ['offline', stats.offline, 'var(--text-2)', t('common.offline')],
+            ] as const).map(([key, n, color, label]) => (
+              <button key={key} type="button" className="trouble-seg" data-zero={n === 0}
+                style={{ '--seg': color } as React.CSSProperties}
+                onClick={() => navigate(`/dashboard/onus?filter=${key}`)}>
+                <span className="n">{n}</span>
+                <span className="l">{label}</span>
+              </button>
+            ))}
+          </div>
+          <div>
+            <div className="mix-bar" role="img" aria-label={t('dashboard.signalDist')}>
+              <span className="bg-success" style={{ width: `${pct(goodSignal)}%` }} />
+              <span className="bg-warning" style={{ width: `${pct(stats.dyinggasp)}%` }} />
+              <span className="bg-danger" style={{ width: `${pct(stats.los)}%` }} />
+              <span className="bg-offline" style={{ width: `${pct(stats.offline)}%` }} />
+            </div>
+            <div className="mt-1.5 text-xs text-tx3">
+              {totalProblem > 0 ? t('dashboard.problemLine', { n: totalProblem }) : t('dashboard.allNormal')}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {syncingOlt !== null && (
         <Card className="border-accent/30">
           <div className="flex items-center justify-between mb-2">
@@ -377,407 +384,207 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* Filter / Sort Bar */}
-      <Card bodyClassName="p-3">
-        <FilterBar className="flex-nowrap flex-col sm:flex-row items-stretch sm:items-center">
-          <SearchBar
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder={t('dashboard.searchOlt')}
-            className="flex-1"
+      {/* ── OLT: satu baris per perangkat, dengan strip riwayat 24 jam ── */}
+      <section className="flex flex-col gap-3" aria-label="OLT">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <h2 className="text-base font-semibold font-display text-tx1 sm:mr-auto">
+            {t('dashboard.oltSection', { n: olts.length })}
+          </h2>
+          <FilterBar className="flex-nowrap flex-col sm:flex-row items-stretch sm:items-center">
+            <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder={t('dashboard.searchOlt')} className="sm:w-56" />
+            <div className="flex gap-2">
+              <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} aria-label={t('common.status')}
+                options={[
+                  { value: 'all', label: t('dashboard.allStatus') },
+                  { value: 'online', label: t('dashboard.onlineOnly') },
+                  { value: 'offline', label: t('dashboard.offlineOnly') },
+                ]} />
+              <Select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)} aria-label={t('dashboard.sortName')}
+                options={[
+                  { value: 'status', label: t('dashboard.sortStatus') },
+                  { value: 'name', label: t('dashboard.sortName') },
+                  { value: 'problems', label: t('dashboard.sortProblems') },
+                  { value: 'offline', label: t('dashboard.sortOffline') },
+                ]} />
+            </div>
+          </FilterBar>
+        </div>
+        {sortedOlts.length === 0 ? (
+          <EmptyState
+            icon={Server}
+            title={searchTerm || statusFilter !== 'all' ? t('dashboard.noOltMatch') : t('dashboard.noOlt')}
+            description={searchTerm || statusFilter !== 'all' ? t('dashboard.adjustFilter') : t('dashboard.noOltHint')}
           />
-          <div className="flex gap-2">
-            <Select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              aria-label={t('common.status')}
-              options={[
-                { value: 'all', label: t('dashboard.allStatus') },
-                { value: 'online', label: t('dashboard.onlineOnly') },
-                { value: 'offline', label: t('dashboard.offlineOnly') },
-              ]}
-            />
-            <Select
-              value={sortKey}
-              onChange={e => setSortKey(e.target.value as SortKey)}
-              aria-label={t('dashboard.sortName')}
-              options={[
-                { value: 'status', label: t('dashboard.sortStatus') },
-                { value: 'name', label: t('dashboard.sortName') },
-                { value: 'problems', label: t('dashboard.sortProblems') },
-                { value: 'offline', label: t('dashboard.sortOffline') },
-              ]}
-            />
+        ) : (
+          <div className="olt-rows">
+            {sortedOlts.map(olt => (
+              <OltRow
+                key={olt.id}
+                olt={olt}
+                pulse={pulse?.olts?.[olt.id]}
+                buckets={pulse?.buckets}
+                flash={oltFlash.get(olt.id)}
+                onSync={hasPerm('settings_ip_olts') ? () => syncMutation.mutate(olt.id) : undefined}
+                syncing={syncingOlt === olt.id}
+                syncProgress={syncingOlt === olt.id ? syncProgress : undefined}
+                onConfig={hasPerm('settings_ip_olts') ? () => navigate(`/dashboard/settings/olts/${olt.id}/config`) : undefined}
+              />
+            ))}
           </div>
-        </FilterBar>
-      </Card>
+        )}
+      </section>
 
-      {/* OLT Grid */}
-      {sortedOlts.length === 0 ? (
-        <EmptyState
-          icon={Server}
-          title={searchTerm || statusFilter !== 'all' ? t('dashboard.noOltMatch') : t('dashboard.noOlt')}
-          description={searchTerm || statusFilter !== 'all' ? t('dashboard.adjustFilter') : t('dashboard.noOltHint')}
-        />
-      ) : (
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {sortedOlts.map((olt, i) => (
-            <OltCard
-              key={olt.id}
-              olt={olt}
-              igniteDelay={ignite ? i * 120 : undefined}
-              flash={oltFlash.get(olt.id)}
-              onSync={hasPerm('settings_ip_olts') ? () => syncMutation.mutate(olt.id) : undefined}
-              syncing={syncingOlt === olt.id}
-              syncProgress={syncingOlt === olt.id ? syncProgress : undefined}
-              onConfig={hasPerm('settings_ip_olts') ? () => navigate(`/dashboard/settings/olts/${olt.id}/config`) : undefined}
-            />
-          ))}
-        </div>
-      )}
-      {/* Signal Distribution Bar */}
-      <Card title={t('dashboard.signalDist')}>
-        <div className="flex h-2.5 rounded-full overflow-hidden bg-glass">
-          {stats.total_onu > 0 && (
-            <>
-              <div className="bg-success transition-all" style={{ width: `${Math.max(0, stats.online - stats.los - stats.dyinggasp) / stats.total_onu * 100}%` }} />
-              <div className="bg-warning transition-all" style={{ width: `${stats.dyinggasp / stats.total_onu * 100}%` }} />
-              <div className="bg-danger transition-all" style={{ width: `${stats.los / stats.total_onu * 100}%` }} />
-              <div className="bg-offline transition-all" style={{ width: `${stats.offline / stats.total_onu * 100}%` }} />
-            </>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-3 md:gap-6 mt-2.5 text-[11px] text-tx3">
-          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-success" /> {t('common.online')} ({stats.online})</span>
-          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-warning" /> {t('common.dyinggasp')} ({stats.dyinggasp})</span>
-          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-danger" /> {t('common.los')} ({stats.los})</span>
-          <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-offline" /> {t('common.offline')} ({stats.offline})</span>
-        </div>
-      </Card>
-
-      {/* ── Network Health + Top Problems + Recent Alerts ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        {/* Network Health Score */}
-        <Card title={t('dashboard.netHealth')} bodyClassName="p-4">
-          <div className="flex items-center gap-4">
-            <div className="relative flex-shrink-0">
-              <svg width="72" height="72" viewBox="0 0 72 72" className="transform -rotate-90">
-                <circle cx="36" cy="36" r="30" fill="none" stroke="var(--border-color)" strokeWidth="6" />
-                <circle
-                  cx="36" cy="36" r="30" fill="none"
-                  stroke={healthScore >= 80 ? 'var(--color-success)' : healthScore >= 50 ? 'var(--color-warning)' : 'var(--color-danger)'}
-                  strokeWidth="6" strokeDasharray={`${(healthScore / 100) * 188.5} 188.5`}
-                  strokeLinecap="round" className="transition-all duration-700"
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className={cn('text-lg font-extrabold font-display', healthColor)}>{healthScore}</span>
-              </div>
-            </div>
-            <div className="min-w-0">
-              <div className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide', healthBg, healthColor)}>
-                <Shield size={10} />
-                {healthLabel}
-              </div>
-              <div className="mt-1.5 space-y-0.5">
-                <div className="text-[10px] text-tx3 flex justify-between gap-3">
-                  <span>{t('dashboard.oltUp')}</span>
-                  <span className="font-medium text-tx2">{onlineCount}/{olts.length}</span>
-                </div>
-                <div className="text-[10px] text-tx3 flex justify-between gap-3">
-                  <span>{t('dashboard.statOnuOnline')}</span>
-                  <span className="font-medium text-tx2">{stats.online_pct}%</span>
-                </div>
-                <div className="text-[10px] text-tx3 flex justify-between gap-3">
-                  <span>{t('dashboard.signalOk')}</span>
-                  <span className="font-medium text-tx2">{stats.total_onu > 0 ? Math.round((stats.online - stats.los - stats.dyinggasp) / stats.total_onu * 100) : 0}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Top Problem ONUs */}
+      {/* ── ONU bermasalah + alert terbaru ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Card title={t('dashboard.problemOnus')} bodyClassName="p-3">
           {problemList.length === 0 ? (
-            <div className="flex items-center gap-2 py-4 text-tx3 text-xs">
-              <TrendingUp size={14} className="text-success" />
+            <div className="flex items-center gap-2 py-4 text-tx3 text-sm">
+              <TrendingUp size={16} className="text-success" />
               <span>{t('dashboard.noProblems')}</span>
             </div>
           ) : (
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            <div className="space-y-1">
               {problemList.map(o => (
                 <button key={o.id} onClick={() => navigate(`/dashboard/onus/${o.id}`)}
-                  className="w-full flex items-center gap-2 p-1.5 rounded-lg hover:bg-glass transition-colors text-left group">
-                  <div className={cn('w-2 h-2 rounded-full flex-shrink-0',
+                  className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-glass transition-colors text-left group">
+                  <span className={cn('w-2 h-2 rounded-full flex-shrink-0',
                     o.status === 'los' ? 'bg-danger' : o.status === 'dyinggasp' ? 'bg-warning' : 'bg-offline')} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium truncate group-hover:text-accent transition-colors">{o.name || o.serial_number}</div>
-                    <div className="text-[10px] text-tx3 flex items-center gap-2">
-                      <span>{o.olt_name}</span>
-                      {o.rx_power != null && <span>RX {o.rx_power}dBm</span>}
-                      {o.onu_rx_power != null && <span>ONU {o.onu_rx_power}dBm</span>}
-                    </div>
+                    <div className="text-sm font-medium truncate group-hover:text-accent transition-colors">{o.name || o.serial_number}</div>
+                    <div className="text-xs text-tx3 truncate">{o.olt_name}</div>
                   </div>
-                  <span className={cn('text-[9px] px-1.5 py-0.5 rounded font-bold uppercase',
-                    o.status === 'los' ? 'bg-danger/15 text-danger' : o.status === 'dyinggasp' ? 'bg-warning/15 text-warning' : 'bg-glass text-tx3')}>
-                    {o.status}
+                  <span className={cn('text-xs font-medium',
+                    o.status === 'los' ? 'text-danger' : o.status === 'dyinggasp' ? 'text-warning' : 'text-tx3')}>
+                    {o.status === 'los' ? t('common.los') : o.status === 'dyinggasp' ? t('common.dyinggasp') : t('common.offline')}
                   </span>
                 </button>
               ))}
             </div>
           )}
           {totalProblem > 5 && (
-            <button onClick={() => navigate('/dashboard/onus')} className="mt-2 w-full text-center text-[10px] text-accent hover:underline flex items-center justify-center gap-1">
-              {t('dashboard.viewAllProblems', { count: totalProblem })} <ArrowRight size={10} />
+            <button onClick={() => navigate('/dashboard/onus?filter=problem')} className="mt-2 w-full text-center text-xs text-accent hover:underline flex items-center justify-center gap-1">
+              {t('dashboard.viewAllProblems', { count: totalProblem })} <ArrowRight size={12} />
             </button>
           )}
         </Card>
 
-        {/* Recent Alerts */}
         <Card title={t('dashboard.recentAlerts')} bodyClassName="p-3">
           {recentAlerts.length === 0 ? (
-            <div className="flex items-center gap-2 py-4 text-tx3 text-xs">
-              <Bell size={14} className="text-tx3" />
+            <div className="flex items-center gap-2 py-4 text-tx3 text-sm">
+              <Bell size={16} />
               <span>{t('dashboard.noAlarms')}</span>
             </div>
           ) : (
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            <div className="space-y-1">
               {recentAlerts.map(n => (
-                <div key={n.id} className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-glass/50 transition-colors">
-                  <div className={cn('w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0',
+                <div key={n.id} className="flex items-start gap-2.5 px-2 py-2 rounded-lg hover:bg-glass/50 transition-colors">
+                  <span className={cn('w-2 h-2 rounded-full mt-1.5 flex-shrink-0',
                     n.severity === 'critical' ? 'bg-danger' : n.severity === 'warning' ? 'bg-warning' : 'bg-info')} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium truncate">{n.title}</div>
-                    <div className="text-[10px] text-tx3 truncate">{n.message}</div>
-                    <div className="text-[9px] text-tx3 mt-0.5">{formatDate(n.created_at)}</div>
+                    <div className="text-sm font-medium truncate">{n.title}</div>
+                    <div className="text-xs text-tx3 truncate">{n.message}</div>
                   </div>
-                  {n.is_read && <span className="text-[8px] px-1 py-0.5 rounded bg-glass text-tx3 flex-shrink-0">{t('dashboard.read')}</span>}
+                  <span className="text-xs text-tx3 shrink-0">{timeAgo(n.created_at)}</span>
                 </div>
               ))}
             </div>
           )}
           {(notifData?.unread_count || 0) > 0 && (
-            <div className="mt-2 text-center">
-              <span className="text-[10px] text-tx3">{t('dashboard.unreadAlerts', { count: notifData?.unread_count || 0 })}</span>
-            </div>
+            <div className="mt-2 text-center text-xs text-tx3">{t('dashboard.unreadAlerts', { count: notifData?.unread_count || 0 })}</div>
           )}
         </Card>
       </div>
-
     </PageContainer>
   );
 }
 
-function StatCard({ icon, label, value, sub, color, progress, delay = 0 }: {
-  icon: React.ReactNode; label: string; value: number; sub?: string;
-  color: string; progress?: number; delay?: number;
-}) {
-  const tint: Record<string, string> = {
-    accent: '14, 165, 233', success: '16, 185, 129', danger: '239, 68, 68',
-    warning: '245, 158, 11', info: '56, 189, 248', muted: '148, 163, 184',
-  };
-  const tc: Record<string, string> = {
-    accent: 'text-accent', success: 'text-success', danger: 'text-danger',
-    warning: 'text-warning', info: 'text-info', muted: 'text-tx3',
-  };
-  const pc: Record<string, string> = {
-    accent: 'bg-accent', success: 'bg-success', info: 'bg-success',
-    danger: 'bg-danger', warning: 'bg-warning', muted: 'bg-offline',
-  };
-  const badgeColor = color === 'danger' && sub === 'Semua normal' ? 'success' : color;
-  const displayValue = useCountUp(value);
-
-  return (
-    <div
-      className="glass-card stat-tile p-3 md:p-4 stagger-in"
-      style={{ '--card-tint': tint[color] || tint.accent, '--d': `${delay}ms` } as React.CSSProperties}
-    >
-      <div className="flex items-start justify-between mb-3">
-        <p className="text-[10px] text-tx3 uppercase tracking-wide font-semibold">{label}</p>
-        <div className="icon-badge w-8 h-8" data-color={badgeColor === 'accent' ? undefined : badgeColor}>
-          {icon}
-        </div>
-      </div>
-      <div className="text-2xl md:text-[26px] font-bold font-display tabular-nums leading-none">{displayValue}</div>
-      {progress !== undefined && (
-        <div className="mt-2.5 h-1.5 w-full rounded-full bg-glass overflow-hidden">
-          <div className={cn('h-full rounded-full transition-all duration-700 ease-out', pc[color] || 'bg-accent')} style={{ width: `${progress}%` }} />
-        </div>
-      )}
-      {sub && <div className={cn('text-[11px] mt-2 font-medium', tc[color])}>{sub}</div>}
-    </div>
-  );
-}
-
-function OltCard({ olt, onSync, syncing, syncProgress, onConfig, igniteDelay, flash }: {
-  olt: OltInfo; onSync?: () => void; syncing: boolean;
-  syncProgress?: number; onConfig?: () => void;
-  igniteDelay?: number; flash?: string;
+function OltRow({ olt, pulse, buckets, onSync, syncing, syncProgress, onConfig, flash }: {
+  olt: OltInfo; pulse?: PulseOlt; buckets?: string[];
+  onSync?: () => void; syncing: boolean; syncProgress?: number; onConfig?: () => void; flash?: string;
 }) {
   const { t } = useTranslation();
   const problemCount = (olt.offline_onu || 0) + (olt.dyinggasp_onu || 0) + (olt.los_onu || 0);
   const onlinePct = olt.total_onu > 0 ? Math.round((olt.online_onu / olt.total_onu) * 100) : 0;
+  const tone = !olt.is_online ? 'danger' : problemCount > 0 && onlinePct < 90 ? 'warning' : 'success';
+  const cpu = Math.max(0, ...(olt.cards || []).map(x => x.cpu_usage || 0));
+  const mem = Math.max(0, ...(olt.cards || []).map(x => x.memory_usage || 0));
+  const fanDown = (olt.fans || []).filter(f => f.status !== 'online');
+  const drops = pulse ? pulse.drops.reduce((a, b) => a + b, 0) : null;
+  const beats: HeartbeatBeat[] = pulse
+    ? pulse.level.map((lv, i) => ({
+      level: lv,
+      title: `${buckets?.[i] ? new Date(buckets[i]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''} · ${t('dashboard.beatTitle', { n: pulse.drops[i] })}`,
+    }))
+    : Array.from({ length: 24 }, () => ({ level: -1 }));
 
   return (
-    <div
-      data-tone={!olt.is_online ? 'danger' : problemCount > 0 ? 'warning' : 'success'}
-      style={igniteDelay !== undefined ? ({ '--ignite-d': `${igniteDelay}ms` } as React.CSSProperties) : undefined}
-      className={cn(
-      'rounded-xl border bg-glass overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-8px_rgba(0,0,0,0.4)] animate-fade-in',
-      igniteDelay !== undefined && 'ignite-sweep',
-      flash && flashClass(flash.split(':')[0]),
-      !olt.is_online
-        ? 'border-l-4 border-l-danger border-danger/25'
-        : problemCount > 0
-          ? 'border-l-4 border-l-warning border-warning/20'
-          : 'border-brd'
-    )}>
-      {/* Header */}
-      <div className={cn('px-3 pt-3 pb-2.5 flex items-start justify-between border-b',
-        !olt.is_online ? 'border-danger/15' : 'border-brd/50')}>
-        <div className="flex items-center gap-2.5 flex-1 min-w-0">
-          <div className="relative flex-shrink-0">
-            {olt.is_online ? (
-              <>
-                <span className="absolute inset-0 rounded-full bg-success opacity-25 animate-ping" />
-                <Wifi size={16} className="text-success relative" />
-              </>
-            ) : (
-              <WifiOff size={16} className="text-danger" />
-            )}
+    <div className={cn('olt-row', flash && flashClass(flash.split(':')[0]))} data-tone={tone}>
+      <div className="min-w-0 flex items-center gap-2.5">
+        {olt.is_online ? <Wifi size={18} className="text-success shrink-0" /> : <WifiOff size={18} className="text-danger shrink-0" />}
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-tx1 truncate">{olt.name}</div>
+          <div className="text-xs text-tx3 truncate">
+            <span className="font-mono">{olt.ip_address}</span>{olt.model ? ` · ${olt.model}` : ''}
+            {!olt.is_online && <span className="text-danger font-medium"> · {t('common.offline')}</span>}
           </div>
-          <div className="min-w-0">
-            <h3 className="text-xs font-semibold truncate">{olt.name}</h3>
-            <p className="text-[10px] font-mono text-tx3">{olt.ip_address}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-          {problemCount > 0 && (
-            <span className="px-1.5 py-0.5 text-[10px] bg-warning/15 text-warning rounded font-mono font-semibold tabular-nums">
-              {t('dashboard.issues', { count: problemCount })}
-            </span>
-          )}
-          <span className={cn('px-1.5 py-0.5 rounded text-[9px] font-medium',
-            olt.is_online ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger')}>
-            {olt.is_online ? t('common.online') : t('common.offline')}
-          </span>
         </div>
       </div>
 
-      {/* ONU Progress */}
-      <div className="px-3 py-2.5 border-b border-brd/50">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[9px] text-tx3 uppercase tracking-wide">ONU</span>
-          <span className="text-[10px] font-medium text-tx2">
-            {olt.online_onu}/{olt.total_onu}
-            <span className={cn('ml-1', onlinePct < 80 && olt.total_onu > 0 ? 'text-warning' : 'text-success')}>
-              ({onlinePct}%)
-            </span>
-          </span>
+      <div className="min-w-0">
+        <Heartbeat beats={beats} label={t('dashboard.trend24h')} />
+        <div className="mt-1 flex justify-between text-[11px] text-tx3">
+          <span>{t('dashboard.h24')}</span>
+          <span>{drops == null ? '—' : drops === 0 ? t('dashboard.noDrops') : t('dashboard.drops24h', { n: drops })}</span>
         </div>
-        <div className="h-1.5 w-full rounded-full bg-glass overflow-hidden">
-          <div
-            className={cn('h-full rounded-full transition-all duration-500',
-              onlinePct >= 90 ? 'bg-success' : onlinePct >= 70 ? 'bg-warning' : 'bg-danger')}
-            style={{ width: `${onlinePct}%` }}
-          />
+      </div>
+
+      <div className="min-w-0">
+        <div className="flex items-baseline justify-between gap-2 text-xs">
+          <span className="text-tx2 num">{olt.online_onu}/{olt.total_onu} ONU</span>
+          <span className={cn('font-semibold num', onlinePct >= 90 ? 'text-success' : onlinePct >= 70 ? 'text-warning' : 'text-danger')}>{onlinePct}%</span>
+        </div>
+        <div className="meter mt-1.5">
+          <span className={onlinePct >= 90 ? 'bg-success' : onlinePct >= 70 ? 'bg-warning' : 'bg-danger'} style={{ width: `${onlinePct}%` }} />
         </div>
         {problemCount > 0 && (
-          <p className="text-[9px] text-danger mt-0.5">
-            {olt.offline_onu > 0 && `${olt.offline_onu} ${t('common.offline').toLowerCase()}`}
-            {olt.dyinggasp_onu > 0 && ` · ${olt.dyinggasp_onu} dyinggasp`}
-            {olt.los_onu > 0 && ` · ${olt.los_onu} LOS`}
-          </p>
+          <div className="mt-1 text-[11px] text-tx3 truncate">
+            {[olt.los_onu && `${olt.los_onu} LOS`, olt.dyinggasp_onu && `${olt.dyinggasp_onu} dying gasp`, olt.offline_onu && `${olt.offline_onu} offline`].filter(Boolean).join(' · ')}
+          </div>
         )}
       </div>
 
-      {/* Sync progress inline */}
-      {syncing && syncProgress !== undefined && (
-        <div className="px-3 py-1.5 border-b border-brd/50">
-          <div className="flex items-center justify-between text-[10px] text-tx3 mb-1">
-            <span className="flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> {t('dashboard.syncing')}</span>
-            <span className="text-accent font-medium">{syncProgress}%</span>
+      <div className="flex items-center gap-3 justify-between">
+        <div className="text-xs text-tx3 leading-snug">
+          <div className="flex items-center gap-1">
+            <Thermometer size={12} />
+            <span className={tempColor(olt.temperature)}>{olt.temperature != null ? `${olt.temperature}°C` : '—'}</span>
+            {cpu > 0 && <span> · CPU {cpu}%</span>}
+            {mem > 0 && <span> · RAM {mem}%</span>}
           </div>
+          <div className={fanDown.length ? 'text-warning' : ''}>
+            {fanDown.length ? t('dashboard.fanDown', { list: fanDown.map(f => `F${f.number}`).join(', ') }) : `${t('dashboard.uptime')} ${uptimeStr(olt.uptime)}`}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onConfig && (
+            <Button variant="secondary" icon={<ExternalLink size={14} />} onClick={onConfig} className="!py-1.5 !px-2.5 text-xs">{t('dashboard.config')}</Button>
+          )}
+          {onSync && (
+            <button onClick={onSync} disabled={syncing} title={t('dashboard.syncNow')} aria-label={t('dashboard.syncNow')}
+              className="touch-target inline-flex items-center justify-center w-8 h-8 rounded-lg border border-brd hover:bg-glass text-tx3 hover:text-tx1 disabled:opacity-50 transition-colors">
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {syncing && syncProgress !== undefined && (
+        <div className="md:col-span-4">
           <div className="h-1 rounded-full bg-glass overflow-hidden">
             <div className="h-full bg-accent transition-all duration-500 rounded-full" style={{ width: `${syncProgress}%` }} />
           </div>
         </div>
       )}
-
-      {/* Device Info — 5 col */}
-      <div className="px-3 py-2 grid grid-cols-5 gap-2 border-b border-brd/50 text-center">
-        <div>
-          <div className="text-[9px] text-tx3 uppercase">Model</div>
-          <div className="text-[10px] font-medium text-tx2 truncate" title={olt.model ?? ''}>{olt.model || '-'}</div>
-        </div>
-        <div>
-          <div className="flex items-center justify-center gap-0.5 text-[9px] text-tx3 uppercase">
-            <Cpu size={9} />CPU
-          </div>
-          <div className="text-[10px] font-semibold text-tx2">{(() => { const v = Math.max(0, ...(olt.cards || []).map(x => x.cpu_usage || 0)); return v ? `${v}%` : 'N/A'; })()}</div>
-        </div>
-        <div>
-          <div className="flex items-center justify-center gap-0.5 text-[9px] text-tx3 uppercase">
-            <MemoryStick size={9} />Mem
-          </div>
-          <div className="text-[10px] font-semibold text-tx2">{(() => { const v = Math.max(0, ...(olt.cards || []).map(x => x.memory_usage || 0)); return v ? `${v}%` : 'N/A'; })()}</div>
-        </div>
-        <div>
-          <div className="flex items-center justify-center gap-0.5 text-[9px] text-tx3 uppercase">
-            <Thermometer size={9} />{t('dashboard.temp')}
-          </div>
-          <div className={cn('text-[10px] font-semibold', tempColor(olt.temperature))}>
-            {olt.temperature != null ? `${olt.temperature}°C` : 'N/A'}
-          </div>
-        </div>
-        <div>
-          <div className="flex items-center justify-center gap-0.5 text-[9px] text-tx3 uppercase">
-            <Clock size={9} />Uptime
-          </div>
-          <div className="text-[10px] font-medium text-tx2">{uptimeStr(olt.uptime)}</div>
-        </div>
-      </div>
-
-      {/* Fan Status compact */}
-      {olt.fans && olt.fans.length > 0 && (
-        <div className="px-3 py-2 border-b border-brd/50">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Fan size={10} className="text-tx3" />
-            {olt.fans.map(f => (
-              <span key={f.number} className="flex items-center gap-1 text-[9px]">
-                <span className={cn('w-1.5 h-1.5 rounded-full', f.status === 'online' ? 'bg-success' : 'bg-offline')} />
-                <span className="text-tx3">F{f.number} {f.rpm}RPM</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Actions + Timestamp */}
-      <div className="px-3 py-2 flex items-center gap-1.5">
-        {onConfig && (
-        <button
-          onClick={onConfig}
-          className="flex-1 inline-flex items-center justify-center px-2 py-1 text-[10px] bg-accent/10 border border-accent/20 hover:bg-accent/20 rounded text-accent font-medium transition-colors"
-        >
-          <ExternalLink size={10} className="mr-1" /> {t('dashboard.config')}
-        </button>
-        )}
-        {onSync && (
-          <button
-            onClick={onSync}
-            disabled={syncing}
-            className="inline-flex items-center px-2 py-1 text-[10px] border border-brd hover:bg-glass rounded text-tx3 hover:text-tx1 disabled:opacity-50 transition-colors"
-            title="Sync"
-          >
-            <RefreshCw size={10} className={syncing ? 'animate-spin' : ''} />
-          </button>
-        )}
-        <span className="ml-auto text-[9px] text-tx3 shrink-0 flex items-center gap-0.5">
-          <Clock size={9} /> {formatDate(olt.last_sync)}
-        </span>
-      </div>
     </div>
   );
 }

@@ -1,0 +1,165 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   "Jalur Cahaya" — lapisan desain yang membuat NMS terasa hidup.
+   Prinsip:
+   1. Data hidup terlihat: titik live + umur data, angka bergerak saat berubah,
+      sparkline & strip riwayat (bukan angka statis).
+   2. Satu momen cahaya: cahaya melintas di jalur fiber (login, header halaman
+      saat data diperbarui) — bukan animasi di setiap kartu.
+   3. Warna status = informasi. Teks label kalimat biasa, bukan KAPITAL kecil.
+   4. Tema terang: permukaan tegas (bukan kaca pucat di atas aurora).
+   Semua gerak dimatikan untuk prefers-reduced-motion.
+   Hapus `import './lightpath.css'` di main.tsx untuk kembali ke tampilan lama.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --lp-cyan: var(--color-accent);
+  --lp-ok: var(--color-success);
+  --lp-warn: var(--color-warning);
+  --lp-crit: var(--color-danger);
+  --lp-idle: color-mix(in srgb, var(--text-3) 45%, transparent);
+}
+
+/* ─── Latar: tanpa blob ungu; satu cahaya cyan di kiri atas, sisanya tenang ─── */
+.app-mesh-bg::before {
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    radial-gradient(900px 520px at 6% -10%, color-mix(in srgb, var(--color-accent) 16%, transparent), transparent 62%),
+    radial-gradient(900px 600px at 80% 110%, rgba(16, 185, 129, 0.07), transparent 62%);
+  background-size: 28px 28px, auto, auto;
+}
+.app-mesh-bg::after {
+  background-image:
+    radial-gradient(rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+    radial-gradient(900px 520px at 6% -10%, rgba(2, 132, 199, 0.12), transparent 62%);
+  background-size: 28px 28px, auto;
+}
+
+/* ─── Tema terang: kartu tegas, tidak tembus pandang ─── */
+html.light {
+  --glass-bg: rgba(255, 255, 255, 0.96);
+  --glass-bg-hover: #ffffff;
+  --glass-border: #dbe3ec;
+  --glass-edge: inset 0 1px 0 #ffffff;
+  --glass-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px -18px rgba(15, 23, 42, 0.25);
+  --text-3: #6b7c93;
+}
+
+/* ─── Judul seksi kartu: kalimat biasa, sedikit lebih tegas ─── */
+.section-title { letter-spacing: -0.01em; }
+
+/* ─── LivePulse ─── */
+.live-pulse {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  font-size: 0.75rem; color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+.live-pulse-dot {
+  position: relative; width: 8px; height: 8px; border-radius: 999px; background: var(--lp-ok);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--lp-ok) 55%, transparent);
+  animation: lpBreath 2.4s ease-out infinite;
+}
+.live-pulse.is-stale .live-pulse-dot { background: var(--lp-warn); animation: none; }
+.live-pulse.is-stale { color: var(--color-warning); }
+.live-pulse.is-fetching .live-pulse-dot {
+  background: transparent; border: 1.5px solid var(--lp-cyan); border-right-color: transparent;
+  animation: lpSpin 0.9s linear infinite; box-shadow: none;
+}
+@keyframes lpBreath {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--lp-ok) 55%, transparent); }
+  70% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--lp-ok) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes lpSpin { to { transform: rotate(360deg); } }
+
+/* ─── Sparkline ─── */
+.sparkline { display: block; width: 100%; overflow: visible; }
+.sparkline-accent { color: var(--lp-cyan); }
+.sparkline-success { color: var(--lp-ok); }
+.sparkline-warning { color: var(--lp-warn); }
+.sparkline-danger { color: var(--lp-crit); }
+.sparkline-head { filter: drop-shadow(0 0 4px currentColor); }
+.sparkline-empty { border-bottom: 1px dashed var(--border-color); }
+
+/* ─── Heartbeat strip ─── */
+.heartbeat { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; height: 22px; align-items: end; }
+.heartbeat-beat { height: 100%; border-radius: 2px; background: var(--lp-ok); opacity: 0.85; transition: opacity .15s, transform .15s; }
+.heartbeat-beat[data-level="-1"] { background: var(--lp-idle); opacity: 0.6; }
+.heartbeat-beat[data-level="1"] { background: color-mix(in srgb, var(--lp-ok) 45%, transparent); }
+.heartbeat-beat[data-level="2"] { background: var(--lp-warn); }
+.heartbeat-beat[data-level="3"] { background: var(--lp-crit); }
+.heartbeat-beat:hover { opacity: 1; transform: scaleY(1.12); }
+.heartbeat-beat:last-child { box-shadow: 0 0 6px color-mix(in srgb, var(--lp-ok) 60%, transparent); }
+.heartbeat-beat[data-level="2"]:last-child, .heartbeat-beat[data-level="3"]:last-child { box-shadow: none; }
+
+/* ─── Panel denyut dashboard ─── */
+.pulse-panel {
+  position: relative; overflow: hidden;
+  display: grid; gap: 1.25rem; padding: 1.25rem;
+  border-radius: var(--glass-radius, 14px);
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge), var(--glass-shadow);
+}
+@media (min-width: 1024px) { .pulse-panel { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); padding: 1.5rem; } }
+.pulse-figure { font-family: 'Space Grotesk', 'DM Sans', system-ui, sans-serif; font-weight: 700;
+  font-size: clamp(2.6rem, 6vw, 3.6rem); line-height: 0.95; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.pulse-unit { font-size: 0.95rem; color: var(--text-2); font-weight: 500; }
+.pulse-delta { font-size: 0.8rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pulse-delta.up { color: var(--color-success); }
+.pulse-delta.down { color: var(--color-danger); }
+.pulse-delta.flat { color: var(--text-3); }
+
+/* Segmen masalah: tombol besar berwarna status, bisa diketuk */
+.trouble-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.trouble-seg {
+  display: flex; flex-direction: column; gap: 0.15rem; text-align: left;
+  padding: 0.7rem 0.8rem; border-radius: 12px; min-height: 64px;
+  background: color-mix(in srgb, var(--seg) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--seg) 26%, transparent);
+  transition: background-color .15s, transform .15s, border-color .15s;
+}
+.trouble-seg:hover { background: color-mix(in srgb, var(--seg) 15%, transparent); transform: translateY(-1px); }
+.trouble-seg[data-zero="true"] { --seg: var(--text-3) !important; opacity: 0.75; }
+.trouble-seg .n { font-family: 'Space Grotesk', system-ui, sans-serif; font-size: 1.6rem; font-weight: 700;
+  line-height: 1; color: var(--seg); font-variant-numeric: tabular-nums; }
+.trouble-seg .l { font-size: 0.75rem; color: var(--text-2); }
+.mix-bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--bg-glass); }
+.mix-bar > span { transition: width .6s cubic-bezier(.2,.7,.2,1); }
+
+/* ─── Baris OLT ─── */
+.olt-rows { display: grid; gap: 0.5rem; }
+.olt-row {
+  display: grid; gap: 0.6rem 1rem; align-items: center;
+  padding: 0.85rem 1rem; border-radius: 12px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge);
+  border-left: 3px solid var(--row-tone, var(--lp-ok));
+  transition: background-color .15s, border-color .15s;
+}
+.olt-row:hover { background: var(--glass-bg-hover); }
+.olt-row[data-tone="warning"] { --row-tone: var(--lp-warn); }
+.olt-row[data-tone="danger"] { --row-tone: var(--lp-crit); }
+@media (min-width: 900px) {
+  .olt-row { grid-template-columns: minmax(150px, 1.1fr) minmax(180px, 1.6fr) minmax(110px, .8fr) auto; }
+}
+.olt-row .meter { height: 6px; border-radius: 999px; background: var(--bg-glass); overflow: hidden; }
+.olt-row .meter > span { display: block; height: 100%; border-radius: inherit; transition: width .6s cubic-bezier(.2,.7,.2,1); }
+
+/* ─── Cahaya melintas di garis bawah header halaman saat data diperbarui ─── */
+.lightpath-rule { position: relative; height: 1px; background: var(--border-color); overflow: hidden; }
+.lightpath-rule::after {
+  content: ''; position: absolute; top: -1px; left: 0; height: 3px; width: 22%;
+  background: linear-gradient(90deg, transparent, var(--lp-cyan), #ffffff, var(--lp-cyan), transparent);
+  filter: blur(0.5px); opacity: 0; transform: translateX(-120%);
+}
+.lightpath-rule.run::after { animation: lpTravel 1.4s cubic-bezier(.45, 0, .2, 1) 1; }
+@keyframes lpTravel {
+  0% { opacity: 0; transform: translateX(-120%); }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(560%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-pulse-dot, .live-pulse.is-fetching .live-pulse-dot { animation: none; }
+  .lightpath-rule.run::after { animation: none; }
+  .heartbeat-beat:hover, .trouble-seg:hover { transform: none; }
+}

@@ -91,6 +91,7 @@ export const api = {
   },
 
   // Dashboard
+  dashboardPulse: (hours = 24) => request<DashboardPulse>(`/api/dashboard/pulse?hours=${hours}`),
   dashboard: (opts?: { nocache?: boolean } | unknown) => request<DashboardData>(`/api/dashboard${opts && typeof opts === 'object' && 'nocache' in opts && opts.nocache ? '?nocache=1' : ''}`),
 
   // All ONUs
@@ -369,6 +370,12 @@ export interface RxHistoryPoint {
   tx_avg?: number | null;
   onu_rx_avg?: number | null;
   samples?: number;
+}
+
+export interface PulseOlt { drops: number[]; recovers: number[]; online: number[]; level: number[]; total: number }
+export interface DashboardPulse {
+  success: boolean; hours: number; start: string; buckets: string[]; total_onu: number;
+  online: number[]; drops: number[]; olts: Record<number, PulseOlt>;
 }
 
 export interface VpsRoute {

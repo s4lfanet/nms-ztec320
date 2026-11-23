@@ -169,7 +169,23 @@
     "sec": "s",
     "activeIncidents": "{{n}} active outages",
     "activeIncidentsHint": "Some incidents are not resolved yet. Open them to see the location, affected customers and who is handling it.",
-    "openIncidents": "Open incidents"
+    "openIncidents": "Open incidents",
+    "oltOnline": "{{online}} of {{total}} OLTs connected",
+    "pulseTitle": "Network pulse",
+    "onuOnlineNow": "ONUs online now",
+    "ofTotalOnu": "of {{total}} ONUs · {{pct}}%",
+    "trend24h": "Last 24 hours",
+    "vs24h": "vs 24 hours ago",
+    "drops24h": "{{n}} drops",
+    "needsAttention": "Needs attention",
+    "healthLine": "Health {{score}} · {{label}}",
+    "problemLine": "{{n}} ONUs not online — tap a number above to see them",
+    "oltSection": "OLTs ({{n}})",
+    "h24": "24 h",
+    "noDrops": "stable",
+    "beatTitle": "{{n}} ONU drops",
+    "fanDown": "Fan down: {{list}}",
+    "uptime": "Uptime"
   },
   "allOnus": {
     "title": "All ONUs",
@@ -2216,5 +2232,12 @@
     "copyText": "Copy message",
     "copied": "Message copied",
     "copyFailed": "Copy failed"
+  },
+  "live": {
+    "waiting": "waiting for data…",
+    "justNow": "updated just now",
+    "secondsAgo": "updated {{n}}s ago",
+    "minutesAgo": "updated {{n}} min ago",
+    "updating": "updating…"
   }
 }

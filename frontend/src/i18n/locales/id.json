@@ -169,7 +169,23 @@
     "sec": "d",
     "activeIncidents": "{{n}} gangguan aktif",
     "activeIncidentsHint": "Ada insiden yang belum selesai. Buka untuk melihat titik, pelanggan terdampak, dan siapa yang menangani.",
-    "openIncidents": "Buka insiden"
+    "openIncidents": "Buka insiden",
+    "oltOnline": "{{online}} dari {{total}} OLT terhubung",
+    "pulseTitle": "Denyut jaringan",
+    "onuOnlineNow": "ONU online sekarang",
+    "ofTotalOnu": "dari {{total}} ONU · {{pct}}%",
+    "trend24h": "24 jam terakhir",
+    "vs24h": "dibanding 24 jam lalu",
+    "drops24h": "{{n}}× putus",
+    "needsAttention": "Perlu perhatian",
+    "healthLine": "Kesehatan {{score}} · {{label}}",
+    "problemLine": "{{n}} ONU tidak online — ketuk angka di atas untuk melihat daftarnya",
+    "oltSection": "OLT ({{n}})",
+    "h24": "24 jam",
+    "noDrops": "stabil",
+    "beatTitle": "{{n}} ONU putus",
+    "fanDown": "Kipas mati: {{list}}",
+    "uptime": "Uptime"
   },
   "allOnus": {
     "title": "Semua ONU",
@@ -2216,5 +2232,12 @@
     "copyText": "Salin pesan",
     "copied": "Pesan disalin",
     "copyFailed": "Gagal menyalin"
+  },
+  "live": {
+    "waiting": "menunggu data…",
+    "justNow": "diperbarui barusan",
+    "secondsAgo": "diperbarui {{n}} dtk lalu",
+    "minutesAgo": "diperbarui {{n}} mnt lalu",
+    "updating": "memperbarui…"
   }
 }

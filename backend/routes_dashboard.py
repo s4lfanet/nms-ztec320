@@ -30,6 +30,22 @@ from services_sync import start_single_sync, start_sync_all
 
 bp = Blueprint('dashboard', __name__)
 
+@bp.route('/api/dashboard/pulse')
+@login_required
+def api_dashboard_pulse():
+    """Seri per jam untuk dashboard (sparkline online, strip putus per OLT)."""
+    from cache import cache_get, cache_set
+    from dashboard_pulse import build_pulse
+    hours = request.args.get('hours', 24, type=int)
+    key = f'dashboard:pulse:{hours}'
+    cached = cache_get(key)
+    if cached is not None:
+        return jsonify(cached)
+    data = {'success': True, **build_pulse(hours)}
+    cache_set(key, data, 60)
+    return jsonify(data)
+
+
 @bp.route('/api/dashboard')
 @login_required
 def api_dashboard():

@@ -8,6 +8,7 @@ import './index.css'
 import './glass.css'  // tema glass (additive; hapus baris ini untuk kembali ke tampilan lama)
 import './motion.css' // animasi: nyala dashboard, kedip status, transisi halaman (hapus untuk mematikan)
 import './tokens.css' // token + komponen redesign Fase 1 (additive)
+import './lightpath.css' // desain "Jalur Cahaya": data hidup, satu momen cahaya (hapus untuk tampilan lama)
 import './lib/api'  // Global fetch interceptor for CSRF protection
 import './i18n'     // react-i18next — id/en locales, browser pref + user profile
 import { initTheme } from './stores/theme'
