@@ -2101,7 +2101,7 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
               <input className="input-field !text-xs" placeholder={t('pg_ftth.labelOptional')} value={spliceForm.label} onChange={e => setSpliceForm({ ...spliceForm, label: e.target.value })} />
               {editingSpliceId && <button type="button" onClick={cancelEditSplice} className="btn-cancel text-xs">{t('pg_ftth.cancel')}</button>}
               <button type="button" onClick={() => spliceMut.mutate()} disabled={spliceMut.isPending}
-                className="btn-primary text-xs disabled:opacity-50">{editingSpliceId ? 'Save Changes' : '+ Add Splice'}</button>
+                className="btn-primary text-xs disabled:opacity-50">{editingSpliceId ? t('ui.saveChanges') : t('ui.addSplice')}</button>
             </div>
           </div>
         </div>

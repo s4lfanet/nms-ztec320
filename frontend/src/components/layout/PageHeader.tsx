@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Breadcrumb, type BreadcrumbItem } from './Breadcrumb';
 import { cn } from '../../lib/utils';
+import { LivePulse } from '../ui/LivePulse';
 
 interface PageHeaderProps {
   title: string;
@@ -9,13 +10,15 @@ interface PageHeaderProps {
   icon?: ReactNode;
   action?: ReactNode;
   className?: string;
+  /** Tanda data hidup: umur data (`dataUpdatedAt` React Query) + status fetching. */
+  live?: { updatedAt?: number; fetching?: boolean };
 }
 
 /**
  * Standard page header: breadcrumb -> title -> description -> primary
  * action, per the app's layout hierarchy (Page > Header > ... > Main content).
  */
-export function PageHeader({ title, description, breadcrumbs, icon, action, className }: PageHeaderProps) {
+export function PageHeader({ title, description, breadcrumbs, icon, action, className, live }: PageHeaderProps) {
   return (
     <div className={cn('flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between animate-fade-in', className)}>
       <div className="min-w-0 flex items-start gap-3">
@@ -30,6 +33,7 @@ export function PageHeader({ title, description, breadcrumbs, icon, action, clas
             {title}
           </h1>
           {description && <p className="text-sm text-tx3 mt-1 max-w-2xl">{description}</p>}
+          {live && <LivePulse className="mt-1.5" updatedAt={live.updatedAt} fetching={live.fetching} />}
         </div>
       </div>
       {action && <div className="flex items-center gap-2 flex-wrap flex-shrink-0">{action}</div>}

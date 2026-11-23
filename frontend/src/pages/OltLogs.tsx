@@ -158,7 +158,7 @@ export function OltLogs() {
         <Card bodyClassName="p-0">
           <div className="flex items-center justify-between px-4 py-2 border-b border-brd bg-glass/50">
             <span className="text-xs text-tx3">
-              {isLoading ? 'Loading...' : `${records.length} records`}
+              {isLoading ? t('ui.loading') : t('ui.records', { n: records.length })}
             </span>
             <span className="text-xs text-tx3 font-mono">{t('pg_oltlogs.onuStatusHistory')}</span>
           </div>
@@ -212,7 +212,7 @@ export function OltLogs() {
         <div className="bg-[#0a0a0a] rounded-lg border border-brd overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2 border-b border-brd bg-black/30">
             <span className="text-xs text-tx3">
-              {isLoading ? 'Loading...' : `${lines.length} lines shown`}
+              {isLoading ? t('ui.loading') : t('ui.linesShown', { n: lines.length })}
               {totalLines > lines.length && ` (of ${totalLines} total)`}
             </span>
             <span className="text-xs text-tx3 font-mono">{currentTab.label}</span>

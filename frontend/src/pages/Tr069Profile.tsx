@@ -71,7 +71,7 @@ export default function Tr069Profile() {
         description={t('pg_tr069.manageAcsProfilesFor')}
         action={canManage && (
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setModal({ mode: 'add' })}>
-            Create
+            {t('ui.create')}
           </Button>
         )}
       />
@@ -85,7 +85,7 @@ export default function Tr069Profile() {
         {isLoading ? (
           <div className="p-8 text-center text-tx3 text-sm">{t('pg_tr069.loading')}</div>
         ) : profiles.length === 0 ? (
-          <EmptyState icon={FileText} title={t('pg_tr069.noTr069ProfilesYet')} description='Click "Create" to add one.' />
+          <EmptyState icon={FileText} title={t('pg_tr069.noTr069ProfilesYet')} description={t('ui.createProfileHint')} />
         ) : (
           <>
           <table className="hidden md:table w-full text-sm">
@@ -262,7 +262,7 @@ function Tr069Modal({ mode, profile, olts, vlanList, onClose, onSuccess }: {
         <>
           <Button variant="ghost" onClick={onClose}>{t('pg_tr069.close')}</Button>
           <Button variant="primary" onClick={submit} loading={submitting} disabled={!form.name || !form.acs_url}>
-            {submitting ? 'Saving...' : 'Submit'}
+            {submitting ? t('ui.saving') : t('ui.save')}
           </Button>
         </>
       }

@@ -118,10 +118,10 @@ export function ActionLogs() {
               </span>
             )}
             <Button variant="secondary" icon={<ShieldCheck size={15} />} onClick={runVerify} disabled={verifyState === 'checking'}>
-              Verify
+              {t('ui.verify')}
             </Button>
             <Button variant="secondary" icon={<Archive size={15} />} onClick={runArchive} loading={archiving}>
-              Archive
+              {t('pg_actionlogs.archive')}
             </Button>
           </>
         }
@@ -161,7 +161,7 @@ export function ActionLogs() {
       {/* Stats */}
       <div className="flex items-center justify-between text-xs text-tx3">
         <span>{isFetching && !isLoading ? 'Refreshing...' : ''} {total} log entries</span>
-        <span>Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, total)} of {total}</span>
+        <span>{t('ui.showingRange', { from: (page - 1) * perPage + 1, to: Math.min(page * perPage, total), total })}</span>
       </div>
 
       {/* Desktop table */}

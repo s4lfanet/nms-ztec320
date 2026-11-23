@@ -1294,7 +1294,7 @@ function OnuTypesTab({ oltId, canManage }: { oltId: number; canManage: boolean }
 
           {/* Actions */}
           <div className="flex gap-2">
-            <button onClick={submitAdd} disabled={!addForm.name || addMut.isPending} className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium disabled:opacity-50">{addMut.isPending ? 'Saving...' : t('common.save')}</button>
+            <button onClick={submitAdd} disabled={!addForm.name || addMut.isPending} className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium disabled:opacity-50">{addMut.isPending ? t('ui.saving') : t('common.save')}</button>
             <button onClick={() => setShowAdd(false)} className="px-4 py-1.5 rounded-lg bg-glass text-xs">{t('common.cancel')}</button>
           </div>
         </div>
@@ -1993,7 +1993,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-tx3 text-center py-2">{snmpLoading ? 'Loading...' : 'No SNMP communities found. Click Refresh to fetch from OLT.'}</p>
+              <p className="text-xs text-tx3 text-center py-2">{snmpLoading ? t('ui.loading') : t('ui.noSnmpCommunities')}</p>
             )}
             {/* Add SNMP Community */}
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_auto] gap-2 pt-1 border-t border-brd">
@@ -2033,7 +2033,7 @@ function SystemTab({ olt, oltId, canManage }: { olt: Record<string, unknown>; ol
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-tx3 text-center py-2">{userLoading ? 'Loading...' : 'No CLI users found. Click Refresh to fetch from OLT.'}</p>
+              <p className="text-xs text-tx3 text-center py-2">{userLoading ? t('ui.loading') : t('ui.noCliUsers')}</p>
             )}
             {/* Add CLI User */}
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_80px_auto] gap-2 pt-1 border-t border-brd">

@@ -36,7 +36,7 @@ export function Incidents() {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<Filter>('active');
   const [view, setView] = useState<'list' | 'report'>('list');
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
     queryKey: ['incidents', filter],
     queryFn: () => api.incidents(filter),
     refetchInterval: 30000,
@@ -49,6 +49,7 @@ export function Incidents() {
         title={t('pg_incidents.title')}
         description={t('pg_incidents.subtitle')}
         icon={<Siren size={22} />}
+        live={{ updatedAt: dataUpdatedAt, fetching: isFetching }}
       />
       <div className="inline-flex p-1 mb-4 rounded-lg bg-glass border border-brd" role="tablist">
         {(['list', 'report'] as const).map(v => (

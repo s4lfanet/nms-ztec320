@@ -92,7 +92,7 @@ export function UserManagement() {
           canManage && (
             tab === 'users' ? (
               <Button variant="primary" icon={<Plus size={16} />} onClick={() => setUserModal({ mode: 'add' })}>
-                Add User
+                {t('ui.addUser')}
               </Button>
             ) : (
               <Button variant="primary" icon={<Plus size={16} />} onClick={() => setRoleModal({ mode: 'add' })}>
@@ -307,13 +307,13 @@ function UserModal({ mode, id, roles, onClose, onSave, loading }: {
     <Modal
       open
       onClose={onClose}
-      title={mode === 'add' ? 'Add User' : 'Edit User'}
+      title={mode === 'add' ? t('ui.addUser') : t('ui.editUser')}
       icon={<User size={18} className="text-accent mr-2" />}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{t('pg_users.cancel')}</Button>
           <Button variant="primary" icon={<Save size={14} />} onClick={handleSubmit} loading={loading}>
-            {loading ? 'Saving...' : 'Save'}
+            {loading ? t('ui.saving') : t('ui.save')}
           </Button>
         </>
       }
@@ -386,7 +386,7 @@ function RoleModal({ mode, id, roles, permissions, onClose, onSave, loading }: {
         <>
           <Button variant="secondary" onClick={onClose}>{t('pg_users.cancel')}</Button>
           <Button variant="primary" icon={<Save size={14} />} onClick={handleSubmit} loading={loading}>
-            {loading ? 'Saving...' : 'Save'}
+            {loading ? t('ui.saving') : t('ui.save')}
           </Button>
         </>
       }

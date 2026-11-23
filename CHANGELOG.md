@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Desain "Jalur Cahaya" tahap 3: semua halaman
+
+#### Diubah
+- `PageHeader` mendukung penanda **live** (`live={{ updatedAt, fetching }}`); dipakai di Semua ONU dan Insiden Gangguan.
+- Label kecil berhuruf KAPITAL di konten kini kalimat biasa (kepala tabel tetap), teks 9px dinaikkan agar terbaca.
+- Keadaan kosong (empty state) tampil sebagai "ujung serat" berwarna aksen dengan judul lebih jelas.
+- Teks berbahasa Inggris yang tersisa diterjemahkan: Update Sistem (Periksa sekarang, Pasang pembaruan, Cara kerjanya + dialog konfirmasi NMS, keterangan tanpa "pnpm build"), Kustomisasi (Simpan perubahan), Manajemen User (Tambah/Ubah pengguna, Simpan), Template (Tambah/Ubah template), Profil TR069 (Buat, Simpan), Log Aktivitas (Verifikasi, Arsipkan, "Menampilkan x–y dari z"), Log OLT, FTTH (sambungan), Konfigurasi OLT (SNMP/CLI kosong).
+
 ### 2026-11-24 — Desain "Jalur Cahaya" tahap 2: halaman login
 
 #### Diubah

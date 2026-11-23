@@ -296,7 +296,7 @@ export default function Templates() {
         action={
           <>
             <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>
-              Add Template
+              {t('ui.addTemplate')}
             </Button>
             <Link to="/dashboard/onus/register" className="btn-cancel border border-brd flex items-center gap-2 text-sm">
               <ArrowRight size={16} />
@@ -345,7 +345,7 @@ export default function Templates() {
         {loadingDb ? (
           <div className="flex items-center gap-2 text-tx3 text-sm py-4"><Loader2 size={16} className="animate-spin" /> {t('pg_templates.loading')}</div>
         ) : dbTemplates.length === 0 ? (
-          <EmptyState title={t('pg_templates.noCustomTemplatesYet')} description='Click "Add Template" to create one.' />
+          <EmptyState title={t('pg_templates.noCustomTemplatesYet')} description={t('ui.addTemplateHint')} />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
             {dbTemplates.map(t => (
@@ -441,13 +441,13 @@ export default function Templates() {
       <Modal
         open={showModal}
         onClose={() => setShowModal(false)}
-        title={editingId ? 'Edit Template' : 'Add Template'}
+        title={editingId ? t('ui.editTemplate') : t('ui.addTemplate')}
         size="lg"
         footer={
           <>
             <Button variant="secondary" onClick={() => setShowModal(false)}>{t('pg_templates.cancel')}</Button>
             <Button variant="primary" icon={<Check size={14} />} onClick={doSave} loading={saving}>
-              {editingId ? 'Update' : 'Create'}
+              {editingId ? t('ui.update') : t('ui.create')}
             </Button>
           </>
         }

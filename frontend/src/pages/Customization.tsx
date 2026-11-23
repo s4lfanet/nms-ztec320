@@ -156,7 +156,7 @@ export function Customization() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
               <h3 className="text-sm font-semibold flex items-center gap-2"><Monitor size={16} className="text-accent" /> {t('pg_cust.desktopOnuTable')}</h3>
               <Button variant="primary" icon={<Save size={14} />} onClick={handleSave} disabled={!hasChanges} loading={saveMutation.isPending}>
-                Save Changes
+                {t('ui.saveChanges')}
               </Button>
             </div>
             <div className="overflow-x-auto">
@@ -242,7 +242,7 @@ export function Customization() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
               <h3 className="text-sm font-semibold flex items-center gap-2"><Smartphone size={16} className="text-accent" /> {t('pg_cust.mobileOnuTable')}</h3>
               <Button variant="primary" icon={<Save size={14} />} onClick={handleSave} disabled={!hasChanges} loading={saveMutation.isPending}>
-                Save Changes
+                {t('ui.saveChanges')}
               </Button>
             </div>
             <div className="overflow-x-auto">
