@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Tampilan langsung diperbarui setelah update
+
+#### Diperbaiki
+- Setelah **Apply Update** di halaman Update Sistem, tampilan kini dimuat ulang otomatis begitu service hidup lagi (sebelumnya hanya tertulis "page may need a manual refresh" dan tombol Muat ulang baru muncul belakangan). Status tampil bertahap: memulai ulang service → mengunduh tampilan versi baru → memuat ulang, dengan tombol **Muat ulang tampilan** langsung tersedia.
+- PWA tidak lagi memuat versi lama setelah update: dulu hanya menunggu 6 detik untuk versi baru (di HP sering kurang), sekarang menunggu unduhan selesai (maks 45 dtk), lalu mengaktifkan versi baru (`SKIP_WAITING`) dan reload saat ia mengambil alih. Unduhan dimulai sejajar dengan menunggu restart service.
+- Cek versi baru di latar belakang lebih sering: tiap 5 menit (sebelumnya 15), dan saat aplikasi dibuka kembali / jendela fokus / koneksi kembali online (jeda minimal 20 dtk).
+
 ### 2026-11-24 — Foto per model OLT dipindah ke Kustomisasi
 
 #### Diubah
