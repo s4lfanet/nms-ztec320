@@ -6,7 +6,7 @@ import { timeAgo, cn } from '../lib/utils';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import {
-  Server, Wifi, WifiOff, Thermometer, RefreshCw, Zap, ExternalLink,
+  Server, Thermometer, RefreshCw, Zap, ExternalLink,
   TrendingUp, Bell, ArrowRight,
 } from 'lucide-react';
 import { useHasPerm } from '../hooks/useHasPerm';
@@ -15,6 +15,7 @@ import { useDashboardWs } from '../hooks/useDashboardWs';
 import { useCountUp } from '../hooks/useCountUp';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
+import { OltDeviceArt } from '../components/OltDeviceArt';
 import { Button, Card, EmptyState, Select, Notice, LivePulse, Sparkline, Heartbeat, type HeartbeatBeat } from '../components/ui';
 import { FilterBar, SearchBar } from '../components/shared';
 import { useStatusFlash, flashClass } from '../hooks/useStatusFlash';
@@ -520,7 +521,8 @@ function OltRow({ olt, pulse, buckets, onSync, syncing, syncProgress, onConfig, 
   return (
     <div className={cn('olt-row', flash && flashClass(flash.split(':')[0]))} data-tone={tone}>
       <div className="min-w-0 flex items-center gap-2.5">
-        {olt.is_online ? <Wifi size={18} className="text-success shrink-0" /> : <WifiOff size={18} className="text-danger shrink-0" />}
+        <OltDeviceArt vendor={olt.vendor} model={olt.model} cards={olt.cards} online={olt.is_online}
+          problems={problemCount > 0} imageUrl={olt.image_url} className="w-[64px] h-[38px]" />
         <div className="min-w-0">
           <div className="text-sm font-semibold text-tx1 truncate">{olt.name}</div>
           <div className="text-xs text-tx3 truncate">

@@ -19,6 +19,7 @@ from models import (
     TrafficLog, TrafficLogHourly, OLTConfigBackup,
 )
 from extensions import logger
+import olt_images
 from helpers import (
     utc_iso, log_action, permission_required, super_admin_required,
     check_rate_limit as _check_rate_limit,
@@ -103,6 +104,7 @@ def api_dashboard():
         'cards': [{'slot': c.slot, 'card_type': c.card_type, 'status': c.status, 'total_ports': c.total_ports, 'ports_up': c.ports_up, 'ports_down': c.ports_down,
                    'cpu_usage': c.cpu_usage or 0, 'memory_usage': c.memory_usage or 0, 'memory_total': c.memory_total or 0, 'temperature': c.temperature} for c in cards_by_olt.get(o.id, [])],
         'uplink_count': uplink_counts.get(o.id, 0),
+        'image_url': olt_images.url(o.id),
         'uptime': o.uptime or 0,
         'snmp_status': o.snmp_status or 'disconnected',
         'telnet_status': o.telnet_status or 'disconnected',

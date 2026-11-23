@@ -1160,7 +1160,15 @@
     "deleteCommunityMsg": "Hapus community \"{{community}}\" dari OLT?",
     "deleteUserMsg": "Hapus user \"{{username}}\" dari OLT?",
     "neverSyncedBody1": "Kartu, port, CPU, memori, dan peta port masih kosong sampai sinkronisasi pertama selesai. Jalankan",
-    "neverSyncedBody2": "di halaman Pengaturan OLT."
+    "neverSyncedBody2": "di halaman Pengaturan OLT.",
+    "imageUpload": "Unggah foto",
+    "imageChange": "Ganti foto",
+    "imageRemove": "Hapus",
+    "imageSaved": "Foto OLT disimpan",
+    "imageFailed": "Gagal mengunggah foto",
+    "imageRemoved": "Foto OLT dihapus, kembali ke ilustrasi",
+    "imageRemoveTitle": "Hapus foto OLT?",
+    "imageRemoveMsg": "Tampilan kembali memakai ilustrasi sesuai model."
   },
   "pg_traffic": {
     "loading": "Memuat…",

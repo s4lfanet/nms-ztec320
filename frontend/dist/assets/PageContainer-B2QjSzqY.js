@@ -1,1 +1,0 @@
-import{x as e}from"./vendor-query-Bb3js4qP.js";import{t}from"./utils-C3L-GmIq.js";var n=e();function r({children:e,className:r}){return(0,n.jsx)(`div`,{className:t(`space-y-4 md:space-y-5`,r),children:e})}export{r as t};

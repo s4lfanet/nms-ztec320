@@ -20,6 +20,7 @@ from models import (
     OnuLinkState, OnuStatusHistory,
 )
 from extensions import logger
+import olt_images
 from helpers import (
     utc_iso, log_action, permission_required, super_admin_required,
     check_rate_limit as _check_rate_limit,
@@ -1286,6 +1287,7 @@ def get_olt(olt_id):
         'connection_status': olt.connection_status,
         'snmp_status': olt.snmp_status,
         'telnet_status': olt.telnet_status,
+        'image_url': olt_images.url(olt.id),
     })
 
 
@@ -1354,9 +1356,57 @@ def delete_olt(olt_id):
         TR069Profile.query.filter_by(default_olt_id=olt_id).update({'default_olt_id': None})
         db.session.delete(olt)
         db.session.commit()
+        olt_images.remove(olt_id)
         log_action('olt_delete', 'olt', target=name, detail=f'Deleted OLT {name} ({ip})')
         return jsonify({'success': True, 'message': f'OLT "{name}" deleted successfully.'})
     except Exception as e:
         db.session.rollback()
         logging.error(f'Delete OLT {olt_id} failed: {e}')
         return jsonify({'success': False, 'message': f'Delete failed: {str(e)[:200]}'}), 500
+
+
+# ─── Foto OLT (opsional; tanpa foto = ilustrasi SVG sesuai model) ───
+
+@bp.route('/api/olt/<int:olt_id>/image', methods=['GET'])
+@login_required
+def olt_image_get(olt_id):
+    from flask import send_file
+    p = olt_images.find(olt_id)
+    if not p:
+        return jsonify({'success': False, 'message': 'Tidak ada foto'}), 404
+    resp = send_file(p, max_age=86400)
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp
+
+
+@bp.route('/api/olt/<int:olt_id>/image', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def olt_image_upload(olt_id):
+    if not db.session.get(OLT, olt_id):
+        return jsonify({'success': False, 'message': 'OLT not found'}), 404
+    f = request.files.get('image')
+    ok, msg = olt_images.save(olt_id, f.read(olt_images.MAX_BYTES + 1) if f else b'')
+    if not ok:
+        return jsonify({'success': False, 'message': msg}), 400
+    log_action('olt_image_upload', 'olt', target=str(olt_id))
+    _invalidate_dashboard_cache()
+    return jsonify({'success': True, 'image_url': olt_images.url(olt_id)})
+
+
+@bp.route('/api/olt/<int:olt_id>/image', methods=['DELETE'])
+@login_required
+@permission_required('settings_ip_olts')
+def olt_image_delete(olt_id):
+    olt_images.remove(olt_id)
+    log_action('olt_image_delete', 'olt', target=str(olt_id))
+    _invalidate_dashboard_cache()
+    return jsonify({'success': True})
+
+
+def _invalidate_dashboard_cache():
+    try:
+        from cache import cache_delete
+        cache_delete('dashboard:global')
+    except Exception:
+        pass

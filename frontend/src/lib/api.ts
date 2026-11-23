@@ -90,6 +90,16 @@ export const api = {
     return data as { success: boolean; photo: string };
   },
 
+  oltImageUpload: async (oltId: number, file: File) => {
+    const fd = new FormData(); fd.append('image', file);
+    const res = await fetch(`${BASE}/api/olt/${oltId}/image`, { method: 'POST', body: fd, credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(data.message || `HTTP ${res.status}`, data.error_code, res.status, data);
+    return data as { success: boolean; image_url: string; message?: string };
+  },
+  oltImageDelete: (oltId: number) =>
+    request<{ success: boolean; message?: string }>(`/api/olt/${oltId}/image`, { method: 'DELETE' }),
+
   // Dashboard
   dashboardPulse: (hours = 24) => request<DashboardPulse>(`/api/dashboard/pulse?hours=${hours}`),
   dashboard: (opts?: { nocache?: boolean } | unknown) => request<DashboardData>(`/api/dashboard${opts && typeof opts === 'object' && 'nocache' in opts && opts.nocache ? '?nocache=1' : ''}`),
@@ -589,6 +599,7 @@ export interface OltInfo {
   fans: FanInfo[];
   cards: CardInfo[];
   uplink_count: number;
+  image_url?: string | null;
 }
 
 export interface DashboardData {
