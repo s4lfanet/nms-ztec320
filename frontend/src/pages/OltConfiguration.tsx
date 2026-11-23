@@ -32,6 +32,7 @@ const TABS = [
 type OltHeaderInfo = {
   id: number; vendor?: string; model?: string; is_online: boolean; image_url?: string | null;
   cards?: { total_ports?: number; ports_up?: number }[]; offline_onu?: number; los_onu?: number;
+  image_source?: 'olt' | 'model' | null;
 };
 
 /** Ilustrasi/foto OLT di header + tombol unggah/hapus foto sendiri. */
@@ -39,7 +40,7 @@ function OltImageSlot({ olt, canManage }: { olt: OltHeaderInfo; canManage: boole
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
-  const refresh = () => { qc.invalidateQueries({ queryKey: ['dashboard'] }); };
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['dashboard'] }); qc.invalidateQueries({ queryKey: ['olt-models'] }); };
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = '';
@@ -64,10 +65,10 @@ function OltImageSlot({ olt, canManage }: { olt: OltHeaderInfo; canManage: boole
       {canManage && (
         <div className="flex items-center gap-2 text-[11px]">
           <label className={cn('text-accent hover:underline cursor-pointer', busy && 'opacity-50 pointer-events-none')}>
-            {olt.image_url ? t('oc.imageChange') : t('oc.imageUpload')}
+            {olt.image_source === 'olt' ? t('oc.imageChange') : olt.image_source === 'model' ? t('oc.imageUploadOwn') : t('oc.imageUpload')}
             <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={onFile} />
           </label>
-          {olt.image_url && (
+          {olt.image_source === 'olt' && (
             <button type="button" onClick={onRemove} disabled={busy} className="text-tx3 hover:text-danger">{t('oc.imageRemove')}</button>
           )}
         </div>

@@ -32,3 +32,13 @@ describe('oltPonCount', () => {
     expect(oltPonCount('')).toBe(8);
   });
 });
+
+import { oltModelKey } from '../data/oltModels';
+describe('oltModelKey (sama dengan backend)', () => {
+  it('membuat kunci vendor--model', () => {
+    expect(oltModelKey('ZTE', 'ZXA10 C320')).toBe('zte--zxa10-c320');
+    expect(oltModelKey('hioso', 'HA7304')).toBe('hioso--ha7304');
+    expect(oltModelKey(null, 'C320')).toBe('zte--c320');
+    expect(oltModelKey('hsgq', '')).toBeNull();
+  });
+});

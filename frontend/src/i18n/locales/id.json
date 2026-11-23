@@ -578,7 +578,18 @@
     "added": "OLT ditambahkan",
     "updated": "OLT diperbarui",
     "migrated": "ONU berhasil dimigrasi",
-    "crossDone": "Migrasi antar-OLT selesai"
+    "crossDone": "Migrasi antar-OLT selesai",
+    "modelPhotos": "Foto per model OLT",
+    "modelPhotosHint": "Unggah foto asli tiap model (dari rak, brosur, atau situs vendor yang Anda simpan). Satu foto otomatis dipakai semua OLT dengan model yang sama; foto khusus satu OLT tetap diutamakan. PNG/JPG/WebP, maks 1,5 MB.",
+    "modelPhotosAll": "Tampilkan semua model ({{n}})",
+    "modelPhotosInUse": "Hanya model yang dipakai",
+    "modelPhotoCount": "{{n}} OLT",
+    "modelPhotoUnused": "Belum dipakai",
+    "modelPhotoReal": "foto",
+    "modelPhotoArt": "ilustrasi",
+    "modelPhotoSaved": "Foto {{model}} disimpan",
+    "modelPhotoRemoveTitle": "Hapus foto {{model}}?",
+    "modelPhotoRemoveMsg": "OLT dengan model ini kembali memakai ilustrasi (kecuali yang punya foto khusus)."
   },
   "migrate": {
     "selectFirst": "Pilih ONU dan PON tujuan",
@@ -1168,7 +1179,8 @@
     "imageFailed": "Gagal mengunggah foto",
     "imageRemoved": "Foto OLT dihapus, kembali ke ilustrasi",
     "imageRemoveTitle": "Hapus foto OLT?",
-    "imageRemoveMsg": "Tampilan kembali memakai ilustrasi sesuai model."
+    "imageRemoveMsg": "Tampilan kembali memakai ilustrasi sesuai model.",
+    "imageUploadOwn": "Foto khusus OLT ini"
   },
   "pg_traffic": {
     "loading": "Memuat…",

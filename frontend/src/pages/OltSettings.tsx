@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { api, type OltInfo } from '../lib/api';
 import { useAuth } from '../stores/auth';
 import { OltDeviceArt } from '../components/OltDeviceArt';
+import { OltModelPhotos } from '../components/OltModelPhotos';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { cn, formatDate } from '../lib/utils';
 import { toast } from '../components/Toast';
@@ -445,6 +446,8 @@ export function OltSettings() {
           )}
         </div>
       </Card>
+
+      <OltModelPhotos canManage={canManage} />
 
       {/* Backup History Modal */}
       {backupOlt && <BackupHistoryModal oltId={backupOlt.id} oltName={backupOlt.name} onClose={() => setBackupOlt(null)} />}

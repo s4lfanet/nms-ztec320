@@ -100,6 +100,17 @@ export const api = {
   oltImageDelete: (oltId: number) =>
     request<{ success: boolean; message?: string }>(`/api/olt/${oltId}/image`, { method: 'DELETE' }),
 
+  oltModels: () => request<{ success: boolean; models: OltModelPhoto[] }>('/api/olt-models'),
+  oltModelImageUpload: async (vendor: string, model: string, file: File) => {
+    const fd = new FormData(); fd.append('vendor', vendor); fd.append('model', model); fd.append('image', file);
+    const res = await fetch(`${BASE}/api/olt-models/image`, { method: 'POST', body: fd, credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(data.message || `HTTP ${res.status}`, data.error_code, res.status, data);
+    return data as { success: boolean; key: string; image_url: string };
+  },
+  oltModelImageDelete: (key: string) =>
+    request<{ success: boolean }>(`/api/olt-models/${encodeURIComponent(key)}/image`, { method: 'DELETE' }),
+
   // Dashboard
   dashboardPulse: (hours = 24) => request<DashboardPulse>(`/api/dashboard/pulse?hours=${hours}`),
   dashboard: (opts?: { nocache?: boolean } | unknown) => request<DashboardData>(`/api/dashboard${opts && typeof opts === 'object' && 'nocache' in opts && opts.nocache ? '?nocache=1' : ''}`),
@@ -560,6 +571,10 @@ export interface FanInfo {
   speed_level: string;
 }
 
+export interface OltModelPhoto {
+  key: string; vendor: string; model: string; olt_count: number; image_url: string | null;
+}
+
 export interface CardInfo {
   slot: number;
   card_type: string;
@@ -600,6 +615,7 @@ export interface OltInfo {
   cards: CardInfo[];
   uplink_count: number;
   image_url?: string | null;
+  image_source?: 'olt' | 'model' | null;
 }
 
 export interface DashboardData {

@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Foto asli per model OLT
+
+#### Ditambahkan
+- Bagian **Foto per model OLT** di halaman Pengaturan OLT: unggah satu foto asli untuk tiap model (ZTE C320, HiOSO HA7304, HSGQ E04, VSOL, C-Data, BDCOM, Huawei, FiberHome, dll. — 35 model dari form Tambah OLT plus model yang sedang dipakai). Foto otomatis tampil di semua OLT bermodel sama: daftar OLT, Dashboard, dan header Konfigurasi OLT.
+- Urutan gambar: foto khusus satu OLT → foto model → ilustrasi. Di Konfigurasi OLT tombol menjadi "Foto khusus OLT ini" bila OLT sudah memakai foto model.
+- API `GET /api/olt-models`, `GET/DELETE /api/olt-models/<key>/image`, `POST /api/olt-models/image` (form `vendor`, `model`, `image`); `image_source` (`olt`/`model`) di `/api/dashboard` dan `GET /api/olt/<id>`.
+
 ### 2026-11-24 — Gambar perangkat OLT
 
 #### Ditambahkan

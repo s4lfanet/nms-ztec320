@@ -578,7 +578,18 @@
     "added": "OLT added",
     "updated": "OLT updated",
     "migrated": "ONU migrated successfully",
-    "crossDone": "Cross-OLT migration completed"
+    "crossDone": "Cross-OLT migration completed",
+    "modelPhotos": "Photos per OLT model",
+    "modelPhotosHint": "Upload a real photo for each model (from your rack, a brochure, or a vendor site you saved). One photo is used for every OLT of that model; a photo set for a single OLT still takes priority. PNG/JPG/WebP, max 1.5 MB.",
+    "modelPhotosAll": "Show all models ({{n}})",
+    "modelPhotosInUse": "Only models in use",
+    "modelPhotoCount": "{{n}} OLT",
+    "modelPhotoUnused": "Not in use",
+    "modelPhotoReal": "photo",
+    "modelPhotoArt": "illustration",
+    "modelPhotoSaved": "{{model}} photo saved",
+    "modelPhotoRemoveTitle": "Remove {{model}} photo?",
+    "modelPhotoRemoveMsg": "OLTs of this model go back to the illustration (unless they have their own photo)."
   },
   "migrate": {
     "selectFirst": "Select ONUs and target PON",
@@ -1168,7 +1179,8 @@
     "imageFailed": "Photo upload failed",
     "imageRemoved": "OLT photo removed, back to illustration",
     "imageRemoveTitle": "Remove OLT photo?",
-    "imageRemoveMsg": "The view goes back to the model illustration."
+    "imageRemoveMsg": "The view goes back to the model illustration.",
+    "imageUploadOwn": "Photo for this OLT only"
   },
   "pg_traffic": {
     "loading": "Loading…",

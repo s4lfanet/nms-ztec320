@@ -1287,7 +1287,8 @@ def get_olt(olt_id):
         'connection_status': olt.connection_status,
         'snmp_status': olt.snmp_status,
         'telnet_status': olt.telnet_status,
-        'image_url': olt_images.url(olt.id),
+        'image_url': olt_images.resolve(olt)[0],
+        'image_source': olt_images.resolve(olt)[1],
     })
 
 
@@ -1392,6 +1393,72 @@ def olt_image_upload(olt_id):
     log_action('olt_image_upload', 'olt', target=str(olt_id))
     _invalidate_dashboard_cache()
     return jsonify({'success': True, 'image_url': olt_images.url(olt_id)})
+
+
+# ─── Foto per model OLT (unggah sekali, dipakai semua OLT vendor+model sama) ───
+
+@bp.route('/api/olt-models', methods=['GET'])
+@login_required
+def olt_models_list():
+    """Model OLT yang dipakai + model yang sudah punya foto."""
+    stored = olt_images.list_model_keys()
+    rows = {}
+    for o in OLT.query.all():
+        key = olt_images.model_key(o.vendor, o.model)
+        if not key:
+            continue
+        r = rows.setdefault(key, {'key': key, 'vendor': o.vendor or 'zte', 'model': o.model, 'olt_count': 0})
+        r['olt_count'] += 1
+    for key in stored:
+        if key not in rows:
+            v, _, m = key.partition('--')
+            rows[key] = {'key': key, 'vendor': v, 'model': m.upper(), 'olt_count': 0}
+    for key, r in rows.items():
+        r['image_url'] = f'/api/olt-models/{key}/image?v={stored[key]}' if key in stored else None
+    items = sorted(rows.values(), key=lambda r: (-r['olt_count'], r['vendor'], r['model'] or ''))
+    return jsonify({'success': True, 'models': items})
+
+
+@bp.route('/api/olt-models/<key>/image', methods=['GET'])
+@login_required
+def olt_model_image_get(key):
+    from flask import send_file
+    p = olt_images.find_model(key)
+    if not p:
+        return jsonify({'success': False, 'message': 'Tidak ada foto'}), 404
+    resp = send_file(p, max_age=86400)
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp
+
+
+@bp.route('/api/olt-models/image', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def olt_model_image_upload():
+    vendor = (request.form.get('vendor') or '').strip()
+    model = (request.form.get('model') or '').strip()
+    key = olt_images.model_key(vendor, model)
+    if not key or not model:
+        return jsonify({'success': False, 'message': 'Vendor dan model wajib diisi'}), 400
+    f = request.files.get('image')
+    ok, msg = olt_images.save_model(key, f.read(olt_images.MAX_BYTES + 1) if f else b'')
+    if not ok:
+        return jsonify({'success': False, 'message': msg}), 400
+    log_action('olt_model_image_upload', 'olt', target=key)
+    _invalidate_dashboard_cache()
+    return jsonify({'success': True, 'key': key, 'image_url': olt_images.model_url(vendor, model)})
+
+
+@bp.route('/api/olt-models/<key>/image', methods=['DELETE'])
+@login_required
+@permission_required('settings_ip_olts')
+def olt_model_image_delete(key):
+    if not olt_images.KEY_RE.match(key or ''):
+        return jsonify({'success': False, 'message': 'Model tidak valid'}), 400
+    olt_images.remove_model(key)
+    log_action('olt_model_image_delete', 'olt', target=key)
+    _invalidate_dashboard_cache()
+    return jsonify({'success': True})
 
 
 @bp.route('/api/olt/<int:olt_id>/image', methods=['DELETE'])
