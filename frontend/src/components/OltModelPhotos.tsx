@@ -16,7 +16,7 @@ type Row = { key: string; vendor: string; model: string; label: string; olt_coun
  * Foto asli per model OLT: unggah sekali (mis. foto ZTE C320), otomatis dipakai
  * semua OLT dengan vendor+model itu. Foto khusus satu OLT tetap menang.
  */
-export function OltModelPhotos({ canManage }: { canManage: boolean }) {
+export function OltModelPhotos({ canManage, bare = false }: { canManage: boolean; bare?: boolean }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [showAll, setShowAll] = useState(false);
@@ -60,13 +60,13 @@ export function OltModelPhotos({ canManage }: { canManage: boolean }) {
     finally { setBusyKey(null); }
   };
 
-  return (
-    <Card title={t('olts.modelPhotos')} icon={<ImageIcon size={16} className="text-accent" />}
-      action={rows.length > primary.length && primary.length > 0 ? (
-        <button type="button" className="text-xs text-accent hover:underline" onClick={() => setShowAll(v => !v)}>
-          {showAll ? t('olts.modelPhotosInUse') : t('olts.modelPhotosAll', { n: rows.length })}
-        </button>
-      ) : undefined}>
+  const toggle = rows.length > primary.length && primary.length > 0 ? (
+    <button type="button" className="text-xs text-accent hover:underline" onClick={() => setShowAll(v => !v)}>
+      {showAll ? t('olts.modelPhotosInUse') : t('olts.modelPhotosAll', { n: rows.length })}
+    </button>
+  ) : undefined;
+  const body = (
+    <>
       <p className="text-xs text-tx3 mb-3 max-w-[70ch]">{t('olts.modelPhotosHint')}</p>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
         {shown.map(r => (
@@ -92,6 +92,22 @@ export function OltModelPhotos({ canManage }: { canManage: boolean }) {
           </div>
         ))}
       </div>
+    </>
+  );
+  if (bare) {
+    return (
+      <div className="p-4 md:p-5">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h3 className="text-sm font-semibold text-tx1">{t('olts.modelPhotos')}</h3>
+          {toggle}
+        </div>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <Card title={t('olts.modelPhotos')} icon={<ImageIcon size={16} className="text-accent" />} action={toggle}>
+      {body}
     </Card>
   );
 }

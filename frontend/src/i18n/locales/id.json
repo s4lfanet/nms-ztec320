@@ -589,7 +589,8 @@
     "modelPhotoArt": "ilustrasi",
     "modelPhotoSaved": "Foto {{model}} disimpan",
     "modelPhotoRemoveTitle": "Hapus foto {{model}}?",
-    "modelPhotoRemoveMsg": "OLT dengan model ini kembali memakai ilustrasi (kecuali yang punya foto khusus)."
+    "modelPhotoRemoveMsg": "OLT dengan model ini kembali memakai ilustrasi (kecuali yang punya foto khusus).",
+    "modelPhotosTab": "Foto OLT"
   },
   "migrate": {
     "selectFirst": "Pilih ONU dan PON tujuan",
@@ -1823,7 +1824,7 @@
     "columnSettingsSaved": "Pengaturan kolom tersimpan",
     "failedToSave": "Gagal menyimpan",
     "customization": "Kustomisasi",
-    "setColumnsSignalFilter": "Atur kolom, filter sinyal, dan warna RX di halaman Semua ONU",
+    "setColumnsSignalFilter": "Atur kolom, filter sinyal, warna RX, dan foto OLT per model",
     "desktopOnuTable": "Tabel ONU desktop",
     "column": "Kolom",
     "visible": "Tampil",
