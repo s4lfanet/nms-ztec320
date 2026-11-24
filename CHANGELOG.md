@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Hotfix: aplikasi macet di layar "Loading..."
+
+#### Diperbaiki
+- Pembersihan cache dari server (header `Clear-Site-Data`, PR #106) membuat Chrome Android macet di layar "Loading...". Header itu dicabut. Pemulihan otomatis di sisi aplikasi tetap ada.
+- Pemuatan data login sekarang punya batas waktu (15 detik, satu kali coba ulang), jadi layar "Loading..." tidak bisa menggantung selamanya.
+
 ### 2026-11-24 — Perbaikan tampilan PWA yang tersangkut di versi lama
 
 #### Diperbaiki

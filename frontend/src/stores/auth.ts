@@ -21,8 +21,17 @@ export const useAuth = create<AuthState>((set) => ({
   fetchUser: async () => {
     try {
       set({ loading: true, error: null });
-      const { user } = await api.me();
-      set({ user, loading: false });
+      // Batas waktu: permintaan yang menggantung tidak boleh menahan layar "Loading..." selamanya.
+      const once = () => Promise.race([
+        api.me(),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 15_000)),
+      ]);
+      let res;
+      try { res = await once(); } catch (e) {
+        if ((e as Error).message !== 'timeout') throw e;
+        res = await once(); // coba sekali lagi sebelum menyerah
+      }
+      set({ user: res.user, loading: false });
     } catch {
       set({ user: null, loading: false });
     }
