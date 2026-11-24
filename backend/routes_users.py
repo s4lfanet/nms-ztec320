@@ -202,10 +202,48 @@ def api_permissions():
     return jsonify({'permissions': AVAILABLE_PERMISSIONS})
 
 
+# ── Pembatasan pengelola akun yang bukan super admin ──
+# Pengelola hanya boleh memberi/mengubah hak yang ia miliki sendiri: tidak bisa membuat
+# role/akun yang lebih kuat darinya, dan tidak bisa menyentuh akun super admin. Tanpa ini
+# pemegang izin manage_users bisa memberi dirinya Full Access atau mengganti password super admin.
+FORBIDDEN = ({'success': False, 'error_code': 'forbidden', 'message': 'Melebihi hak akses Anda'}, 403)
+
+
+def _within_my_perms(perms):
+    if current_user.is_super_admin:
+        return True
+    return all(current_user.has_permission(p) for p in perms if p)
+
+
+def _role_assignable(role_id):
+    if role_id in (None, '', 0, '0'):
+        return True
+    try:
+        r = db.session.get(Role, int(role_id))
+    except (TypeError, ValueError):
+        return False
+    return r is not None and _within_my_perms(r.get_permission_list())
+
+
+def _can_manage_user(u):
+    if current_user.is_super_admin:
+        return True
+    if u.is_super_admin:
+        return False
+    return _within_my_perms(u.role.get_permission_list() if u.role else [])
+
+
+def _clean_perms(perms):
+    from models import AVAILABLE_PERMISSIONS
+    return [p for p in (perms or []) if p in AVAILABLE_PERMISSIONS]
+
+
 @bp.route('/api/user', methods=['POST'])
 @permission_required('manage_users')
 def create_user():
     data = request.get_json()
+    if not _role_assignable(data.get('role_id')):
+        return jsonify(FORBIDDEN[0]), FORBIDDEN[1]
     if User.query.filter_by(username=data.get('username')).first():
         return jsonify({'success': False, 'message': 'Username already exists'})
     user = User(
@@ -250,6 +288,8 @@ def update_user(uid):
     if not user:
         return jsonify({'success': False}), 404
     data = request.get_json()
+    if not _can_manage_user(user) or ('role_id' in data and not _role_assignable(data['role_id'])):
+        return jsonify(FORBIDDEN[0]), FORBIDDEN[1]
     if 'full_name' in data:
         user.full_name = data['full_name']
     if 'role_id' in data:
@@ -275,6 +315,8 @@ def delete_user(uid):
         return jsonify({'success': False, 'message': 'User not found'})
     if user.id == current_user.id:
         return jsonify({'success': False, 'message': 'Cannot delete your own account'})
+    if not _can_manage_user(user):
+        return jsonify(FORBIDDEN[0]), FORBIDDEN[1]
     # Unassign this user from any ONUs before deleting (technician_id FK)
     ONU.query.filter_by(technician_id=user.id).update({'technician_id': None})
     db.session.delete(user)
@@ -287,10 +329,13 @@ def delete_user(uid):
 @permission_required('manage_users')
 def create_role():
     data = request.get_json()
+    perms = _clean_perms(data.get('permissions'))
+    if not _within_my_perms(perms):
+        return jsonify(FORBIDDEN[0]), FORBIDDEN[1]
     r = Role(
         name=data.get('name', ''),
         description=data.get('description', ''),
-        permissions=','.join(data.get('permissions', []))
+        permissions=','.join(perms)
     )
     db.session.add(r)
     db.session.commit()
@@ -305,12 +350,15 @@ def update_role(rid):
     if not r:
         return jsonify({'success': False}), 404
     data = request.get_json()
+    new_perms = _clean_perms(data['permissions']) if 'permissions' in data else []
+    if not _within_my_perms(r.get_permission_list()) or not _within_my_perms(new_perms):
+        return jsonify(FORBIDDEN[0]), FORBIDDEN[1]
     if 'name' in data:
         r.name = data['name']
     if 'description' in data:
         r.description = data['description']
     if 'permissions' in data:
-        r.permissions = ','.join(data['permissions'])
+        r.permissions = ','.join(new_perms)
     db.session.commit()
     log_action('role_update', 'role', target=r.name, detail=f'Updated role {r.name} — fields: {list(data.keys())}')
     return jsonify({'success': True})
@@ -324,6 +372,8 @@ def delete_role(rid):
         return jsonify({'success': False, 'message': 'Role not found'})
     if r.is_system:
         return jsonify({'success': False, 'message': 'Cannot delete system role'})
+    if not _within_my_perms(r.get_permission_list()):
+        return jsonify(FORBIDDEN[0]), FORBIDDEN[1]
     db.session.delete(r)
     db.session.commit()
     log_action('role_delete', 'role', target=r.name, detail=f'Deleted role {r.name}')

@@ -151,6 +151,9 @@ def mark_all_notifications_read():
 @login_required
 def acknowledge_notification(notif_id):
     """Acknowledge a notification (mark as being handled)."""
+    # Menandai "ditangani" terlihat oleh seluruh tim — akun lihat-saja (viewer/demo) tidak boleh
+    if not any(current_user.has_permission(p) for p in ('receive_alerts', 'customization', 'configure_onu')):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
     notif = db.session.get(Notification, notif_id)
     if not notif:
         return jsonify({'success': False, 'message': 'Not found'}), 404
@@ -554,7 +557,7 @@ def update_alert_rule(rule_id):
 
 
 @bp.route('/api/bot-config', methods=['GET'])
-@login_required
+@permission_required('customization')
 def get_bot_config():
     """Get bot configurations."""
     from services_wa import detect_wa_provider
