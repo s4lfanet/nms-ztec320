@@ -86,7 +86,7 @@
     "secTools": "Tools & logs",
     "secSettings": "Settings",
     "onuTemplates": "ONU templates",
-    "devices": "Network devices"
+    "devices": "SNMP Monitoring"
   },
   "topbar": {
     "alarms": "Network Alarms",
@@ -1274,7 +1274,11 @@
     "rtTesting": "Pinging…",
     "rtTestOk": "{{ip}} is reachable from the server ({{rtt}} ms)",
     "rtTestFail": "{{ip}} did not reply from the server — check the route, MikroTik firewall (forward), or the modem blocking ping",
-    "rtMikrotikNote": "On MikroTik: make sure the forward firewall allows the NMS server IP to the PPPoE pool, with no NAT/masquerade for this traffic."
+    "rtMikrotikNote": "On MikroTik: make sure the forward firewall allows the NMS server IP to the PPPoE pool, with no NAT/masquerade for this traffic.",
+    "snmpWatched": "Monitored",
+    "snmpAdd": "Monitor via SNMP",
+    "snmpHint": "Per-port traffic graphs, temperature, uplink alerts and topology use SNMP (separate from the API on this page). Manage them in",
+    "snmpOpen": "SNMP Monitoring →"
   },
   "pg_users": {
     "userCreated": "User created",
@@ -2403,7 +2407,7 @@
     "coreHistory": "History"
   },
   "dev": {
-    "title": "Network devices",
+    "title": "SNMP Monitoring",
     "desc": "Monitor routers, switches, servers and other gear over SNMP",
     "add": "Add device",
     "edit": "Edit device",
@@ -2532,7 +2536,7 @@
     "noWatched": "No watched ports yet. Open a device → Ports tab and star your uplink/backbone ports with \"Watch\".",
     "topTraffic": "Highest traffic now",
     "noTraffic": "No traffic data yet",
-    "dashTitle": "Network devices",
+    "dashTitle": "SNMP Monitoring",
     "openDevices": "Open",
     "ofTotal": "of {{n}} devices",
     "thresholds": "Alert thresholds",

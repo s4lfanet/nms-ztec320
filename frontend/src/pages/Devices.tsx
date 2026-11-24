@@ -132,7 +132,7 @@ function DeviceRow({ d }: { d: SnmpDevice }) {
 }
 
 /** Form tambah/ubah perangkat SNMP (dipakai juga di halaman detail). */
-export function DeviceFormModal({ device, onClose }: { device?: SnmpDevice; onClose: () => void }) {
+export function DeviceFormModal({ device, initial, onClose }: { device?: SnmpDevice; initial?: Partial<SnmpDeviceForm>; onClose: () => void }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [form, setForm] = useState<SnmpDeviceForm>({
@@ -142,6 +142,7 @@ export function DeviceFormModal({ device, onClose }: { device?: SnmpDevice; onCl
     v3_auth_proto: device?.v3_auth_proto || 'SHA', v3_auth_pass: '',
     v3_priv_proto: device?.v3_priv_proto || 'AES', v3_priv_pass: '',
     location: device?.location || '', notes: device?.notes || '', enabled: device?.enabled ?? true,
+    ...(device ? {} : initial),
   });
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);

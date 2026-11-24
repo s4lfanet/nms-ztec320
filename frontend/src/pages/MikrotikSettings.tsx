@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { DeviceFormModal } from './Devices';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type MikrotikDevice } from '../lib/api';
@@ -34,6 +36,8 @@ const EMPTY: FormState = {
   ping_source: 'mikrotik',
 };
 
+const SNMP_DOT: Record<string, string> = { up: 'bg-success', warn: 'bg-warning', down: 'bg-danger' };
+
 export function MikrotikSettings() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -43,6 +47,9 @@ export function MikrotikSettings() {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [testingId, setTestingId] = useState<number | null>(null);
 
+  const [snmpFor, setSnmpFor] = useState<{ name: string; host: string } | null>(null);
+  const { data: snmpData } = useQuery({ queryKey: ['snmp-devices'], queryFn: api.snmpDevices });
+  const snmpByHost = Object.fromEntries((snmpData?.devices || []).map(x => [x.host.trim(), x]));
   const { data, isLoading } = useQuery({
     queryKey: ['mikrotik'],
     queryFn: api.mikrotikList,
@@ -143,6 +150,16 @@ export function MikrotikSettings() {
         )}
       />
 
+      {devices.length > 0 && (
+        <p className="mb-3 text-xs text-tx3 flex flex-wrap items-center gap-x-1">
+          {t('pg_mikrotik.snmpHint')}
+          <Link to="/dashboard/devices" className="text-accent">{t('pg_mikrotik.snmpOpen')}</Link>
+        </p>
+      )}
+      {snmpFor && (
+        <DeviceFormModal initial={{ name: snmpFor.name, host: snmpFor.host }} onClose={() => setSnmpFor(null)} />
+      )}
+
       {isLoading ? (
         <Card className="p-8 text-center"><Loader2 size={28} className="text-accent animate-spin mx-auto" /></Card>
       ) : devices.length === 0 ? (
@@ -163,6 +180,7 @@ export function MikrotikSettings() {
                 <th className="px-4 py-3">Ping</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">{t('pg_mikrotik.health')}</th>
+                <th className="px-4 py-3">SNMP</th>
                 <th className="px-4 py-3">{t('pg_mikrotik.lastPoll')}</th>
                 <th className="px-4 py-3 text-right">{t('pg_mikrotik.actions')}</th>
               </tr>
@@ -199,6 +217,18 @@ export function MikrotikSettings() {
                         {d.ros_version && <div className="text-tx3">v{d.ros_version}{d.ros_uptime ? ` · ${d.ros_uptime}` : ''}</div>}
                       </div>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-xs whitespace-nowrap">
+                    {snmpByHost[d.host.trim()] ? (
+                      <Link to={`/dashboard/devices/${snmpByHost[d.host.trim()].id}`} className="inline-flex items-center gap-1.5 text-accent">
+                        <span className={`w-2 h-2 rounded-full ${SNMP_DOT[snmpByHost[d.host.trim()].status] || 'bg-tx3'}`} />
+                        {t('pg_mikrotik.snmpWatched')}
+                      </Link>
+                    ) : canManage ? (
+                      <button type="button" className="text-accent hover:underline" onClick={() => setSnmpFor(d)}>
+                        {t('pg_mikrotik.snmpAdd')}
+                      </button>
+                    ) : <span className="text-tx3">—</span>}
                   </td>
                   <td className="px-4 py-3 text-tx3 text-xs tabular-nums">
                     {d.last_polled_at ? new Date(d.last_polled_at).toLocaleTimeString('id-ID') : '—'}

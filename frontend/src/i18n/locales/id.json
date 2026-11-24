@@ -86,7 +86,7 @@
     "secTools": "Alat & log",
     "secSettings": "Pengaturan",
     "onuTemplates": "Template ONU",
-    "devices": "Perangkat jaringan"
+    "devices": "Monitoring SNMP"
   },
   "topbar": {
     "alarms": "Alarm Jaringan",
@@ -1274,7 +1274,11 @@
     "rtTesting": "Ping…",
     "rtTestOk": "{{ip}} terjangkau dari server ({{rtt}} ms)",
     "rtTestFail": "{{ip}} tidak membalas dari server — cek rute, firewall MikroTik (forward), atau modem memblokir ping",
-    "rtMikrotikNote": "Di MikroTik: pastikan firewall forward mengizinkan IP server NMS ke pool PPPoE, dan tidak ada NAT/masquerade untuk lalu lintas ini."
+    "rtMikrotikNote": "Di MikroTik: pastikan firewall forward mengizinkan IP server NMS ke pool PPPoE, dan tidak ada NAT/masquerade untuk lalu lintas ini.",
+    "snmpWatched": "Terpantau",
+    "snmpAdd": "Pantau via SNMP",
+    "snmpHint": "Grafik trafik per port, suhu, alert uplink, dan topologi memakai SNMP (terpisah dari API di halaman ini). Kelola di",
+    "snmpOpen": "Monitoring SNMP →"
   },
   "pg_users": {
     "userCreated": "User dibuat",
@@ -2403,7 +2407,7 @@
     "coreHistory": "Riwayat"
   },
   "dev": {
-    "title": "Perangkat jaringan",
+    "title": "Monitoring SNMP",
     "desc": "Pantau router, switch, server, dan perangkat lain lewat SNMP",
     "add": "Tambah perangkat",
     "edit": "Ubah perangkat",
@@ -2532,7 +2536,7 @@
     "noWatched": "Belum ada port dipantau. Buka perangkat → tab Port, lalu tandai uplink/backbone dengan bintang \"Pantau\".",
     "topTraffic": "Trafik tertinggi saat ini",
     "noTraffic": "Belum ada data trafik",
-    "dashTitle": "Perangkat jaringan",
+    "dashTitle": "Monitoring SNMP",
     "openDevices": "Buka",
     "ofTotal": "dari {{n}} perangkat",
     "thresholds": "Ambang alert",
