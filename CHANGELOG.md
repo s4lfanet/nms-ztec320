@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Tombol "Detail" di setiap port
+
+#### Diubah
+- Detail port (Live, spesifikasi, modul SFP, redaman, statistik, grafik) sekarang dibuka lewat tombol **Detail** (ikon + label) yang terlihat di setiap baris port. Sebelumnya detail muncul saat baris port diketuk.
+- Saat terbuka, tombol berubah menjadi **Tutup detail**.
+- Tombol ini juga tersedia untuk akun lihat-saja.
+
 ### 2026-11-25 — Detail port ala Winbox/Observium: modul SFP, redaman, statistik ethernet
 
 #### Ditambahkan

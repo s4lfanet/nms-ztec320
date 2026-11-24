@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Router, RefreshCw, Pencil, Trash2, Thermometer, Fan, Zap, Cpu, MemoryStick, HardDrive, Gauge, EyeOff, Eye, Star } from 'lucide-react';
+import { Router, RefreshCw, Pencil, Trash2, Thermometer, Fan, Zap, Cpu, MemoryStick, HardDrive, Gauge, EyeOff, Eye, Star, PanelBottomOpen } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { ActionMenu, Card, EmptyState, LoadingOverlay, Tabs } from '../components/ui';
@@ -216,8 +216,7 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
         <ul className="divide-y divide-brd">
           {shown.map(p => (
             <li key={p.id} className={cn('py-2.5 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-1 sm:gap-4', p.ignored && 'opacity-50')}>
-              <button type="button" onClick={() => setOpenPort(openPort === p.id ? null : p.id)} aria-expanded={openPort === p.id}
-                className="flex items-center gap-2 min-w-0 sm:w-[38%] text-left" title={t('graph.showTraffic')}>
+              <div className="flex items-center gap-2 min-w-0 sm:w-[38%]">
                 <span className={cn('w-2 h-2 rounded-full shrink-0', p.admin_status !== 'up' ? 'bg-tx3' : p.oper_status === 'up' ? 'bg-success' : 'bg-danger')} />
                 <span className="min-w-0">
                   <span className="block text-sm text-tx1 truncate">{p.name}{p.speed_mbps ? <span className="text-xs text-tx3"> · {fmtSpeed(p.speed_mbps)}</span> : null}
@@ -225,7 +224,7 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
                     {p.rx_dbm != null ? <span className={cn('text-xs tabular-nums', rxTone(p.rx_dbm, rxLow))} title={t('pdet.rx')}> · RX {p.rx_dbm.toFixed(1)} dBm</span> : null}</span>
                   {p.alias && <span className="block text-xs text-tx3 truncate">{p.alias}</span>}
                 </span>
-              </button>
+              </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-tx2 sm:flex-1 pl-4 sm:pl-0">
                 {p.oper_status === 'up' ? (p.in_bps == null && p.out_bps == null ? (
                   <span className="text-tx3">{p.has_counters ? t('live.waitPoll') : t('live.noData')}</span>
@@ -243,21 +242,30 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
                   </span>
                 )}
               </div>
-              {canEdit ? (
-                <span className="self-start sm:self-center flex items-center gap-3 pl-4 sm:pl-0">
-                  {!p.ignored && (
-                    <button type="button" onClick={() => update(p, { watched: !p.watched })} aria-pressed={p.watched}
-                      className={cn('inline-flex items-center gap-1 text-[11px]', p.watched ? 'text-warning' : 'text-tx3 hover:text-tx1')}
-                      title={p.watched ? t('devx.unwatchHint') : t('devx.watchHint')}>
-                      <Star size={13} fill={p.watched ? 'currentColor' : 'none'} />{p.watched ? t('devx.watching') : t('devx.watch')}
+              <span className="self-start sm:self-center flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-4 sm:pl-0">
+                {/* Tombol detail yang jelas terlihat (bukan baris yang harus diketuk) */}
+                <button type="button" onClick={() => setOpenPort(openPort === p.id ? null : p.id)} aria-expanded={openPort === p.id}
+                  className={cn('inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                    openPort === p.id ? 'border-accent bg-accent/10 text-accent' : 'border-brd text-tx2 hover:border-accent hover:text-accent')}>
+                  <PanelBottomOpen size={14} className={cn('transition-transform', openPort === p.id && 'rotate-180')} />
+                  {openPort === p.id ? t('pdet.close') : t('pdet.open')}
+                </button>
+                {canEdit ? (
+                  <>
+                    {!p.ignored && (
+                      <button type="button" onClick={() => update(p, { watched: !p.watched })} aria-pressed={p.watched}
+                        className={cn('inline-flex items-center gap-1 text-[11px]', p.watched ? 'text-warning' : 'text-tx3 hover:text-tx1')}
+                        title={p.watched ? t('devx.unwatchHint') : t('devx.watchHint')}>
+                        <Star size={13} fill={p.watched ? 'currentColor' : 'none'} />{p.watched ? t('devx.watching') : t('devx.watch')}
+                      </button>
+                    )}
+                    <button type="button" onClick={() => update(p, { ignored: !p.ignored })} className="inline-flex items-center gap-1 text-[11px] text-tx3 hover:text-tx1"
+                      title={p.ignored ? t('dev.unignoreHint') : t('dev.ignoreHint')}>
+                      {p.ignored ? <Eye size={13} /> : <EyeOff size={13} />}{p.ignored ? t('dev.unignore') : t('dev.ignore')}
                     </button>
-                  )}
-                  <button type="button" onClick={() => update(p, { ignored: !p.ignored })} className="inline-flex items-center gap-1 text-[11px] text-tx3 hover:text-tx1"
-                    title={p.ignored ? t('dev.unignoreHint') : t('dev.ignoreHint')}>
-                    {p.ignored ? <Eye size={13} /> : <EyeOff size={13} />}{p.ignored ? t('dev.unignore') : t('dev.ignore')}
-                  </button>
-                </span>
-              ) : p.watched ? <Star size={13} className="text-warning self-start sm:self-center ml-4 sm:ml-0" fill="currentColor" aria-label={t('devx.watching')} /> : null}
+                  </>
+                ) : p.watched ? <Star size={13} className="text-warning" fill="currentColor" aria-label={t('devx.watching')} /> : null}
+              </span>
               {openPort === p.id && (
                 <div className="basis-full w-full pt-2 space-y-3">
                   {p.oper_status === 'up' && <PortLive portId={p.id} speedMbps={p.speed_mbps} />}
