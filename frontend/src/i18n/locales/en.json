@@ -2701,6 +2701,8 @@
       "tx_pause": "TX pause"
     },
     "statsNote": "Totals since the device booted (like the Ethernet tab in Winbox). Error counts that keep rising point to a cable/connector/SFP problem.",
-    "opticalGraph": "Optical level history (dBm)"
+    "opticalGraph": "Optical level history (dBm)",
+    "open": "Details",
+    "close": "Hide details"
   }
 }

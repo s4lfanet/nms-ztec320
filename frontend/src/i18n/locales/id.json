@@ -2701,6 +2701,8 @@
       "tx_pause": "TX pause"
     },
     "statsNote": "Total sejak perangkat menyala (seperti tab Ethernet di Winbox). Angka error yang terus naik menandakan kabel/konektor/SFP bermasalah.",
-    "opticalGraph": "Riwayat redaman (dBm)"
+    "opticalGraph": "Riwayat redaman (dBm)",
+    "open": "Detail",
+    "close": "Tutup detail"
   }
 }
