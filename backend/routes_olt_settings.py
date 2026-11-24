@@ -33,7 +33,7 @@ from services_sync import start_single_sync, start_sync_all
 bp = Blueprint('olt_settings', __name__)
 
 @bp.route('/api/olt/<int:olt_id>/refresh-signal', methods=['POST'])
-@login_required
+@permission_required('view_onus')
 def refresh_onu_signal(olt_id):
     """Fast SNMP-only refresh of status + RX/TX power for all ONUs (ZTE & multi-vendor).
     Walks oper_state, ONU RX, TX, OLT RX, and serial — updates status + signal in DB."""

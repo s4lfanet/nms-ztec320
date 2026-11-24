@@ -20,6 +20,9 @@ from models import (
     OnuRxSample, OnuRxHourly,
 )
 from extensions import logger
+import json as _json_mod
+import re
+
 from helpers import (
     utc_iso, log_action, permission_required, super_admin_required,
     check_rate_limit as _check_rate_limit,
@@ -31,6 +34,9 @@ from services_sync import start_single_sync, start_sync_all
 from cli_sanitize import CliValidationError, sanitize_cli_text, sanitize_cli_int, sanitize_cli_dict
 
 bp = Blueprint('onu', __name__)
+
+# Diagnostik yang menghubungi OLT (Telnet/SNMP) — tidak untuk akun dashboard-saja
+view_onus_required = permission_required('view_onus')
 
 
 def _zte_cli_unsupported(olt):
@@ -61,6 +67,33 @@ def onu_lookup(olt_id, frame, port, onu_num):
     return jsonify({'success': True, 'id': onu.id})
 
 
+_SECRET_KEY = re.compile(r'pass|psk|secret|wpa_?key', re.I)
+
+
+def _can_see_secrets():
+    """Password WiFi/PPPoE ONU hanya untuk yang boleh mengonfigurasi ONU (bukan akun viewer/demo)."""
+    return current_user.has_permission('configure_onu')
+
+
+def _mask_secrets(obj):
+    """Ganti nilai kunci rahasia (password/psk/secret) dengan '***' secara rekursif."""
+    if isinstance(obj, dict):
+        return {k: ('***' if isinstance(v, str) and v and _SECRET_KEY.search(str(k)) else _mask_secrets(v))
+                for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_mask_secrets(v) for v in obj]
+    return obj
+
+
+def _mask_json_text(text):
+    if not text:
+        return text
+    try:
+        return _json_mod.dumps(_mask_secrets(_json_mod.loads(text)))
+    except (ValueError, TypeError):
+        return text
+
+
 @bp.route('/api/onu/<int:onu_id>/detail')
 @login_required
 def api_onu_detail(onu_id):
@@ -88,7 +121,7 @@ def api_onu_detail(onu_id):
             'last_seen': utc_iso(onu.last_seen),
             'last_online': utc_iso(onu.last_online),
             'last_offline': utc_iso(onu.last_offline),
-            'wifi_config': onu.wifi_config or '',
+            'wifi_config': (onu.wifi_config or '') if _can_see_secrets() else _mask_json_text(onu.wifi_config or ''),
         },
         'live_detail': None,
         'history': [],
@@ -140,7 +173,7 @@ _LIVE_BAD_MODELS = {'', 'n/a', 'none', 'unknown', 'null', '-', 'not set', 'all',
 
 
 @bp.route('/api/onu/<int:onu_id>/live-detail')
-@login_required
+@view_onus_required
 def api_onu_live_detail(onu_id):
     """Fetch live ONU data from OLT via CLI — SSH or Telnet (ZTE only)."""
     import json as _json
@@ -262,6 +295,8 @@ def api_onu_live_detail(onu_id):
         import time as _t
         cache_key = f'traffic_{onu_id}'
         _traffic_cache[cache_key] = {'ts': _t.time(), 'in': live_detail['input_bytes'], 'out': live_detail['output_bytes']}
+    if live_detail and not _can_see_secrets():
+        live_detail = _mask_secrets(live_detail)
     return jsonify({
         'success': True,
         'live_detail': live_detail,
@@ -955,7 +990,7 @@ def onu_live_info(onu_id):
 
 
 @bp.route('/api/onu/<int:onu_id>/get-status', methods=['POST'])
-@login_required
+@view_onus_required
 def onu_get_status(onu_id):
     """Get detailed ONU status matching R-Config Get Status output.
     Returns: interface info, optical status (OLT/ONU RX/TX + attenuation), history, MAC table."""
@@ -1065,7 +1100,7 @@ def onu_get_status(onu_id):
         except Exception as e:
             try: tn.close()
             except: pass
-        return jsonify({'success': True, 'status': status_data})
+        return jsonify({'success': True, 'status': status_data if _can_see_secrets() else _mask_secrets(status_data)})
 
     # GPON path
 
@@ -1272,7 +1307,7 @@ def onu_get_status(onu_id):
         except Exception as e:
             logger.debug(f"DB optical update failed: {e}")
 
-        return jsonify({'success': True, 'status': status_data})
+        return jsonify({'success': True, 'status': status_data if _can_see_secrets() else _mask_secrets(status_data)})
     except Exception as e:
         logger.error(f"get-status failed: {e}")
         try: tn.close()
@@ -1281,7 +1316,7 @@ def onu_get_status(onu_id):
 
 
 @bp.route('/api/onu/<int:onu_id>/refresh-status', methods=['POST'])
-@login_required
+@view_onus_required
 def onu_refresh_status(onu_id):
     """Re-fetch ONU status from OLT and update DB (ZTE via CLI — SSH or Telnet)."""
     onu = db.session.get(ONU, onu_id)

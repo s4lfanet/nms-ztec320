@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Keamanan akun lihat-saja (demo) & pengelola akun
+
+#### Diperbaiki (keamanan)
+- **Akun lihat-saja (role Viewer / demo):**
+  - Tidak lagi bisa memicu diagnostik ke OLT (Get Status, refresh status/sinyal, ping pelanggan, detail live via Telnet); kini butuh izin "View All ONUs".
+  - Tidak bisa menandai alarm "ditangani" (status yang terlihat seluruh tim).
+  - Tidak bisa membaca konfigurasi bot/gateway WhatsApp beserta tokennya.
+- **Password WiFi/PPPoE pelanggan** disamarkan (`***`) untuk user yang tidak punya izin "Configure ONU".
+- **Pengelola akun yang bukan super admin** tidak bisa lagi:
+  - memberi role yang lebih kuat dari dirinya, misalnya Full Access;
+  - mengubah password atau menghapus akun super admin;
+  - membuat atau mengubah role dengan izin yang tidak ia miliki.
+
 ### 2026-11-24 — Hotfix: aplikasi macet di layar "Loading..."
 
 #### Diperbaiki

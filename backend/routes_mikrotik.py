@@ -338,7 +338,7 @@ def onu_pppoe_events(onu_id):
 
 
 @bp.route('/api/onu/<int:onu_id>/ping', methods=['POST'])
-@login_required
+@permission_required('view_onus')
 def ping_onu_client(onu_id):
     """On-demand ping of an ONU's PPPoE client IP — Mikrotik first, VPS fallback."""
     s = OnuLinkState.query.filter_by(onu_id=onu_id).first()
