@@ -1412,7 +1412,8 @@
     "theAppWillBe": "Aplikasi tidak bisa diakses sebentar saat restart (beberapa detik)",
     "onlySuperAdminCan": "Hanya super admin yang bisa memasang pembaruan",
     "staleUiHint": "Server sudah terbaru, tapi tampilan masih versi lama? Muat ulang untuk mengambil tampilan terbaru dari server.",
-    "reloadUi": "Muat ulang tampilan"
+    "reloadUi": "Muat ulang tampilan",
+    "uiCurrent": "Tampilan di perangkat ini sudah versi terbaru."
   },
   "pg_templates": {
     "nameIsRequired": "Nama wajib diisi",

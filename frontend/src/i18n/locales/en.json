@@ -1412,7 +1412,8 @@
     "theAppWillBe": "The app will be briefly unavailable during restart (a few seconds)",
     "onlySuperAdminCan": "Only super admin can perform updates",
     "staleUiHint": "Server is up to date but the screen still looks old? Reload to fetch the latest interface from the server.",
-    "reloadUi": "Reload interface"
+    "reloadUi": "Reload interface",
+    "uiCurrent": "The app on this device is already the latest version."
   },
   "pg_templates": {
     "nameIsRequired": "Name is required",
