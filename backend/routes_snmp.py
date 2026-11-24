@@ -2,7 +2,7 @@
 import threading
 
 from flask import Blueprint, jsonify, request, current_app
-from flask_login import login_required
+from flask_login import login_required, current_user
 
 from datetime import timedelta
 
@@ -39,7 +39,17 @@ def _device_dict(d, ports=None):
         'uptime_s': d.uptime_s, 'cpu_pct': d.cpu_pct, 'mem_pct': d.mem_pct, 'temperature': d.temperature,
         'ports_total': len(active), 'ports_up': sum(1 for p in active if p.oper_status == 'up'),
         'ports_down': sum(1 for p in active if p.oper_status != 'up'),
+        # Community v1/v2c ditampilkan apa adanya untuk pengelola (seperti community OLT);
+        # password SNMPv3 tetap tidak pernah dikirim.
+        'community': (d.community or '') if _can_manage_devices() else '',
     }
+
+
+def _can_manage_devices():
+    try:
+        return bool(current_user.is_authenticated and current_user.has_permission('settings_ip_olts'))
+    except Exception:
+        return False
 
 
 def _port_dict(p):

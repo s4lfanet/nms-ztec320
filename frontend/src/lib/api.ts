@@ -875,7 +875,7 @@ export interface FTTHStats {
 export interface SnmpDevice {
   id: number; name: string; host: string; port: number; snmp_version: '1' | '2c' | '3';
   v3_user: string; v3_level: string; v3_auth_proto: string; v3_priv_proto: string;
-  has_community: boolean; has_auth_pass: boolean; has_priv_pass: boolean;
+  has_community: boolean; community?: string; has_auth_pass: boolean; has_priv_pass: boolean;
   enabled: boolean; location: string; notes: string;
   sys_name: string; sys_descr: string; sys_location: string; sys_contact: string;
   vendor: string; os_name: string; hardware: string; os_version: string; serial: string;
