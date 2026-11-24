@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — FTTH tahap 1: ketepatan & kualitas data
+
+#### Ditambahkan
+- **Kualitas data** di tab Overview FTTH (`/api/ftth/quality`): core dipakai ganda, core di luar kapasitas kabel, ONU yang terdaftar di PON berbeda dengan jalur fisik ODP-nya, feed JC tanpa splice, node belum tersambung, ODP penuh, node tanpa koordinat — lengkap dengan nama node, plus jumlah ONU yang belum dipasang ke port ODP.
+- Saat memasang ONU ke port ODP, muncul peringatan bila PON ONU berbeda dengan PON jalur fisik ODP (tetap disimpan).
+
+#### Diperbaiki
+- Satu core tidak bisa lagi dipakai dua node: core keluar OTB → satu ODC, core masuk OTB → satu port PON, core ODC → satu ODP, core keluar JC → satu node hilir. Nomor core di luar jumlah core kabel (dan splice JC di luar kapasitas) ditolak. Hanya dicek saat feed diubah — data lama yang sudah bentrok tetap bisa disunting dan muncul di laporan.
+- Satu ONU tidak bisa dipasang di dua port ODP sekaligus.
+- Melepas/menghapus node tidak lagi menandai core "tersedia" bila masih ada node lain yang memakainya.
+- Trace ONU memakai port PON yang di-patch ke core yang benar di OTB (sebelumnya PON pertama di OTB, sehingga OLT/PON yang tampil bisa salah).
+- Hitungan "node yatim" di Overview: ODP kaskade (dari port ODP lain) dan OTB yang disuplai lewat port PON tidak lagi terhitung yatim.
+
 ### 2026-11-24 — Tampilan langsung diperbarui setelah update
 
 #### Diperbaiki

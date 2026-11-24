@@ -31,6 +31,16 @@ from services_sync import start_single_sync, start_sync_all
 
 bp = Blueprint('ftth', __name__)
 
+import ftth_quality  # noqa: E402
+
+@bp.route('/api/ftth/quality', methods=['GET'])
+@login_required
+def ftth_quality_report():
+    """Laporan kualitas data FTTH: core ganda/di luar kapasitas, splice hilang,
+    node yatim, tanpa koordinat, ODP penuh, ONU vs PON jalur fisik."""
+    return jsonify({'success': True, **ftth_quality.build_report()})
+
+
 @bp.route('/api/ftth/stats', methods=['GET'])
 @login_required
 def ftth_stats():
@@ -104,10 +114,14 @@ def ftth_stats():
     used_odp_ports = sum(1 for p in all_odp_ports if p.status == 'used')
 
     # Orphan detection
-    orphan_onus = sum(1 for o in onus if not any(p.onu_id == o.id for p in all_odp_ports))
-    orphan_odps = sum(1 for odp in odps if not (odp.jc_id if odp.feed_source == 'jc' else odp.odc_id))
+    _assigned_onu_ids = {p.onu_id for p in all_odp_ports if p.onu_id}
+    orphan_onus = sum(1 for o in onus if o.id not in _assigned_onu_ids)
+    orphan_odps = sum(1 for odp in odps if not (
+        odp.jc_id if odp.feed_source == 'jc' else odp.parent_odp_port_id if odp.feed_source == 'odp' else odp.odc_id))
     orphan_odcs = sum(1 for odc in odcs if not (odc.jc_id if odc.feed_source == 'jc' else odc.otb_id))
-    orphan_otbs = sum(1 for otb in otbs if not ((otb.jc_id if otb.feed_source == 'jc' else otb.olt_id)))
+    _pon_otb_ids = {p.otb_id for p in FTTHPonPort.query.filter(FTTHPonPort.otb_id.isnot(None)).all()}
+    orphan_otbs = sum(1 for otb in otbs if not (
+        otb.jc_id if otb.feed_source == 'jc' else (otb.olt_id or otb.id in _pon_otb_ids)))
     # Data completeness checks
     onus_without_technician = sum(1 for o in onus if not o.technician_id)
     onus_without_coordinates = sum(1 for o in onus if o.latitude is None or o.longitude is None)
@@ -364,7 +378,22 @@ def _touch_core(owner_type, owner_id, core_number, new_status,
 
 
 def _release_core(owner_type, owner_id, core_number, reason=''):
-    """Convenience wrapper: mark a core available again (detach/delete paths)."""
+    """Convenience wrapper: mark a core available again (detach/delete paths).
+    Bila ternyata masih ada node lain yang memakai core ini (data lama yang
+    bentrok), core tetap 'used' dan dialihkan ke node tersebut — bukan
+    ditandai tersedia padahal masih terpakai."""
+    # Node yang sedang melepas = pemegang core saat ini (pada hapus node ia
+    # masih ada di DB) — jangan dihitung sebagai "pemakai lain".
+    cur = FTTHFiberCore.query.filter_by(owner_type=owner_type, owner_id=owner_id, core_number=core_number).first()
+    holder = (cur.assigned_to_type, cur.assigned_to_id) if cur else (None, None)
+    try:
+        others = [(k, o) for k, o in ftth_quality.users_of(owner_type, owner_id, core_number) if (k, o.id) != holder]
+    except Exception:
+        others = []
+    if others:
+        kind, obj = others[0]
+        _touch_core(owner_type, owner_id, core_number, 'used', kind, obj.id, reason=reason)
+        return
     _touch_core(owner_type, owner_id, core_number, 'available', reason=reason)
 
 
@@ -437,6 +466,9 @@ def ftth_otb_create():
         cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
+    err = ftth_quality.feed_error('otb', o)
+    if err:
+        return jsonify({'success': False, 'message': err}), 400
     db.session.add(o)
     db.session.flush()
     _ensure_otb_ports(o)
@@ -453,6 +485,7 @@ def ftth_otb_update(otb_id):
     o = db.session.get(FTTHOTB, otb_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
     old_feed_source, old_jc_id, old_jc_core_number = o.feed_source, o.jc_id, o.jc_core_number
+    old_feed = ftth_quality.feed_tuple('otb', o)
     d = request.get_json() or {}
     for k in ['name', 'type', 'model', 'location', 'pon_port', 'description']:
         if k in d: setattr(o, k, d[k])
@@ -473,6 +506,10 @@ def ftth_otb_update(otb_id):
         if 'olt_id' in d: o.olt_id = d['olt_id']
         if 'jc_id' in d: o.jc_id = d['jc_id']
         if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
+    err = ftth_quality.feed_error('otb', o, old_feed)
+    if err:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': err}), 400
     if 'total_cores' in d:
         _ensure_otb_ports(o)
     if old_feed_source == 'jc' and old_jc_id and old_jc_core_number and \
@@ -558,6 +595,9 @@ def ftth_odc_create():
         cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
+    err = ftth_quality.feed_error('odc', o)
+    if err:
+        return jsonify({'success': False, 'message': err}), 400
     db.session.add(o)
     db.session.commit()
     if o.feed_source == 'otb' and o.otb_id and o.otb_core_number:
@@ -576,6 +616,7 @@ def ftth_odc_update(odc_id):
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
     old_feed_source, old_otb_id, old_otb_core_number = o.feed_source, o.otb_id, o.otb_core_number
     old_jc_id, old_jc_core_number = o.jc_id, o.jc_core_number
+    old_feed = ftth_quality.feed_tuple('odc', o)
     d = request.get_json() or {}
     for k in ['name', 'model', 'location', 'splitter_model', 'splitter_ratio_type', 'description']:
         if k in d: setattr(o, k, d[k])
@@ -596,6 +637,10 @@ def ftth_odc_update(odc_id):
         if 'otb_id' in d: o.otb_id = d['otb_id']
         if 'jc_id' in d: o.jc_id = d['jc_id']
         if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
+    err = ftth_quality.feed_error('odc', o, old_feed)
+    if err:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': err}), 400
     # Release whichever old reservation no longer applies, then claim the new one.
     if old_feed_source == 'otb' and old_otb_id and old_otb_core_number and \
        (o.feed_source != 'otb' or o.otb_id != old_otb_id or o.otb_core_number != old_otb_core_number):
@@ -667,6 +712,9 @@ def ftth_odp_create():
         cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
+    err = ftth_quality.feed_error('odp', o)
+    if err:
+        return jsonify({'success': False, 'message': err}), 400
     db.session.add(o)
     db.session.commit()
     # Auto-create ports
@@ -688,6 +736,7 @@ def ftth_odp_update(odp_id):
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
     old_feed_source, old_odc_id, old_odc_core_number = o.feed_source, o.odc_id, o.odc_core_number
     old_jc_id, old_jc_core_number = o.jc_id, o.jc_core_number
+    old_feed = ftth_quality.feed_tuple('odp', o)
     d = request.get_json() or {}
     for k in ['name', 'model', 'location', 'splitter_model', 'splitter_ratio_type', 'description']:
         if k in d: setattr(o, k, d[k])
@@ -736,6 +785,10 @@ def ftth_odp_update(odp_id):
         existing = FTTHODPPort.query.filter_by(odp_id=o.id).count()
         for i in range(existing + 1, o.total_ports + 1):
             db.session.add(FTTHODPPort(odp_id=o.id, port_number=i, status='available'))
+    err = ftth_quality.feed_error('odp', o, old_feed)
+    if err:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': err}), 400
     if old_feed_source == 'odc' and old_odc_id and old_odc_core_number and \
        (o.feed_source != 'odc' or o.odc_id != old_odc_id or o.odc_core_number != old_odc_core_number):
         _release_core('odc', old_odc_id, old_odc_core_number, reason='ODP feed changed')
@@ -785,11 +838,17 @@ def ftth_odp_port_update(port_id):
     p = db.session.get(FTTHODPPort, port_id)
     if not p: return jsonify({'success': False, 'message': 'Not found'}), 404
     old_feed_source, old_jc_id, old_jc_core_number = p.feed_source, p.jc_id, p.jc_core_number
+    old_feed = ftth_quality.feed_tuple('odp_port', p)
+    old_onu_id = p.onu_id
     d = request.get_json() or {}
     if d.get('onu_id'):
         fed_odp = FTTHODP.query.filter_by(feed_source='odp', parent_odp_port_id=p.id).first()
         if fed_odp:
             return jsonify({'success': False, 'message': f'Port ini sudah jadi feed ODP "{fed_odp.name}", tidak bisa dipakai untuk ONU pelanggan'}), 400
+        other = FTTHODPPort.query.filter(FTTHODPPort.onu_id == d['onu_id'], FTTHODPPort.id != p.id).first()
+        if other:
+            other_odp = db.session.get(FTTHODP, other.odp_id)
+            return jsonify({'success': False, 'message': f'ONU ini sudah terpasang di {other_odp.name if other_odp else "ODP lain"} port {other.port_number} — lepas dulu dari port itu'}), 400
     for k in ['port_number', 'onu_id', 'status', 'customer_name', 'customer_phone', 'description', 'cable_length_meters', 'cable_attenuation_per_km']:
         if k in d: setattr(p, k, d[k])
     if 'feed_source' in d:
@@ -818,13 +877,24 @@ def ftth_odp_port_update(port_id):
                     onu.longitude = float(d['longitude']) if d['longitude'] not in (None, '') else None
             except (ValueError, TypeError):
                 return jsonify({'success': False, 'message': 'Format koordinat tidak valid'}), 400
+    err = ftth_quality.feed_error('odp_port', p, old_feed)
+    if err:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': err}), 400
     if old_feed_source == 'jc' and old_jc_id and old_jc_core_number and \
        (p.feed_source != 'jc' or p.jc_id != old_jc_id or p.jc_core_number != old_jc_core_number):
         _release_core('jc', old_jc_id, old_jc_core_number, reason='ODP port feed changed')
     if p.feed_source == 'jc' and p.jc_id and p.jc_core_number:
         _touch_core('jc', p.jc_id, p.jc_core_number, 'used', 'odp_port', p.id)
     db.session.commit()
-    return jsonify({'success': True, 'port': _odp_port_to_dict(p)})
+    # Peringatan (tidak memblokir): ONU terdaftar di PON lain dari jalur fisik ODP.
+    warning = None
+    if p.onu_id and p.onu_id != old_onu_id:
+        try:
+            warning = ftth_quality.pon_mismatch(db.session.get(ONU, p.onu_id), db.session.get(FTTHODP, p.odp_id))
+        except Exception:
+            warning = None
+    return jsonify({'success': True, 'port': _odp_port_to_dict(p), 'warning': warning})
 
 
 @bp.route('/api/ftth/odp/<int:odp_id>/seed-onu-coords', methods=['POST'])
@@ -965,6 +1035,9 @@ def ftth_jc_splice_create(jc_id):
     d = request.get_json() or {}
     if not d.get('core_in') or not d.get('core_out'):
         return jsonify({'success': False, 'message': 'core_in and core_out are required'}), 400
+    co = ftth_quality._int(d['core_out'])
+    if co is None or co < 1 or (j.total_cores and co > j.total_cores):
+        return jsonify({'success': False, 'message': f"Core out {d['core_out']} di luar kapasitas JC \"{j.name}\" ({j.total_cores} core)"}), 400
     if FTTHJCSplice.query.filter_by(jc_id=jc_id, core_out=d['core_out']).first():
         return jsonify({'success': False, 'message': f"Core out {d['core_out']} is already used by another splice in this JC"}), 400
     s = FTTHJCSplice(jc_id=jc_id, core_in=d['core_in'], core_out=d['core_out'], label=d.get('label', ''),
@@ -1124,20 +1197,26 @@ def _trace_upstream_from_odp(odp, _depth=0):
             if otb.feed_source == 'jc' and otb.jc_id:
                 climb('jc', otb.jc_id, otb.jc_core_number, depth + 1)
             else:
-                pon = FTTHPonPort.query.filter_by(otb_id=otb.id).first()
+                # PON yang di-patch ke core INI (bukan sembarang PON pertama di OTB).
+                pon = (FTTHPonPort.query.filter_by(otb_id=otb.id, otb_core_number=core_number).first() if core_number else None) \
+                    or FTTHPonPort.query.filter_by(otb_id=otb.id).first()
                 if pon:
                     olt = db.session.get(OLT, pon.olt_id) if pon.olt_id else None
-                    hops.insert(0, {'type': 'olt', 'id': pon.olt_id, 'name': (olt.name if olt else pon.olt_name) or '', 'detail': pon.pon_name or f'{pon.frame}/{pon.slot}/{pon.port}'})
+                    hops.insert(0, {'type': 'olt', 'id': pon.olt_id, 'name': (olt.name if olt else pon.olt_name) or '', 'detail': pon.pon_name or f'{pon.frame}/{pon.slot}/{pon.port}',
+                                    'frame': pon.frame, 'slot': pon.slot, 'port': pon.port})
                 elif otb.olt_id:
                     olt = db.session.get(OLT, otb.olt_id)
-                    hops.insert(0, {'type': 'olt', 'id': otb.olt_id, 'name': olt.name if olt else '', 'detail': otb.pon_port or ''})
+                    fr, sl, pt = ftth_quality.parse_pon_name(otb.pon_port)
+                    hops.insert(0, {'type': 'olt', 'id': otb.olt_id, 'name': olt.name if olt else '', 'detail': otb.pon_port or '',
+                                    'frame': fr, 'slot': sl, 'port': pt})
             return
         if node_type == 'pon':
             pon = db.session.get(FTTHPonPort, node_id)
             if not pon:
                 return
             olt = db.session.get(OLT, pon.olt_id) if pon.olt_id else None
-            hops.insert(0, {'type': 'olt', 'id': pon.olt_id, 'name': (olt.name if olt else pon.olt_name) or '', 'detail': pon.pon_name or f'{pon.frame}/{pon.slot}/{pon.port}'})
+            hops.insert(0, {'type': 'olt', 'id': pon.olt_id, 'name': (olt.name if olt else pon.olt_name) or '', 'detail': pon.pon_name or f'{pon.frame}/{pon.slot}/{pon.port}',
+                            'frame': pon.frame, 'slot': pon.slot, 'port': pon.port})
             return
         if node_type == 'odc':
             odc = db.session.get(FTTHODC, node_id)
@@ -1658,6 +1737,9 @@ def ftth_pon_create():
         otb_id=d.get('otb_id'), otb_core_number=d.get('otb_core_number', 1),
         description=d.get('description', ''),
     )
+    err = ftth_quality.check_pon_core(o.otb_id, o.otb_core_number)
+    if err:
+        return jsonify({'success': False, 'message': err}), 400
     db.session.add(o)
     db.session.commit()
     return jsonify({'success': True, 'item': _pon_to_dict(o)})
@@ -1669,6 +1751,7 @@ def ftth_pon_create():
 def ftth_pon_update(pon_id):
     o = db.session.get(FTTHPonPort, pon_id)
     if not o: return jsonify({'success': False, 'message': 'Not found'}), 404
+    old_core = (o.otb_id, o.otb_core_number)
     d = request.get_json() or {}
     for k in ['olt_name', 'pon_name', 'description']:
         if k in d: setattr(o, k, d[k])
@@ -1676,6 +1759,11 @@ def ftth_pon_update(pon_id):
         if k in d: setattr(o, k, int(d[k]))
     for k in ['olt_id', 'otb_id']:
         if k in d: setattr(o, k, d[k] if d[k] else None)
+    if (o.otb_id, o.otb_core_number) != old_core:
+        err = ftth_quality.check_pon_core(o.otb_id, o.otb_core_number, me_id=o.id)
+        if err:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': err}), 400
     db.session.commit()
     return jsonify({'success': True, 'item': _pon_to_dict(o)})
 
