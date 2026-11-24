@@ -18,6 +18,7 @@ let pending = false;
 const listeners = new Set<() => void>();
 
 export function initServiceWorker() {
+  void checkUpdateOutcome();
   registerSW({
     immediate: true,
     onNeedRefresh() {
@@ -197,9 +198,54 @@ export async function refreshAfterServerUpdate(
       await waitInstalled(reg.installing, installWait);
     }
     onPhase?.('reload');
+    await rememberAttempt();
     if (reg?.waiting) { activateAndReload(reg.waiting, reload); return; }
     reload();
   } catch {
     reload();
   }
+}
+
+// ── Pemulihan bila reload tidak mengambil versi baru ──
+// Di beberapa HP service worker lama bisa "tersangkut": reload tetap menyajikan tampilan
+// lama dari cache, sehingga pemberitahuan "Muat ulang" muncul terus. Sebelum reload kita
+// catat bundel target dari server; setelah halaman dimuat, bila bundel yang berjalan masih
+// berbeda, service worker + cache dibuang lalu halaman dimuat langsung dari jaringan.
+const ATTEMPT_KEY = 'nms-sw-attempt';
+const HARD_KEY = 'nms-sw-hard';
+
+async function rememberAttempt() {
+  try {
+    const target = await withTimeout(serverBuild(), 3000);
+    if (target) sessionStorage.setItem(ATTEMPT_KEY, JSON.stringify({ target, at: Date.now() }));
+  } catch { /* sessionStorage tidak tersedia — lewati */ }
+}
+
+export async function checkUpdateOutcome() {
+  let a: { target?: string; at?: number } | null = null;
+  try {
+    a = JSON.parse(sessionStorage.getItem(ATTEMPT_KEY) || 'null');
+    sessionStorage.removeItem(ATTEMPT_KEY);
+  } catch { return; }
+  if (!a?.target || !a.at || Date.now() - a.at > 120_000) return;
+  const run = runningBuild();
+  if (!run || run === a.target) return;
+  await hardReset();
+}
+
+/** Buang semua service worker + Cache Storage lalu muat ulang dari jaringan (maks sekali per menit). */
+export async function hardReset() {
+  try {
+    const last = Number(sessionStorage.getItem(HARD_KEY) || 0);
+    if (Date.now() - last < 60_000) return; // cegah loop reload
+    sessionStorage.setItem(HARD_KEY, String(Date.now()));
+  } catch { /* lanjut */ }
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
+    await Promise.all(regs.map(r => r.unregister()));
+  } catch { /* abaikan */ }
+  try {
+    if ('caches' in window) await Promise.all((await caches.keys()).map(k => caches.delete(k)));
+  } catch { /* abaikan */ }
+  window.location.reload();
 }

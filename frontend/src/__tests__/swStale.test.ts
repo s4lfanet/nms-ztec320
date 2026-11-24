@@ -59,3 +59,47 @@ describe('pemberitahuan versi baru hanya bila tampilan memang lama', () => {
     expect(waiting.postMessage).not.toHaveBeenCalled();
   });
 });
+
+describe('pemulihan bila reload tidak mengambil versi baru', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    sessionStorage.clear();
+  });
+  function mockReset() {
+    const unregister = vi.fn(async () => true);
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: { getRegistrations: async () => [{ unregister }], getRegistration: async () => undefined, addEventListener: () => undefined },
+    });
+    const del = vi.fn(async () => true);
+    vi.stubGlobal('caches', { keys: async () => ['workbox-precache-v2'], delete: del });
+    const reload = vi.fn();
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...window.location, reload, href: 'http://localhost/' } });
+    return { unregister, del, reload };
+  }
+
+  it('masih versi lama setelah reload → buang SW & cache lalu reload sekali', async () => {
+    const { unregister, del, reload } = mockReset();
+    setRunning('/assets/index-OLD.js');
+    sessionStorage.setItem('nms-sw-attempt', JSON.stringify({ target: '/assets/index-NEW.js', at: Date.now() }));
+    const m = await import('../lib/swUpdate');
+    await m.checkUpdateOutcome();
+    expect(unregister).toHaveBeenCalled();
+    expect(del).toHaveBeenCalledWith('workbox-precache-v2');
+    expect(reload).toHaveBeenCalledTimes(1);
+    // percobaan kedua dalam semenit tidak me-reload lagi (cegah loop)
+    sessionStorage.setItem('nms-sw-attempt', JSON.stringify({ target: '/assets/index-NEW.js', at: Date.now() }));
+    await m.checkUpdateOutcome();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('versi sudah sesuai target → tidak melakukan apa-apa', async () => {
+    const { reload } = mockReset();
+    setRunning('/assets/index-NEW.js');
+    sessionStorage.setItem('nms-sw-attempt', JSON.stringify({ target: '/assets/index-NEW.js', at: Date.now() }));
+    const m = await import('../lib/swUpdate');
+    await m.checkUpdateOutcome();
+    expect(reload).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('nms-sw-attempt')).toBeNull();
+  });
+});
