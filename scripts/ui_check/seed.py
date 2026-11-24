@@ -63,7 +63,10 @@ with app.app_context():
         db.session.add(IncidentLog(incident_id=inc.id, action='system', status='open', note='Insiden dibuat otomatis: 9 ONU down.'))
         db.session.add(IncidentLog(incident_id=inc.id, action='note', username='UI Check',
                                    note='Kabel drop di tiang depan balai warga tertabrak truk, sedang menuju lokasi.'))
-    from models import SnmpDevice, SnmpPort, Notification
+    from models import SnmpDevice, SnmpPort, Notification, MikrotikDevice
+    if not MikrotikDevice.query.first():
+        db.session.add_all([MikrotikDevice(name='CCR1072 Core POP Pusat', host='10.10.0.1'),
+                            MikrotikDevice(name='RB4011 PPPoE Cabang Selatan', host='10.20.0.1')])
     if not SnmpDevice.query.first():
         from datetime import datetime, timedelta
         now = datetime.utcnow()

@@ -4,6 +4,17 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Menu "Monitoring SNMP" & jalan pintas dari halaman MikroTik
+
+#### Diubah
+- Menu "Perangkat jaringan" diganti namanya menjadi **Monitoring SNMP** supaya mudah dikenali.
+
+#### Ditambahkan
+- Halaman **Mikrotik** mendapat kolom **SNMP**:
+  - "Terpantau" (dengan titik status) bila router itu sudah dipantau via SNMP; diketuk membuka detailnya;
+  - "Pantau via SNMP" bila belum, yang membuka form tambah perangkat SNMP dengan nama dan IP router sudah terisi.
+- Ada juga catatan singkat di atas tabel dengan tautan ke Monitoring SNMP.
+
 ### 2026-11-24 — Perbaikan pemberitahuan "Muat ulang" yang muncul berulang
 
 #### Diperbaiki
