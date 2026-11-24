@@ -35,6 +35,13 @@ export function SystemUpdate() {
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
   const [applyResult, setApplyResult] = useState<UpdateApplyResult | null>(null);
   const [reloadPhase, setReloadPhase] = useState<RefreshPhase | null>(null);
+  const [manualReload, setManualReload] = useState(false);
+  // Klik manual: tampilkan spinner seketika agar jelas tombol merespons.
+  const reloadNow = () => {
+    if (manualReload) return;
+    setManualReload(true);
+    refreshAfterServerUpdate({ onPhase: setReloadPhase });
+  };
 
   const handleCheck = async () => {
     setChecking(true);
@@ -136,8 +143,8 @@ export function SystemUpdate() {
               {result.up_to_date && (
                 <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-glass border border-brd text-xs text-tx3">
                   <span className="flex-1 min-w-[12rem]">{t('pg_sysupdate.staleUiHint')}</span>
-                  <Button variant="secondary" icon={<RefreshCw size={14} />} onClick={() => refreshAfterServerUpdate()}>
-                    {t('pg_sysupdate.reloadUi')}
+                  <Button variant="secondary" icon={<RefreshCw size={14} />} loading={manualReload} onClick={reloadNow}>
+                    {manualReload ? t('cmp_update.reloading') : t('pg_sysupdate.reloadUi')}
                   </Button>
                 </div>
               )}
@@ -201,8 +208,8 @@ export function SystemUpdate() {
               <span className="flex-1 min-w-[12rem] text-xs text-tx2">
                 {reloadPhase === 'download' ? t('cmp_update.downloadingUi') : reloadPhase === 'reload' ? t('cmp_update.reloading') : t('cmp_update.restarting')}
               </span>
-              <Button variant="primary" icon={<RefreshCw size={14} />} onClick={() => refreshAfterServerUpdate()}>
-                {t('pg_sysupdate.reloadUi')}
+              <Button variant="primary" icon={<RefreshCw size={14} />} loading={manualReload} onClick={reloadNow}>
+                {manualReload ? t('cmp_update.reloading') : t('pg_sysupdate.reloadUi')}
               </Button>
             </div>
           )}

@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Perbaikan tombol "Muat ulang" tidak merespons
+
+#### Diperbaiki
+- Tombol **Muat ulang tampilan** (halaman Update Sistem & pemberitahuan versi baru) kadang tidak bereaksi saat diklik:
+  - Pemberitahuan memanggil `updateSW(true)` workbox yang diam saja bila tidak ada service worker yang menunggu.
+  - `reg.update()` di HP bisa menggantung tanpa batas.
+  - Sekarang semua tombol memakai satu alur yang selalu berakhir reload (setiap langkah diberi batas waktu + timer cadangan), dan tombol langsung menampilkan spinner "Memuat ulang tampilan…".
+
 ### 2026-11-24 — Pemantauan perangkat SNMP tahap 2: grafik riwayat
 
 #### Ditambahkan
