@@ -4,6 +4,24 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Pemantauan perangkat SNMP tahap 3: alert, ringkasan, laporan bulanan
+
+#### Ditambahkan
+- **Port dipantau (bintang "Pantau")** di Perangkat → detail → Port: tandai uplink/backbone. Hanya port ini yang dialert dan masuk laporan, supaya port akses pelanggan tidak membanjiri notifikasi.
+- **Alert baru** lewat WhatsApp/Telegram/lonceng (dengan pesan pulih):
+  - port dipantau turun;
+  - port naik-turun (flapping);
+  - port padat (utilisasi tinggi berturut-turut);
+  - error port;
+  - CPU perangkat tinggi berturut-turut;
+  - suhu perangkat tinggi.
+- **Ambang alert** bisa diatur dari halaman Perangkat (tombol "Ambang alert").
+- **Ringkasan** di halaman Perangkat: masalah aktif, port dipantau, trafik tertinggi. Kartu ringkas "Perangkat jaringan" juga muncul di Dashboard bila ada perangkat SNMP.
+- **Laporan bulanan** (tab di halaman Perangkat):
+  - ketersediaan perangkat, CPU, dan suhu maksimum;
+  - per port: rata-rata, 95%, puncak, volume, dan utilisasi;
+  - unduh CSV.
+
 ### 2026-11-24 — Perbaikan tombol "Muat ulang" tidak merespons
 
 #### Diperbaiki

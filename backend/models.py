@@ -1518,6 +1518,7 @@ class SnmpPort(db.Model):
     oper_status = db.Column(db.String(15), default='')   # up, down, dormant, notPresent, lowerLayerDown…
     status_changed_at = db.Column(db.DateTime, nullable=True)
     ignored = db.Column(db.Boolean, default=False)       # tidak dialert / disembunyikan
+    watched = db.Column(db.Boolean, default=False)       # uplink/backbone: dialert (turun, padat, error) & masuk laporan
     deleted = db.Column(db.Boolean, default=False)       # hilang saat discovery terakhir
     in_octets = db.Column(db.BigInteger, nullable=True)
     out_octets = db.Column(db.BigInteger, nullable=True)

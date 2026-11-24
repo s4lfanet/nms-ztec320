@@ -5,7 +5,9 @@ import { Link } from 'react-router-dom';
 import { Router, Plus, Search, Cpu, MemoryStick, Thermometer, PlugZap } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, EmptyState, LoadingOverlay, Modal, StatusStrip } from '../components/ui';
+import { Button, EmptyState, LoadingOverlay, Modal, StatusStrip, Tabs } from '../components/ui';
+import { AlertThresholdsButton, DevicesOverview, useSnmpSummary } from '../components/snmp/SnmpOverview';
+import { SnmpReport } from '../components/snmp/SnmpReport';
 import { toast } from '../components/Toast';
 import { api, type SnmpDevice, type SnmpDeviceForm } from '../lib/api';
 import { cn, timeAgo } from '../lib/utils';
@@ -20,10 +22,12 @@ export function Devices() {
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
+  const [view, setView] = useState<'list' | 'report'>('list');
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
     queryKey: ['snmp-devices'], queryFn: api.snmpDevices, refetchInterval: 30_000,
   });
   const devices = data?.devices || [];
+  const summary = useSnmpSummary(devices.length > 0);
   const sum = data?.summary || {};
   const shown = useMemo(() => devices.filter(d =>
     (filter === 'all' || d.status === filter) &&
@@ -36,13 +40,24 @@ export function Devices() {
         description={t('dev.desc')}
         icon={<Router size={20} />}
         live={{ updatedAt: dataUpdatedAt, fetching: isFetching }}
-        action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => setAdding(true)}>{t('dev.add')}</Button>}
+        action={canEdit && (
+          <div className="flex flex-wrap gap-2">
+            {devices.length > 0 && <AlertThresholdsButton />}
+            <Button variant="primary" icon={<Plus size={16} />} onClick={() => setAdding(true)}>{t('dev.add')}</Button>
+          </div>
+        )}
       />
       {isLoading ? <LoadingOverlay /> : devices.length === 0 ? (
         <EmptyState icon={Router} title={t('dev.emptyTitle')} description={t('dev.emptyDesc')}
           action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => setAdding(true)}>{t('dev.add')}</Button>} />
       ) : (
         <div className="space-y-4">
+          <Tabs active={view} onChange={k => setView(k as typeof view)} tabs={[
+            { key: 'list', label: t('devx.tabList') },
+            { key: 'report', label: t('devx.tabReport') },
+          ]} />
+          {view === 'report' ? <SnmpReport /> : <>
+          {summary.data && <DevicesOverview summary={summary.data} />}
           <StatusStrip
             aria-label={t('dev.statusSummary')}
             active={filter === 'all' ? null : filter}
@@ -63,6 +78,7 @@ export function Devices() {
             {shown.map(d => <DeviceRow key={d.id} d={d} />)}
           </ul>
           {shown.length === 0 && <p className="text-sm text-tx3 text-center py-6">{t('dev.noMatch')}</p>}
+          </>}
         </div>
       )}
       {adding && <DeviceFormModal onClose={() => setAdding(false)} />}
