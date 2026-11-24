@@ -2314,5 +2314,38 @@
       "odp_full": "All ports used — plan an extra ODP",
       "no_coordinates": "Not shown on the map"
     }
+  },
+  "lossb": {
+    "total": "Total loss",
+    "expected": "Expected RX",
+    "measured": "Measured RX",
+    "details": "Calculation details",
+    "oltTx": "OLT PON TX",
+    "standard": "standard",
+    "standardNote": "Values marked \"standard\" are not in the data and use typical figures (adjustable in FTTH loss settings).",
+    "verdict": {
+      "ok": "Matches the estimate — {{d}} dB apart (tolerance ±{{tol}} dB).",
+      "worse": "Measured RX is {{d}} dB weaker than expected. Likely a dirty connector, bad splice, or bent cable on this path.",
+      "better": "Measured RX is {{d}} dB stronger than expected. The path data is probably wrong (splitter, cable length, or assigned ODP).",
+      "incomplete": "Splitter/path data is incomplete, so the comparison with measured RX can't be judged yet.",
+      "unknown": "ONU is not online — no measured RX to compare."
+    },
+    "kind": {
+      "splitter": "Splitter",
+      "cable": "Cable",
+      "connector": "Connector",
+      "splice": "Splice"
+    },
+    "settingsTitle": "Loss settings",
+    "settingsHint": "Standard connector, splice, OLT TX and tolerance values for ONU path loss",
+    "settingsSaved": "Loss settings saved",
+    "save": "Save",
+    "splitterTable": "Standard splitter loss (when only the model is filled):",
+    "f": {
+      "ftth_connector_loss_db": "Loss per connector",
+      "ftth_splice_loss_db": "Loss per splice (JC)",
+      "ftth_olt_tx_dbm": "OLT PON TX when SFP isn't read",
+      "ftth_budget_tolerance_db": "Tolerance between expected and measured"
+    }
   }
 }

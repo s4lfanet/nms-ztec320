@@ -16,6 +16,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { useTranslation } from 'react-i18next';
+import { LossBudget } from '../components/ftth/LossBudget';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
 import { Card, EmptyState, Modal, Button, ActionMenu } from '../components/ui';
 
@@ -1837,7 +1838,9 @@ function FtthPathCard({ onuId }: { onuId: number }) {
           </div>
         ))}
       </div>
-      {data.complete && (
+      {data.budget ? (
+        <LossBudget budget={data.budget} />
+      ) : data.complete && (
         data.total_attenuation_db !== null ? (
           <p className="text-xs text-tx3 mt-3">{t('vo.totalLoss')} <span className="font-medium text-tx1">{data.total_attenuation_db.toFixed(2)} dB</span></p>
         ) : (

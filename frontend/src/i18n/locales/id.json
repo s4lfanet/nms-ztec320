@@ -2314,5 +2314,38 @@
       "odp_full": "Semua port terpakai — siapkan ODP tambahan",
       "no_coordinates": "Tidak tampil di peta"
     }
+  },
+  "lossb": {
+    "total": "Total redaman",
+    "expected": "Perkiraan RX",
+    "measured": "RX terukur",
+    "details": "Rincian perhitungan",
+    "oltTx": "TX PON OLT",
+    "standard": "standar",
+    "standardNote": "Nilai bertanda \"standar\" belum diisi di data dan memakai angka tipikal (bisa diubah di Pengaturan redaman FTTH).",
+    "verdict": {
+      "ok": "Sesuai perkiraan — selisih {{d}} dB (toleransi ±{{tol}} dB).",
+      "worse": "RX terukur {{d}} dB lebih lemah dari perkiraan. Kemungkinan konektor kotor, sambungan jelek, atau kabel tertekuk di jalur ini.",
+      "better": "RX terukur {{d}} dB lebih kuat dari perkiraan. Data jalur kemungkinan keliru (splitter, panjang kabel, atau ODP yang dipasang).",
+      "incomplete": "Data splitter/jalur belum lengkap, jadi perbandingan dengan RX terukur belum bisa dinilai.",
+      "unknown": "ONU tidak online — belum ada RX terukur untuk dibandingkan."
+    },
+    "kind": {
+      "splitter": "Splitter",
+      "cable": "Kabel",
+      "connector": "Konektor",
+      "splice": "Splice"
+    },
+    "settingsTitle": "Pengaturan redaman",
+    "settingsHint": "Nilai standar konektor, splice, TX OLT, dan toleransi untuk perhitungan redaman jalur ONU",
+    "settingsSaved": "Pengaturan redaman disimpan",
+    "save": "Simpan",
+    "splitterTable": "Rugi splitter standar (bila hanya model yang diisi):",
+    "f": {
+      "ftth_connector_loss_db": "Rugi per konektor",
+      "ftth_splice_loss_db": "Rugi per splice (JC)",
+      "ftth_olt_tx_dbm": "TX PON OLT bila SFP belum terbaca",
+      "ftth_budget_tolerance_db": "Toleransi selisih perkiraan vs terukur"
+    }
   }
 }

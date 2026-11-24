@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — FTTH tahap 2: anggaran redaman lengkap vs RX terukur
+
+#### Ditambahkan
+- **Anggaran redaman** di Detail ONU → Jalur FTTH: total redaman kini = kabel tiap segmen + splitter ODC/ODP + konektor tiap titik + splice JC (sebelumnya hanya kabel, sehingga tampil ±1 dB padahal ±20 dB). Ditampilkan perkiraan RX (TX PON − total), RX ONU terukur, dan penilaian: sesuai / lebih lemah (indikasi konektor kotor, sambungan jelek, kabel tertekuk) / lebih kuat (indikasi data jalur keliru) / data belum lengkap. Batang komposisi per jenis + rincian per baris; nilai yang tidak diisi di data ditandai "standar".
+- TX PON memakai daya SFP hasil sync (`olt_pon_ports.sfp_tx_power`) bila tersedia. Rugi splitter dari isian rugi tap/through; bila hanya model (1:4, 1:8, …) memakai nilai tipikal PLC. Splitter tak rata pada ODP kaskade memakai rugi "through".
+- **Pengaturan redaman** di FTTH → Overview: rugi per konektor, per splice, TX PON standar, dan toleransi selisih (`/api/ftth/budget-settings`).
+
 ### 2026-11-24 — FTTH tahap 1: ketepatan & kualitas data
 
 #### Ditambahkan

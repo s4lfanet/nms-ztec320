@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FtthQualityPanel } from '../components/ftth/FtthQualityPanel';
+import { BudgetSettings } from '../components/ftth/BudgetSettings';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -592,6 +593,7 @@ export function FtthInfrastructure() {
 // ─── Overview Tab ───
 function OverviewTab({ stats, onTab }: { stats: FTTHStats | undefined; onTab: (tab: Tab) => void }) {
   const { t } = useTranslation();
+  const canManageFtth = useHasPerm()('settings_ip_olts');
   const navigate = useNavigate();
   const onDrillDown = () => onTab('tree');
   if (!stats) return <div className="text-center py-8 text-tx3 text-sm">{t('pg_ftth.loadingStats')}</div>;
@@ -696,6 +698,7 @@ function OverviewTab({ stats, onTab }: { stats: FTTHStats | undefined; onTab: (t
       )}
 
       <FtthQualityPanel />
+      <BudgetSettings canManage={canManageFtth} />
 
       {/* Per-OLT Breakdown */}
       {stats.per_olt.length > 0 && (
