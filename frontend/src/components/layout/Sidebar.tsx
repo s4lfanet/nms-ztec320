@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Radio,
-  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart, Siren, BarChart3, LayoutTemplate, History
+  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart, Siren, BarChart3, LayoutTemplate, History, Router
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
@@ -24,6 +24,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { section: 'nav.secMonitor', labelKey: 'nav.dashboard', icon: <LayoutDashboard size={20} />, path: '/dashboard', permission: 'view_dashboard' },
   { section: 'nav.secMonitor', labelKey: 'nav.incidents', icon: <Siren size={20} />, path: '/dashboard/incidents', permission: 'view_dashboard' },
+  { section: 'nav.secMonitor', labelKey: 'nav.devices', icon: <Router size={20} />, path: '/dashboard/devices', permission: 'view_dashboard' },
   { section: 'nav.secMonitor', labelKey: 'nav.traffic', icon: <Activity size={20} />, path: '/dashboard/traffic', permission: 'view_dashboard' },
   { section: 'nav.secMonitor', labelKey: 'nav.reports', icon: <BarChart3 size={20} />, path: '/dashboard/reports', permission: 'view_onus' },
   {

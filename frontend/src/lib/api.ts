@@ -276,6 +276,15 @@ export const api = {
   ftthPonCreate: (data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>('/api/ftth/pon', { method: 'POST', body: JSON.stringify(data) }),
   ftthPonUpdate: (id: number, data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>(`/api/ftth/pon/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthPonDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/pon/${id}`, { method: 'DELETE' }),
+  snmpDevices: () => request<{ success: boolean; devices: SnmpDevice[]; summary: Record<string, number> }>('/api/snmp/devices'),
+  snmpDevice: (id: number) => request<{ success: boolean; device: SnmpDevice; ports: SnmpPort[]; sensors: SnmpSensor[]; events: SnmpEvent[] }>(`/api/snmp/devices/${id}`),
+  snmpDeviceCreate: (data: SnmpDeviceForm) => request<{ success: boolean; device: SnmpDevice }>('/api/snmp/devices', { method: 'POST', body: JSON.stringify(data) }),
+  snmpDeviceUpdate: (id: number, data: Partial<SnmpDeviceForm>) => request<{ success: boolean; device: SnmpDevice }>(`/api/snmp/devices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  snmpDeviceDelete: (id: number) => request<{ success: boolean }>(`/api/snmp/devices/${id}`, { method: 'DELETE' }),
+  snmpDeviceDiscover: (id: number) => request<{ success: boolean; message: string }>(`/api/snmp/devices/${id}/discover`, { method: 'POST' }),
+  snmpTest: (data: Partial<SnmpDeviceForm> & { device_id?: number }) =>
+    request<{ success: boolean; ok: boolean; sys_name?: string; sys_descr?: string; vendor?: string; ms?: number; error?: string }>('/api/snmp/test', { method: 'POST', body: JSON.stringify(data) }),
+  snmpPortUpdate: (id: number, data: { ignored: boolean }) => request<{ success: boolean; port: SnmpPort }>(`/api/snmp/ports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthExport: () => '/api/ftth/export',
   ftthExportJson: () => '/api/ftth/export.json',
   ftthCoreSetStatus: (ownerType: 'otb' | 'odc' | 'jc', ownerId: number, core: number, data: { status?: 'available' | 'reserved' | 'damaged'; attenuation_db?: number | null; notes?: string }) =>
@@ -848,6 +857,33 @@ export interface FTTHStats {
     onus_without_coordinates: number;
   };
 }
+
+export interface SnmpDevice {
+  id: number; name: string; host: string; port: number; snmp_version: '1' | '2c' | '3';
+  v3_user: string; v3_level: string; v3_auth_proto: string; v3_priv_proto: string;
+  has_community: boolean; has_auth_pass: boolean; has_priv_pass: boolean;
+  enabled: boolean; location: string; notes: string;
+  sys_name: string; sys_descr: string; sys_location: string; sys_contact: string;
+  vendor: string; os_name: string; hardware: string; os_version: string; serial: string;
+  discovered_at: string | null;
+  status: 'up' | 'down' | 'warn' | 'unknown'; status_reason: string; status_changed_at: string | null;
+  last_poll_at: string | null; last_ok_at: string | null; poll_ms: number | null;
+  uptime_s: number | null; cpu_pct: number | null; mem_pct: number | null; temperature: number | null;
+  ports_total: number; ports_up: number; ports_down: number;
+}
+export interface SnmpDeviceForm {
+  name: string; host: string; port?: number; snmp_version: '1' | '2c' | '3'; community?: string;
+  v3_user?: string; v3_level?: string; v3_auth_proto?: string; v3_auth_pass?: string; v3_priv_proto?: string; v3_priv_pass?: string;
+  location?: string; notes?: string; enabled?: boolean;
+}
+export interface SnmpPort {
+  id: number; if_index: number; name: string; descr: string; alias: string; if_type: number | null;
+  speed_mbps: number | null; mac: string; admin_status: string; oper_status: string; status_changed_at: string | null;
+  ignored: boolean; in_bps: number | null; out_bps: number | null; in_err_rate: number | null; out_err_rate: number | null;
+  in_errors: number | null; out_errors: number | null; util_pct: number | null;
+}
+export interface SnmpSensor { id: number; kind: string; name: string; value: number | null; unit: string; updated_at: string | null }
+export interface SnmpEvent { id: number; kind: string; severity: string; message: string; port_id: number | null; created_at: string | null }
 
 export interface FTTHFieldInfo {
   cable_label: string;
