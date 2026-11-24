@@ -60,6 +60,9 @@ def _port_dict(p):
         'ignored': p.ignored, 'watched': bool(p.watched), 'in_bps': p.in_bps, 'out_bps': p.out_bps,
         'in_err_rate': p.in_err_rate, 'out_err_rate': p.out_err_rate,
         'in_errors': p.in_errors, 'out_errors': p.out_errors,
+        'in_pps': p.in_pps, 'out_pps': p.out_pps,
+        # counter sudah pernah dibaca tapi laju belum ada → UI menulis "menunggu poll berikutnya"
+        'has_counters': p.counter_at is not None,
         'util_pct': round(max(p.in_bps or 0, p.out_bps or 0) / (p.speed_mbps * 1e6) * 100, 1) if p.speed_mbps else None,
     }
 
@@ -621,3 +624,62 @@ def snmp_topology_get():
     for lk in links:
         lk['last_seen'] = _iso(lk['last_seen'])
     return jsonify({'success': True, 'nodes': nodes, 'links': links})
+
+
+# ─── Port ala Observium: grafik mini 24 jam & mode Live ───
+
+import time as _time  # noqa: E402
+import threading as _threading  # noqa: E402
+
+_live_last = {}
+_live_lock = _threading.Lock()
+LIVE_MIN_GAP = 1.0   # detik per port — UI memanggil tiap 3 dtk
+
+
+@bp.route('/api/snmp/ports/<int:port_id>/live', methods=['GET'])
+@login_required
+def snmp_port_live(port_id):
+    """Counter port saat ini langsung dari perangkat (hanya SNMP GET). Laju dihitung klien
+    dari dua pembacaan berurutan; dibatasi 1x/detik per port supaya perangkat tidak terbebani."""
+    p = db.session.get(SnmpPort, port_id)
+    if not p or p.deleted:
+        return jsonify({'success': False, 'message': 'Port tidak ditemukan'}), 404
+    d = db.session.get(SnmpDevice, p.device_id)
+    if not d or not d.enabled:
+        return jsonify({'success': False, 'message': 'Perangkat nonaktif'}), 400
+    now = _time.monotonic()
+    with _live_lock:
+        if now - _live_last.get(port_id, 0) < LIVE_MIN_GAP:
+            return jsonify({'success': False, 'message': 'Terlalu cepat'}), 429
+        _live_last[port_id] = now
+    try:
+        r = snmp_monitor.read_port_live(snmp_monitor.device_params(d), p.if_index)
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'SNMP tidak menjawab: {e}'[:200]}), 502
+    return jsonify({'success': True, 'ts': int(_time.time() * 1000), 'speed_mbps': p.speed_mbps, **r})
+
+
+SPARK_POINTS = 48          # 24 jam / 30 menit
+
+
+@bp.route('/api/snmp/devices/<int:device_id>/sparks', methods=['GET'])
+@login_required
+def snmp_device_sparks(device_id):
+    """Grafik mini 24 jam semua port (rata-rata per 30 menit) untuk daftar port."""
+    now = snmp_monitor._now()
+    start = now - timedelta(hours=24)
+    step = 24 * 3600 / SPARK_POINTS
+    acc = {}
+    rows = db.session.query(SnmpSample.port_id, SnmpSample.metric, SnmpSample.ts, SnmpSample.value).filter(
+        SnmpSample.device_id == device_id, SnmpSample.port_id.isnot(None),
+        SnmpSample.metric.in_(('in', 'out')), SnmpSample.ts >= start).all()
+    for port_id, metric, ts, v in rows:
+        b = min(SPARK_POINTS - 1, int((ts - start).total_seconds() // step))
+        a = acc.setdefault(port_id, {}).setdefault(metric, [[0.0, 0] for _ in range(SPARK_POINTS)])
+        a[b][0] += v
+        a[b][1] += 1
+    out = {}
+    for port_id, m in acc.items():
+        out[port_id] = {k: [round(t / n, 1) if n else None for t, n in m.get(k, [[0, 0]] * SPARK_POINTS)]
+                        for k in ('in', 'out')}
+    return jsonify({'success': True, 'points': SPARK_POINTS, 'step_s': int(step), 'ports': out})

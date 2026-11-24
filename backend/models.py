@@ -1525,6 +1525,10 @@ class SnmpPort(db.Model):
     in_errors = db.Column(db.BigInteger, nullable=True)
     out_errors = db.Column(db.BigInteger, nullable=True)
     counter_at = db.Column(db.DateTime, nullable=True)
+    in_pkts = db.Column(db.BigInteger, nullable=True)      # counter paket unicast terakhir
+    out_pkts = db.Column(db.BigInteger, nullable=True)
+    in_pps = db.Column(db.Float, nullable=True)            # paket/detik
+    out_pps = db.Column(db.Float, nullable=True)
     in_bps = db.Column(db.Float, nullable=True)
     out_bps = db.Column(db.Float, nullable=True)
     in_err_rate = db.Column(db.Float, nullable=True)     # error/detik

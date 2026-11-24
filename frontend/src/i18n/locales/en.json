@@ -2294,7 +2294,18 @@
     "justNow": "updated just now",
     "secondsAgo": "updated {{n}}s ago",
     "minutesAgo": "updated {{n}} min ago",
-    "updating": "updating…"
+    "updating": "updating…",
+    "title": "Live",
+    "every": "read every {{s}} s",
+    "paused": "paused",
+    "pause": "Pause",
+    "resume": "Resume",
+    "error": "Could not read port:",
+    "util": "{{n}}% of capacity",
+    "packets": "Packets per second",
+    "waitPoll": "Waiting for next poll (~5 min) — open the port for Live",
+    "noData": "Not read yet — open the port to check Live",
+    "reading": "Reading port counters…"
   },
   "ftthq": {
     "title": "Data quality",

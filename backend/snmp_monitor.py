@@ -36,7 +36,9 @@ IFX = '1.3.6.1.2.1.31.1.1.1'
 IF_COLS = {'descr': IF + '.2', 'type': IF + '.3', 'speed': IF + '.5', 'mac': IF + '.6',
            'admin': IF + '.7', 'oper': IF + '.8', 'in32': IF + '.10', 'in_err': IF + '.14',
            'out32': IF + '.16', 'out_err': IF + '.20',
-           'name': IFX + '.1', 'in64': IFX + '.6', 'out64': IFX + '.10', 'hspeed': IFX + '.15', 'alias': IFX + '.18'}
+           'name': IFX + '.1', 'in64': IFX + '.6', 'out64': IFX + '.10', 'hspeed': IFX + '.15', 'alias': IFX + '.18',
+           # paket unicast: HC (64-bit) dengan cadangan 32-bit ifIn/OutUcastPkts
+           'in_pkts64': IFX + '.7', 'out_pkts64': IFX + '.11', 'in_pkts32': IF + '.11', 'out_pkts32': IF + '.17'}
 HR_CPU_LOAD = '1.3.6.1.2.1.25.3.3.1.2'
 HR_STORAGE = '1.3.6.1.2.1.25.2.3.1'          # .2 type .3 descr .4 units .5 size .6 used
 HR_STORAGE_RAM = '1.3.6.1.2.1.25.2.1.2'
@@ -204,6 +206,28 @@ def _run(coro_fn, params, timeout=3, retries=1):
     return asyncio.run(main())
 
 
+def read_port_live(params, if_index):
+    """Baca counter SATU port sekarang (mode Live di UI). Hanya GET SNMP, ringan.
+    → {'in','out','pin','pout','in_err','out_err','oper','hc'} (counter mentah; laju dihitung klien)."""
+    i = int(if_index)
+
+    async def fn(c):
+        o = {k: f'{IF_COLS[k]}.{i}' for k in ('in64', 'out64', 'in_pkts64', 'out_pkts64', 'oper', 'in_err', 'out_err')}
+        v = await c.get(list(o.values()))
+        res = {k: v.get(oid) for k, oid in o.items()}
+        hc = isinstance(res['in64'], int)
+        if not hc:  # agen tanpa counter 64-bit (SNMP v1 / perangkat lama)
+            o32 = {k: f'{IF_COLS[k]}.{i}' for k in ('in32', 'out32', 'in_pkts32', 'out_pkts32')}
+            v32 = await c.get(list(o32.values()))
+            res.update({'in64': v32.get(o32['in32']), 'out64': v32.get(o32['out32']),
+                        'in_pkts64': v32.get(o32['in_pkts32']), 'out_pkts64': v32.get(o32['out_pkts32'])})
+        if not isinstance(res['in64'], int):
+            raise RuntimeError('Counter port tidak terbaca')
+        return {'in': res['in64'], 'out': res['out64'], 'pin': res['in_pkts64'], 'pout': res['out_pkts64'],
+                'in_err': res['in_err'], 'out_err': res['out_err'], 'oper': OPER.get(res['oper'], ''), 'hc': hc}
+    return _run(fn, params, timeout=2, retries=0)
+
+
 def device_params(dev):
     return {'id': dev.id, 'host': dev.host, 'port': dev.port or 161, 'version': dev.snmp_version or '2c',
             'community': dev.community, 'user': dev.v3_user or '', 'level': dev.v3_level,
@@ -324,6 +348,16 @@ def collect_poll(params, mikrotik=False):
             for idx, v in vals.items():
                 if idx.isdigit():
                     ports.setdefault(int(idx), {})[col] = v
+        # Paket/detik — opsional; gagal tidak menggagalkan poll
+        for key, hc_col, col32 in (('in_pkts', 'in_pkts64', 'in_pkts32'), ('out_pkts', 'out_pkts64', 'out_pkts32')):
+            vals = {}
+            try:
+                vals = await c.walk(IF_COLS[hc_col if hc_ok else col32])
+            except RuntimeError:
+                pass
+            for idx, v in vals.items():
+                if idx.isdigit() and int(idx) in ports:
+                    ports[int(idx)][key] = v
         out['ports'], out['hc'] = ports, hc_ok
         # CPU
         try:
@@ -484,6 +518,12 @@ def apply_poll(dev, data, now=None):
         p.out_bps = round(rout * 8, 1) if rout is not None and (not cap or rout <= cap) else (None if secs else p.out_bps)
         ein = _rate(r.get('in_err'), p.in_errors, secs, False)
         eout = _rate(r.get('out_err'), p.out_errors, secs, False)
+        pin = _rate(r.get('in_pkts'), p.in_pkts, secs, hc)
+        pout = _rate(r.get('out_pkts'), p.out_pkts, secs, hc)
+        p.in_pps = round(pin, 1) if pin is not None else (None if secs else p.in_pps)
+        p.out_pps = round(pout, 1) if pout is not None else (None if secs else p.out_pps)
+        p.in_pkts = r.get('in_pkts') if isinstance(r.get('in_pkts'), int) else p.in_pkts
+        p.out_pkts = r.get('out_pkts') if isinstance(r.get('out_pkts'), int) else p.out_pkts
         p.in_err_rate = round(ein, 3) if ein is not None else p.in_err_rate
         p.out_err_rate = round(eout, 3) if eout is not None else p.out_err_rate
         p.in_octets = r.get('in64') if isinstance(r.get('in64'), int) else p.in_octets
@@ -525,7 +565,8 @@ def apply_poll(dev, data, now=None):
     for p in ports.values():
         if p.deleted or p.counter_at != now:
             continue
-        for metric, v in (('in', p.in_bps), ('out', p.out_bps), ('in_err', p.in_err_rate), ('out_err', p.out_err_rate)):
+        for metric, v in (('in', p.in_bps), ('out', p.out_bps), ('in_err', p.in_err_rate), ('out_err', p.out_err_rate),
+                          ('pkt_in', p.in_pps), ('pkt_out', p.out_pps)):
             if v is not None:
                 samples.append((p.id, metric, v))
     for s in sensors:

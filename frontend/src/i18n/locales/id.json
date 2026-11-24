@@ -2294,7 +2294,18 @@
     "justNow": "diperbarui barusan",
     "secondsAgo": "diperbarui {{n}} dtk lalu",
     "minutesAgo": "diperbarui {{n}} mnt lalu",
-    "updating": "memperbarui…"
+    "updating": "memperbarui…",
+    "title": "Live",
+    "every": "dibaca tiap {{s}} detik",
+    "paused": "dijeda",
+    "pause": "Jeda",
+    "resume": "Lanjutkan",
+    "error": "Gagal membaca port:",
+    "util": "{{n}}% kapasitas",
+    "packets": "Paket per detik",
+    "waitPoll": "Menunggu poll berikutnya (±5 menit) — buka port untuk melihat Live",
+    "noData": "Belum terbaca — buka port untuk cek Live",
+    "reading": "Membaca counter port…"
   },
   "ftthq": {
     "title": "Kualitas data",
