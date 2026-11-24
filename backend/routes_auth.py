@@ -20,6 +20,23 @@ def logout():
     return redirect('/login')
 
 
+# Naikkan nilai ini hanya bila tampilan PWA di perangkat pengguna bisa "tersangkut" di versi
+# lama (service worker tidak mau berganti). Setiap browser yang cookie-nya berbeda menerima
+# Clear-Site-Data SEKALI: cache + service worker + localStorage dibuang (cookie sesi TIDAK,
+# jadi tetap login; langganan push dibuat ulang otomatis oleh PushPrompt bila izin sudah ada).
+UI_RESET_VERSION = '2026-11-24'
+UI_RESET_COOKIE = 'nms_ui_reset'
+
+
+def _maybe_reset_ui(resp):
+    if request.cookies.get(UI_RESET_COOKIE) == UI_RESET_VERSION:
+        return resp
+    resp.headers['Clear-Site-Data'] = '"cache", "storage"'
+    resp.set_cookie(UI_RESET_COOKIE, UI_RESET_VERSION, max_age=400 * 24 * 3600, path='/',
+                    secure=request.is_secure, httponly=True, samesite='Lax')
+    return resp
+
+
 @bp.route('/api/auth/me')
 @login_required
 def api_me():
@@ -27,7 +44,7 @@ def api_me():
     sys_cfg = {c.key: c.value for c in SystemConfig.query.all()}
     nms_name = sys_cfg.get('nms_name', 'Salfanet NMS')
     logo_url = sys_cfg.get('nms_logo_url') or None
-    return jsonify({'user': {
+    resp = jsonify({'user': {
         'id': current_user.id,
         'full_name': current_user.full_name,
         'username': current_user.username,
@@ -41,6 +58,7 @@ def api_me():
         'language': current_user.language or 'id',
         'phone': current_user.phone or '',
     }})
+    return _maybe_reset_ui(resp)
 
 
 @bp.route('/api/auth/login', methods=['POST'])

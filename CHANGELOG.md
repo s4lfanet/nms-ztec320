@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Perbaikan tampilan PWA yang tersangkut di versi lama
+
+#### Diperbaiki
+- Di sebagian HP, tombol **Muat ulang** tetap menampilkan tampilan lama, sehingga pemberitahuan "Versi baru siap" muncul terus. Penyebabnya: service worker lama tidak mau berganti.
+  - **Server:** setiap browser menerima perintah pembersihan cache dan service worker sekali saja. Pengguna tetap login, dan notifikasi push berlangganan ulang otomatis.
+  - **Aplikasi:** setelah memuat ulang untuk update, aplikasi mengecek apakah versinya sudah sesuai server. Kalau masih lama, cache dan service worker dibuang lalu halaman dimuat langsung dari server (maksimal sekali per menit agar tidak berputar).
+
 ### 2026-11-24 — Tombol tema terang/gelap di bar atas HP
 
 #### Diubah
