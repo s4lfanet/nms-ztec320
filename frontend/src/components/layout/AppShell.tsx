@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { TopProgress } from './TopProgress';
+import { useSlidingIndicator } from '../../hooks/useSlidingIndicator';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { cn } from '../../lib/utils';
@@ -57,6 +59,7 @@ export function AppShell() {
   const unregCount = unregData?.unregistered || 0;
   const problemCount = (unregData?.offline_count || 0) + (unregData?.dyinggasp_count || 0) + (unregData?.los_count || 0);
   const onProblems = location.pathname === '/dashboard/onus' && new URLSearchParams(location.search).get('filter') === 'problem';
+  const bnavInd = useSlidingIndicator<HTMLDivElement>('.bnav-active', [location.pathname, location.search]);
 
   return (
     <DashboardWsProvider>
@@ -75,6 +78,7 @@ export function AppShell() {
           collapsed ? 'lg:ml-[70px]' : 'lg:ml-[260px]',
         )}>
           <Topbar onMenuClick={() => setMobileOpen(!mobileOpen)} />
+          <TopProgress />
           <main className="p-3 pb-20 lg:pb-6 md:p-4 lg:p-6 overflow-x-hidden max-w-[100vw]">
             <div key={location.pathname} className="page-enter">
               <Outlet />
@@ -84,7 +88,8 @@ export function AppShell() {
 
         {/* Mobile Bottom Navigation */}
         <nav className="fixed bottom-0 left-0 right-0 z-30 bg-surface border-t border-brd lg:hidden mobile-bottom-nav">
-          <div className="flex items-center justify-around h-14 px-1">
+          <div ref={bnavInd.ref} className="relative flex items-center justify-around h-14 px-1">
+            <span className="slide-ind bnav-ind" style={bnavInd.style} aria-hidden="true" />
             {navItems.map(item => {
               const Icon = item.icon;
               const isProblems = item.path === PROBLEMS_PATH;
@@ -99,8 +104,8 @@ export function AppShell() {
                     // "Semua ONU" dan "Gangguan" berbagi path; bedakan dari ?filter=problem
                     const active = isProblems ? onProblems : (item.path === '/dashboard/onus' ? isActive && !onProblems : isActive);
                     return cn(
-                      'flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[10px] font-medium transition-all relative',
-                      active ? 'text-accent' : 'text-tx3',
+                      'bnav-item flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[10px] font-medium transition-colors relative z-[1]',
+                      active ? 'bnav-active text-accent' : 'text-tx3',
                     );
                   }}
                 >

@@ -5,6 +5,7 @@ import {
   Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart, Siren, BarChart3, LayoutTemplate, History, Router
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useSlidingIndicator } from '../../hooks/useSlidingIndicator';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../stores/auth';
 
@@ -145,6 +146,7 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
   // On mobile, sidebar is always expanded when open
   const isExpanded = mobileOpen || !collapsed;
 
+  const navInd = useSlidingIndicator<HTMLElement>('a[aria-current="page"]', [location.pathname, location.search, isExpanded, JSON.stringify(openMenus)]);
   return (
     <>
       {/* Mobile overlay */}
@@ -199,8 +201,9 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
           </button>
         )}
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3">
+        {/* Navigation — bilah aksen meluncur ke menu aktif */}
+        <nav ref={navInd.ref} className="relative flex-1 overflow-y-auto py-4 px-3">
+          <span className="slide-ind nav-ind" style={navInd.style} aria-hidden="true" />
           {visibleItems.map((item, idx) => (
             <div key={item.labelKey} className="mb-1">
               {item.section && item.section !== visibleItems[idx - 1]?.section && (
