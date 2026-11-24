@@ -1,8 +1,8 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Router, RefreshCw, Pencil, Trash2, Thermometer, Fan, Zap, Cpu, MemoryStick, HardDrive, Gauge, EyeOff, Eye } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Router, RefreshCw, Pencil, Trash2, Thermometer, Fan, Zap, Cpu, MemoryStick, HardDrive, Gauge, EyeOff, Eye, Star } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { ActionMenu, Card, EmptyState, LoadingOverlay, Tabs } from '../components/ui';
@@ -33,7 +33,8 @@ export function DeviceDetail() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const canEdit = useHasPerm()('settings_ip_olts');
-  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'events'>('overview');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'events'>(params.get('tab') === 'ports' ? 'ports' : 'overview');
   const [range, setRange] = useState<GraphRange>('24h');
   const [editing, setEditing] = useState(false);
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
@@ -187,17 +188,20 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
   const [openPort, setOpenPort] = useState<number | null>(null);
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const [filter, setFilter] = useState<'active' | 'down' | 'all'>('active');
+  const [filter, setFilter] = useState<'active' | 'down' | 'watched' | 'all'>('active');
   const shown = useMemo(() => ports.filter(p =>
-    filter === 'all' ? true : filter === 'down' ? (p.admin_status === 'up' && p.oper_status !== 'up' && !p.ignored) : (p.admin_status === 'up' && !p.ignored)), [ports, filter]);
-  const toggle = async (p: SnmpPort) => {
-    try { await api.snmpPortUpdate(p.id, { ignored: !p.ignored }); qc.invalidateQueries({ queryKey: ['snmp-device', deviceId] }); }
-    catch (e) { toast.error((e as Error).message); }
+    filter === 'all' ? true : filter === 'watched' ? p.watched : filter === 'down' ? (p.admin_status === 'up' && p.oper_status !== 'up' && !p.ignored) : (p.admin_status === 'up' && !p.ignored)), [ports, filter]);
+  const update = async (p: SnmpPort, data: { ignored?: boolean; watched?: boolean }) => {
+    try {
+      await api.snmpPortUpdate(p.id, data);
+      qc.invalidateQueries({ queryKey: ['snmp-device', deviceId] });
+      qc.invalidateQueries({ queryKey: ['snmp-summary'] });
+    } catch (e) { toast.error((e as Error).message); }
   };
   return (
     <Card title={t('dev.tabPorts')} action={
       <select className="input-field !w-auto text-xs" value={filter} onChange={e => setFilter(e.target.value as typeof filter)} aria-label={t('dev.portFilter')}>
-        <option value="active">{t('dev.pfActive')}</option><option value="down">{t('dev.pfDown')}</option><option value="all">{t('dev.pfAll')}</option>
+        <option value="active">{t('dev.pfActive')}</option><option value="down">{t('dev.pfDown')}</option><option value="watched">{t('devx.pfWatched')}</option><option value="all">{t('dev.pfAll')}</option>
       </select>
     }>
       {shown.length === 0 ? <p className="text-sm text-tx3">{t('dev.noPorts')}</p> : (
@@ -226,12 +230,21 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
                   </span>
                 )}
               </div>
-              {canEdit && (
-                <button type="button" onClick={() => toggle(p)} className="self-start sm:self-center inline-flex items-center gap-1 text-[11px] text-tx3 hover:text-tx1 pl-4 sm:pl-0"
-                  title={p.ignored ? t('dev.unignoreHint') : t('dev.ignoreHint')}>
-                  {p.ignored ? <Eye size={13} /> : <EyeOff size={13} />}{p.ignored ? t('dev.unignore') : t('dev.ignore')}
-                </button>
-              )}
+              {canEdit ? (
+                <span className="self-start sm:self-center flex items-center gap-3 pl-4 sm:pl-0">
+                  {!p.ignored && (
+                    <button type="button" onClick={() => update(p, { watched: !p.watched })} aria-pressed={p.watched}
+                      className={cn('inline-flex items-center gap-1 text-[11px]', p.watched ? 'text-warning' : 'text-tx3 hover:text-tx1')}
+                      title={p.watched ? t('devx.unwatchHint') : t('devx.watchHint')}>
+                      <Star size={13} fill={p.watched ? 'currentColor' : 'none'} />{p.watched ? t('devx.watching') : t('devx.watch')}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => update(p, { ignored: !p.ignored })} className="inline-flex items-center gap-1 text-[11px] text-tx3 hover:text-tx1"
+                    title={p.ignored ? t('dev.unignoreHint') : t('dev.ignoreHint')}>
+                    {p.ignored ? <Eye size={13} /> : <EyeOff size={13} />}{p.ignored ? t('dev.unignore') : t('dev.ignore')}
+                  </button>
+                </span>
+              ) : p.watched ? <Star size={13} className="text-warning self-start sm:self-center ml-4 sm:ml-0" fill="currentColor" aria-label={t('devx.watching')} /> : null}
               {openPort === p.id && (
                 <div className="basis-full w-full pt-2 space-y-3">
                   <RangePicker value={range} onChange={setRange} />

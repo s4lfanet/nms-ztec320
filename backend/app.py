@@ -367,6 +367,7 @@ def migrate_schema():
             logger.warning(f"  Migration FAILED for {table}.{col} after retries: {last_err}")
 
     # OLT table - add new columns
+    add_col('snmp_ports', 'watched', 'BOOLEAN', '0')
     add_col('olts', 'snmp_status', 'VARCHAR(20)', "'disconnected'")
     add_col('olts', 'telnet_status', 'VARCHAR(20)', "'disconnected'")
     add_col('olts', 'firmware_version', 'VARCHAR(100)', "''")

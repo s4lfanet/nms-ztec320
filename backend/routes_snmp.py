@@ -47,7 +47,7 @@ def _port_dict(p):
         'id': p.id, 'if_index': p.if_index, 'name': p.name, 'descr': p.descr, 'alias': p.alias,
         'if_type': p.if_type, 'speed_mbps': p.speed_mbps, 'mac': p.mac,
         'admin_status': p.admin_status, 'oper_status': p.oper_status, 'status_changed_at': _iso(p.status_changed_at),
-        'ignored': p.ignored, 'in_bps': p.in_bps, 'out_bps': p.out_bps,
+        'ignored': p.ignored, 'watched': bool(p.watched), 'in_bps': p.in_bps, 'out_bps': p.out_bps,
         'in_err_rate': p.in_err_rate, 'out_err_rate': p.out_err_rate,
         'in_errors': p.in_errors, 'out_errors': p.out_errors,
         'util_pct': round(max(p.in_bps or 0, p.out_bps or 0) / (p.speed_mbps * 1e6) * 100, 1) if p.speed_mbps else None,
@@ -254,6 +254,8 @@ def snmp_port_update(port_id):
     data = request.get_json() or {}
     if 'ignored' in data:
         p.ignored = bool(data['ignored'])
+    if 'watched' in data:
+        p.watched = bool(data['watched'])
     db.session.commit()
     return jsonify({'success': True, 'port': _port_dict(p)})
 
@@ -340,3 +342,241 @@ def snmp_device_metrics(device_id):
         SnmpSampleHourly.device_id == device_id, SnmpSampleHourly.port_id.is_(None)).distinct().all()
     names = {f'{s.kind}:{s.key}': s.name for s in SnmpSensor.query.filter_by(device_id=device_id).all()}
     return jsonify({'success': True, 'metrics': [{'metric': r[0], 'name': names.get(r[0], r[0])} for r in rows]})
+
+
+# ─── Tahap 3: ambang alert, ringkasan, laporan bulanan ───
+
+import csv  # noqa: E402
+import io  # noqa: E402
+from datetime import datetime  # noqa: E402
+
+from flask import Response  # noqa: E402
+
+import snmp_alerts  # noqa: E402
+from models import Notification  # noqa: E402
+
+
+@bp.route('/api/snmp/settings', methods=['GET'])
+@login_required
+def snmp_settings_get():
+    return jsonify({'success': True, 'settings': snmp_alerts.get_settings(), 'defaults': snmp_alerts.DEFAULTS})
+
+
+@bp.route('/api/snmp/settings', methods=['PUT'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_settings_put():
+    changed = snmp_alerts.save_settings(request.get_json() or {})
+    db.session.commit()
+    if changed:
+        log_action('snmp_settings', 'monitoring', target='SNMP', detail=', '.join(changed))
+    return jsonify({'success': True, 'settings': snmp_alerts.get_settings()})
+
+
+def _util(p):
+    if not p.speed_mbps:
+        return None
+    return round(max(p.in_bps or 0, p.out_bps or 0) / (p.speed_mbps * 1e6) * 100, 1)
+
+
+def _port_brief(p, d):
+    return {'port_id': p.id, 'device_id': d.id, 'device_name': d.name, 'name': p.name, 'alias': p.alias or '',
+            'speed_mbps': p.speed_mbps, 'oper_status': p.oper_status, 'in_bps': p.in_bps, 'out_bps': p.out_bps,
+            'util_pct': _util(p), 'watched': bool(p.watched),
+            'err_rate': round((p.in_err_rate or 0) + (p.out_err_rate or 0), 3)}
+
+
+@bp.route('/api/snmp/summary', methods=['GET'])
+@login_required
+def snmp_summary():
+    """Ringkasan untuk halaman Perangkat & dashboard: jumlah per status, masalah
+    aktif (alert terbuka + perangkat turun), port dipantau, dan trafik teratas."""
+    devices = SnmpDevice.query.all()
+    by_id = {d.id: d for d in devices}
+    counts = {'total': len(devices), 'up': 0, 'warn': 0, 'down': 0, 'unknown': 0, 'disabled': 0}
+    for d in devices:
+        key = 'disabled' if not d.enabled else (d.status if d.status in counts else 'unknown')
+        counts[key] += 1
+    enabled_ids = [d.id for d in devices if d.enabled]
+    ports = SnmpPort.query.filter(SnmpPort.device_id.in_(enabled_ids), SnmpPort.deleted.is_(False),
+                                  SnmpPort.ignored.is_(False)).all() if enabled_ids else []
+    port_by_id = {p.id: p for p in ports}
+
+    problems = []
+    seen_dev = set()
+    cats = ('snmp_down',) + snmp_alerts.CATEGORIES
+    for n in Notification.query.filter(Notification.category.in_(cats), Notification.resolved.is_(False)) \
+            .order_by(Notification.created_at.desc()).limit(200).all():
+        if n.target_type == 'snmp':
+            d = by_id.get(n.target_id)
+            port = None
+        elif n.target_type == 'snmp_port':
+            port = port_by_id.get(n.target_id)
+            d = by_id.get(port.device_id) if port else None
+        else:
+            continue
+        if not d or not d.enabled:
+            continue
+        if n.category == 'snmp_down':
+            seen_dev.add(d.id)
+        problems.append({'category': n.category, 'severity': n.severity, 'title': n.title,
+                         'device_id': d.id, 'device_name': d.name, 'port_id': port.id if port else None,
+                         'since': _iso(n.created_at)})
+    for d in devices:  # perangkat turun/warn yang belum jadi alert (belum lewat batas menit)
+        if d.enabled and d.status in ('down', 'warn') and d.id not in seen_dev:
+            problems.append({'category': 'device_' + d.status, 'severity': 'critical' if d.status == 'down' else 'warning',
+                             'title': d.status_reason or d.status, 'device_id': d.id, 'device_name': d.name,
+                             'port_id': None, 'since': _iso(d.status_changed_at)})
+    rank = {'critical': 0, 'warning': 1}
+    problems.sort(key=lambda x: rank.get(x['severity'], 2))
+
+    live = [p for p in ports if by_id[p.device_id].status == 'up']
+    top = sorted((p for p in live if (p.in_bps or 0) + (p.out_bps or 0) > 0),
+                 key=lambda p: max(p.in_bps or 0, p.out_bps or 0), reverse=True)[:10]
+    watched = sorted((p for p in ports if p.watched), key=lambda p: (by_id[p.device_id].name, p.if_index))
+    return jsonify({'success': True, 'counts': counts, 'problems': problems[:50],
+                    'top_ports': [_port_brief(p, by_id[p.device_id]) for p in top],
+                    'watched_ports': [_port_brief(p, by_id[p.device_id]) for p in watched]})
+
+
+def _month_bounds(month, tz_min):
+    """'YYYY-MM' + offset zona waktu (menit, mis. 420 = WIB) → (awal, akhir) UTC naif."""
+    y, m = (int(x) for x in month.split('-'))
+    start_local = datetime(y, m, 1)
+    end_local = datetime(y + (m == 12), m % 12 + 1, 1)
+    off = timedelta(minutes=tz_min)
+    return start_local - off, end_local - off
+
+
+def _availability(device_id, start, end, now):
+    """Persen waktu perangkat terjangkau dari event device_down/device_up."""
+    stop = min(end, now)
+    if stop <= start:
+        return None
+    last = SnmpEvent.query.filter(SnmpEvent.device_id == device_id, SnmpEvent.kind.in_(('device_down', 'device_up')),
+                                  SnmpEvent.created_at < start).order_by(SnmpEvent.created_at.desc()).first()
+    down_since = start if last and last.kind == 'device_down' else None
+    downtime = 0.0
+    for e in SnmpEvent.query.filter(SnmpEvent.device_id == device_id, SnmpEvent.kind.in_(('device_down', 'device_up')),
+                                    SnmpEvent.created_at >= start, SnmpEvent.created_at < stop) \
+            .order_by(SnmpEvent.created_at).all():
+        if e.kind == 'device_down' and down_since is None:
+            down_since = e.created_at
+        elif e.kind == 'device_up' and down_since is not None:
+            downtime += (e.created_at - down_since).total_seconds()
+            down_since = None
+    if down_since is not None:
+        downtime += (stop - down_since).total_seconds()
+    total = (stop - start).total_seconds()
+    return round(max(0.0, 100 - downtime / total * 100), 3), round(downtime / 60)
+
+
+def build_report(month, tz_min=0, device_id=None, scope='watched'):
+    start, end = _month_bounds(month, tz_min)
+    now = snmp_monitor._now()
+    q = SnmpPort.query.filter(SnmpPort.deleted.is_(False), SnmpPort.ignored.is_(False))
+    if device_id:
+        q = q.filter(SnmpPort.device_id == device_id)
+    if scope == 'watched':
+        q = q.filter(SnmpPort.watched.is_(True))
+    ports = q.all()
+    devs = {d.id: d for d in SnmpDevice.query.all()}
+    hours_elapsed = max(1, int((min(end, now) - start).total_seconds() // 3600)) if now > start else 0
+    rows = []
+    if ports:
+        hourly = SnmpSampleHourly.query.filter(
+            SnmpSampleHourly.port_id.in_([p.id for p in ports]), SnmpSampleHourly.metric.in_(('in', 'out')),
+            SnmpSampleHourly.hour >= start, SnmpSampleHourly.hour < end).all()
+        series = {}
+        for r in hourly:
+            if r.count:
+                series.setdefault((r.port_id, r.metric), []).append(r)
+        for p in ports:
+            d = devs.get(p.device_id)
+            if not d:
+                continue
+            row = {'port_id': p.id, 'device_id': d.id, 'device_name': d.name, 'port': p.name, 'alias': p.alias or '',
+                   'speed_mbps': p.speed_mbps, 'watched': bool(p.watched)}
+            hours = 0
+            for m in ('in', 'out'):
+                rs = series.get((p.id, m), [])
+                avgs = [r.total / r.count for r in rs]
+                hours = max(hours, len(rs))
+                row[m] = {
+                    'avg_bps': round(sum(r.total for r in rs) / sum(r.count for r in rs), 1) if rs else None,
+                    'max_bps': max((r.vmax for r in rs if r.vmax is not None), default=None),
+                    'p95_bps': _p95(avgs),
+                    'volume_bytes': round(sum(a * 3600 / 8 for a in avgs)),
+                }
+            peak = max((row[m]['max_bps'] or 0) for m in ('in', 'out'))
+            p95 = max((row[m]['p95_bps'] or 0) for m in ('in', 'out'))
+            cap = (p.speed_mbps or 0) * 1e6
+            row['peak_util_pct'] = round(peak / cap * 100, 1) if cap and peak else None
+            row['p95_util_pct'] = round(p95 / cap * 100, 1) if cap and p95 else None
+            row['coverage_pct'] = round(hours / hours_elapsed * 100, 1) if hours_elapsed else 0
+            if scope != 'watched' and not hours:
+                continue
+            rows.append(row)
+    rows.sort(key=lambda r: (r['device_name'], r['port']))
+    dev_rows = []
+    for d in sorted(devs.values(), key=lambda d: d.name):
+        if device_id and d.id != device_id:
+            continue
+        av = _availability(d.id, start, end, now)
+        cpu = SnmpSampleHourly.query.filter(SnmpSampleHourly.device_id == d.id, SnmpSampleHourly.port_id.is_(None),
+                                            SnmpSampleHourly.metric == 'cpu:cpu', SnmpSampleHourly.hour >= start,
+                                            SnmpSampleHourly.hour < end).all()
+        temps = SnmpSampleHourly.query.filter(SnmpSampleHourly.device_id == d.id, SnmpSampleHourly.port_id.is_(None),
+                                              SnmpSampleHourly.metric.like('temperature:%'),
+                                              SnmpSampleHourly.hour >= start, SnmpSampleHourly.hour < end).all()
+        n = sum(r.count for r in cpu)
+        dev_rows.append({
+            'device_id': d.id, 'device_name': d.name, 'host': d.host,
+            'availability_pct': av[0] if av else None, 'downtime_min': av[1] if av else None,
+            'cpu_avg': round(sum(r.total for r in cpu) / n, 1) if n else None,
+            'cpu_max': max((r.vmax for r in cpu if r.vmax is not None), default=None),
+            'temp_max': max((r.vmax for r in temps if r.vmax is not None), default=None),
+        })
+    return {'month': month, 'start': _iso(start), 'end': _iso(end), 'ports': rows, 'devices': dev_rows}
+
+
+def _report_csv(rep):
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(['Laporan SNMP', rep['month']])
+    w.writerow([])
+    w.writerow(['PERANGKAT'])
+    w.writerow(['Perangkat', 'Host', 'Ketersediaan %', 'Downtime (menit)', 'CPU rata-rata %', 'CPU maks %', 'Suhu maks °C'])
+    for d in rep['devices']:
+        w.writerow([d['device_name'], d['host'], d['availability_pct'], d['downtime_min'], d['cpu_avg'], d['cpu_max'], d['temp_max']])
+    w.writerow([])
+    w.writerow(['PORT'])
+    w.writerow(['Perangkat', 'Port', 'Keterangan', 'Kecepatan (Mbps)',
+                'Masuk rata-rata (Mbps)', 'Masuk 95% (Mbps)', 'Masuk puncak (Mbps)', 'Volume masuk (GB)',
+                'Keluar rata-rata (Mbps)', 'Keluar 95% (Mbps)', 'Keluar puncak (Mbps)', 'Volume keluar (GB)',
+                'Utilisasi 95% (%)', 'Utilisasi puncak (%)', 'Cakupan data (%)'])
+    mb = lambda v: round(v / 1e6, 2) if v is not None else ''
+    for r in rep['ports']:
+        w.writerow([r['device_name'], r['port'], r['alias'], r['speed_mbps'] or '',
+                    mb(r['in']['avg_bps']), mb(r['in']['p95_bps']), mb(r['in']['max_bps']), round(r['in']['volume_bytes'] / 1e9, 2),
+                    mb(r['out']['avg_bps']), mb(r['out']['p95_bps']), mb(r['out']['max_bps']), round(r['out']['volume_bytes'] / 1e9, 2),
+                    r['p95_util_pct'] if r['p95_util_pct'] is not None else '',
+                    r['peak_util_pct'] if r['peak_util_pct'] is not None else '', r['coverage_pct']])
+    return buf.getvalue()
+
+
+@bp.route('/api/snmp/report', methods=['GET'])
+@login_required
+def snmp_report():
+    month = request.args.get('month') or snmp_monitor._now().strftime('%Y-%m')
+    try:
+        _month_bounds(month, 0)
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'month harus berformat YYYY-MM'}), 400
+    tz_min = max(-720, min(840, request.args.get('tz', 0, type=int) or 0))
+    scope = 'all' if request.args.get('scope') == 'all' else 'watched'
+    rep = build_report(month, tz_min, request.args.get('device_id', type=int), scope)
+    if request.args.get('format') == 'csv':
+        return Response('﻿' + _report_csv(rep), mimetype='text/csv; charset=utf-8',
+                        headers={'Content-Disposition': f'attachment; filename=laporan-snmp-{month}.csv'})
+    return jsonify({'success': True, **rep})

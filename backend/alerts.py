@@ -808,6 +808,11 @@ def _check_onus_for_tenant(force_send=False):
         check_snmp_devices(now, notifications_to_create, alerts_to_send)
     except Exception as e:
         logger.warning(f"[ALERT] snmp device check failed: {e}")
+    try:
+        from snmp_alerts import check_snmp_thresholds
+        check_snmp_thresholds(now, notifications_to_create, alerts_to_send)
+    except Exception as e:
+        logger.warning(f"[ALERT] snmp threshold check failed: {e}")
 
     # ─── Check unregistered ONUs via Telnet (show pon onu uncfg — ZTE CLI only) ───
     for olt in olts:

@@ -63,5 +63,28 @@ with app.app_context():
         db.session.add(IncidentLog(incident_id=inc.id, action='system', status='open', note='Insiden dibuat otomatis: 9 ONU down.'))
         db.session.add(IncidentLog(incident_id=inc.id, action='note', username='UI Check',
                                    note='Kabel drop di tiang depan balai warga tertabrak truk, sedang menuju lokasi.'))
+    from models import SnmpDevice, SnmpPort, Notification
+    if not SnmpDevice.query.first():
+        from datetime import datetime, timedelta
+        now = datetime.utcnow()
+        core = SnmpDevice(name='CCR1072 Core POP Pusat', host='10.10.0.1', snmp_version='2c', status='up', vendor='MikroTik',
+                          hardware='CCR1072-1G-8S+', os_version='7.14.3', uptime_s=3_456_000, cpu_pct=91, mem_pct=34,
+                          temperature=58, location='POP Pusat', status_changed_at=now - timedelta(days=3))
+        sw = SnmpDevice(name='Switch Distribusi RW04 Utara Panjang Sekali', host='10.10.4.2', snmp_version='2c', status='down',
+                        status_reason='Tidak terjangkau (ping & SNMP gagal)', status_changed_at=now - timedelta(minutes=12))
+        db.session.add_all([core, sw])
+        db.session.flush()
+        up1 = SnmpPort(device_id=core.id, if_index=1, name='sfp-sfpplus1', alias='UPLINK-ISP-A (Lintasarta 10G)', speed_mbps=10000,
+                       admin_status='up', oper_status='up', in_bps=8.7e9, out_bps=1.2e9, watched=True)
+        up2 = SnmpPort(device_id=core.id, if_index=2, name='sfp-sfpplus2', alias='UPLINK-ISP-B', speed_mbps=10000,
+                       admin_status='up', oper_status='down', status_changed_at=now - timedelta(minutes=40), watched=True)
+        acc = SnmpPort(device_id=core.id, if_index=3, name='ether3', alias='OLT-C320-UTARA', speed_mbps=1000,
+                       admin_status='up', oper_status='up', in_bps=120e6, out_bps=640e6, in_err_rate=0.4)
+        db.session.add_all([up1, up2, acc])
+        db.session.flush()
+        db.session.add(Notification(severity='critical', category='snmp_port_down', target_type='snmp_port', target_id=up2.id,
+                                    title='🔴 Port turun: CCR1072 Core POP Pusat sfp-sfpplus2 (UPLINK-ISP-B)', message='-'))
+        db.session.add(Notification(severity='warning', category='snmp_cpu', target_type='snmp', target_id=core.id,
+                                    title='🟠 CPU tinggi: CCR1072 Core POP Pusat (91%)', message='-'))
     db.session.commit()
 print('seeded')

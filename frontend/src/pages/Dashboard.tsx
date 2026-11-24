@@ -1,3 +1,4 @@
+import { NetworkDevicesCard } from '../components/snmp/SnmpOverview';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
@@ -495,6 +496,8 @@ export function Dashboard() {
           )}
         </Card>
       </div>
+
+      <NetworkDevicesCard />
     </PageContainer>
   );
 }

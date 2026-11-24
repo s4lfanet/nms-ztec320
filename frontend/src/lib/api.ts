@@ -290,7 +290,14 @@ export const api = {
     return request<SnmpGraphData>(`/api/snmp/graph?${qs}`);
   },
   snmpDeviceMetrics: (id: number) => request<{ success: boolean; metrics: { metric: string; name: string }[] }>(`/api/snmp/devices/${id}/metrics`),
-  snmpPortUpdate: (id: number, data: { ignored: boolean }) => request<{ success: boolean; port: SnmpPort }>(`/api/snmp/ports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  snmpSummary: () => request<SnmpSummary>('/api/snmp/summary'),
+  snmpSettings: () => request<{ success: boolean; settings: Record<string, number>; defaults: Record<string, number> }>('/api/snmp/settings'),
+  snmpSettingsSave: (data: Record<string, number>) => request<{ success: boolean; settings: Record<string, number> }>('/api/snmp/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  snmpReport: (q: { month: string; scope: string; tz: number; device_id?: number }) =>
+    request<SnmpReportData>(`/api/snmp/report?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`),
+  snmpReportCsvUrl: (q: { month: string; scope: string; tz: number }) =>
+    `/api/snmp/report?${new URLSearchParams({ month: q.month, scope: q.scope, tz: String(q.tz), format: 'csv' })}`,
+  snmpPortUpdate: (id: number, data: { ignored?: boolean; watched?: boolean }) => request<{ success: boolean; port: SnmpPort }>(`/api/snmp/ports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthExport: () => '/api/ftth/export',
   ftthExportJson: () => '/api/ftth/export.json',
   ftthCoreSetStatus: (ownerType: 'otb' | 'odc' | 'jc', ownerId: number, core: number, data: { status?: 'available' | 'reserved' | 'damaged'; attenuation_db?: number | null; notes?: string }) =>
@@ -886,7 +893,29 @@ export interface SnmpPort {
   id: number; if_index: number; name: string; descr: string; alias: string; if_type: number | null;
   speed_mbps: number | null; mac: string; admin_status: string; oper_status: string; status_changed_at: string | null;
   ignored: boolean; in_bps: number | null; out_bps: number | null; in_err_rate: number | null; out_err_rate: number | null;
-  in_errors: number | null; out_errors: number | null; util_pct: number | null;
+  in_errors: number | null; out_errors: number | null; util_pct: number | null; watched: boolean;
+}
+export interface SnmpProblem {
+  category: string; severity: string; title: string; device_id: number; device_name: string; port_id: number | null; since: string | null;
+}
+export interface SnmpPortBrief {
+  port_id: number; device_id: number; device_name: string; name: string; alias: string; speed_mbps: number | null;
+  oper_status: string; in_bps: number | null; out_bps: number | null; util_pct: number | null; watched: boolean; err_rate: number;
+}
+export interface SnmpSummary {
+  success: boolean;
+  counts: { total: number; up: number; warn: number; down: number; unknown: number; disabled: number };
+  problems: SnmpProblem[]; top_ports: SnmpPortBrief[]; watched_ports: SnmpPortBrief[];
+}
+export interface SnmpReportDir { avg_bps: number | null; max_bps: number | null; p95_bps: number | null; volume_bytes: number }
+export interface SnmpReportPort {
+  port_id: number; device_id: number; device_name: string; port: string; alias: string; speed_mbps: number | null; watched: boolean;
+  in: SnmpReportDir; out: SnmpReportDir; peak_util_pct: number | null; p95_util_pct: number | null; coverage_pct: number;
+}
+export interface SnmpReportData {
+  success: boolean; month: string; start: string; end: string; ports: SnmpReportPort[];
+  devices: { device_id: number; device_name: string; host: string; availability_pct: number | null; downtime_min: number | null;
+    cpu_avg: number | null; cpu_max: number | null; temp_max: number | null }[];
 }
 export interface SnmpGraphStat { current: number | null; avg: number | null; max: number | null; p95: number | null; samples: number }
 export interface SnmpGraphData {
