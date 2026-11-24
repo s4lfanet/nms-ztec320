@@ -137,7 +137,7 @@ export function DeviceFormModal({ device, initial, onClose }: { device?: SnmpDev
   const qc = useQueryClient();
   const [form, setForm] = useState<SnmpDeviceForm>({
     name: device?.name || '', host: device?.host || '', port: device?.port || 161,
-    snmp_version: device?.snmp_version || '2c', community: '',
+    snmp_version: device?.snmp_version || '2c', community: device?.community || '',
     v3_user: device?.v3_user || '', v3_level: device?.v3_level || 'authPriv',
     v3_auth_proto: device?.v3_auth_proto || 'SHA', v3_auth_pass: '',
     v3_priv_proto: device?.v3_priv_proto || 'AES', v3_priv_pass: '',
@@ -211,7 +211,7 @@ export function DeviceFormModal({ device, initial, onClose }: { device?: SnmpDev
         </div>
         {!v3 ? (
           <label className="block"><span className="label-sm">{t('dev.community')}</span>
-            <input className="input-field font-mono" type="password" autoComplete="new-password" value={form.community}
+            <input className="input-field font-mono" type="text" autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={form.community}
               onChange={e => set({ community: e.target.value })} placeholder={secretPh(device?.has_community)} /></label>
         ) : (
           <div className="space-y-3 rounded-lg border border-brd p-3">

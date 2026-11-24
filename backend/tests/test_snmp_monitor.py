@@ -103,7 +103,8 @@ def test_api_crud_test_and_secret_not_leaked(ctx, monkeypatch):
     c = _client()
     assert c.post('/api/snmp/devices', headers=H, json={'name': 'A', 'host': '10.1.1.1'}).status_code == 400  # tanpa community
     r = c.post('/api/snmp/devices', headers=H, json={'name': 'A', 'host': '10.1.1.1', 'community': SECRET}).get_json()
-    assert r['success'] and r['device']['has_community'] and SECRET not in str(r)
+    # Community v1/v2c ditampilkan ke pengelola perangkat (super admin di sini); v3 tidak pernah
+    assert r['success'] and r['device']['has_community'] and r['device']['community'] == SECRET
     did = r['device']['id']
     assert db.session.get(SnmpDevice, did)._community_enc != SECRET  # terenkripsi
     assert c.post('/api/snmp/test', headers=H, json={'device_id': did}).get_json()['ok'] is True

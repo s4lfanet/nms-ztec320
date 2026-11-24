@@ -100,3 +100,17 @@ def test_user_manager_cannot_escalate(ctx):
     assert c.put(f'/api/role/{full.id}', json={'name': 'dirusak'}, headers=H).status_code == 403
     # super admin tetap bebas
     assert _client(sa).put(f'/api/user/{mgr.id}', json={'role_id': full.id}, headers=H).get_json()['success'] is True
+
+
+def test_snmp_community_visible_only_to_device_managers(ctx):
+    from models import SnmpDevice
+    comm = 'ro-' + secrets.token_hex(4)
+    d = SnmpDevice(name='Core', host='10.0.0.1', snmp_version='2c')
+    d.community = comm
+    db.session.add(d); db.session.commit()
+    mgr = _client(_user('settings_ip_olts,view_dashboard'))
+    assert mgr.get(f'/api/snmp/devices/{d.id}', headers=H).get_json()['device']['community'] == comm
+    viewer = _client(_user('view_dashboard'))
+    body = viewer.get(f'/api/snmp/devices/{d.id}', headers=H).get_json()
+    assert body['device']['community'] == '' and comm not in json.dumps(body)
+    assert comm not in json.dumps(viewer.get('/api/snmp/devices', headers=H).get_json())

@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Community SNMP terlihat saat diketik & diedit
+
+#### Diubah
+- Kolom **Community** di form perangkat Monitoring SNMP sekarang teks biasa (tidak disamarkan), dan saat mengedit, community yang tersimpan langsung tampil.
+  - Ini hanya untuk user yang berhak mengatur perangkat, sama seperti community di pengaturan OLT.
+  - Password SNMPv3 tetap disamarkan.
+
 ### 2026-11-24 — Keamanan akun lihat-saja (demo) & pengelola akun
 
 #### Diperbaiki (keamanan)
