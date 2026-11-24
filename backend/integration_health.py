@@ -84,3 +84,35 @@ def check_mikrotik_health(now, notifications_to_create, alerts_to_send):
                 f'(batas {int(temp_th)}°C)\n\n⚠️ Cek pendingin ruang/rak dan kipas router.',
                 f'✅ Suhu MikroTik normal: {dev.name}', f'✅ Suhu {dev.name} kembali normal ({dev.temperature}°C).',
                 notifications_to_create, alerts_to_send)
+
+
+def check_snmp_devices(now, notifications_to_create, alerts_to_send):
+    """Perangkat SNMP (snmp_monitor) turun ≥ `snmp_down_minutes` (default 4) → alert;
+    pulih → resolved + pesan pulih. 'warn' (ping OK, SNMP diam) tidak dialert."""
+    from models import SnmpDevice
+    down_after = timedelta(minutes=_cfg_num('snmp_down_minutes', 4))
+    for dev in SnmpDevice.query.filter_by(enabled=True).all():
+        since = (now - dev.status_changed_at) if dev.status_changed_at else None
+        down = dev.status == 'down' and since is not None and since >= down_after
+        notif = Notification.query.filter_by(category='snmp_down', target_type='snmp',
+                                             target_id=dev.id, resolved=False).first()
+        base = {'olt_id': None, 'olt_name': dev.name, 'olt_ip': dev.host, 'target_type': 'snmp', 'target_id': dev.id}
+        label = ' '.join(x for x in (dev.vendor, dev.hardware) if x and x != 'Generic')
+        if down and not notif:
+            mins = int(since.total_seconds() // 60)
+            title = f'🔴 Perangkat turun: {dev.name}'
+            msg = (f'🔴 PERANGKAT TIDAK TERJANGKAU\n\nPerangkat: {dev.name} ({dev.host})'
+                   + (f'\nJenis: {label}' if label else '')
+                   + (f'\nLokasi: {dev.location}' if dev.location else '')
+                   + f'\nTurun sejak: {mins} menit lalu\nSebab: {dev.status_reason or "-"}')
+            notifications_to_create.append({'olt_id': None, 'onu_id': None, 'severity': 'critical',
+                                            'category': 'snmp_down', 'title': title, 'message': msg,
+                                            'target_roles': '', 'target_type': 'snmp', 'target_id': dev.id})
+            alerts_to_send.append(dict(base, type='snmp_down', severity='critical', title=title, message=msg,
+                                       is_recovery=False))
+        elif notif and dev.status == 'up':
+            notif.resolved, notif.resolved_at, notif.is_read = True, now, True
+            alerts_to_send.append(dict(base, type='snmp_down_recovery', severity='info',
+                                       title=f'✅ Perangkat pulih: {dev.name}',
+                                       message=f'✅ Perangkat {dev.name} ({dev.host}) kembali terjangkau.',
+                                       is_recovery=True))

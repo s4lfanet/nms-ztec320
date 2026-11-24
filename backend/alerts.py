@@ -803,6 +803,11 @@ def _check_onus_for_tenant(force_send=False):
         check_mikrotik_health(now, notifications_to_create, alerts_to_send)
     except Exception as e:
         logger.warning(f"[ALERT] mikrotik health check failed: {e}")
+    try:
+        from integration_health import check_snmp_devices
+        check_snmp_devices(now, notifications_to_create, alerts_to_send)
+    except Exception as e:
+        logger.warning(f"[ALERT] snmp device check failed: {e}")
 
     # ─── Check unregistered ONUs via Telnet (show pon onu uncfg — ZTE CLI only) ───
     for olt in olts:

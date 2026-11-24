@@ -138,6 +138,14 @@ def start_servers(flask_port: int = 5000, ws_port: int = 8765,
     link_thread.start()
     logger.info("Link-state poller started")
 
+    # Pemantauan perangkat SNMP ala Observium (idle sampai ada perangkat)
+    from snmp_monitor import run_snmp_poller
+    snmp_thread = threading.Thread(
+        target=run_snmp_poller, args=(flask_app,), daemon=True, name="snmp-poller"
+    )
+    snmp_thread.start()
+    logger.info("SNMP device poller started")
+
     # AI agent: balas pertanyaan dari bot Telegram (idle sampai diaktifkan
     # di Pengaturan AI Agent + kanal Telegram dinyalakan)
     from ai_agent import start_telegram_poller

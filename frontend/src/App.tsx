@@ -27,6 +27,8 @@ const FtthInfrastructure = lazy(() => import('./pages/FtthInfrastructure').then(
 const Templates = lazy(() => import('./pages/Templates').then(m => ({ default: m.default })));
 const Tr069Profile = lazy(() => import('./pages/Tr069Profile').then(m => ({ default: m.default })));
 const ActionLogs = lazy(() => import('./pages/ActionLogs').then(m => ({ default: m.ActionLogs })));
+const DevicesPage = lazy(() => import('./pages/Devices').then(m => ({ default: m.Devices })));
+const DeviceDetailPage = lazy(() => import('./pages/DeviceDetail').then(m => ({ default: m.DeviceDetail })));
 const IncidentsPage = lazy(() => import('./pages/Incidents').then(m => ({ default: m.Incidents })));
 const IncidentDetailPage = lazy(() => import('./pages/IncidentDetail').then(m => ({ default: m.IncidentDetail })));
 const AlertHistoryPage = lazy(() => import('./pages/AlertHistory').then(m => ({ default: m.AlertHistory })));
@@ -212,6 +214,8 @@ export default function App() {
         <Route path="settings/ai" element={<AiAgentSettings />} />
         <Route path="settings/auto-provision" element={<AutoProvision />} />
         <Route path="alerts/history" element={<AlertHistoryPage />} />
+        <Route path="devices" element={<DevicesPage />} />
+        <Route path="devices/:id" element={<DeviceDetailPage />} />
         <Route path="incidents" element={<IncidentsPage />} />
         <Route path="incidents/:id" element={<IncidentDetailPage />} />
         <Route path="ftth" element={<FtthInfrastructure />} />

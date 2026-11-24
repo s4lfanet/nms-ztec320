@@ -1423,3 +1423,135 @@ class ApiToken(db.Model):
                 now = now.replace(tzinfo=None)
             return self.expires_at > now
         return True
+
+
+# ════════════════ Pemantauan perangkat SNMP (ala Observium) — tahap 1 ════════════════
+
+class SnmpDevice(db.Model):
+    """Perangkat jaringan apa pun yang dipantau lewat SNMP (MikroTik, switch,
+    router, server, UPS…). Terpisah dari OLT (yang punya jalur sync sendiri)
+    dan dari MikrotikDevice (API RouterOS untuk PPPoE). Hanya membaca."""
+    __tablename__ = 'snmp_devices'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    host = db.Column(db.String(255), nullable=False)
+    port = db.Column(db.Integer, default=161)
+    snmp_version = db.Column(db.String(3), default='2c')          # 1, 2c, 3
+    _community_enc = db.Column('community', db.Text, default='')
+    v3_user = db.Column(db.String(100), default='')
+    v3_level = db.Column(db.String(12), default='authPriv')       # noAuthNoPriv, authNoPriv, authPriv
+    v3_auth_proto = db.Column(db.String(10), default='SHA')       # MD5, SHA, SHA256
+    _v3_auth_enc = db.Column('v3_auth_pass', db.Text, default='')
+    v3_priv_proto = db.Column(db.String(10), default='AES')       # DES, AES, AES256
+    _v3_priv_enc = db.Column('v3_priv_pass', db.Text, default='')
+    enabled = db.Column(db.Boolean, default=True)
+    location = db.Column(db.String(200), default='')
+    notes = db.Column(db.Text, default='')
+    # Hasil discovery
+    sys_name = db.Column(db.String(255), default='')
+    sys_descr = db.Column(db.Text, default='')
+    sys_object_id = db.Column(db.String(255), default='')
+    sys_location = db.Column(db.String(255), default='')
+    sys_contact = db.Column(db.String(255), default='')
+    vendor = db.Column(db.String(50), default='')
+    os_name = db.Column(db.String(50), default='')
+    hardware = db.Column(db.String(150), default='')
+    os_version = db.Column(db.String(100), default='')
+    serial = db.Column(db.String(100), default='')
+    discovered_at = db.Column(db.DateTime, nullable=True)
+    # Hasil poll
+    status = db.Column(db.String(10), default='unknown')          # up, down, warn (ping ok, SNMP gagal), unknown
+    status_reason = db.Column(db.String(255), default='')
+    status_changed_at = db.Column(db.DateTime, nullable=True)
+    last_poll_at = db.Column(db.DateTime, nullable=True)
+    last_ok_at = db.Column(db.DateTime, nullable=True)
+    poll_ms = db.Column(db.Integer, nullable=True)
+    ping_ms = db.Column(db.Float, nullable=True)
+    uptime_s = db.Column(db.BigInteger, nullable=True)
+    cpu_pct = db.Column(db.Float, nullable=True)
+    mem_pct = db.Column(db.Float, nullable=True)
+    temperature = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    @staticmethod
+    def _dec(v):
+        return decrypt_field(v) if v else ''
+
+    @property
+    def community(self):
+        return self._dec(self._community_enc)
+
+    @community.setter
+    def community(self, v):
+        self._community_enc = encrypt_field(v or '')
+
+    @property
+    def v3_auth_pass(self):
+        return self._dec(self._v3_auth_enc)
+
+    @v3_auth_pass.setter
+    def v3_auth_pass(self, v):
+        self._v3_auth_enc = encrypt_field(v or '')
+
+    @property
+    def v3_priv_pass(self):
+        return self._dec(self._v3_priv_enc)
+
+    @v3_priv_pass.setter
+    def v3_priv_pass(self, v):
+        self._v3_priv_enc = encrypt_field(v or '')
+
+
+class SnmpPort(db.Model):
+    """Interface perangkat (IF-MIB). Counter terakhir disimpan untuk menghitung laju."""
+    __tablename__ = 'snmp_ports'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    if_index = db.Column(db.Integer, nullable=False)
+    name = db.Column(db.String(100), default='')        # ifName (atau ifDescr)
+    descr = db.Column(db.String(255), default='')       # ifDescr
+    alias = db.Column(db.String(255), default='')       # ifAlias (komentar port)
+    if_type = db.Column(db.Integer, nullable=True)
+    speed_mbps = db.Column(db.Integer, nullable=True)
+    mac = db.Column(db.String(20), default='')
+    admin_status = db.Column(db.String(10), default='')  # up, down, testing
+    oper_status = db.Column(db.String(15), default='')   # up, down, dormant, notPresent, lowerLayerDown…
+    status_changed_at = db.Column(db.DateTime, nullable=True)
+    ignored = db.Column(db.Boolean, default=False)       # tidak dialert / disembunyikan
+    deleted = db.Column(db.Boolean, default=False)       # hilang saat discovery terakhir
+    in_octets = db.Column(db.BigInteger, nullable=True)
+    out_octets = db.Column(db.BigInteger, nullable=True)
+    in_errors = db.Column(db.BigInteger, nullable=True)
+    out_errors = db.Column(db.BigInteger, nullable=True)
+    counter_at = db.Column(db.DateTime, nullable=True)
+    in_bps = db.Column(db.Float, nullable=True)
+    out_bps = db.Column(db.Float, nullable=True)
+    in_err_rate = db.Column(db.Float, nullable=True)     # error/detik
+    out_err_rate = db.Column(db.Float, nullable=True)
+    __table_args__ = (db.UniqueConstraint('device_id', 'if_index', name='uq_snmp_port_dev_ifindex'),)
+
+
+class SnmpSensor(db.Model):
+    """Sensor kesehatan: suhu, tegangan, kipas, daya, arus, status, CPU, memori."""
+    __tablename__ = 'snmp_sensors'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    kind = db.Column(db.String(15), nullable=False)   # temperature, voltage, fan, power, current, cpu, memory, storage, status
+    key = db.Column(db.String(120), nullable=False)   # pengenal stabil (oid/index)
+    name = db.Column(db.String(150), default='')
+    value = db.Column(db.Float, nullable=True)
+    unit = db.Column(db.String(10), default='')
+    updated_at = db.Column(db.DateTime, nullable=True)
+    __table_args__ = (db.UniqueConstraint('device_id', 'kind', 'key', name='uq_snmp_sensor'),)
+
+
+class SnmpEvent(db.Model):
+    """Log kejadian perangkat (ala eventlog Observium): naik/turun, reboot, port berubah."""
+    __tablename__ = 'snmp_events'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    kind = db.Column(db.String(20), nullable=False)   # device_down, device_up, reboot, port_down, port_up, discovery
+    severity = db.Column(db.String(10), default='info')
+    message = db.Column(db.String(500), default='')
+    port_id = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)

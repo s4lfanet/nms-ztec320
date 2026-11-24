@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Pemantauan perangkat SNMP (ala Observium) tahap 1
+
+#### Ditambahkan
+- Menu baru **Perangkat jaringan** (Pantau): pantau router, switch, server, UPS, dll. lewat SNMP v1/v2c/v3 (community & password v3 terenkripsi). Tombol **Tes koneksi** sebelum menyimpan.
+- **Discovery** otomatis (saat ditambah, manual, dan tiap 6 jam): nama sistem, vendor/OS/model/versi/serial (MikroTik, Cisco, Huawei, ZTE, Linux, Ubiquiti, Juniper, dll. dari sysObjectID/sysDescr + ENTITY-MIB), lokasi/kontak, dan semua interface (nama, komentar/ifAlias, kecepatan, MAC).
+- **Poll tiap 5 menit** (`snmp_poll_interval`): status naik/turun (SNMP + ping; "SNMP diam" bila ping masih menjawab), uptime & deteksi reboot, status tiap port, trafik masuk/keluar (counter 64-bit, aman 10G+), error/detik, utilisasi port, CPU & memori (HOST-RESOURCES/UCD), sensor MikroTik (suhu, tegangan, kipas, daya — RouterOS v6 dan v7).
+- **Log kejadian** per perangkat: naik/turun, reboot, port naik/turun, discovery (disimpan 90 hari). Port bisa ditandai "Abaikan".
+- **Alert** perangkat turun ≥ `snmp_down_minutes` (default 4) ke WA/Telegram/lonceng, plus pesan pulih (kategori `snmp_down`).
+- Hanya membaca (SNMP GET/WALK), poller sendiri (`snmp-poller`), terpisah dari jalur Telnet/SNMP OLT.
+
 ### 2026-11-24 — FTTH tahap 3: informasi lapangan
 
 #### Ditambahkan
