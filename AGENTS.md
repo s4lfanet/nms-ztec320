@@ -267,6 +267,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 41. **Kualitas data FTTH (`ftth_quality.py`)** — validasi feed core saat simpan lewat `feed_error(kind, obj, old_tuple)` / `check_pon_core()`: dicek PER JENIS (PON core N dan ODC core N di OTB yang sama itu normal: patch masuk = core keluar), hanya bila feed berubah (`feed_tuple` lama ≠ baru) supaya data lama yang bentrok tetap bisa disunting. Route update: set atribut → `feed_error` → `db.session.rollback()` + 400 bila gagal. `_release_core` tidak menandai core tersedia bila `users_of()` masih menemukan node lain (pemegang saat ini dikecualikan). `build_report()` hanya baca DB → `/api/ftth/quality` → `FtthQualityPanel` (tab Overview). PON vs jalur: `pon_mismatch()` memakai hop `olt` dari `_trace_upstream_from_odp` (hop membawa `frame/slot/port`; PON dipilih sesuai `otb_core_number`). Impor `db` dari `models`, bukan `extensions`.
 
+42. **Anggaran redaman (`ftth_budget.py`)** — `build(hops, onu)` dari hop `_trace_upstream_from_odp` (+ `drop_cable_attenuation_db` di hop ODP terakhir) → item kabel/splitter/konektor/splice, `expected_rx = TX PON − total`, dibanding `onu.onu_rx_power` (ONU RX = downstream; `rx_power` itu OLT RX, jangan dipakai) hanya bila ONU online. Verdict `ok|worse|better|incomplete|unknown`; `incomplete` bila splitter tak terisi/jalur putus (jangan dinilai). TX dari `OLTPort.sfp_tx_power` (port_name berakhiran `f/s/p`), fallback SystemConfig `ftth_olt_tx_dbm`. Nilai standar di SystemConfig `ftth_connector_loss_db/ftth_splice_loss_db/ftth_olt_tx_dbm/ftth_budget_tolerance_db` (`DEFAULTS`). `total_attenuation_db` lama (kabel saja) tetap dikirim untuk kompatibilitas.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

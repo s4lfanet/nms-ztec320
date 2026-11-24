@@ -224,6 +224,8 @@ export const api = {
   // FTTH Infrastructure
   ftthStats: () => request<FTTHStats>('/api/ftth/stats'),
   ftthQuality: () => request<FTTHQualityReport>('/api/ftth/quality'),
+  ftthBudgetSettings: () => request<{ success: boolean; settings: Record<string, number>; defaults: Record<string, number>; splitter_loss: Record<string, number> }>('/api/ftth/budget-settings'),
+  ftthBudgetSettingsSave: (data: Record<string, number>) => request<{ success: boolean; settings: Record<string, number> }>('/api/ftth/budget-settings', { method: 'PUT', body: JSON.stringify(data) }),
   ftthTree: () => request<{ success: boolean; tree: FTTHItem[] }>('/api/ftth/tree'),
   ftthMap: () => request<{ success: boolean; markers: FTTHMarker[]; lines: FTTHLine[] }>('/api/ftth/map'),
   ftthOtbList: () => request<{ success: boolean; items: FTTHOtb[] }>('/api/ftth/otb'),
@@ -254,7 +256,7 @@ export const api = {
   ftthAvailableOnus: (oltId?: number) => request<{ success: boolean; onus: FTTHAvailableOnu[] }>(`/api/ftth/available-onus${oltId ? '?olt_id=' + oltId : ''}`),
   ftthCores: (ownerType: 'otb' | 'odc' | 'jc', ownerId: number) => request<{ success: boolean; cores: FTTHFiberCore[] }>(`/api/ftth/cores/${ownerType}/${ownerId}`),
   ftthCoreHistory: (coreId: number) => request<{ success: boolean; history: FTTHCoreHistoryEntry[] }>(`/api/ftth/cores/${coreId}/history`),
-  ftthTraceOnu: (onuId: number) => request<{ success: boolean; complete: boolean; hops: FTTHTraceHop[]; message?: string; total_attenuation_db: number | null }>(`/api/ftth/trace/onu/${onuId}`),
+  ftthTraceOnu: (onuId: number) => request<{ success: boolean; complete: boolean; hops: FTTHTraceHop[]; message?: string; total_attenuation_db: number | null; budget?: FTTHLossBudget | null }>(`/api/ftth/trace/onu/${onuId}`),
 
   // Mikrotik link-state monitoring
   mikrotikList: () => request<{ success: boolean; devices: MikrotikDevice[] }>('/api/mikrotik'),
@@ -997,6 +999,20 @@ export interface FTTHAvailableOnu {
   onu_id_str: string;
   olt_id: number;
   olt_name: string;
+}
+
+export interface FTTHLossBudget {
+  items: { kind: 'cable' | 'splitter' | 'connector' | 'splice'; label: string; db: number; assumed: boolean }[];
+  total_db: number;
+  assumed_count: number;
+  missing: string[];
+  olt_tx_dbm: number;
+  olt_tx_assumed: boolean;
+  expected_rx_dbm: number;
+  measured_rx_dbm: number | null;
+  delta_db: number | null;
+  tolerance_db: number;
+  verdict: 'ok' | 'worse' | 'better' | 'incomplete' | 'unknown';
 }
 
 export interface FTTHTraceHop {

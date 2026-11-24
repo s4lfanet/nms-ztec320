@@ -32,6 +32,7 @@ from services_sync import start_single_sync, start_sync_all
 bp = Blueprint('ftth', __name__)
 
 import ftth_quality  # noqa: E402
+import ftth_budget  # noqa: E402
 
 @bp.route('/api/ftth/quality', methods=['GET'])
 @login_required
@@ -1333,7 +1334,47 @@ def ftth_trace_onu(onu_id):
             segment_values.append(h.get('cable_attenuation_db'))
             segment_values.append(h.get('drop_cable_attenuation_db'))
     total_attenuation_db = round(sum(segment_values), 3) if segment_values and all(v is not None for v in segment_values) else None
-    return jsonify({'success': True, 'complete': complete, 'hops': hops, 'total_attenuation_db': total_attenuation_db})
+    # Anggaran redaman lengkap (kabel + splitter + konektor + splice) vs RX terukur.
+    try:
+        budget = ftth_budget.build(hops, onu, port)
+    except Exception:
+        logger.exception('ftth budget failed for onu %s', onu_id)
+        budget = None
+    return jsonify({'success': True, 'complete': complete, 'hops': hops, 'total_attenuation_db': total_attenuation_db,
+                    'budget': budget})
+
+
+@bp.route('/api/ftth/budget-settings', methods=['GET'])
+@login_required
+def ftth_budget_settings_get():
+    return jsonify({'success': True, 'settings': ftth_budget.settings(), 'defaults': ftth_budget.DEFAULTS,
+                    'splitter_loss': ftth_budget.SPLITTER_LOSS})
+
+
+@bp.route('/api/ftth/budget-settings', methods=['PUT'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_budget_settings_put():
+    d = request.get_json() or {}
+    limits = {'ftth_connector_loss_db': (0, 3), 'ftth_splice_loss_db': (0, 1),
+              'ftth_olt_tx_dbm': (-5, 12), 'ftth_budget_tolerance_db': (0.5, 15)}
+    for k, (lo, hi) in limits.items():
+        if k not in d:
+            continue
+        try:
+            v = float(d[k])
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': f'Nilai {k} tidak valid'}), 400
+        if not lo <= v <= hi:
+            return jsonify({'success': False, 'message': f'{k} harus antara {lo} dan {hi}'}), 400
+        row = SystemConfig.query.filter_by(key=k).first()
+        if row:
+            row.value = str(v)
+        else:
+            db.session.add(SystemConfig(key=k, value=str(v)))
+    db.session.commit()
+    log_action('ftth_budget_settings', 'ftth', detail=str({k: d[k] for k in limits if k in d}))
+    return jsonify({'success': True, 'settings': ftth_budget.settings()})
 
 
 # Moved to ftth_topology so the alert monitor can reuse it.
