@@ -18,7 +18,7 @@ from collections import defaultdict
 
 from models import db
 from models import (FTTHOTB, FTTHODC, FTTHODP, FTTHJC, FTTHJCSplice, FTTHODPPort,
-                    FTTHPonPort, ONU, OLT)
+                    FTTHPonPort, FTTHFiberCore, ONU, OLT)
 
 LABEL = {'otb': 'OTB', 'odc': 'ODC', 'odp': 'ODP', 'jc': 'JC', 'odp_port': 'port ODP', 'pon': 'port PON'}
 OWNER_MODEL = {'otb': FTTHOTB, 'odc': FTTHODC, 'jc': FTTHJC}
@@ -38,6 +38,11 @@ def _name(kind, obj):
     if kind == 'pon':
         return obj.pon_name or f'{obj.olt_name or "OLT"} {obj.frame}/{obj.slot}/{obj.port}'
     return getattr(obj, 'name', '') or f'#{obj.id}'
+
+
+def _damaged(owner_type, owner_id, core):
+    return FTTHFiberCore.query.filter_by(owner_type=owner_type, owner_id=owner_id,
+                                         core_number=core, status='damaged').first() is not None
 
 
 def users_of(owner_type, owner_id, core):
@@ -66,6 +71,8 @@ def check_core(owner_type, owner_id, core, me_kind, me_id):
     total = owner.total_cores or 0
     if core < 1 or (total and core > total):
         return f'Core {core} di luar kapasitas {LABEL[owner_type]} "{owner.name}" ({total} core)'
+    if _damaged(owner_type, owner_id, core):
+        return f'Core {core} di {LABEL[owner_type]} "{owner.name}" ditandai rusak — pilih core lain'
     for kind, obj in users_of(owner_type, owner_id, core):
         if kind == me_kind and obj.id == me_id:
             continue
@@ -84,6 +91,8 @@ def check_pon_core(otb_id, core, me_id=None):
     total = otb.total_cores or 0
     if core < 1 or (total and core > total):
         return f'Core {core} di luar kapasitas OTB "{otb.name}" ({total} core)'
+    if _damaged('otb', otb_id, core):
+        return f'Core {core} di OTB "{otb.name}" ditandai rusak — pilih core lain'
     for p in FTTHPonPort.query.filter_by(otb_id=otb_id, otb_core_number=core):
         if p.id != me_id:
             return f'Core {core} di OTB "{otb.name}" sudah dipakai port PON "{_name("pon", p)}"'
@@ -196,6 +205,16 @@ def build_report():
             names = ', '.join(f'{LABEL[k]} "{_name(k, o)}"' for k, o in users)
             issues['core_conflict'].append({'kind': otype, 'id': oid, 'name': owner.name,
                                             'message': f'Core {core} dipakai {len(users)} node: {names}'})
+
+    # Core ditandai rusak tapi masih dipakai node
+    for c in FTTHFiberCore.query.filter_by(status='damaged').all():
+        owner = by.get(c.owner_type, {}).get(c.owner_id)
+        if not owner:
+            continue
+        users = claims.get((c.owner_type, c.owner_id, c.core_number), []) + \
+            pon_claims.get((c.owner_type, c.owner_id, c.core_number), [])
+        for kind, obj in users:
+            issues['damaged_in_use'].append(_node(kind, obj, f'Memakai core {c.core_number} {LABEL[c.owner_type]} "{owner.name}" yang ditandai rusak'))
 
     # Feed dari JC ke core yang tidak punya splice
     splice_out = defaultdict(set)

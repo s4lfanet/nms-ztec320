@@ -817,7 +817,19 @@ class IncidentLog(db.Model):
     photo = db.Column(db.String(120), default='')
 
 
-class FTTHOTB(db.Model):
+class FTTHFieldInfo:
+    """Keterangan lapangan untuk node FTTH (OTB/ODC/ODP/JC) — FTTH tahap 3.
+    cable_* = identitas kabel MASUK node ini (satu node punya satu feed);
+    node_status = keadaan fisik node, installed_at = tanggal pasang."""
+    cable_label = db.Column(db.String(100), default='')      # mis. "FO-FEEDER-01" / label di kabel
+    cable_type = db.Column(db.String(30), default='')        # adss, figure8, duct, drop, indoor, lainnya
+    cable_cores = db.Column(db.Integer, nullable=True)       # jumlah core kabel masuk
+    cable_route = db.Column(db.Text, default='')             # rute/tiang, mis. "T12–T18 Jl. Merdeka"
+    node_status = db.Column(db.String(20), default='active') # planned, active, maintenance, retired
+    installed_at = db.Column(db.Date, nullable=True)
+
+
+class FTTHOTB(FTTHFieldInfo, db.Model):
     """OTB/ODF at server room — top of FTTH chain, fed by OLT PON port
     (feed_source='pon', via FTTHPonPort.otb_id) or, on a distributed feeder
     run, by a JC on the OLT->OTB trunk (feed_source='jc')."""
@@ -848,7 +860,7 @@ class FTTHOTB(db.Model):
     jc = db.relationship('FTTHJC', foreign_keys=[jc_id], backref=db.backref('fed_otbs', lazy=True))
 
 
-class FTTHODC(db.Model):
+class FTTHODC(FTTHFieldInfo, db.Model):
     """ODC (Optical Distribution Cabinet) — fed by core from OTB/ODF, or from a
     FTTHJC splice (feed_source='jc') when the run passes through a joint
     closure first."""
@@ -880,7 +892,7 @@ class FTTHODC(db.Model):
     jc = db.relationship('FTTHJC', foreign_keys=[jc_id], backref=db.backref('fed_odcs', lazy=True))
 
 
-class FTTHODP(db.Model):
+class FTTHODP(FTTHFieldInfo, db.Model):
     """ODP (Optical Distribution Point) — fed by core from ODC, from a
     FTTHJC splice (feed_source='jc'), or by a PORT on another ODP
     (feed_source='odp', splitter cascade — this ODP's whole splitter hangs
@@ -914,7 +926,7 @@ class FTTHODP(db.Model):
     parent_odp_port = db.relationship('FTTHODPPort', foreign_keys=[parent_odp_port_id], backref=db.backref('fed_odps', lazy=True))
 
 
-class FTTHJC(db.Model):
+class FTTHJC(FTTHFieldInfo, db.Model):
     """JC (Joint Closure / titik sambungan) — a splice closure along a fiber
     run. Can sit anywhere in the chain (OLT/PON→OTB, OTB→ODC, ODC→ODP,
     ODP→client, or chained JC→JC): its own incoming cable comes from

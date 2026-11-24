@@ -2303,7 +2303,8 @@
       "missing_splice": "JC feed without a splice",
       "orphan": "Unconnected nodes",
       "odp_full": "Full ODPs",
-      "no_coordinates": "No coordinates"
+      "no_coordinates": "No coordinates",
+      "damaged_in_use": "Damaged core still in use"
     },
     "hint": {
       "core_conflict": "One core is recorded as feeding more than one node — one of them is wrong",
@@ -2312,7 +2313,8 @@
       "missing_splice": "Node uses a JC output core that has no splice yet",
       "orphan": "Incoming feed not set or already deleted",
       "odp_full": "All ports used — plan an extra ODP",
-      "no_coordinates": "Not shown on the map"
+      "no_coordinates": "Not shown on the map",
+      "damaged_in_use": "A node uses a core marked damaged — move it to another core"
     }
   },
   "lossb": {
@@ -2347,5 +2349,55 @@
       "ftth_olt_tx_dbm": "OLT PON TX when SFP isn't read",
       "ftth_budget_tolerance_db": "Tolerance between expected and measured"
     }
+  },
+  "ftthf": {
+    "section": "Field details",
+    "nodeStatus": "Node status",
+    "installedAt": "Installed on",
+    "cableLabel": "Incoming cable label/ID",
+    "cableType": "Cable type",
+    "cableCores": "Cable core count",
+    "cableRoute": "Cable route / poles",
+    "cableRoutePh": "e.g. poles T12–T18 along Main St",
+    "status": {
+      "planned": "Planned",
+      "active": "Active",
+      "maintenance": "Maintenance",
+      "retired": "Retired"
+    },
+    "cable": {
+      "none": "— not set —",
+      "adss": "ADSS (aerial)",
+      "figure8": "Figure-8 (aerial)",
+      "duct": "Duct (underground)",
+      "drop": "Drop",
+      "indoor": "Indoor",
+      "other": "Other"
+    },
+    "photos": "Field photos",
+    "addPhoto": "Add photo",
+    "uploading": "Uploading…",
+    "noPhotos": "No photos yet. Photos of the closure, cable labels or pole condition help field technicians.",
+    "photoSaved": "Photo saved",
+    "photoRemoveTitle": "Delete this photo?",
+    "photoRemoveMsg": "The photo will be permanently removed from this node.",
+    "deletePhoto": "Delete photo",
+    "close": "Close",
+    "exportJson": "Full export (JSON)",
+    "core": {
+      "available": "Available",
+      "used": "In use",
+      "reserved": "Reserved",
+      "damaged": "Damaged"
+    },
+    "coreStatus": "Core status",
+    "coreAtten": "Measured loss (dB)",
+    "coreNotes": "Notes",
+    "coreNotesPh": "e.g. cut at pole T7, reserved for new ODC",
+    "coreUsedHint": "This core is in use by a node. \"In use\" is set automatically; you can still mark it damaged.",
+    "saveCore": "Save core",
+    "saving": "Saving…",
+    "coreSaved": "Core {{n}} saved",
+    "coreHistory": "History"
   }
 }

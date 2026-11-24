@@ -277,6 +277,19 @@ export const api = {
   ftthPonUpdate: (id: number, data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>(`/api/ftth/pon/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthPonDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/pon/${id}`, { method: 'DELETE' }),
   ftthExport: () => '/api/ftth/export',
+  ftthExportJson: () => '/api/ftth/export.json',
+  ftthCoreSetStatus: (ownerType: 'otb' | 'odc' | 'jc', ownerId: number, core: number, data: { status?: 'available' | 'reserved' | 'damaged'; attenuation_db?: number | null; notes?: string }) =>
+    request<{ success: boolean; core: FTTHFiberCore; warning?: string | null }>(`/api/ftth/cores/${ownerType}/${ownerId}/${core}`, { method: 'PUT', body: JSON.stringify(data) }),
+  ftthPhotos: (kind: string, id: number) => request<{ success: boolean; photos: FTTHPhoto[]; max: number }>(`/api/ftth/photos/${kind}/${id}`),
+  ftthPhotoUpload: async (kind: string, id: number, file: Blob) => {
+    const fd = new FormData(); fd.append('photo', file, 'photo.jpg');
+    const res = await fetch(`${BASE}/api/ftth/photos/${kind}/${id}`, { method: 'POST', body: fd, credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(data.message || `HTTP ${res.status}`, data.error_code, res.status, data);
+    return data as { success: boolean; photos: FTTHPhoto[] };
+  },
+  ftthPhotoDelete: (kind: string, id: number, name: string) =>
+    request<{ success: boolean; photos: FTTHPhoto[] }>(`/api/ftth/photos/${kind}/${id}/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   ftthPathsList: () => request<{ success: boolean; paths: FTTHFiberPath[] }>('/api/ftth/paths'),
   ftthPathCreate: (data: { from_type: string; from_id: number; to_type: string; to_id: number; coordinates: [number, number][]; path_type?: string }) => request<{ success: boolean; id: number }>('/api/ftth/paths', { method: 'POST', body: JSON.stringify(data) }),
   ftthPathUpdate: (id: number, data: Partial<{ coordinates: [number, number][]; path_type: string }>) => request<{ success: boolean }>(`/api/ftth/paths/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -836,7 +849,18 @@ export interface FTTHStats {
   };
 }
 
-export interface FTTHOtb {
+export interface FTTHFieldInfo {
+  cable_label: string;
+  cable_type: string;
+  cable_cores: number | null;
+  cable_route: string;
+  node_status: 'planned' | 'active' | 'maintenance' | 'retired';
+  installed_at: string | null;
+}
+
+export interface FTTHPhoto { name: string; size: number; mtime: number; url: string }
+
+export interface FTTHOtb extends Partial<FTTHFieldInfo> {
   id: number;
   name: string;
   type: string;
@@ -874,7 +898,7 @@ export interface FTTHOtbPort {
   odc_name: string;
 }
 
-export interface FTTHOdc {
+export interface FTTHOdc extends Partial<FTTHFieldInfo> {
   id: number;
   name: string;
   model: string;
@@ -904,7 +928,7 @@ export interface FTTHOdc {
   is_active: boolean;
 }
 
-export interface FTTHOdp {
+export interface FTTHOdp extends Partial<FTTHFieldInfo> {
   id: number;
   name: string;
   model: string;
@@ -936,7 +960,7 @@ export interface FTTHOdp {
   is_active: boolean;
 }
 
-export interface FTTHJc {
+export interface FTTHJc extends Partial<FTTHFieldInfo> {
   id: number;
   name: string;
   closure_type: string;

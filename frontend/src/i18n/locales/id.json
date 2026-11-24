@@ -2303,7 +2303,8 @@
       "missing_splice": "Feed JC tanpa splice",
       "orphan": "Node belum tersambung",
       "odp_full": "ODP penuh",
-      "no_coordinates": "Tanpa koordinat"
+      "no_coordinates": "Tanpa koordinat",
+      "damaged_in_use": "Core rusak masih dipakai"
     },
     "hint": {
       "core_conflict": "Satu core tercatat menyuplai lebih dari satu node — salah satunya keliru",
@@ -2312,7 +2313,8 @@
       "missing_splice": "Node mengambil core keluar JC yang belum dibuat splice-nya",
       "orphan": "Sumber kabel masuk belum diisi atau sudah dihapus",
       "odp_full": "Semua port terpakai — siapkan ODP tambahan",
-      "no_coordinates": "Tidak tampil di peta"
+      "no_coordinates": "Tidak tampil di peta",
+      "damaged_in_use": "Node memakai core yang ditandai rusak — pindahkan ke core lain"
     }
   },
   "lossb": {
@@ -2347,5 +2349,55 @@
       "ftth_olt_tx_dbm": "TX PON OLT bila SFP belum terbaca",
       "ftth_budget_tolerance_db": "Toleransi selisih perkiraan vs terukur"
     }
+  },
+  "ftthf": {
+    "section": "Keterangan lapangan",
+    "nodeStatus": "Status node",
+    "installedAt": "Tanggal pasang",
+    "cableLabel": "Label/ID kabel masuk",
+    "cableType": "Jenis kabel",
+    "cableCores": "Jumlah core kabel",
+    "cableRoute": "Rute kabel / tiang",
+    "cableRoutePh": "mis. T12–T18 Jl. Merdeka, lewat belakang pasar",
+    "status": {
+      "planned": "Rencana",
+      "active": "Aktif",
+      "maintenance": "Perbaikan",
+      "retired": "Tidak dipakai"
+    },
+    "cable": {
+      "none": "— belum diisi —",
+      "adss": "ADSS (udara)",
+      "figure8": "Figure-8 (udara)",
+      "duct": "Duct (tanam)",
+      "drop": "Drop",
+      "indoor": "Indoor",
+      "other": "Lainnya"
+    },
+    "photos": "Foto lapangan",
+    "addPhoto": "Tambah foto",
+    "uploading": "Mengunggah…",
+    "noPhotos": "Belum ada foto. Foto kotak sambungan, label kabel, atau kondisi tiang membantu teknisi di lapangan.",
+    "photoSaved": "Foto disimpan",
+    "photoRemoveTitle": "Hapus foto ini?",
+    "photoRemoveMsg": "Foto akan dihapus permanen dari node ini.",
+    "deletePhoto": "Hapus foto",
+    "close": "Tutup",
+    "exportJson": "Export lengkap (JSON)",
+    "core": {
+      "available": "Tersedia",
+      "used": "Dipakai",
+      "reserved": "Dicadangkan",
+      "damaged": "Rusak"
+    },
+    "coreStatus": "Status core",
+    "coreAtten": "Redaman terukur (dB)",
+    "coreNotes": "Catatan",
+    "coreNotesPh": "mis. putus di tiang T7, cadangan untuk ODC baru",
+    "coreUsedHint": "Core ini sedang dipakai node. Status \"dipakai\" diatur otomatis; Anda tetap bisa menandainya rusak.",
+    "saveCore": "Simpan core",
+    "saving": "Menyimpan…",
+    "coreSaved": "Core {{n}} disimpan",
+    "coreHistory": "Riwayat"
   }
 }
