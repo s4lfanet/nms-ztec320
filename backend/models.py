@@ -1546,6 +1546,26 @@ class SnmpSensor(db.Model):
     __table_args__ = (db.UniqueConstraint('device_id', 'kind', 'key', name='uq_snmp_sensor'),)
 
 
+class SnmpNeighbor(db.Model):
+    """Tetangga hasil LLDP/CDP/MNDP (snmp_topology) — diperbarui tiap discovery."""
+    __tablename__ = 'snmp_neighbors'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    port_id = db.Column(db.Integer, nullable=True)            # SnmpPort lokal
+    local_if_index = db.Column(db.Integer, nullable=True)
+    protocol = db.Column(db.String(8), default='lldp')         # lldp, cdp, mndp
+    remote_name = db.Column(db.String(255), default='')
+    remote_chassis = db.Column(db.String(100), default='')
+    remote_port = db.Column(db.String(150), default='')
+    remote_port_descr = db.Column(db.String(255), default='')
+    remote_platform = db.Column(db.String(255), default='')
+    remote_ip = db.Column(db.String(45), default='')
+    remote_device_id = db.Column(db.Integer, nullable=True)    # cocok ke SnmpDevice terdaftar
+    remote_port_id = db.Column(db.Integer, nullable=True)
+    first_seen = db.Column(db.DateTime, nullable=True)
+    last_seen = db.Column(db.DateTime, nullable=True)
+
+
 class SnmpEvent(db.Model):
     """Log kejadian perangkat (ala eventlog Observium): naik/turun, reboot, port berubah."""
     __tablename__ = 'snmp_events'

@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Pemantauan perangkat SNMP tahap 4: topologi otomatis
+
+#### Ditambahkan
+- **Tab Topologi** di halaman Perangkat: peta sambungan antarperangkat yang dibangun otomatis dari LLDP, CDP, dan tetangga MikroTik (MNDP) saat discovery.
+  - Warna garis menunjukkan utilisasi (normal / ≥60% / ≥80%); garis putus-putus berarti port putus.
+  - Ketuk garis untuk melihat port kedua sisi beserta trafiknya; ketuk perangkat untuk membukanya.
+  - Tetangga yang belum didaftarkan tetap tampil (lingkaran putus-putus).
+- **Tab Tetangga** di detail perangkat: port lokal → perangkat/port lawan, IP, MAC, platform, dan protokol. Perangkat yang sudah terdaftar dikenali otomatis dari IP, nama, atau MAC.
+
 ### 2026-11-24 — Pemantauan perangkat SNMP tahap 3: alert, ringkasan, laporan bulanan
 
 #### Ditambahkan

@@ -2593,5 +2593,21 @@
       "x": "times",
       "°C": "°C"
     }
+  },
+  "topo": {
+    "tab": "Topology",
+    "emptyTitle": "No links detected yet",
+    "emptyDesc": "The topology is built from LLDP, CDP and MikroTik neighbors during discovery (every 6 hours, or the Discovery button on a device). Make sure LLDP/neighbor discovery is enabled on your devices.",
+    "showExternal": "Show unregistered devices",
+    "legendOk": "Normal",
+    "legendBad": "≥80% / down",
+    "tapHint": "Tap a line for details, a device to open it",
+    "aria": "Topology map: {{n}} devices, {{l}} links",
+    "links": "Links ({{n}})",
+    "unregistered": "not registered",
+    "linkDown": "Down",
+    "neighbors": "Neighbors",
+    "noNeighbors": "No neighbors detected. Enable LLDP (or Neighbor Discovery on MikroTik) and run Discovery.",
+    "neighborsHint": "Updated on every discovery. Known devices are linked automatically by IP, name (sysName/identity) or MAC."
   }
 }

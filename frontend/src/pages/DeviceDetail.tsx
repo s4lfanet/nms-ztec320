@@ -1,14 +1,14 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Router, RefreshCw, Pencil, Trash2, Thermometer, Fan, Zap, Cpu, MemoryStick, HardDrive, Gauge, EyeOff, Eye, Star } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { ActionMenu, Card, EmptyState, LoadingOverlay, Tabs } from '../components/ui';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
-import { api, type SnmpDevice, type SnmpPort, type SnmpSensor } from '../lib/api';
+import { api, type SnmpDevice, type SnmpNeighbor, type SnmpPort, type SnmpSensor } from '../lib/api';
 import { cn, timeAgo } from '../lib/utils';
 import { fmtBps, fmtSpeed, fmtUptime, STATUS_DOT } from '../lib/snmpFormat';
 import { useHasPerm } from '../hooks/useHasPerm';
@@ -34,7 +34,7 @@ export function DeviceDetail() {
   const qc = useQueryClient();
   const canEdit = useHasPerm()('settings_ip_olts');
   const [params] = useSearchParams();
-  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'events'>(params.get('tab') === 'ports' ? 'ports' : 'overview');
+  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'neighbors' | 'events'>(params.get('tab') === 'ports' ? 'ports' : 'overview');
   const [range, setRange] = useState<GraphRange>('24h');
   const [editing, setEditing] = useState(false);
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
@@ -89,12 +89,14 @@ export function DeviceDetail() {
         { key: 'overview', label: t('dev.tabOverview') },
         { key: 'graphs', label: t('dev.tabGraphs') },
         { key: 'ports', label: `${t('dev.tabPorts')} (${data.ports.length})` },
+        { key: 'neighbors', label: `${t('topo.neighbors')} (${data.neighbors?.length ?? 0})` },
         { key: 'events', label: t('dev.tabEvents') },
       ]} />
 
       {tab === 'overview' && <Overview device={d} sensors={data.sensors} />}
       {tab === 'graphs' && <DeviceGraphs deviceId={did} range={range} setRange={setRange} />}
       {tab === 'ports' && <Ports ports={data.ports} canEdit={canEdit} deviceId={did} range={range} setRange={setRange} />}
+      {tab === 'neighbors' && <Neighbors list={data.neighbors || []} />}
       {tab === 'events' && (
         <Card title={t('dev.tabEvents')}>
           {data.events.length === 0 ? <p className="text-sm text-tx3">{t('dev.noEvents')}</p> : (
@@ -258,6 +260,37 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
           ))}
         </ul>
       )}
+    </Card>
+  );
+}
+
+function Neighbors({ list }: { list: SnmpNeighbor[] }) {
+  const { t } = useTranslation();
+  return (
+    <Card title={t('topo.neighbors')}>
+      {list.length === 0 ? <p className="text-sm text-tx3">{t('topo.noNeighbors')}</p> : (
+        <ul className="divide-y divide-brd">
+          {list.map(n => (
+            <li key={n.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+              <span className="text-sm text-tx2 sm:w-[22%] truncate">{n.local_port || '—'}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm text-tx1 break-words">
+                  {n.remote_device_id
+                    ? <Link to={`/dashboard/devices/${n.remote_device_id}`} className="text-accent">{n.remote_device_name}</Link>
+                    : (n.remote_name || n.remote_ip || n.remote_chassis)}
+                  {n.remote_port && <span className="text-tx3"> · {n.remote_port}</span>}
+                  {!n.remote_device_id && <span className="text-xs text-tx3"> ({t('topo.unregistered')})</span>}
+                </span>
+                <span className="block text-xs text-tx3 break-words">
+                  {[n.remote_ip, n.remote_chassis, n.remote_platform].filter(Boolean).join(' · ')}
+                </span>
+              </span>
+              <span className="text-[11px] text-tx3 uppercase">{n.protocol}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-xs text-tx3 mt-3">{t('topo.neighborsHint')}</p>
     </Card>
   );
 }

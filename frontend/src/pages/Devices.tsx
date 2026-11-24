@@ -8,6 +8,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button, EmptyState, LoadingOverlay, Modal, StatusStrip, Tabs } from '../components/ui';
 import { AlertThresholdsButton, DevicesOverview, useSnmpSummary } from '../components/snmp/SnmpOverview';
 import { SnmpReport } from '../components/snmp/SnmpReport';
+import { TopologyMap } from '../components/snmp/TopologyMap';
 import { toast } from '../components/Toast';
 import { api, type SnmpDevice, type SnmpDeviceForm } from '../lib/api';
 import { cn, timeAgo } from '../lib/utils';
@@ -22,7 +23,7 @@ export function Devices() {
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
-  const [view, setView] = useState<'list' | 'report'>('list');
+  const [view, setView] = useState<'list' | 'topology' | 'report'>('list');
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
     queryKey: ['snmp-devices'], queryFn: api.snmpDevices, refetchInterval: 30_000,
   });
@@ -54,9 +55,10 @@ export function Devices() {
         <div className="space-y-4">
           <Tabs active={view} onChange={k => setView(k as typeof view)} tabs={[
             { key: 'list', label: t('devx.tabList') },
+            { key: 'topology', label: t('topo.tab') },
             { key: 'report', label: t('devx.tabReport') },
           ]} />
-          {view === 'report' ? <SnmpReport /> : <>
+          {view === 'report' ? <SnmpReport /> : view === 'topology' ? <TopologyMap /> : <>
           {summary.data && <DevicesOverview summary={summary.data} />}
           <StatusStrip
             aria-label={t('dev.statusSummary')}
