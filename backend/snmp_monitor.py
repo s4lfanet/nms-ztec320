@@ -295,6 +295,11 @@ def collect_discovery(params):
             mt = await c.get([MT_SERIAL, MT_FIRMWARE, MT_VERSION])
             out['mikrotik'] = {'serial': _text(mt.get(MT_SERIAL)), 'firmware': _text(mt.get(MT_FIRMWARE)),
                                'version': _text(mt.get(MT_VERSION))}
+        try:  # topologi (LLDP/CDP/MNDP) — opsional; gagal tidak menggagalkan discovery
+            import snmp_topology
+            out['neighbors'] = await snmp_topology.collect(c, mikrotik='mikrotik' in out)
+        except Exception:
+            out['neighbors'] = None
         return out
     return _run(fn, params, timeout=4, retries=1)
 
@@ -423,6 +428,14 @@ def apply_discovery(dev, data):
     for idx, p in existing.items():
         if idx not in seen and not p.deleted:
             p.deleted = True
+    nb = data.get('neighbors')
+    if nb is not None:
+        import snmp_topology
+        db.session.flush()
+        ports = {idx: {'name': _text(r.get('name')), 'descr': _text(r.get('descr'))} for idx, r in (data.get('ports') or {}).items()}
+        snmp_topology.apply(dev, snmp_topology.parse(nb, ports), _now())
+        db.session.flush()
+        snmp_topology.link_all()
     _event(dev, 'discovery', f'Discovery: {len(seen)} interface, {vendor} {dev.hardware or ""} {dev.os_version or ""}'.strip())
 
 

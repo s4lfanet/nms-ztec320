@@ -6,7 +6,7 @@ from flask_login import login_required
 
 from datetime import timedelta
 
-from models import db, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly
+from models import db, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor
 from helpers import utc_iso, log_action, permission_required
 import snmp_monitor
 
@@ -154,7 +154,23 @@ def snmp_device_get(device_id):
                      'updated_at': _iso(s.updated_at)} for s in sensors],
         'events': [{'id': e.id, 'kind': e.kind, 'severity': e.severity, 'message': e.message,
                     'port_id': e.port_id, 'created_at': _iso(e.created_at)} for e in events],
+        'neighbors': _neighbors_of(d.id),
     })
+
+
+def _neighbors_of(device_id):
+    names = {x.id: x.name for x in SnmpDevice.query.all()}
+    ports = {p.id: p for p in SnmpPort.query.filter_by(deleted=False).all()}
+    rows = SnmpNeighbor.query.filter_by(device_id=device_id).order_by(SnmpNeighbor.local_if_index).all()
+    out = []
+    for n in rows:
+        lp, rp = ports.get(n.port_id), ports.get(n.remote_port_id)
+        out.append({'id': n.id, 'protocol': n.protocol, 'local_port': lp.name if lp else '', 'local_port_id': n.port_id,
+                    'remote_name': n.remote_name, 'remote_ip': n.remote_ip, 'remote_chassis': n.remote_chassis,
+                    'remote_port': rp.name if rp else (n.remote_port or n.remote_port_descr),
+                    'remote_platform': n.remote_platform, 'remote_device_id': n.remote_device_id,
+                    'remote_device_name': names.get(n.remote_device_id, ''), 'last_seen': _iso(n.last_seen)})
+    return out
 
 
 @bp.route('/api/snmp/devices', methods=['POST'])
@@ -200,8 +216,9 @@ def snmp_device_delete(device_id):
     d = db.session.get(SnmpDevice, device_id)
     if not d:
         return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
-    for model in (SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly):
+    for model in (SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor):
         model.query.filter_by(device_id=d.id).delete()
+    SnmpNeighbor.query.filter_by(remote_device_id=d.id).update({'remote_device_id': None, 'remote_port_id': None})
     from models import Notification
     for n in Notification.query.filter_by(target_type='snmp', target_id=d.id, resolved=False).all():
         n.resolved, n.is_read = True, True
@@ -580,3 +597,17 @@ def snmp_report():
         return Response('﻿' + _report_csv(rep), mimetype='text/csv; charset=utf-8',
                         headers={'Content-Disposition': f'attachment; filename=laporan-snmp-{month}.csv'})
     return jsonify({'success': True, **rep})
+
+
+# ─── Tahap 4: topologi (LLDP/CDP/MNDP) ───
+
+import snmp_topology  # noqa: E402
+
+
+@bp.route('/api/snmp/topology', methods=['GET'])
+@login_required
+def snmp_topology_get():
+    nodes, links = snmp_topology.build()
+    for lk in links:
+        lk['last_seen'] = _iso(lk['last_seen'])
+    return jsonify({'success': True, 'nodes': nodes, 'links': links})

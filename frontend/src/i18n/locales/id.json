@@ -2593,5 +2593,21 @@
       "x": "kali",
       "°C": "°C"
     }
+  },
+  "topo": {
+    "tab": "Topologi",
+    "emptyTitle": "Belum ada sambungan terdeteksi",
+    "emptyDesc": "Topologi dibangun dari LLDP, CDP, dan tetangga MikroTik saat discovery (tiap 6 jam, atau tombol Discovery di detail perangkat). Pastikan LLDP/discovery aktif di perangkat.",
+    "showExternal": "Tampilkan perangkat belum terdaftar",
+    "legendOk": "Normal",
+    "legendBad": "≥80% / putus",
+    "tapHint": "Ketuk garis untuk detail, ketuk perangkat untuk membuka",
+    "aria": "Peta topologi: {{n}} perangkat, {{l}} sambungan",
+    "links": "Sambungan ({{n}})",
+    "unregistered": "belum terdaftar",
+    "linkDown": "Putus",
+    "neighbors": "Tetangga",
+    "noNeighbors": "Tidak ada tetangga terdeteksi. Aktifkan LLDP (atau Neighbor Discovery di MikroTik) lalu jalankan Discovery.",
+    "neighborsHint": "Diperbarui setiap discovery. Perangkat yang dikenali otomatis dihubungkan lewat IP, nama (sysName/identity), atau MAC."
   }
 }

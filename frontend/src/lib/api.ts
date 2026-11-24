@@ -277,7 +277,7 @@ export const api = {
   ftthPonUpdate: (id: number, data: Partial<FTTHPonPort>) => request<{ success: boolean; item: FTTHPonPort }>(`/api/ftth/pon/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthPonDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/pon/${id}`, { method: 'DELETE' }),
   snmpDevices: () => request<{ success: boolean; devices: SnmpDevice[]; summary: Record<string, number> }>('/api/snmp/devices'),
-  snmpDevice: (id: number) => request<{ success: boolean; device: SnmpDevice; ports: SnmpPort[]; sensors: SnmpSensor[]; events: SnmpEvent[] }>(`/api/snmp/devices/${id}`),
+  snmpDevice: (id: number) => request<{ success: boolean; device: SnmpDevice; ports: SnmpPort[]; sensors: SnmpSensor[]; events: SnmpEvent[]; neighbors: SnmpNeighbor[] }>(`/api/snmp/devices/${id}`),
   snmpDeviceCreate: (data: SnmpDeviceForm) => request<{ success: boolean; device: SnmpDevice }>('/api/snmp/devices', { method: 'POST', body: JSON.stringify(data) }),
   snmpDeviceUpdate: (id: number, data: Partial<SnmpDeviceForm>) => request<{ success: boolean; device: SnmpDevice }>(`/api/snmp/devices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   snmpDeviceDelete: (id: number) => request<{ success: boolean }>(`/api/snmp/devices/${id}`, { method: 'DELETE' }),
@@ -290,6 +290,7 @@ export const api = {
     return request<SnmpGraphData>(`/api/snmp/graph?${qs}`);
   },
   snmpDeviceMetrics: (id: number) => request<{ success: boolean; metrics: { metric: string; name: string }[] }>(`/api/snmp/devices/${id}/metrics`),
+  snmpTopology: () => request<{ success: boolean; nodes: TopoNode[]; links: TopoLink[] }>('/api/snmp/topology'),
   snmpSummary: () => request<SnmpSummary>('/api/snmp/summary'),
   snmpSettings: () => request<{ success: boolean; settings: Record<string, number>; defaults: Record<string, number> }>('/api/snmp/settings'),
   snmpSettingsSave: (data: Record<string, number>) => request<{ success: boolean; settings: Record<string, number> }>('/api/snmp/settings', { method: 'PUT', body: JSON.stringify(data) }),
@@ -894,6 +895,20 @@ export interface SnmpPort {
   speed_mbps: number | null; mac: string; admin_status: string; oper_status: string; status_changed_at: string | null;
   ignored: boolean; in_bps: number | null; out_bps: number | null; in_err_rate: number | null; out_err_rate: number | null;
   in_errors: number | null; out_errors: number | null; util_pct: number | null; watched: boolean;
+}
+export interface TopoNode {
+  id: string; device_id: number | null; name: string; host: string; status: string; vendor: string; hardware: string; external: boolean;
+}
+export interface TopoLink {
+  id: string; source: string; target: string;
+  source_port: { port_id: number | null; port: string; alias: string }; target_port: { port_id: number | null; port: string; alias: string };
+  protocols: string[]; speed_mbps: number | null; util_pct: number | null; in_bps: number | null; out_bps: number | null;
+  oper_status: string; last_seen: string | null;
+}
+export interface SnmpNeighbor {
+  id: number; protocol: string; local_port: string; local_port_id: number | null; remote_name: string; remote_ip: string;
+  remote_chassis: string; remote_port: string; remote_platform: string; remote_device_id: number | null;
+  remote_device_name: string; last_seen: string | null;
 }
 export interface SnmpProblem {
   category: string; severity: string; title: string; device_id: number; device_name: string; port_id: number | null; since: string | null;

@@ -84,6 +84,19 @@ with app.app_context():
         db.session.flush()
         db.session.add(Notification(severity='critical', category='snmp_port_down', target_type='snmp_port', target_id=up2.id,
                                     title='🔴 Port turun: CCR1072 Core POP Pusat sfp-sfpplus2 (UPLINK-ISP-B)', message='-'))
+        from models import SnmpNeighbor
+        sw_up = SnmpPort(device_id=sw.id, if_index=1, name='sfp-sfpplus1', alias='KE-CORE', speed_mbps=10000,
+                         admin_status='up', oper_status='up')
+        db.session.add(sw_up)
+        db.session.flush()
+        db.session.add(SnmpNeighbor(device_id=core.id, port_id=acc.id, local_if_index=3, protocol='lldp',
+                                    remote_name='sw-rw04', remote_port='sfp-sfpplus1', remote_ip='10.10.4.2',
+                                    remote_device_id=sw.id, remote_port_id=sw_up.id, last_seen=now))
+        db.session.add(SnmpNeighbor(device_id=core.id, port_id=up1.id, local_if_index=1, protocol='lldp',
+                                    remote_name='BORDER-ISP-LINTASARTA-JKT', remote_port='TenGigE0/0/1',
+                                    remote_platform='Cisco IOS XR', remote_ip='103.10.20.1', last_seen=now))
+        db.session.add(SnmpNeighbor(device_id=core.id, port_id=up2.id, local_if_index=2, protocol='mndp',
+                                    remote_name='isp-b-gw', remote_chassis='4c:5e:0c:11:22:33', last_seen=now))
         db.session.add(Notification(severity='warning', category='snmp_cpu', target_type='snmp', target_id=core.id,
                                     title='🟠 CPU tinggi: CCR1072 Core POP Pusat (91%)', message='-'))
     db.session.commit()
