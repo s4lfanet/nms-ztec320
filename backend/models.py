@@ -1529,6 +1529,21 @@ class SnmpPort(db.Model):
     out_pkts = db.Column(db.BigInteger, nullable=True)
     in_pps = db.Column(db.Float, nullable=True)            # paket/detik
     out_pps = db.Column(db.Float, nullable=True)
+    # Detail ala Winbox (snmp_portinfo): spesifikasi, modul SFP, optik (redaman), statistik ethernet
+    mtu = db.Column(db.Integer, nullable=True)
+    duplex = db.Column(db.String(8), nullable=True)
+    ip_addrs = db.Column(db.Text, nullable=True)            # JSON ["10.0.0.1/24", …]
+    sfp_info = db.Column(db.Text, nullable=True)            # JSON vendor/part/serial/tipe/λ/…
+    dom_rx_dbm = db.Column(db.Float, nullable=True)
+    dom_tx_dbm = db.Column(db.Float, nullable=True)
+    dom_temp_c = db.Column(db.Float, nullable=True)
+    dom_volt = db.Column(db.Float, nullable=True)
+    dom_bias_ma = db.Column(db.Float, nullable=True)
+    dom_rx_loss = db.Column(db.Boolean, nullable=True)
+    dom_tx_fault = db.Column(db.Boolean, nullable=True)
+    dom_at = db.Column(db.DateTime, nullable=True)
+    ext_stats = db.Column(db.Text, nullable=True)           # JSON total counter (FCS, drop, pause, …)
+    ext_at = db.Column(db.DateTime, nullable=True)
     in_bps = db.Column(db.Float, nullable=True)
     out_bps = db.Column(db.Float, nullable=True)
     in_err_rate = db.Column(db.Float, nullable=True)     # error/detik

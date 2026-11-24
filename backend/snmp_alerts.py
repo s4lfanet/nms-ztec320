@@ -23,7 +23,8 @@ from models import db, Notification, SystemConfig, SnmpDevice, SnmpPort, SnmpEve
 
 logger = logging.getLogger(__name__)
 
-CATEGORIES = ('snmp_port_down', 'snmp_port_flap', 'snmp_port_util', 'snmp_port_err', 'snmp_cpu', 'snmp_temp')
+CATEGORIES = ('snmp_port_down', 'snmp_port_flap', 'snmp_port_util', 'snmp_port_err', 'snmp_cpu', 'snmp_temp',
+              'snmp_optical')
 
 DEFAULTS = {
     'snmp_down_minutes': 4,
@@ -35,11 +36,13 @@ DEFAULTS = {
     'snmp_err_threshold': 1,
     'snmp_flap_count': 4,
     'snmp_flap_minutes': 30,
+    'snmp_rx_low_dbm': -25,
 }
 LIMITS = {
     'snmp_down_minutes': (1, 120), 'snmp_cpu_threshold': (10, 100), 'snmp_cpu_cycles': (1, 20),
     'snmp_temp_threshold': (30, 120), 'snmp_util_threshold': (10, 100), 'snmp_util_cycles': (1, 20),
     'snmp_err_threshold': (0.01, 100000), 'snmp_flap_count': (2, 50), 'snmp_flap_minutes': (5, 240),
+    'snmp_rx_low_dbm': (-40, 0),
 }
 
 
@@ -53,7 +56,7 @@ def get_settings():
             v = d
         lo, hi = LIMITS[k]
         v = min(max(v, lo), hi)
-        out[k] = int(v) if isinstance(d, int) and k != 'snmp_err_threshold' else v
+        out[k] = int(v) if isinstance(d, int) and k not in ('snmp_err_threshold', 'snmp_rx_low_dbm') else v
     return out
 
 
@@ -69,7 +72,7 @@ def save_settings(data):
             continue
         lo, hi = LIMITS[k]
         v = min(max(v, lo), hi)
-        txt = str(v) if k == 'snmp_err_threshold' else str(int(round(v)))
+        txt = str(v) if k in ('snmp_err_threshold', 'snmp_rx_low_dbm') else str(int(round(v)))
         row = SystemConfig.query.filter_by(key=k).first()
         if row:
             if row.value != txt:
@@ -216,6 +219,22 @@ def _check_port(c, dev, p, cfg):
                  f'⚠️ Pelanggan di belakang port ini bisa merasakan lambat. Pertimbangkan upgrade kapasitas.',
                  f'✅ Utilisasi normal: {dev.name} {label}',
                  f'✅ Port {label} di {dev.name} kembali normal ({cur:.0f}%).')
+    # Redaman SFP (optik): RX di bawah batas saat link masih UP = sinyal menurun (peringatan dini).
+    # Link putus karena tidak ada cahaya sudah ditangani alert port turun — tidak dikirim dua kali.
+    if p.dom_at is not None and p.dom_rx_dbm is not None and p.oper_status == 'up':
+        th = cfg['snmp_rx_low_dbm']
+        rx = p.dom_rx_dbm
+        if c.is_open('snmp_optical', 'snmp_port', p.id):
+            bad = rx < th + 1   # histeresis 1 dB
+        else:
+            bad = rx < th
+        rx_txt = f'{rx:.2f} dBm'
+        tx_txt = f'{p.dom_tx_dbm:.2f} dBm' if p.dom_tx_dbm is not None else '-'
+        c.toggle(dev, 'snmp_optical', 'snmp_port', p.id, bad, 'warning',
+                 f'🔦 Redaman SFP: {dev.name} {label} (RX {rx_txt})',
+                 _head(dev, '🔦 REDAMAN SFP BURUK') + f'\nPort: {label}\nRX: {rx_txt} (batas {th:g} dBm)\nTX: {tx_txt}'
+                 + '\n\n⚠️ Cek patch cord/konektor kotor, tekukan kabel, dan sisi perangkat lawan.',
+                 f'✅ Redaman normal: {dev.name} {label}', f'✅ RX port {label} di {dev.name} normal lagi ({rx_txt}).')
     # Error
     th = cfg['snmp_err_threshold']
     err = (p.in_err_rate or 0) + (p.out_err_rate or 0)

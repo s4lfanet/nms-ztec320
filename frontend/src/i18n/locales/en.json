@@ -2588,7 +2588,8 @@
       "snmp_port_util": "Port busy",
       "snmp_port_err": "Port errors",
       "snmp_cpu": "High CPU",
-      "snmp_temp": "High temperature"
+      "snmp_temp": "High temperature",
+      "snmp_optical": "Poor SFP optical level"
     },
     "th": {
       "snmp_down_minutes": "Alert on down after",
@@ -2599,7 +2600,8 @@
       "snmp_flap_minutes": "…within",
       "snmp_cpu_threshold": "High CPU at",
       "snmp_cpu_cycles": "…for",
-      "snmp_temp_threshold": "High temperature at"
+      "snmp_temp_threshold": "High temperature at",
+      "snmp_rx_low_dbm": "SFP RX too low below"
     },
     "unit": {
       "min": "min",
@@ -2607,7 +2609,8 @@
       "poll": "polls",
       "err": "/s",
       "x": "times",
-      "°C": "°C"
+      "°C": "°C",
+      "dBm": "dBm"
     }
   },
   "topo": {
@@ -2625,5 +2628,79 @@
     "neighbors": "Neighbors",
     "noNeighbors": "No neighbors detected. Enable LLDP (or Neighbor Discovery on MikroTik) and run Discovery.",
     "neighborsHint": "Updated on every discovery. Known devices are linked automatically by IP, name (sysName/identity) or MAC."
+  },
+  "pdet": {
+    "spec": "Specification",
+    "type": "Type",
+    "speed": "Speed",
+    "duplex": "Duplex",
+    "dx": {
+      "full": "Full",
+      "half": "Half"
+    },
+    "ip": "IP address",
+    "descr": "Description",
+    "changed": "Status changed",
+    "module": "SFP module",
+    "modType": "Module type",
+    "vendor": "Vendor",
+    "part": "Part number",
+    "serial": "Serial number",
+    "wavelength": "Wavelength",
+    "connector": "Connector",
+    "distance": "Max distance",
+    "rates": "Supported rates",
+    "optical": "Optical levels (DOM)",
+    "rx": "Receive power (RX)",
+    "tx": "Transmit power (TX)",
+    "rxLoss": "RX LOSS — no light received",
+    "txFault": "TX FAULT — module laser fault",
+    "temp": "Module temperature",
+    "volt": "Supply voltage",
+    "bias": "TX bias current",
+    "lowAt": "RX alert threshold",
+    "updated": "Updated: {{ago}}",
+    "stats": "Ethernet statistics",
+    "sg": {
+      "rxErr": "Receive errors",
+      "txErr": "Transmit errors",
+      "drops": "Drops & link",
+      "casts": "Broadcast, multicast, pause"
+    },
+    "st": {
+      "rx_fcs": "FCS errors",
+      "rx_align": "Align errors",
+      "rx_fragment": "Fragments",
+      "rx_too_short": "Too short",
+      "rx_too_long": "Too long",
+      "rx_length": "Length errors",
+      "rx_code": "Code errors",
+      "rx_carrier": "Carrier errors",
+      "rx_jabber": "Jabber",
+      "rx_overflow": "Overflow",
+      "tx_fcs": "FCS errors",
+      "tx_underrun": "Underrun",
+      "tx_collision": "Collisions",
+      "tx_late_collision": "Late collisions",
+      "tx_excessive_collision": "Excessive collisions",
+      "tx_deferred": "Deferred",
+      "tx_jabber": "Jabber",
+      "tx_fragment": "Fragments",
+      "tx_too_short": "Too short",
+      "tx_too_long": "Too long",
+      "rx_drop": "RX drops",
+      "tx_drop": "TX drops",
+      "in_discards": "In discards",
+      "out_discards": "Out discards",
+      "link_downs": "Link downs",
+      "rx_broadcast": "RX broadcast",
+      "rx_multicast": "RX multicast",
+      "rx_pause": "RX pause",
+      "tx_broadcast": "TX broadcast",
+      "tx_multicast": "TX multicast",
+      "tx_pause": "TX pause"
+    },
+    "statsNote": "Totals since the device booted (like the Ethernet tab in Winbox). Error counts that keep rising point to a cable/connector/SFP problem.",
+    "opticalGraph": "Optical level history (dBm)"
   }
 }

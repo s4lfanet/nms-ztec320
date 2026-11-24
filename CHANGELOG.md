@@ -4,6 +4,23 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Detail port ala Winbox/Observium: modul SFP, redaman, statistik ethernet
+
+#### Ditambahkan
+- Buka port di Monitoring SNMP → detail → Port untuk melihat detail lengkap:
+  - **Spesifikasi:** tipe interface, kecepatan, duplex, MTU, MAC, alamat IP, ifIndex, waktu status berubah.
+  - **Modul SFP:** jenis (SFP/SFP+/QSFP…), vendor, part number, nomor seri, panjang gelombang, konektor, jarak maksimum, dan rate yang didukung.
+  - **Redaman optik (DOM):**
+    - daya terima (RX) dan kirim (TX) dalam dBm, berwarna sesuai kualitas;
+    - suhu modul, tegangan, arus bias, peringatan RX LOSS / TX FAULT;
+    - grafik riwayat redaman.
+  - **Statistik ethernet seperti di Winbox:** FCS/align/fragment error, drop, discard, collision, pause, broadcast/multicast, dan jumlah link down.
+- Di daftar port, port SFP langsung menunjukkan jenis modul dan RX dBm.
+- **Alert redaman SFP:** port dipantau yang RX-nya turun di bawah ambang (default −25 dBm, bisa diatur di Ambang alert) dikirim lewat WA/Telegram, dengan pesan saat pulih.
+
+#### Diperbaiki
+- Error port MikroTik selalu 0, karena RouterOS tidak mengisi counter error standar. Sekarang error diambil dari statistik ethernet MikroTik, jadi grafik dan alert error port terisi dengan benar.
+
 ### 2026-11-25 — Port ala Observium: grafik mini, paket/detik & mode Live
 
 #### Ditambahkan

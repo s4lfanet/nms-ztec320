@@ -14,6 +14,7 @@ import { fmtBps, fmtSpeed, fmtUptime, STATUS_DOT } from '../lib/snmpFormat';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { DeviceFormModal } from './Devices';
 import { PortLive, PortSpark } from '../components/snmp/PortLive';
+import { PortDetail, rxTone } from '../components/snmp/PortDetail';
 import { SnmpGraph, RangePicker, type GraphRange, type GraphUnit } from '../components/snmp/SnmpGraph';
 
 const PALETTE = ['var(--color-accent)', 'var(--color-info)', 'var(--color-warning)', 'var(--color-success)', 'var(--color-danger)', '#a78bfa'];
@@ -194,6 +195,8 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
   const [filter, setFilter] = useState<'active' | 'down' | 'watched' | 'all'>('active');
   const shown = useMemo(() => ports.filter(p =>
     filter === 'all' ? true : filter === 'watched' ? p.watched : filter === 'down' ? (p.admin_status === 'up' && p.oper_status !== 'up' && !p.ignored) : (p.admin_status === 'up' && !p.ignored)), [ports, filter]);
+  const { data: snmpCfg } = useQuery({ queryKey: ['snmp-settings'], queryFn: api.snmpSettings, staleTime: 300_000 });
+  const rxLow = snmpCfg?.settings.snmp_rx_low_dbm ?? -25;
   const { data: sparks } = useQuery({ queryKey: ['snmp-sparks', deviceId], queryFn: () => api.snmpSparks(deviceId), refetchInterval: 300_000 });
   const fmtPps = (v?: number | null) => (v == null ? null : v >= 1000 ? `${(v / 1000).toFixed(1)}k pps` : `${Math.round(v)} pps`);
   const update = async (p: SnmpPort, data: { ignored?: boolean; watched?: boolean }) => {
@@ -217,7 +220,9 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
                 className="flex items-center gap-2 min-w-0 sm:w-[38%] text-left" title={t('graph.showTraffic')}>
                 <span className={cn('w-2 h-2 rounded-full shrink-0', p.admin_status !== 'up' ? 'bg-tx3' : p.oper_status === 'up' ? 'bg-success' : 'bg-danger')} />
                 <span className="min-w-0">
-                  <span className="block text-sm text-tx1 truncate">{p.name}{p.speed_mbps ? <span className="text-xs text-tx3"> · {fmtSpeed(p.speed_mbps)}</span> : null}</span>
+                  <span className="block text-sm text-tx1 truncate">{p.name}{p.speed_mbps ? <span className="text-xs text-tx3"> · {fmtSpeed(p.speed_mbps)}</span> : null}
+                    {p.sfp_type ? <span className="text-xs text-tx3"> · {p.sfp_type}</span> : null}
+                    {p.rx_dbm != null ? <span className={cn('text-xs tabular-nums', rxTone(p.rx_dbm, rxLow))} title={t('pdet.rx')}> · RX {p.rx_dbm.toFixed(1)} dBm</span> : null}</span>
                   {p.alias && <span className="block text-xs text-tx3 truncate">{p.alias}</span>}
                 </span>
               </button>
@@ -256,7 +261,12 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
               {openPort === p.id && (
                 <div className="basis-full w-full pt-2 space-y-3">
                   {p.oper_status === 'up' && <PortLive portId={p.id} speedMbps={p.speed_mbps} />}
+                  <PortDetail port={p} />
                   <RangePicker value={range} onChange={setRange} />
+                  {p.rx_dbm != null && (
+                    <SnmpGraph deviceId={deviceId} portId={p.id} range={range} unit="dbm" height={130} title={t('pdet.opticalGraph')}
+                      series={[{ metric: 'dom_rx', label: 'RX', color: 'var(--color-success)' }, { metric: 'dom_tx', label: 'TX', color: 'var(--color-info)' }]} />
+                  )}
                   <SnmpGraph deviceId={deviceId} portId={p.id} range={range} unit="bps" title={t('graph.traffic')}
                     series={[{ metric: 'in', label: t('dev.in'), color: 'var(--color-success)' }, { metric: 'out', label: t('dev.out'), color: 'var(--color-info)' }]} />
                   <SnmpGraph deviceId={deviceId} portId={p.id} range={range} unit="pps" height={110} title={t('live.packets')}

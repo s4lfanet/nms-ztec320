@@ -2588,7 +2588,8 @@
       "snmp_port_util": "Port padat",
       "snmp_port_err": "Error port",
       "snmp_cpu": "CPU tinggi",
-      "snmp_temp": "Suhu tinggi"
+      "snmp_temp": "Suhu tinggi",
+      "snmp_optical": "Redaman SFP buruk"
     },
     "th": {
       "snmp_down_minutes": "Port/perangkat turun dialert setelah",
@@ -2599,7 +2600,8 @@
       "snmp_flap_minutes": "…dalam",
       "snmp_cpu_threshold": "CPU tinggi",
       "snmp_cpu_cycles": "…selama",
-      "snmp_temp_threshold": "Suhu tinggi"
+      "snmp_temp_threshold": "Suhu tinggi",
+      "snmp_rx_low_dbm": "Redaman RX SFP terlalu rendah di bawah"
     },
     "unit": {
       "min": "menit",
@@ -2607,7 +2609,8 @@
       "poll": "poll",
       "err": "/dtk",
       "x": "kali",
-      "°C": "°C"
+      "°C": "°C",
+      "dBm": "dBm"
     }
   },
   "topo": {
@@ -2625,5 +2628,79 @@
     "neighbors": "Tetangga",
     "noNeighbors": "Tidak ada tetangga terdeteksi. Aktifkan LLDP (atau Neighbor Discovery di MikroTik) lalu jalankan Discovery.",
     "neighborsHint": "Diperbarui setiap discovery. Perangkat yang dikenali otomatis dihubungkan lewat IP, nama (sysName/identity), atau MAC."
+  },
+  "pdet": {
+    "spec": "Spesifikasi",
+    "type": "Tipe",
+    "speed": "Kecepatan",
+    "duplex": "Duplex",
+    "dx": {
+      "full": "Full",
+      "half": "Half"
+    },
+    "ip": "Alamat IP",
+    "descr": "Deskripsi",
+    "changed": "Status berubah",
+    "module": "Modul SFP",
+    "modType": "Jenis modul",
+    "vendor": "Vendor",
+    "part": "Part number",
+    "serial": "Nomor seri",
+    "wavelength": "Panjang gelombang",
+    "connector": "Konektor",
+    "distance": "Jarak maks",
+    "rates": "Rate didukung",
+    "optical": "Redaman optik (DOM)",
+    "rx": "Daya terima (RX)",
+    "tx": "Daya kirim (TX)",
+    "rxLoss": "RX LOSS — tidak ada cahaya masuk",
+    "txFault": "TX FAULT — laser modul bermasalah",
+    "temp": "Suhu modul",
+    "volt": "Tegangan",
+    "bias": "Arus bias TX",
+    "lowAt": "Batas alert RX",
+    "updated": "Diperbarui: {{ago}}",
+    "stats": "Statistik ethernet",
+    "sg": {
+      "rxErr": "Error terima",
+      "txErr": "Error kirim",
+      "drops": "Drop & link",
+      "casts": "Broadcast, multicast, pause"
+    },
+    "st": {
+      "rx_fcs": "FCS error",
+      "rx_align": "Align error",
+      "rx_fragment": "Fragment",
+      "rx_too_short": "Terlalu pendek",
+      "rx_too_long": "Terlalu panjang",
+      "rx_length": "Length error",
+      "rx_code": "Code error",
+      "rx_carrier": "Carrier error",
+      "rx_jabber": "Jabber",
+      "rx_overflow": "Overflow",
+      "tx_fcs": "FCS error",
+      "tx_underrun": "Underrun",
+      "tx_collision": "Collision",
+      "tx_late_collision": "Late collision",
+      "tx_excessive_collision": "Excessive collision",
+      "tx_deferred": "Deferred",
+      "tx_jabber": "Jabber",
+      "tx_fragment": "Fragment",
+      "tx_too_short": "Terlalu pendek",
+      "tx_too_long": "Terlalu panjang",
+      "rx_drop": "RX drop",
+      "tx_drop": "TX drop",
+      "in_discards": "Discard masuk",
+      "out_discards": "Discard keluar",
+      "link_downs": "Link down",
+      "rx_broadcast": "RX broadcast",
+      "rx_multicast": "RX multicast",
+      "rx_pause": "RX pause",
+      "tx_broadcast": "TX broadcast",
+      "tx_multicast": "TX multicast",
+      "tx_pause": "TX pause"
+    },
+    "statsNote": "Total sejak perangkat menyala (seperti tab Ethernet di Winbox). Angka error yang terus naik menandakan kabel/konektor/SFP bermasalah.",
+    "opticalGraph": "Riwayat redaman (dBm)"
   }
 }

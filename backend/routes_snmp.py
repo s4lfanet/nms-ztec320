@@ -4,6 +4,7 @@ import threading
 from flask import Blueprint, jsonify, request, current_app
 from flask_login import login_required, current_user
 
+import json
 from datetime import timedelta
 
 from models import db, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor
@@ -61,6 +62,9 @@ def _port_dict(p):
         'in_err_rate': p.in_err_rate, 'out_err_rate': p.out_err_rate,
         'in_errors': p.in_errors, 'out_errors': p.out_errors,
         'in_pps': p.in_pps, 'out_pps': p.out_pps,
+        # ringkas untuk daftar port; detail lengkap di GET /api/snmp/ports/<id>
+        'rx_dbm': p.dom_rx_dbm, 'tx_dbm': p.dom_tx_dbm, 'rx_loss': p.dom_rx_loss,
+        'sfp_type': (json.loads(p.sfp_info).get('type') if p.sfp_info else None) or None,
         # counter sudah pernah dibaca tapi laju belum ada → UI menulis "menunggu poll berikutnya"
         'has_counters': p.counter_at is not None,
         'util_pct': round(max(p.in_bps or 0, p.out_bps or 0) / (p.speed_mbps * 1e6) * 100, 1) if p.speed_mbps else None,
@@ -683,3 +687,17 @@ def snmp_device_sparks(device_id):
         out[port_id] = {k: [round(t / n, 1) if n else None for t, n in m.get(k, [[0, 0]] * SPARK_POINTS)]
                         for k in ('in', 'out')}
     return jsonify({'success': True, 'points': SPARK_POINTS, 'step_s': int(step), 'ports': out})
+
+
+# ─── Tahap 5: detail port ala Winbox ───
+
+import snmp_portinfo  # noqa: E402
+
+
+@bp.route('/api/snmp/ports/<int:port_id>', methods=['GET'])
+@login_required
+def snmp_port_detail(port_id):
+    p = db.session.get(SnmpPort, port_id)
+    if not p or p.deleted:
+        return jsonify({'success': False, 'message': 'Port tidak ditemukan'}), 404
+    return jsonify({'success': True, 'port': _port_dict(p), 'detail': snmp_portinfo.detail_dict(p)})
