@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from '../components/Toast';
 import {
@@ -8,7 +8,7 @@ import {
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card } from '../components/ui';
-import { refreshAfterServerUpdate, type RefreshPhase } from '../lib/swUpdate';
+import { refreshAfterServerUpdate, uiIsStale, type RefreshPhase } from '../lib/swUpdate';
 import { confirm as confirmDialog } from '../components/ConfirmDialog';
 
 interface UpdateCheckResult {
@@ -36,6 +36,14 @@ export function SystemUpdate() {
   const [applyResult, setApplyResult] = useState<UpdateApplyResult | null>(null);
   const [reloadPhase, setReloadPhase] = useState<RefreshPhase | null>(null);
   const [manualReload, setManualReload] = useState(false);
+  // Tombol "Muat ulang tampilan" hanya bila tampilan memang lebih lama dari server
+  const [uiStale, setUiStale] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!result?.up_to_date) return;
+    let alive = true;
+    uiIsStale().then(v => { if (alive) setUiStale(v); });
+    return () => { alive = false; };
+  }, [result]);
   // Klik manual: tampilkan spinner seketika agar jelas tombol merespons.
   const reloadNow = () => {
     if (manualReload) return;
@@ -140,7 +148,12 @@ export function SystemUpdate() {
                 <GitBranch size={12} /> Branch: <span className="font-mono text-tx2">{result.branch}</span>
               </div>
 
-              {result.up_to_date && (
+              {result.up_to_date && uiStale === false && (
+                <p className="flex items-center gap-2 p-3 rounded-lg bg-glass border border-brd text-xs text-tx2">
+                  <CheckCircle2 size={14} className="text-success shrink-0" />{t('pg_sysupdate.uiCurrent')}
+                </p>
+              )}
+              {result.up_to_date && uiStale !== false && (
                 <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-glass border border-brd text-xs text-tx3">
                   <span className="flex-1 min-w-[12rem]">{t('pg_sysupdate.staleUiHint')}</span>
                   <Button variant="secondary" icon={<RefreshCw size={14} />} loading={manualReload} onClick={reloadNow}>

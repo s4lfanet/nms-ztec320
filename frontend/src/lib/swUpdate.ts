@@ -21,8 +21,7 @@ export function initServiceWorker() {
   registerSW({
     immediate: true,
     onNeedRefresh() {
-      pending = true;
-      listeners.forEach(fn => fn());
+      void handleNeedRefresh();
     },
     // Browser hanya memeriksa sw.js baru saat halaman dimuat penuh. PWA di HP
     // yang di-resume dari latar belakang (atau tab yang dibiarkan terbuka)
@@ -45,6 +44,61 @@ export function initServiceWorker() {
 }
 
 export const swUpdatePending = () => pending;
+
+/** Berkas bundel utama yang sedang berjalan di halaman ini (mis. /assets/index-AbC123.js). */
+export function runningBuild(): string | null {
+  const el = document.querySelector<HTMLScriptElement>('script[type="module"][src*="/assets/index-"]');
+  return el ? new URL(el.src, window.location.href).pathname : null;
+}
+
+/** Bundel utama yang dirujuk index.html di server SAAT INI. Query `?v=` membuat permintaan
+ *  tidak cocok dengan precache service worker, jadi selalu diambil dari jaringan. */
+export async function serverBuild(): Promise<string | null> {
+  try {
+    const r = await fetch(`/index.html?v=${Date.now()}`, { cache: 'no-store', credentials: 'same-origin' });
+    if (!r.ok) return null;
+    const m = (await r.text()).match(/<script[^>]*\ssrc="([^"]*\/assets\/index-[^"]+\.js)"/);
+    return m ? new URL(m[1], window.location.href).pathname : null;
+  } catch {
+    return null;
+  }
+}
+
+/** true = tampilan lebih lama dari server; false = sudah sama; null = tidak bisa dipastikan. */
+export async function uiIsStale(): Promise<boolean | null> {
+  const run = runningBuild();
+  if (!run) return null;
+  const srv = await serverBuild();
+  return srv ? srv !== run : null;
+}
+
+/**
+ * Service worker baru selesai terpasang. Pemberitahuan "Muat ulang" HANYA tampil bila
+ * tampilan yang berjalan memang lebih lama dari server. Bila sudah sama (mis. halaman
+ * baru saja dimuat ulang setelah Apply Update, atau sw.js berubah tanpa perubahan
+ * aplikasi), worker baru diaktifkan diam-diam tanpa reload — dulu kasus ini membuat
+ * pemberitahuan muncul berulang padahal tampilan sudah terbaru.
+ */
+async function handleNeedRefresh() {
+  const stale = await uiIsStale();
+  if (stale === false) {
+    await activateSilently();
+    return;
+  }
+  pending = true;
+  listeners.forEach(fn => fn());
+}
+
+async function activateSilently() {
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    const w = reg?.waiting;
+    if (!w) return;
+    // sw-reload.js memuat ulang halaman saat controllerchange — tidak perlu di sini
+    (window as unknown as { __nmsSilentSwap?: boolean }).__nmsSilentSwap = true;
+    w.postMessage({ type: 'SKIP_WAITING' });
+  } catch { /* abaikan */ }
+}
 
 export function onSwUpdate(fn: () => void) {
   listeners.add(fn);

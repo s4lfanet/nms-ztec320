@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Perbaikan pemberitahuan "Muat ulang" yang muncul berulang
+
+#### Diperbaiki
+- Pemberitahuan versi baru dan tombol **Muat ulang** terus muncul walau Apply Update sudah selesai dan halaman sudah dimuat ulang.
+- Sekarang aplikasi mengecek dulu apakah tampilan yang berjalan benar-benar lebih lama daripada di server:
+  - kalau sudah sama, versi service worker baru dipasang diam-diam tanpa pemberitahuan dan tanpa reload;
+  - di halaman Update Sistem, tombol "Muat ulang tampilan" hanya muncul bila tampilan memang lama; selain itu tertulis "Tampilan di perangkat ini sudah versi terbaru".
+
 ### 2026-11-24 — Pemantauan perangkat SNMP tahap 4: topologi otomatis
 
 #### Ditambahkan
