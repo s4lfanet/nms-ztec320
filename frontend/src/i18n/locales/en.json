@@ -2489,6 +2489,36 @@
       "notPresent": "Not present",
       "testing": "Testing",
       "unknown": "Unknown"
+    },
+    "tabGraphs": "Graphs"
+  },
+  "graph": {
+    "range": "Time range",
+    "r": {
+      "6h": "6h",
+      "24h": "24h",
+      "7d": "7d",
+      "30d": "30d",
+      "1y": "1y"
+    },
+    "noData": "No data for this range yet — the graph fills after a few polls (every 5 minutes).",
+    "waitFirst": "No history yet. Graphs appear after the second poll (≈10 minutes after adding the device).",
+    "now": "Now",
+    "avg": "Average",
+    "max": "Max",
+    "p95": "95th",
+    "traffic": "Traffic",
+    "errors": "Errors",
+    "showTraffic": "Show port graph",
+    "kind": {
+      "cpu": "CPU",
+      "memory": "Memory",
+      "temperature": "Temperature",
+      "voltage": "Voltage",
+      "power": "Power",
+      "current": "Current",
+      "fan": "Fans",
+      "storage": "Storage"
     }
   }
 }

@@ -507,6 +507,44 @@ def apply_poll(dev, data, now=None):
             row = SnmpSensor(device_id=dev.id, kind=s['kind'], key=s['key'])
             db.session.add(row)
         row.name, row.value, row.unit, row.updated_at = s['name'][:150], s['value'], s['unit'], now
+    # Riwayat untuk grafik
+    samples = []
+    for p in ports.values():
+        if p.deleted or p.counter_at != now:
+            continue
+        for metric, v in (('in', p.in_bps), ('out', p.out_bps), ('in_err', p.in_err_rate), ('out_err', p.out_err_rate)):
+            if v is not None:
+                samples.append((p.id, metric, v))
+    for s in sensors:
+        if s['value'] is not None and s['kind'] != 'status':
+            samples.append((None, f"{s['kind']}:{s['key']}", float(s['value'])))
+    record_samples(dev.id, samples, now)
+
+
+def _hour(ts):
+    return ts.replace(minute=0, second=0, microsecond=0)
+
+
+def record_samples(device_id, samples, now):
+    """Simpan sampel mentah + perbarui ringkasan jam berjalan (satu query baca)."""
+    from models import db, SnmpSample, SnmpSampleHourly
+    if not samples:
+        return
+    hour = _hour(now)
+    rows = {(r.port_id, r.metric): r for r in
+            SnmpSampleHourly.query.filter_by(device_id=device_id, hour=hour).all()}
+    for port_id, metric, v in samples:
+        db.session.add(SnmpSample(device_id=device_id, port_id=port_id, metric=metric, ts=now, value=v))
+        r = rows.get((port_id, metric))
+        if not r:
+            r = SnmpSampleHourly(device_id=device_id, port_id=port_id, metric=metric, hour=hour,
+                                 total=0.0, count=0, vmax=v, vmin=v)
+            db.session.add(r)
+            rows[(port_id, metric)] = r
+        r.total = (r.total or 0) + v
+        r.count = (r.count or 0) + 1
+        r.vmax = v if r.vmax is None else max(r.vmax, v)
+        r.vmin = v if r.vmin is None else min(r.vmin, v)
 
 
 def set_status(dev, status, reason='', now=None):
@@ -582,10 +620,16 @@ def poll_all(devices=None):
     return len(devs)
 
 
+RAW_RETENTION_HOURS = 48
+HOURLY_RETENTION_DAYS = 400
+
+
 def prune_events():
-    from models import db, SnmpEvent
-    cutoff = _now() - timedelta(days=EVENT_RETENTION_DAYS)
-    SnmpEvent.query.filter(SnmpEvent.created_at < cutoff).delete()
+    from models import db, SnmpEvent, SnmpSample, SnmpSampleHourly
+    now = _now()
+    SnmpEvent.query.filter(SnmpEvent.created_at < now - timedelta(days=EVENT_RETENTION_DAYS)).delete()
+    SnmpSample.query.filter(SnmpSample.ts < now - timedelta(hours=RAW_RETENTION_HOURS)).delete()
+    SnmpSampleHourly.query.filter(SnmpSampleHourly.hour < now - timedelta(days=HOURLY_RETENTION_DAYS)).delete()
     db.session.commit()
 
 
@@ -614,7 +658,7 @@ def run_snmp_poller(app):
                         poll_all()
                     finally:
                         _poll_lock.release()
-                if time.time() - last_prune > 86400:
+                if time.time() - last_prune > 3600:
                     prune_events()
                     last_prune = time.time()
             except Exception as e:

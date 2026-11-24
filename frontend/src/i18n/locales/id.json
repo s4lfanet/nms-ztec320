@@ -2489,6 +2489,36 @@
       "notPresent": "Tidak terpasang",
       "testing": "Pengujian",
       "unknown": "Tidak diketahui"
+    },
+    "tabGraphs": "Grafik"
+  },
+  "graph": {
+    "range": "Rentang waktu",
+    "r": {
+      "6h": "6 jam",
+      "24h": "24 jam",
+      "7d": "7 hari",
+      "30d": "30 hari",
+      "1y": "1 tahun"
+    },
+    "noData": "Belum ada data untuk rentang ini — grafik terisi setelah beberapa kali poll (tiap 5 menit).",
+    "waitFirst": "Belum ada riwayat. Grafik muncul setelah poll kedua (±10 menit setelah perangkat ditambahkan).",
+    "now": "Sekarang",
+    "avg": "Rata-rata",
+    "max": "Maks",
+    "p95": "95%",
+    "traffic": "Trafik",
+    "errors": "Error",
+    "showTraffic": "Tampilkan grafik port",
+    "kind": {
+      "cpu": "CPU",
+      "memory": "Memori",
+      "temperature": "Suhu",
+      "voltage": "Tegangan",
+      "power": "Daya",
+      "current": "Arus",
+      "fan": "Kipas",
+      "storage": "Penyimpanan"
     }
   }
 }

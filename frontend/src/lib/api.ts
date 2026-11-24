@@ -284,6 +284,12 @@ export const api = {
   snmpDeviceDiscover: (id: number) => request<{ success: boolean; message: string }>(`/api/snmp/devices/${id}/discover`, { method: 'POST' }),
   snmpTest: (data: Partial<SnmpDeviceForm> & { device_id?: number }) =>
     request<{ success: boolean; ok: boolean; sys_name?: string; sys_descr?: string; vendor?: string; ms?: number; error?: string }>('/api/snmp/test', { method: 'POST', body: JSON.stringify(data) }),
+  snmpGraph: (q: { device_id: number; port_id?: number; metrics: string; range: string }) => {
+    const qs = new URLSearchParams({ device_id: String(q.device_id), metrics: q.metrics, range: q.range });
+    if (q.port_id) qs.set('port_id', String(q.port_id));
+    return request<SnmpGraphData>(`/api/snmp/graph?${qs}`);
+  },
+  snmpDeviceMetrics: (id: number) => request<{ success: boolean; metrics: { metric: string; name: string }[] }>(`/api/snmp/devices/${id}/metrics`),
   snmpPortUpdate: (id: number, data: { ignored: boolean }) => request<{ success: boolean; port: SnmpPort }>(`/api/snmp/ports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthExport: () => '/api/ftth/export',
   ftthExportJson: () => '/api/ftth/export.json',
@@ -881,6 +887,12 @@ export interface SnmpPort {
   speed_mbps: number | null; mac: string; admin_status: string; oper_status: string; status_changed_at: string | null;
   ignored: boolean; in_bps: number | null; out_bps: number | null; in_err_rate: number | null; out_err_rate: number | null;
   in_errors: number | null; out_errors: number | null; util_pct: number | null;
+}
+export interface SnmpGraphStat { current: number | null; avg: number | null; max: number | null; p95: number | null; samples: number }
+export interface SnmpGraphData {
+  success: boolean; source: 'raw' | 'hourly'; range: string;
+  series: Record<string, { t: string; avg: number; max: number | null }[]>;
+  stats: Record<string, SnmpGraphStat>;
 }
 export interface SnmpSensor { id: number; kind: string; name: string; value: number | null; unit: string; updated_at: string | null }
 export interface SnmpEvent { id: number; kind: string; severity: string; message: string; port_id: number | null; created_at: string | null }

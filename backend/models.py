@@ -1555,3 +1555,35 @@ class SnmpEvent(db.Model):
     message = db.Column(db.String(500), default='')
     port_id = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class SnmpSample(db.Model):
+    """Sampel mentah per poll (5 menit) — disimpan ±48 jam untuk grafik 6j/24j.
+    metric: in/out (bit/s), in_err/out_err (error/dtk) untuk port;
+    cpu/mem/<kind>:<key> sensor untuk perangkat (port_id NULL)."""
+    __tablename__ = 'snmp_samples'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, nullable=False)
+    port_id = db.Column(db.Integer, nullable=True)
+    metric = db.Column(db.String(80), nullable=False)
+    ts = db.Column(db.DateTime, nullable=False)
+    value = db.Column(db.Float, nullable=False)
+    __table_args__ = (db.Index('ix_snmp_samples_series', 'device_id', 'port_id', 'metric', 'ts'),
+                      db.Index('ix_snmp_samples_ts', 'ts'))
+
+
+class SnmpSampleHourly(db.Model):
+    """Ringkasan per jam (ala RRA Observium) — disimpan ±13 bulan untuk 7h/30h/1th
+    dan laporan bulanan. avg = total / count."""
+    __tablename__ = 'snmp_samples_hourly'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, nullable=False)
+    port_id = db.Column(db.Integer, nullable=True)
+    metric = db.Column(db.String(80), nullable=False)
+    hour = db.Column(db.DateTime, nullable=False)
+    total = db.Column(db.Float, default=0.0)
+    count = db.Column(db.Integer, default=0)
+    vmax = db.Column(db.Float, nullable=True)
+    vmin = db.Column(db.Float, nullable=True)
+    __table_args__ = (db.UniqueConstraint('device_id', 'port_id', 'metric', 'hour', name='uq_snmp_hourly'),
+                      db.Index('ix_snmp_hourly_hour', 'hour'))

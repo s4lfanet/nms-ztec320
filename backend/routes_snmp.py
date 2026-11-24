@@ -4,7 +4,9 @@ import threading
 from flask import Blueprint, jsonify, request, current_app
 from flask_login import login_required
 
-from models import db, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent
+from datetime import timedelta
+
+from models import db, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly
 from helpers import utc_iso, log_action, permission_required
 import snmp_monitor
 
@@ -198,7 +200,7 @@ def snmp_device_delete(device_id):
     d = db.session.get(SnmpDevice, device_id)
     if not d:
         return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
-    for model in (SnmpPort, SnmpSensor, SnmpEvent):
+    for model in (SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly):
         model.query.filter_by(device_id=d.id).delete()
     from models import Notification
     for n in Notification.query.filter_by(target_type='snmp', target_id=d.id, resolved=False).all():
@@ -254,3 +256,87 @@ def snmp_port_update(port_id):
         p.ignored = bool(data['ignored'])
     db.session.commit()
     return jsonify({'success': True, 'port': _port_dict(p)})
+
+
+# ─── Grafik riwayat (tahap 2) ───
+
+RANGES = {  # rentang → (durasi, sumber, bucket detik)
+    '6h': (timedelta(hours=6), 'raw', 0),
+    '24h': (timedelta(hours=24), 'raw', 0),
+    '7d': (timedelta(days=7), 'hourly', 3600),
+    '30d': (timedelta(days=30), 'hourly', 3600 * 3),
+    '1y': (timedelta(days=365), 'hourly', 86400),
+}
+
+
+def _p95(values):
+    if not values:
+        return None
+    v = sorted(values)
+    return v[max(0, int(round(0.95 * len(v))) - 1)]
+
+
+def build_graph(device_id, port_id, metrics, rng):
+    """→ {series: {metric: [{t, avg, max}]}, stats: {metric: {...}}, source, step_s}."""
+    dur, source, bucket = RANGES[rng]
+    now = snmp_monitor._now()
+    start = now - dur
+    out, stats = {}, {}
+    for m in metrics:
+        if source == 'raw':
+            q = SnmpSample.query.filter(SnmpSample.device_id == device_id, SnmpSample.metric == m, SnmpSample.ts >= start)
+            q = q.filter(SnmpSample.port_id == port_id) if port_id else q.filter(SnmpSample.port_id.is_(None))
+            rows = q.order_by(SnmpSample.ts).all()
+            pts = [{'t': _iso(r.ts), 'avg': r.value, 'max': r.value} for r in rows]
+            vals = [r.value for r in rows]
+            peak = max(vals) if vals else None
+        else:
+            q = SnmpSampleHourly.query.filter(SnmpSampleHourly.device_id == device_id, SnmpSampleHourly.metric == m,
+                                              SnmpSampleHourly.hour >= start)
+            q = q.filter(SnmpSampleHourly.port_id == port_id) if port_id else q.filter(SnmpSampleHourly.port_id.is_(None))
+            rows = q.order_by(SnmpSampleHourly.hour).all()
+            buckets = {}
+            for r in rows:
+                if not r.count:
+                    continue
+                epoch = int(r.hour.timestamp()) // bucket * bucket
+                b = buckets.setdefault(epoch, {'t': r.hour, 'total': 0.0, 'count': 0, 'max': None})
+                b['total'] += r.total
+                b['count'] += r.count
+                b['max'] = r.vmax if b['max'] is None else max(b['max'], r.vmax or 0)
+            pts = [{'t': _iso(b['t']), 'avg': b['total'] / b['count'], 'max': b['max']} for _, b in sorted(buckets.items())]
+            vals = [r.total / r.count for r in rows if r.count]   # p95 dari rata-rata per jam
+            peak = max((r.vmax for r in rows if r.vmax is not None), default=None)
+        stats[m] = {
+            'current': pts[-1]['avg'] if pts else None,
+            'avg': (sum(vals) / len(vals)) if vals else None,
+            'max': peak,
+            'p95': _p95(vals),
+            'samples': len(vals),
+        }
+        out[m] = pts
+    return {'series': out, 'stats': stats, 'source': source, 'range': rng}
+
+
+@bp.route('/api/snmp/graph', methods=['GET'])
+@login_required
+def snmp_graph():
+    device_id = request.args.get('device_id', type=int)
+    port_id = request.args.get('port_id', type=int)
+    rng = request.args.get('range', '24h')
+    metrics = [m for m in (request.args.get('metrics') or '').split(',') if m][:12]
+    if not device_id or rng not in RANGES or not metrics:
+        return jsonify({'success': False, 'message': 'device_id, metrics, dan range (6h/24h/7d/30d/1y) wajib'}), 400
+    if port_id and not SnmpPort.query.filter_by(id=port_id, device_id=device_id).first():
+        return jsonify({'success': False, 'message': 'Port tidak ditemukan'}), 404
+    return jsonify({'success': True, **build_graph(device_id, port_id, metrics, rng)})
+
+
+@bp.route('/api/snmp/devices/<int:device_id>/metrics', methods=['GET'])
+@login_required
+def snmp_device_metrics(device_id):
+    """Daftar seri perangkat yang punya riwayat (cpu, memory:…, temperature:…)."""
+    rows = db.session.query(SnmpSampleHourly.metric).filter(
+        SnmpSampleHourly.device_id == device_id, SnmpSampleHourly.port_id.is_(None)).distinct().all()
+    names = {f'{s.kind}:{s.key}': s.name for s in SnmpSensor.query.filter_by(device_id=device_id).all()}
+    return jsonify({'success': True, 'metrics': [{'metric': r[0], 'name': names.get(r[0], r[0])} for r in rows]})

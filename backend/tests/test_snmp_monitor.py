@@ -134,3 +134,41 @@ def test_down_alert_and_recovery(ctx):
     notifs, alerts = [], []
     check_snmp_devices(sm._now(), notifs, alerts)
     assert alerts and alerts[0]['type'] == 'snmp_down_recovery'
+
+
+def test_samples_hourly_graph_and_prune(ctx):
+    from models import SnmpSample, SnmpSampleHourly
+    d = SnmpDevice(name='G', host='10.3.0.1', snmp_version='2c')
+    d.community = SECRET
+    db.session.add(d); db.session.commit()
+    sm.apply_discovery(d, DISC); db.session.commit()
+    base = sm._now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=3)
+    # 3 jam × 12 poll; uplink naik 1 Mbps/5 menit (counter disesuaikan)
+    octets = 0
+    for i in range(36):
+        ts = base + timedelta(minutes=5 * i)
+        octets += int((i + 1) * 1_000_000 / 8 * 300)
+        sm.apply_poll(d, _poll(1_000_000 + i * 300 * 100, octets, octets // 2), ts)
+        db.session.commit()
+    port = SnmpPort.query.filter_by(device_id=d.id, if_index=1).first()
+    assert SnmpSample.query.filter_by(port_id=port.id, metric='in').count() == 35  # poll pertama belum punya laju
+    hrs = SnmpSampleHourly.query.filter_by(port_id=port.id, metric='in').all()
+    assert len(hrs) == 3 and sum(h.count for h in hrs) == 35
+    c = _client()
+    g = c.get(f'/api/snmp/graph?device_id={d.id}&port_id={port.id}&metrics=in,out&range=24h', headers=H).get_json()
+    assert g['source'] == 'raw' and len(g['series']['in']) == 35
+    st = g['stats']['in']
+    assert abs(st['max'] - 36_000_000) < 1 and st['p95'] <= st['max'] and st['current'] == st['max']
+    g7 = c.get(f'/api/snmp/graph?device_id={d.id}&port_id={port.id}&metrics=in&range=7d', headers=H).get_json()
+    assert g7['source'] == 'hourly' and len(g7['series']['in']) == 3 and abs(g7['stats']['in']['max'] - 36_000_000) < 1
+    gd = c.get(f'/api/snmp/graph?device_id={d.id}&metrics=cpu:cpu,temperature:mtg.17&range=24h', headers=H).get_json()
+    assert len(gd['series']['cpu:cpu']) == 36 and gd['stats']['temperature:mtg.17']['current'] == 48.0
+    assert c.get(f'/api/snmp/graph?device_id={d.id}&metrics=in&range=2y', headers=H).status_code == 400
+    ms = c.get(f'/api/snmp/devices/{d.id}/metrics', headers=H).get_json()['metrics']
+    assert {'metric': 'temperature:mtg.17', 'name': 'cpu-temperature'} in ms
+    # prune: sampel mentah > 48 jam dibuang, ringkasan jam tetap
+    db.session.add(SnmpSample(device_id=d.id, port_id=port.id, metric='in', ts=sm._now() - timedelta(hours=60), value=1))
+    db.session.commit()
+    sm.prune_events()
+    assert SnmpSample.query.filter(SnmpSample.ts < sm._now() - timedelta(hours=48)).count() == 0
+    assert SnmpSampleHourly.query.filter_by(port_id=port.id, metric='in').count() == 3
