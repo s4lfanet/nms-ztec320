@@ -290,6 +290,10 @@ export const api = {
     return request<SnmpGraphData>(`/api/snmp/graph?${qs}`);
   },
   snmpDeviceMetrics: (id: number) => request<{ success: boolean; metrics: { metric: string; name: string }[] }>(`/api/snmp/devices/${id}/metrics`),
+  snmpSparks: (deviceId: number) =>
+    request<{ success: boolean; points: number; step_s: number; ports: Record<string, { in: (number | null)[]; out: (number | null)[] }> }>(`/api/snmp/devices/${deviceId}/sparks`),
+  snmpPortLive: (portId: number) =>
+    request<{ success: boolean; ts: number; in: number; out: number; pin: number | null; pout: number | null; in_err: number | null; out_err: number | null; oper: string; hc: boolean; speed_mbps: number | null }>(`/api/snmp/ports/${portId}/live`),
   snmpTopology: () => request<{ success: boolean; nodes: TopoNode[]; links: TopoLink[] }>('/api/snmp/topology'),
   snmpSummary: () => request<SnmpSummary>('/api/snmp/summary'),
   snmpSettings: () => request<{ success: boolean; settings: Record<string, number>; defaults: Record<string, number> }>('/api/snmp/settings'),
@@ -894,6 +898,7 @@ export interface SnmpPort {
   id: number; if_index: number; name: string; descr: string; alias: string; if_type: number | null;
   speed_mbps: number | null; mac: string; admin_status: string; oper_status: string; status_changed_at: string | null;
   ignored: boolean; in_bps: number | null; out_bps: number | null; in_err_rate: number | null; out_err_rate: number | null;
+  in_pps?: number | null; out_pps?: number | null; has_counters?: boolean;
   in_errors: number | null; out_errors: number | null; util_pct: number | null; watched: boolean;
 }
 export interface TopoNode {

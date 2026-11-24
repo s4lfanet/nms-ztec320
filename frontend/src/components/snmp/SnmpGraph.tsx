@@ -8,7 +8,7 @@ import { fmtBps } from '../../lib/snmpFormat';
 
 export type GraphRange = '6h' | '24h' | '7d' | '30d' | '1y';
 export const RANGES: GraphRange[] = ['6h', '24h', '7d', '30d', '1y'];
-export type GraphUnit = 'bps' | 'pct' | 'temp' | 'volt' | 'rpm' | 'watt' | 'amp' | 'err';
+export type GraphUnit = 'bps' | 'pct' | 'temp' | 'volt' | 'rpm' | 'watt' | 'amp' | 'err' | 'pps';
 
 export interface GraphSeries { metric: string; label: string; color: string }
 
@@ -23,6 +23,7 @@ export function fmtValue(v: number | null | undefined, unit: GraphUnit): string 
     case 'watt': return `${v.toFixed(1)} W`;
     case 'amp': return `${v.toFixed(2)} A`;
     case 'err': return `${v.toFixed(2)}/s`;
+    case 'pps': return v >= 1000 ? `${(v / 1000).toFixed(1)}k pps` : `${Math.round(v)} pps`;
   }
 }
 

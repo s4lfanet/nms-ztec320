@@ -4,6 +4,18 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Port ala Observium: grafik mini, paket/detik & mode Live
+
+#### Ditambahkan
+- **Daftar port** di Monitoring SNMP → detail → Port:
+  - grafik mini trafik 24 jam per port (masuk/keluar);
+  - Mbps dan **paket per detik**.
+- Sebelum ada angka, daftar port menampilkan keterangan yang jelas ("menunggu poll berikutnya", bukan "—"). Laju dihitung dari dua kali pembacaan, jadi baru muncul ±5 menit setelah perangkat ditambahkan.
+- **Mode Live**: buka sebuah port, dan trafiknya dibaca langsung dari perangkat tiap 3 detik, lengkap dengan grafik, Mbps, pps, dan persen kapasitas.
+  - Mode ini hanya membaca counter (SNMP GET), berhenti sendiri setelah 10 menit, dan dijeda saat tab tidak terlihat.
+  - Kalau perangkat tidak menjawab, pesan errornya langsung tampil, jadi berguna untuk mengecek koneksi SNMP.
+- Grafik **Paket per detik** di halaman port (6 jam s/d 1 tahun).
+
 ### 2026-11-24 — Community SNMP terlihat saat diketik & diedit
 
 #### Diubah

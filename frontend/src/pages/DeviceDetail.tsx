@@ -13,6 +13,7 @@ import { cn, timeAgo } from '../lib/utils';
 import { fmtBps, fmtSpeed, fmtUptime, STATUS_DOT } from '../lib/snmpFormat';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { DeviceFormModal } from './Devices';
+import { PortLive, PortSpark } from '../components/snmp/PortLive';
 import { SnmpGraph, RangePicker, type GraphRange, type GraphUnit } from '../components/snmp/SnmpGraph';
 
 const PALETTE = ['var(--color-accent)', 'var(--color-info)', 'var(--color-warning)', 'var(--color-success)', 'var(--color-danger)', '#a78bfa'];
@@ -193,6 +194,8 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
   const [filter, setFilter] = useState<'active' | 'down' | 'watched' | 'all'>('active');
   const shown = useMemo(() => ports.filter(p =>
     filter === 'all' ? true : filter === 'watched' ? p.watched : filter === 'down' ? (p.admin_status === 'up' && p.oper_status !== 'up' && !p.ignored) : (p.admin_status === 'up' && !p.ignored)), [ports, filter]);
+  const { data: sparks } = useQuery({ queryKey: ['snmp-sparks', deviceId], queryFn: () => api.snmpSparks(deviceId), refetchInterval: 300_000 });
+  const fmtPps = (v?: number | null) => (v == null ? null : v >= 1000 ? `${(v / 1000).toFixed(1)}k pps` : `${Math.round(v)} pps`);
   const update = async (p: SnmpPort, data: { ignored?: boolean; watched?: boolean }) => {
     try {
       await api.snmpPortUpdate(p.id, data);
@@ -219,14 +222,17 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
                 </span>
               </button>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-tx2 sm:flex-1 pl-4 sm:pl-0">
-                {p.oper_status === 'up' ? (
+                {p.oper_status === 'up' ? (p.in_bps == null && p.out_bps == null ? (
+                  <span className="text-tx3">{p.has_counters ? t('live.waitPoll') : t('live.noData')}</span>
+                ) : (
                   <>
-                    <span title={t('dev.in')}>↓ {fmtBps(p.in_bps)}</span>
-                    <span title={t('dev.out')}>↑ {fmtBps(p.out_bps)}</span>
+                    <PortSpark inV={sparks?.ports[String(p.id)]?.in} outV={sparks?.ports[String(p.id)]?.out} />
+                    <span title={t('dev.in')}>↓ {fmtBps(p.in_bps)}{fmtPps(p.in_pps) && <span className="text-tx3"> · {fmtPps(p.in_pps)}</span>}</span>
+                    <span title={t('dev.out')}>↑ {fmtBps(p.out_bps)}{fmtPps(p.out_pps) && <span className="text-tx3"> · {fmtPps(p.out_pps)}</span>}</span>
                     {p.util_pct != null && <span className={cn(p.util_pct >= 80 ? 'text-danger' : p.util_pct >= 60 ? 'text-warning' : 'text-tx3')}>{p.util_pct}%</span>}
                     {((p.in_err_rate || 0) + (p.out_err_rate || 0)) > 0 && <span className="text-warning">{t('dev.errors', { n: ((p.in_err_rate || 0) + (p.out_err_rate || 0)).toFixed(2) })}</span>}
                   </>
-                ) : (
+                )) : (
                   <span className={p.admin_status === 'up' ? 'text-danger' : 'text-tx3'}>
                     {p.admin_status !== 'up' ? t('dev.adminDown') : t(`dev.oper.${p.oper_status}`, { defaultValue: p.oper_status })}{p.status_changed_at ? ` · ${timeAgo(p.status_changed_at)}` : ''}
                   </span>
@@ -249,9 +255,12 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
               ) : p.watched ? <Star size={13} className="text-warning self-start sm:self-center ml-4 sm:ml-0" fill="currentColor" aria-label={t('devx.watching')} /> : null}
               {openPort === p.id && (
                 <div className="basis-full w-full pt-2 space-y-3">
+                  {p.oper_status === 'up' && <PortLive portId={p.id} speedMbps={p.speed_mbps} />}
                   <RangePicker value={range} onChange={setRange} />
                   <SnmpGraph deviceId={deviceId} portId={p.id} range={range} unit="bps" title={t('graph.traffic')}
                     series={[{ metric: 'in', label: t('dev.in'), color: 'var(--color-success)' }, { metric: 'out', label: t('dev.out'), color: 'var(--color-info)' }]} />
+                  <SnmpGraph deviceId={deviceId} portId={p.id} range={range} unit="pps" height={110} title={t('live.packets')}
+                    series={[{ metric: 'pkt_in', label: t('dev.in'), color: 'var(--color-success)' }, { metric: 'pkt_out', label: t('dev.out'), color: 'var(--color-info)' }]} />
                   <SnmpGraph deviceId={deviceId} portId={p.id} range={range} unit="err" height={110} title={t('graph.errors')}
                     series={[{ metric: 'in_err', label: t('dev.in'), color: 'var(--color-warning)' }, { metric: 'out_err', label: t('dev.out'), color: 'var(--color-danger)' }]} />
                 </div>
