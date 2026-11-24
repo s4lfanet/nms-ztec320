@@ -55,4 +55,39 @@ describe('refreshAfterServerUpdate', () => {
     await refreshAfterServerUpdate();
     expect(reload).toHaveBeenCalledTimes(1);
   });
+
+  it('reg.update() menggantung: klik manual tetap reload (tidak diam)', async () => {
+    vi.useFakeTimers();
+    mockReg({ waiting: null, installing: null, update: vi.fn(() => new Promise(() => undefined)) });
+    const { applySwUpdate } = await import('../lib/swUpdate');
+    const p = applySwUpdate();
+    await vi.advanceTimersByTimeAsync(10_500);
+    await p;
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('worker menunggu tanpa controllerchange: reload lewat cadangan 4 dtk', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker('installed');
+    mockReg({ waiting: w, installing: null, update: vi.fn(async () => undefined) });
+    const { applySwUpdate } = await import('../lib/swUpdate');
+    await applySwUpdate();
+    expect(w.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
+    expect(reload).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(4100);
+    expect(reload).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('instalasi macet: klik manual menyerah setelah 12 dtk lalu reload', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker('installing');
+    mockReg({ waiting: null, installing: w, update: vi.fn(async () => undefined) });
+    const { applySwUpdate } = await import('../lib/swUpdate');
+    const p = applySwUpdate();
+    await vi.advanceTimersByTimeAsync(12_100);
+    await p;
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
 });
