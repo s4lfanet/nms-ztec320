@@ -20,23 +20,6 @@ def logout():
     return redirect('/login')
 
 
-# Naikkan nilai ini hanya bila tampilan PWA di perangkat pengguna bisa "tersangkut" di versi
-# lama (service worker tidak mau berganti). Setiap browser yang cookie-nya berbeda menerima
-# Clear-Site-Data SEKALI: cache + service worker + localStorage dibuang (cookie sesi TIDAK,
-# jadi tetap login; langganan push dibuat ulang otomatis oleh PushPrompt bila izin sudah ada).
-UI_RESET_VERSION = '2026-11-24'
-UI_RESET_COOKIE = 'nms_ui_reset'
-
-
-def _maybe_reset_ui(resp):
-    if request.cookies.get(UI_RESET_COOKIE) == UI_RESET_VERSION:
-        return resp
-    resp.headers['Clear-Site-Data'] = '"cache", "storage"'
-    resp.set_cookie(UI_RESET_COOKIE, UI_RESET_VERSION, max_age=400 * 24 * 3600, path='/',
-                    secure=request.is_secure, httponly=True, samesite='Lax')
-    return resp
-
-
 @bp.route('/api/auth/me')
 @login_required
 def api_me():
@@ -58,7 +41,9 @@ def api_me():
         'language': current_user.language or 'id',
         'phone': current_user.phone or '',
     }})
-    return _maybe_reset_ui(resp)
+    # Jangan menambah Clear-Site-Data di sini: di Chrome Android respons ini jadi tertahan
+    # dan aplikasi macet di layar "Loading..." (insiden 2026-11-24).
+    return resp
 
 
 @bp.route('/api/auth/login', methods=['POST'])
