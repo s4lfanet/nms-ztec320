@@ -433,28 +433,28 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
 
   return (
     <header className="sticky top-0 z-30 h-14 md:h-16 flex items-center justify-between px-3 md:px-6 bg-surface border-b border-brd transition-colors duration-300">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 min-w-0">
         <button onClick={onMenuClick} className="p-2 rounded-lg hover:bg-glass transition-colors lg:hidden active:scale-95">
           <Menu size={20} className="text-tx2" />
         </button>
-        <div className="flex items-center gap-1.5 lg:hidden">
+        <div className="flex items-center gap-1.5 lg:hidden min-w-0">
           <div className={cn(
             'w-7 h-7 rounded-lg flex items-center justify-center shadow-lg shadow-accent/20 overflow-hidden',
             user?.logo_url ? 'bg-white p-1' : 'bg-accent',
           )}>
             {user?.logo_url ? <img src={user.logo_url} alt="" className="w-full h-full object-contain" /> : <Zap size={15} className="text-white" />}
           </div>
-          <span className="text-sm font-bold tracking-tight">{user?.sidebar_name || 'Salfanet NMS'}</span>
+          <span className="hidden min-[360px]:inline text-sm font-bold tracking-tight truncate">{user?.sidebar_name || 'Salfanet NMS'}</span>
         </div>
       </div>
 
       <div className="flex items-center gap-1">
-        {/* Theme quick-toggle */}
-        {/* HP: tombol tema pindah ke menu profil supaya topbar tidak penuh */}
+        {/* Tombol tema — tampil di semua ukuran layar (juga HP) */}
         <button
           onClick={toggle}
-          className="hidden sm:inline-flex p-2 rounded-lg hover:bg-glass transition-all active:scale-95"
+          className="inline-flex p-2 rounded-lg hover:bg-glass transition-all active:scale-95"
           title={resolved === 'light' ? t('topbar.themeToDark') : t('topbar.themeToLight')}
+          aria-label={resolved === 'light' ? t('topbar.themeToDark') : t('topbar.themeToLight')}
         >
           {resolved === 'light' ? <Moon size={18} className="text-tx2" /> : <Sun size={18} className="text-tx2" />}
         </button>
@@ -508,10 +508,6 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                 <Bell size={16} className="text-tx3" />
                 <span className="flex-1 text-left">{t('topbar.notifications')}</span>
                 {generalUnread > 0 && <span className="px-1.5 min-w-[18px] h-[18px] rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center">{generalUnread > 99 ? '99+' : generalUnread}</span>}
-              </button>
-              <button onClick={() => { toggle(); }} className="sm:hidden flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-glass transition-colors">
-                {resolved === 'light' ? <Moon size={16} className="text-tx3" /> : <Sun size={16} className="text-tx3" />}
-                {resolved === 'light' ? t('topbar.themeToDark') : t('topbar.themeToLight')}
               </button>
               <hr className="border-brd my-1" />
               <button

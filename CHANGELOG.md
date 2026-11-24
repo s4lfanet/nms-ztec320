@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Tombol tema terang/gelap di bar atas HP
+
+#### Diubah
+- Tombol tema (ikon bulan/matahari) sekarang tampil langsung di bar atas pada semua ukuran layar, termasuk HP. Sebelumnya di HP tombol ini tersembunyi di menu profil.
+- Di layar yang sangat sempit (< 360px), nama aplikasi di bar atas disembunyikan (logo tetap tampil) supaya ikon tidak berdesakan.
+
 ### 2026-11-24 — Menu "Monitoring SNMP" & jalan pintas dari halaman MikroTik
 
 #### Diubah
