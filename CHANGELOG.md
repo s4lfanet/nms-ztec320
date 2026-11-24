@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — FTTH tahap 3: informasi lapangan
+
+#### Ditambahkan
+- **Status core bisa diubah**: klik core di panel status core (OTB/ODC/JC) → tandai tersedia / dicadangkan / rusak, isi redaman terukur dan catatan (mis. "putus di tiang T7"); tercatat di riwayat core. Core yang dipakai tidak bisa dicadangkan/dibebaskan, tapi bisa ditandai rusak (dengan peringatan). Node baru tidak bisa memakai core rusak, dan core rusak tetap rusak walau node dipindah. Laporan Kualitas data menambah kategori "Core rusak masih dipakai".
+- **Keterangan lapangan** di form OTB/ODC/ODP/JC: status node (rencana/aktif/perbaikan/tidak dipakai), tanggal pasang, label/ID kabel masuk, jenis kabel (ADSS, figure-8, duct, drop, indoor), jumlah core kabel, rute/tiang. Status selain "aktif" tampil sebagai label di daftar dan pohon.
+- **Foto lapangan per node** (maks 12): unggah langsung dari kamera HP (diperkecil otomatis ke 1600 px), lihat besar, hapus. Disimpan di `instance/ftth_photos/` lewat endpoint ber-login; ikut terhapus saat node dihapus.
+- **Export lengkap**: CSV kini menyertakan sumber feed/JC, kabel, keterangan lapangan, rugi splitter, plus bagian baru JC, JC SPLICES, dan FIBER CORES (file lama tetap bisa diimpor — kolom tambahan di akhir). Menu baru **Export lengkap (JSON)** untuk arsip/migrasi seluruh data FTTH.
+
 ### 2026-11-24 — FTTH tahap 2: anggaran redaman lengkap vs RX terukur
 
 #### Ditambahkan

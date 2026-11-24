@@ -10,6 +10,7 @@ const CATEGORIES: { key: string; tone: 'crit' | 'warn' | 'info' }[] = [
   { key: 'core_conflict', tone: 'crit' },
   { key: 'core_out_of_range', tone: 'crit' },
   { key: 'pon_mismatch', tone: 'crit' },
+  { key: 'damaged_in_use', tone: 'crit' },
   { key: 'missing_splice', tone: 'warn' },
   { key: 'orphan', tone: 'warn' },
   { key: 'odp_full', tone: 'info' },

@@ -33,6 +33,7 @@ bp = Blueprint('ftth', __name__)
 
 import ftth_quality  # noqa: E402
 import ftth_budget  # noqa: E402
+import ftth_photos  # noqa: E402
 
 @bp.route('/api/ftth/quality', methods=['GET'])
 @login_required
@@ -175,7 +176,65 @@ def _cable_fields(o):
     }
 
 
-def _otb_to_dict(o):
+# ─── FTTH tahap 3: keterangan lapangan (kabel masuk, status, tanggal pasang) ───
+NODE_STATUSES = ('planned', 'active', 'maintenance', 'retired')
+CABLE_TYPES = ('', 'adss', 'figure8', 'duct', 'drop', 'indoor', 'other')
+FIELD_INFO_KEYS = ('cable_label', 'cable_type', 'cable_cores', 'cable_route', 'node_status', 'installed_at')
+
+
+def _field_info_dict(o):
+    return {
+        'cable_label': o.cable_label or '',
+        'cable_type': o.cable_type or '',
+        'cable_cores': o.cable_cores,
+        'cable_route': o.cable_route or '',
+        'node_status': o.node_status or 'active',
+        'installed_at': o.installed_at.isoformat() if o.installed_at else None,
+    }
+
+
+def _apply_field_info(o, d):
+    """Set kolom keterangan lapangan dari payload; kembalikan pesan error atau None."""
+    from datetime import date as _date
+    if 'cable_label' in d:
+        o.cable_label = (d.get('cable_label') or '').strip()[:100]
+    if 'cable_route' in d:
+        o.cable_route = (d.get('cable_route') or '').strip()[:2000]
+    if 'cable_type' in d:
+        ct = (d.get('cable_type') or '').strip().lower()
+        if ct not in CABLE_TYPES:
+            return f'Jenis kabel tidak dikenal: {ct}'
+        o.cable_type = ct
+    if 'cable_cores' in d:
+        v = d.get('cable_cores')
+        if v in (None, ''):
+            o.cable_cores = None
+        else:
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                return 'Jumlah core kabel harus angka'
+            if not 1 <= v <= 576:
+                return 'Jumlah core kabel harus 1–576'
+            o.cable_cores = v
+    if 'node_status' in d:
+        st = (d.get('node_status') or 'active').strip().lower()
+        if st not in NODE_STATUSES:
+            return f'Status node tidak dikenal: {st}'
+        o.node_status = st
+    if 'installed_at' in d:
+        v = d.get('installed_at')
+        if v in (None, ''):
+            o.installed_at = None
+        else:
+            try:
+                o.installed_at = _date.fromisoformat(str(v)[:10])
+            except ValueError:
+                return 'Tanggal pasang harus format YYYY-MM-DD'
+    return None
+
+
+def _otb_to_dict_base(o):
     odc_count = FTTHODC.query.filter_by(otb_id=o.id).count()
     total_cores = o.total_cores or 0
     jc = db.session.get(FTTHJC, o.jc_id) if o.jc_id else None
@@ -197,7 +256,7 @@ def _otb_to_dict(o):
     }
 
 
-def _odc_to_dict(o):
+def _odc_to_dict_base(o):
     odp_count = FTTHODP.query.filter_by(odc_id=o.id).count()
     total_cores = o.total_cores or 0
     jc = db.session.get(FTTHJC, o.jc_id) if o.jc_id else None
@@ -223,7 +282,7 @@ def _odc_to_dict(o):
     }
 
 
-def _odp_to_dict(o):
+def _odp_to_dict_base(o):
     used_ports_count = FTTHODPPort.query.filter_by(odp_id=o.id, status='used').count()
     total_ports = o.total_ports or 0
     jc = db.session.get(FTTHJC, o.jc_id) if o.jc_id else None
@@ -253,7 +312,7 @@ def _odp_to_dict(o):
     }
 
 
-def _jc_to_dict(j):
+def _jc_to_dict_base(j):
     parent_name = ''
     if j.parent_type and j.parent_id:
         if j.parent_type == 'pon':
@@ -278,6 +337,22 @@ def _jc_to_dict(j):
         'splices': [_jc_splice_to_dict(s) for s in splices],
         **_cable_fields(j),
     }
+
+
+def _otb_to_dict(o):
+    return {**_otb_to_dict_base(o), **_field_info_dict(o)}
+
+
+def _odc_to_dict(o):
+    return {**_odc_to_dict_base(o), **_field_info_dict(o)}
+
+
+def _odp_to_dict(o):
+    return {**_odp_to_dict_base(o), **_field_info_dict(o)}
+
+
+def _jc_to_dict(j):
+    return {**_jc_to_dict_base(j), **_field_info_dict(j)}
 
 
 def _jc_splice_to_dict(s):
@@ -393,7 +468,11 @@ def _release_core(owner_type, owner_id, core_number, reason=''):
         others = []
     if others:
         kind, obj = others[0]
-        _touch_core(owner_type, owner_id, core_number, 'used', kind, obj.id, reason=reason)
+        _touch_core(owner_type, owner_id, core_number, cur.status if cur and cur.status == 'damaged' else 'used', kind, obj.id, reason=reason)
+        return
+    if cur and cur.status == 'damaged':
+        # Core rusak tetap rusak walau sudah tidak dipakai — hanya lepas pemakainya.
+        cur.assigned_to_type = cur.assigned_to_id = None
         return
     _touch_core(owner_type, owner_id, core_number, 'available', reason=reason)
 
@@ -467,6 +546,9 @@ def ftth_otb_create():
         cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
+    _fi_err = _apply_field_info(o, d)
+    if _fi_err:
+        return jsonify({'success': False, 'message': _fi_err}), 400
     err = ftth_quality.feed_error('otb', o)
     if err:
         return jsonify({'success': False, 'message': err}), 400
@@ -507,6 +589,10 @@ def ftth_otb_update(otb_id):
         if 'olt_id' in d: o.olt_id = d['olt_id']
         if 'jc_id' in d: o.jc_id = d['jc_id']
         if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
+    _fi_err = _apply_field_info(o, d)
+    if _fi_err:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': _fi_err}), 400
     err = ftth_quality.feed_error('otb', o, old_feed)
     if err:
         db.session.rollback()
@@ -558,6 +644,7 @@ def ftth_otb_delete(otb_id):
     if o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
         _release_core('jc', o.jc_id, o.jc_core_number, reason='OTB deleted')
     FTTHFiberCore.query.filter_by(owner_type='otb', owner_id=otb_id).delete()
+    ftth_photos.remove_all('otb', o.id)
     db.session.delete(o)
     db.session.commit()
     return jsonify({'success': True})
@@ -596,6 +683,9 @@ def ftth_odc_create():
         cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
+    _fi_err = _apply_field_info(o, d)
+    if _fi_err:
+        return jsonify({'success': False, 'message': _fi_err}), 400
     err = ftth_quality.feed_error('odc', o)
     if err:
         return jsonify({'success': False, 'message': err}), 400
@@ -638,6 +728,10 @@ def ftth_odc_update(odc_id):
         if 'otb_id' in d: o.otb_id = d['otb_id']
         if 'jc_id' in d: o.jc_id = d['jc_id']
         if 'jc_core_number' in d: o.jc_core_number = d['jc_core_number']
+    _fi_err = _apply_field_info(o, d)
+    if _fi_err:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': _fi_err}), 400
     err = ftth_quality.feed_error('odc', o, old_feed)
     if err:
         db.session.rollback()
@@ -670,6 +764,7 @@ def ftth_odc_delete(odc_id):
     elif o.feed_source == 'jc' and o.jc_id and o.jc_core_number:
         _release_core('jc', o.jc_id, o.jc_core_number, reason='ODC deleted')
     FTTHFiberCore.query.filter_by(owner_type='odc', owner_id=odc_id).delete()
+    ftth_photos.remove_all('odc', o.id)
     db.session.delete(o)
     db.session.commit()
     return jsonify({'success': True})
@@ -713,6 +808,9 @@ def ftth_odp_create():
         cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
+    _fi_err = _apply_field_info(o, d)
+    if _fi_err:
+        return jsonify({'success': False, 'message': _fi_err}), 400
     err = ftth_quality.feed_error('odp', o)
     if err:
         return jsonify({'success': False, 'message': err}), 400
@@ -786,6 +884,10 @@ def ftth_odp_update(odp_id):
         existing = FTTHODPPort.query.filter_by(odp_id=o.id).count()
         for i in range(existing + 1, o.total_ports + 1):
             db.session.add(FTTHODPPort(odp_id=o.id, port_number=i, status='available'))
+    _fi_err = _apply_field_info(o, d)
+    if _fi_err:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': _fi_err}), 400
     err = ftth_quality.feed_error('odp', o, old_feed)
     if err:
         db.session.rollback()
@@ -820,6 +922,7 @@ def ftth_odp_delete(odp_id):
     if own_port_ids:
         for child in FTTHODP.query.filter_by(feed_source='odp').filter(FTTHODP.parent_odp_port_id.in_(own_port_ids)).all():
             child.parent_odp_port_id = None
+    ftth_photos.remove_all('odp', o.id)
     db.session.delete(o)
     db.session.commit()
     return jsonify({'success': True})
@@ -968,6 +1071,9 @@ def ftth_jc_create():
         cable_attenuation_per_km=d.get('cable_attenuation_per_km', 0.35),
         description=d.get('description', ''),
     )
+    _fi_err = _apply_field_info(j, d)
+    if _fi_err:
+        return jsonify({'success': False, 'message': _fi_err}), 400
     db.session.add(j)
     db.session.commit()
     return jsonify({'success': True, 'item': _jc_to_dict(j)})
@@ -991,6 +1097,10 @@ def ftth_jc_update(jc_id):
         if k in d: setattr(j, k, d[k])
     for k in ['total_cores', 'fibers_per_tube', 'parent_type', 'parent_id']:
         if k in d: setattr(j, k, d[k])
+    _fi_err = _apply_field_info(j, d)
+    if _fi_err:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': _fi_err}), 400
     db.session.commit()
     return jsonify({'success': True, 'item': _jc_to_dict(j)})
 
@@ -1022,6 +1132,7 @@ def ftth_jc_delete(jc_id):
             if s.core_in:
                 _release_core(j.parent_type, j.parent_id, s.core_in, reason='JC deleted')
     FTTHFiberCore.query.filter_by(owner_type='jc', owner_id=j.id).delete()
+    ftth_photos.remove_all('jc', j.id)
     db.session.delete(j)
     db.session.commit()
     return jsonify({'success': True})
@@ -1131,6 +1242,115 @@ def ftth_core_history(core_id):
         'performed_by': h.performed_by or '', 'reason': h.reason or '',
         'created_at': utc_iso(h.created_at) if h.created_at else None,
     } for h in rows]})
+
+
+# ─── FTTH tahap 3: status core manual & foto node ───
+
+_CORE_OWNER_MODEL = {'otb': FTTHOTB, 'odc': FTTHODC, 'jc': FTTHJC}
+
+
+@bp.route('/api/ftth/cores/<owner_type>/<int:owner_id>/<int:core_number>', methods=['PUT'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_core_set_status(owner_type, owner_id, core_number):
+    """Tandai core: available / reserved (dicadangkan) / damaged (rusak/putus),
+    plus redaman terukur & catatan. 'used' hanya diatur otomatis oleh feed node."""
+    if owner_type not in _CORE_OWNER_MODEL:
+        return jsonify({'success': False, 'message': 'Invalid owner_type'}), 400
+    owner = db.session.get(_CORE_OWNER_MODEL[owner_type], owner_id)
+    if not owner:
+        return jsonify({'success': False, 'message': 'Not found'}), 404
+    if core_number < 1 or (owner.total_cores and core_number > owner.total_cores):
+        return jsonify({'success': False, 'message': f'Core {core_number} di luar kapasitas ({owner.total_cores} core)'}), 400
+    d = request.get_json() or {}
+    status = d.get('status')
+    if status is not None and status not in ('available', 'reserved', 'damaged'):
+        return jsonify({'success': False, 'message': 'Status harus available, reserved, atau damaged'}), 400
+    users = ftth_quality.users_of(owner_type, owner_id, core_number)
+    if owner_type == 'otb':
+        users += [('pon', p) for p in FTTHPonPort.query.filter_by(otb_id=owner_id, otb_core_number=core_number)]
+    if status in ('available', 'reserved') and users:
+        kind, obj = users[0]
+        return jsonify({'success': False, 'message':
+                        f'Core {core_number} sedang dipakai {ftth_quality.LABEL[kind]} "{ftth_quality._name(kind, obj)}" — lepas dulu dari node itu'}), 400
+    core = FTTHFiberCore.query.filter_by(owner_type=owner_type, owner_id=owner_id, core_number=core_number).first()
+    if not core:
+        core = FTTHFiberCore(owner_type=owner_type, owner_id=owner_id, core_number=core_number, status='available')
+        db.session.add(core)
+        db.session.flush()
+    prev = core.status
+    if 'attenuation_db' in d:
+        v = d.get('attenuation_db')
+        try:
+            core.attenuation_db = None if v in (None, '') else float(v)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Redaman harus angka (dB)'}), 400
+    if 'notes' in d:
+        core.notes = (d.get('notes') or '').strip()[:1000]
+    if status is not None and status != prev:
+        # Core rusak yang masih terhubung tetap mencatat pemakainya.
+        if status == 'damaged' and users and not core.assigned_to_type:
+            core.assigned_to_type, core.assigned_to_id = users[0][0], users[0][1].id
+        if status in ('available', 'reserved'):
+            core.assigned_to_type = core.assigned_to_id = None
+        core.status = status
+        db.session.add(FTTHCoreAssignmentHistory(
+            core_id=core.id, action='status_change', previous_status=prev, new_status=status,
+            assigned_to_type=core.assigned_to_type, assigned_to_id=core.assigned_to_id,
+            performed_by=getattr(current_user, 'username', '') or '', reason=core.notes or ''))
+    db.session.commit()
+    log_action('ftth_core_status', 'ftth', target=f'{owner_type}:{owner_id}:{core_number}',
+               detail=f'{prev} -> {core.status}')
+    warning = None
+    if core.status == 'damaged' and users:
+        warning = f'Core {core_number} ditandai rusak padahal masih dipakai {len(users)} node — pindahkan ke core lain'
+    return jsonify({'success': True, 'core': _fiber_core_to_dict(core), 'warning': warning})
+
+
+@bp.route('/api/ftth/photos/<kind>/<int:node_id>', methods=['GET'])
+@login_required
+def ftth_photos_list(kind, node_id):
+    if kind not in ftth_photos.KINDS:
+        return jsonify({'success': False, 'message': 'Jenis node tidak valid'}), 400
+    return jsonify({'success': True, 'photos': ftth_photos.list_photos(kind, node_id),
+                    'max': ftth_photos.MAX_PHOTOS})
+
+
+@bp.route('/api/ftth/photos/<kind>/<int:node_id>', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_photos_upload(kind, node_id):
+    model = {'otb': FTTHOTB, 'odc': FTTHODC, 'odp': FTTHODP, 'jc': FTTHJC}.get(kind)
+    if not model or not db.session.get(model, node_id):
+        return jsonify({'success': False, 'message': 'Node tidak ditemukan'}), 404
+    f = request.files.get('photo')
+    name, msg = ftth_photos.save(kind, node_id, f.read(ftth_photos.MAX_BYTES + 1) if f else b'')
+    if not name:
+        return jsonify({'success': False, 'message': msg}), 400
+    log_action('ftth_photo_upload', 'ftth', target=f'{kind}:{node_id}', detail=name)
+    return jsonify({'success': True, 'photos': ftth_photos.list_photos(kind, node_id)})
+
+
+@bp.route('/api/ftth/photos/<kind>/<int:node_id>/<name>', methods=['GET'])
+@login_required
+def ftth_photo_get(kind, node_id, name):
+    from flask import send_file
+    p = ftth_photos.path_of(kind, node_id, name)
+    if not p:
+        return jsonify({'success': False, 'message': 'Tidak ada foto'}), 404
+    resp = send_file(p, max_age=86400)
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp
+
+
+@bp.route('/api/ftth/photos/<kind>/<int:node_id>/<name>', methods=['DELETE'])
+@login_required
+@permission_required('settings_ip_olts')
+def ftth_photo_delete(kind, node_id, name):
+    if not ftth_photos.remove(kind, node_id, name):
+        return jsonify({'success': False, 'message': 'Foto tidak ditemukan'}), 404
+    log_action('ftth_photo_delete', 'ftth', target=f'{kind}:{node_id}', detail=name)
+    return jsonify({'success': True, 'photos': ftth_photos.list_photos(kind, node_id)})
 
 
 def _build_odp_dict_full(odp, _depth=0):
@@ -1822,6 +2042,37 @@ def ftth_pon_delete(pon_id):
     return jsonify({'success': True})
 
 
+def _export_extra(o):
+    return [o.get('feed_source'), o.get('jc_name'), o.get('jc_core_number'), o.get('cable_length_meters'), o.get('cable_attenuation_per_km'),
+            o.get('cable_label'), o.get('cable_type'), o.get('cable_cores'), o.get('cable_route'), o.get('node_status'), o.get('installed_at')]
+
+
+@bp.route('/api/ftth/export.json', methods=['GET'])
+@login_required
+def ftth_export_json():
+    """Backup lengkap infrastruktur FTTH (semua node, port, splice, status core,
+    keterangan lapangan) dalam satu JSON — untuk arsip/migrasi."""
+    from flask import Response
+    import json as _json
+    payload = {
+        'version': 3,
+        'exported_at': utc_iso(datetime.now(timezone.utc)),
+        'pon_ports': [_pon_to_dict(p) for p in FTTHPonPort.query.all()],
+        'otbs': [_otb_to_dict(o) for o in FTTHOTB.query.all()],
+        'jcs': [_jc_to_dict(j) for j in FTTHJC.query.all()],
+        'odcs': [_odc_to_dict(o) for o in FTTHODC.query.all()],
+        'odps': [_odp_to_dict(o) for o in FTTHODP.query.all()],
+        'odp_ports': [_odp_port_to_dict(p) for p in FTTHODPPort.query.all()],
+        'fiber_cores': [_fiber_core_to_dict(c) for c in FTTHFiberCore.query.all()],
+        'photos': {f'{k}:{nid}': ftth_photos.list_photos(k, nid)
+                   for k, model in (('otb', FTTHOTB), ('odc', FTTHODC), ('odp', FTTHODP), ('jc', FTTHJC))
+                   for nid in [r.id for r in model.query.all()] if ftth_photos.list_photos(k, nid)},
+    }
+    resp = Response(_json.dumps(payload, ensure_ascii=False, indent=1, default=str), mimetype='application/json')
+    resp.headers['Content-Disposition'] = 'attachment; filename=ftth_infrastructure.json'
+    return resp
+
+
 @bp.route('/api/ftth/export', methods=['GET'])
 @login_required
 def ftth_export():
@@ -1849,24 +2100,47 @@ def ftth_export():
         writer.writerow([p['id'], p['olt_name'], p['frame'], p['slot'], p['port'], p['pon_name'], p['otb_name'], p['otb_core_number'], p['description']])
     writer.writerow([])
     writer.writerow(['=== OTB/ODF ==='])
-    writer.writerow(['id', 'name', 'type', 'model', 'location', 'latitude', 'longitude', 'total_cores', 'description'])
+    writer.writerow(['id', 'name', 'type', 'model', 'location', 'latitude', 'longitude', 'total_cores', 'description', 'feed_source', 'jc_name', 'jc_core_number', 'cable_length_meters', 'cable_attenuation_per_km', 'cable_label', 'cable_type', 'cable_cores', 'cable_route', 'node_status', 'installed_at'])
     for o in data['otbs']:
-        writer.writerow([o['id'], o['name'], o['type'], o['model'], o['location'], o['latitude'], o['longitude'], o['total_cores'], o['description']])
+        writer.writerow([o['id'], o['name'], o['type'], o['model'], o['location'], o['latitude'], o['longitude'], o['total_cores'], o['description']] + _export_extra(o))
     writer.writerow([])
     writer.writerow(['=== ODC ==='])
-    writer.writerow(['id', 'name', 'model', 'location', 'latitude', 'longitude', 'otb_name', 'otb_core_number', 'total_cores', 'splitter_model', 'description'])
+    writer.writerow(['id', 'name', 'model', 'location', 'latitude', 'longitude', 'otb_name', 'otb_core_number', 'total_cores', 'splitter_model', 'description', 'feed_source', 'jc_name', 'jc_core_number', 'cable_length_meters', 'cable_attenuation_per_km', 'cable_label', 'cable_type', 'cable_cores', 'cable_route', 'node_status', 'installed_at', 'splitter_ratio_type', 'splitter_tap_loss_db', 'splitter_through_loss_db'])
     for o in data['odcs']:
-        writer.writerow([o['id'], o['name'], o['model'], o['location'], o['latitude'], o['longitude'], o['otb_name'], o['otb_core_number'], o['total_cores'], o['splitter_model'], o['description']])
+        writer.writerow([o['id'], o['name'], o['model'], o['location'], o['latitude'], o['longitude'], o['otb_name'], o['otb_core_number'], o['total_cores'], o['splitter_model'], o['description']] + _export_extra(o) + [o.get('splitter_ratio_type'), o.get('splitter_tap_loss_db'), o.get('splitter_through_loss_db')])
     writer.writerow([])
     writer.writerow(['=== ODP ==='])
-    writer.writerow(['id', 'name', 'model', 'location', 'latitude', 'longitude', 'odc_name', 'odc_core_number', 'total_ports', 'splitter_model', 'description'])
+    writer.writerow(['id', 'name', 'model', 'location', 'latitude', 'longitude', 'odc_name', 'odc_core_number', 'total_ports', 'splitter_model', 'description', 'feed_source', 'jc_name', 'jc_core_number', 'cable_length_meters', 'cable_attenuation_per_km', 'cable_label', 'cable_type', 'cable_cores', 'cable_route', 'node_status', 'installed_at', 'splitter_ratio_type', 'splitter_tap_loss_db', 'splitter_through_loss_db', 'parent_odp_port_id'])
     for o in data['odps']:
-        writer.writerow([o['id'], o['name'], o['model'], o['location'], o['latitude'], o['longitude'], o['odc_name'], o['odc_core_number'], o['total_ports'], o['splitter_model'], o['description']])
+        writer.writerow([o['id'], o['name'], o['model'], o['location'], o['latitude'], o['longitude'], o['odc_name'], o['odc_core_number'], o['total_ports'], o['splitter_model'], o['description']] + _export_extra(o) + [o.get('splitter_ratio_type'), o.get('splitter_tap_loss_db'), o.get('splitter_through_loss_db'), o.get('parent_odp_port_id')])
     writer.writerow([])
     writer.writerow(['=== ODP PORTS ==='])
-    writer.writerow(['id', 'odp_id', 'port_number', 'status', 'customer_name', 'customer_phone', 'onu_name', 'onu_serial', 'description'])
+    writer.writerow(['id', 'odp_id', 'port_number', 'status', 'customer_name', 'customer_phone', 'onu_name', 'onu_serial', 'description', 'feed_source', 'jc_name', 'jc_core_number', 'cable_length_meters', 'cable_attenuation_per_km'])
     for p in data['odp_ports']:
-        writer.writerow([p['id'], p['odp_id'], p['port_number'], p['status'], p['customer_name'], p['customer_phone'], p['onu_name'], p['onu_serial'], p['description']])
+        writer.writerow([p['id'], p['odp_id'], p['port_number'], p['status'], p['customer_name'], p['customer_phone'], p['onu_name'], p['onu_serial'], p['description'],
+                         p.get('feed_source'), p.get('jc_name'), p.get('jc_core_number'), p.get('cable_length_meters'), p.get('cable_attenuation_per_km')])
+    # Bagian tambahan (tahap 3) — diabaikan oleh import lama, berguna untuk arsip/migrasi
+    writer.writerow([])
+    writer.writerow(['=== JC ==='])
+    writer.writerow(['id', 'name', 'closure_type', 'location', 'latitude', 'longitude', 'total_cores', 'parent_type', 'parent_name', 'description', 'cable_length_meters', 'cable_attenuation_per_km', 'cable_label', 'cable_type', 'cable_cores', 'cable_route', 'node_status', 'installed_at'])
+    for j in FTTHJC.query.order_by(FTTHJC.name).all():
+        o = _jc_to_dict(j)
+        writer.writerow([o['id'], o['name'], o['closure_type'], o['location'], o['latitude'], o['longitude'], o['total_cores'], o['parent_type'], o['parent_name'], o['description'],
+                         o.get('cable_length_meters'), o.get('cable_attenuation_per_km'), o['cable_label'], o['cable_type'], o['cable_cores'], o['cable_route'], o['node_status'], o['installed_at']])
+    writer.writerow([])
+    writer.writerow(['=== JC SPLICES ==='])
+    writer.writerow(['jc_name', 'core_in', 'core_out', 'tube_in_label', 'tube_out_label', 'label'])
+    jc_names = {j.id: j.name for j in FTTHJC.query.all()}
+    for sp in FTTHJCSplice.query.order_by(FTTHJCSplice.jc_id, FTTHJCSplice.core_out).all():
+        writer.writerow([jc_names.get(sp.jc_id, ''), sp.core_in, sp.core_out, sp.tube_in_label or '', sp.tube_out_label or '', sp.label or ''])
+    writer.writerow([])
+    writer.writerow(['=== FIBER CORES ==='])
+    writer.writerow(['owner_type', 'owner_name', 'core_number', 'status', 'assigned_to_type', 'assigned_to_id', 'attenuation_db', 'notes'])
+    owner_names = {('otb', o.id): o.name for o in FTTHOTB.query.all()}
+    owner_names.update({('odc', o.id): o.name for o in FTTHODC.query.all()})
+    owner_names.update({('jc', k): v for k, v in jc_names.items()})
+    for c in FTTHFiberCore.query.filter(FTTHFiberCore.status != 'available').order_by(FTTHFiberCore.owner_type, FTTHFiberCore.owner_id, FTTHFiberCore.core_number).all():
+        writer.writerow([c.owner_type, owner_names.get((c.owner_type, c.owner_id), ''), c.core_number, c.status, c.assigned_to_type or '', c.assigned_to_id or '', c.attenuation_db, c.notes or ''])
     from flask import Response
     resp = Response(si.getvalue(), mimetype='text/csv')
     resp.headers['Content-Disposition'] = 'attachment; filename=ftth_infrastructure.csv'

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FtthQualityPanel } from '../components/ftth/FtthQualityPanel';
 import { BudgetSettings } from '../components/ftth/BudgetSettings';
+import { FieldInfoSection, NodePhotos, NodeStatusBadge, fieldInfoInit } from '../components/ftth/FieldInfo';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -235,6 +236,7 @@ export function FtthInfrastructure() {
               title={t('pg_ftth.dataMenu')}
               actions={[
                 { key: 'export', label: t('pg_ftth.exportCsv'), icon: <Download size={16} />, onClick: () => window.open(api.ftthExport(), '_blank') },
+                { key: 'export-json', label: t('ftthf.exportJson'), icon: <Download size={16} />, onClick: () => window.open(api.ftthExportJson(), '_blank') },
                 ...(canEdit ? [{ key: 'import', label: t('pg_ftth.importCsv'), icon: <Upload size={16} />, onClick: () => importRef.current?.click() }] : []),
               ]}
             />
@@ -360,6 +362,7 @@ export function FtthInfrastructure() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">{o.name}</span>
+                    <NodeStatusBadge status={o.node_status} />
                     <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? t('pg_ftth.stActive') : t('pg_ftth.stIdle')}</span>
                   </div>
                   <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5">
@@ -400,6 +403,7 @@ export function FtthInfrastructure() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">{j.name}</span>
+                    <NodeStatusBadge status={j.node_status} />
                     <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0 bg-glass text-tx3 uppercase">{j.closure_type}</span>
                   </div>
                   <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5">
@@ -435,6 +439,7 @@ export function FtthInfrastructure() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">{o.name}</span>
+                    <NodeStatusBadge status={o.node_status} />
                     <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? t('pg_ftth.stActive') : t('pg_ftth.stIdle')}</span>
                   </div>
                   <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5">
@@ -476,6 +481,7 @@ export function FtthInfrastructure() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">{o.name}</span>
+                    <NodeStatusBadge status={o.node_status} />
                     <span className={cn('px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0', o.is_active ? 'bg-success/15 text-success' : 'bg-glass text-tx3')}>{o.is_active ? t('pg_ftth.stActive') : t('pg_ftth.stIdle')}</span>
                   </div>
                   <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5">
@@ -804,7 +810,7 @@ function OtbNode({ otb, expanded, toggleExpand, canEdit, onAddOdc, onEditOtb, on
         </button>
         <Server size={18} className="text-accent" />
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm truncate">{otb.name}</div>
+          <div className="font-medium text-sm truncate">{otb.name} <NodeStatusBadge status={otb.node_status} /></div>
           <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
             <span className="uppercase">{otb.type}</span>
             {otb.feed_source === 'jc' ? (
@@ -859,7 +865,7 @@ function OdcRow({ odc, fibersPerTube, sourceLabel, expanded, toggleExpand, canEd
         </button>
         <Box size={16} className="text-warning" />
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm truncate">{odc.name}</div>
+          <div className="font-medium text-sm truncate">{odc.name} <NodeStatusBadge status={odc.node_status} /></div>
           <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
             <span>{sourceLabel}</span>
             {odc.feed_source !== 'jc' && <CoreColorTag coreNumber={odc.otb_core_number} fibersPerTube={fibersPerTube} />}
@@ -909,7 +915,7 @@ function OdpRow({ odp, sourceLabel, expanded, toggleExpand, canEdit, onAddOdp, o
         ) : <span className="w-6" />}
         <Split size={16} className="text-success" />
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm truncate">{odp.name}</div>
+          <div className="font-medium text-sm truncate">{odp.name} <NodeStatusBadge status={odp.node_status} /></div>
           <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
             <span>{sourceLabel}</span>
             {odp.splitter_model && <span>Splitter: {odp.splitter_model}</span>}
@@ -955,7 +961,7 @@ function JcRow({ jc, expanded, toggleExpand, canEdit, onAddOdc, onEditOdc, onDel
         <GitMerge size={16} className="text-purple-400" />
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate flex items-center gap-1.5">
-            {jc.name}
+            {jc.name} <NodeStatusBadge status={jc.node_status} />
             <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-glass text-tx3 uppercase">{jc.closure_type}</span>
           </div>
           <div className="text-xs text-tx3 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
@@ -1437,21 +1443,49 @@ const CORE_STATUS_STYLE: Record<string, string> = {
 
 function CoreStatusPanel({ ownerType, ownerId, totalCores }: { ownerType: 'otb' | 'odc' | 'jc'; ownerId: number; totalCores: number }) {
   const { t } = useTranslation();
+  const qc = useQueryClient();
+  const canEdit = useHasPerm()('settings_ip_olts');
   const { data } = useQuery({
     queryKey: ['ftth-cores', ownerType, ownerId],
     queryFn: () => api.ftthCores(ownerType, ownerId),
   });
-  const [historyForId, setHistoryForId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [edit, setEdit] = useState<{ status: string; attenuation_db: string; notes: string }>({ status: 'available', attenuation_db: '', notes: '' });
+  const [saving, setSaving] = useState(false);
   const cores = data?.cores || [];
   const coreByNumber = new Map(cores.map(c => [c.core_number, c] as const));
-  const selectedCore = historyForId !== null ? cores.find(c => c.id === historyForId) : null;
+  const selectedCore = selected !== null ? coreByNumber.get(selected) : undefined;
   const { data: historyData } = useQuery({
-    queryKey: ['ftth-core-history', historyForId],
-    queryFn: () => api.ftthCoreHistory(historyForId as number),
-    enabled: historyForId !== null,
+    queryKey: ['ftth-core-history', selectedCore?.id],
+    queryFn: () => api.ftthCoreHistory(selectedCore!.id),
+    enabled: !!selectedCore,
   });
 
   if (!totalCores || totalCores <= 0) return null;
+
+  const open = (n: number) => {
+    if (selected === n) { setSelected(null); return; }
+    const c = coreByNumber.get(n);
+    setEdit({ status: c?.status || 'available', attenuation_db: c?.attenuation_db != null ? String(c.attenuation_db) : '', notes: c?.notes || '' });
+    setSelected(n);
+  };
+  const save = async () => {
+    if (selected === null) return;
+    setSaving(true);
+    try {
+      const payload: { status?: 'available' | 'reserved' | 'damaged'; attenuation_db: number | null; notes: string } = {
+        attenuation_db: edit.attenuation_db === '' ? null : Number(edit.attenuation_db), notes: edit.notes,
+      };
+      if (edit.status !== 'used') payload.status = edit.status as 'available' | 'reserved' | 'damaged';
+      const r = await api.ftthCoreSetStatus(ownerType, ownerId, selected, payload);
+      toast.success(t('ftthf.coreSaved', { n: selected }));
+      if (r.warning) toast.warning(r.warning);
+      qc.invalidateQueries({ queryKey: ['ftth-cores', ownerType, ownerId] });
+      qc.invalidateQueries({ queryKey: ['ftth-core-history'] });
+      qc.invalidateQueries({ queryKey: ['ftth-quality'] });
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setSaving(false); }
+  };
 
   return (
     <div>
@@ -1463,34 +1497,72 @@ function CoreStatusPanel({ ownerType, ownerId, totalCores }: { ownerType: 'otb' 
           return (
             <button
               key={n} type="button"
-              disabled={!core}
-              onClick={() => core && setHistoryForId(core.id === historyForId ? null : core.id)}
-              className={cn('w-7 h-7 rounded text-[10px] font-medium border flex items-center justify-center transition-colors', CORE_STATUS_STYLE[status], core && 'cursor-pointer hover:opacity-80')}
-              title={`Core ${n}: ${status}${core?.assigned_to_type ? ` — ${core.assigned_to_type} #${core.assigned_to_id}` : ''}`}
+              onClick={() => open(n)}
+              aria-pressed={selected === n}
+              className={cn('w-7 h-7 rounded text-[10px] font-medium border flex items-center justify-center transition-colors cursor-pointer hover:opacity-80', CORE_STATUS_STYLE[status], selected === n && 'ring-2 ring-accent')}
+              title={`Core ${n}: ${t(`ftthf.core.${status}`)}${core?.assigned_to_type ? ` — ${core.assigned_to_type} #${core.assigned_to_id}` : ''}`}
             >
               {n}
             </button>
           );
         })}
       </div>
-      {selectedCore && (
-        <div className="mt-2 p-2.5 rounded-lg bg-glass border border-brd text-xs">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="font-medium text-tx1">Riwayat Core {selectedCore.core_number}</span>
-            <button type="button" onClick={() => setHistoryForId(null)} className="text-tx3 hover:text-tx1"><X size={12} /></button>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[10px] text-tx3">
+        {(['available', 'used', 'reserved', 'damaged'] as const).map(st => (
+          <span key={st} className="inline-flex items-center gap-1"><span className={cn('w-2.5 h-2.5 rounded-sm border', CORE_STATUS_STYLE[st])} />{t(`ftthf.core.${st}`)}</span>
+        ))}
+      </div>
+      {selected !== null && (
+        <div className="mt-2 p-2.5 rounded-lg bg-glass border border-brd text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-tx1">Core {selected}</span>
+            <button type="button" onClick={() => setSelected(null)} className="text-tx3 hover:text-tx1" aria-label={t('ftthf.close')}><X size={12} /></button>
           </div>
-          {(historyData?.history || []).length === 0 ? (
-            <p className="text-tx3">{t('pg_ftth.noStatusChangeHistory')}</p>
-          ) : (
-            <div className="space-y-1.5 max-h-32 overflow-y-auto">
-              {(historyData?.history || []).map(h => (
-                <div key={h.id} className="text-tx3 leading-tight">
-                  <span className="text-tx2 font-medium">{h.action}</span>{' '}
-                  ({h.previous_status || '-'} → {h.new_status || '-'})
-                  {h.performed_by && <span> oleh {h.performed_by}</span>}
-                  {h.reason && <span className="italic"> — {h.reason}</span>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="block">
+              <span className="label-sm">{t('ftthf.coreStatus')}</span>
+              <select className="input-field" disabled={!canEdit} value={edit.status} onChange={e => setEdit({ ...edit, status: e.target.value })}>
+                {edit.status === 'used' && <option value="used">{t('ftthf.core.used')}</option>}
+                <option value="available">{t('ftthf.core.available')}</option>
+                <option value="reserved">{t('ftthf.core.reserved')}</option>
+                <option value="damaged">{t('ftthf.core.damaged')}</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="label-sm">{t('ftthf.coreAtten')}</span>
+              <input type="number" step="0.01" className="input-field" disabled={!canEdit} value={edit.attenuation_db}
+                onChange={e => setEdit({ ...edit, attenuation_db: e.target.value })} placeholder="0.35" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="label-sm">{t('ftthf.coreNotes')}</span>
+            <input className="input-field" disabled={!canEdit} value={edit.notes} onChange={e => setEdit({ ...edit, notes: e.target.value })}
+              placeholder={t('ftthf.coreNotesPh')} />
+          </label>
+          {edit.status === 'used' && <p className="text-[11px] text-tx3">{t('ftthf.coreUsedHint')}</p>}
+          {canEdit && (
+            <button type="button" onClick={save} disabled={saving}
+              className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50">
+              {saving ? t('ftthf.saving') : t('ftthf.saveCore')}
+            </button>
+          )}
+          {selectedCore && (
+            <div className="pt-2 border-t border-brd">
+              <p className="font-medium text-tx2 mb-1">{t('ftthf.coreHistory')}</p>
+              {(historyData?.history || []).length === 0 ? (
+                <p className="text-tx3">{t('pg_ftth.noStatusChangeHistory')}</p>
+              ) : (
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                  {(historyData?.history || []).map(h => (
+                    <div key={h.id} className="text-tx3 leading-tight">
+                      <span className="text-tx2 font-medium">{h.action}</span>{' '}
+                      ({h.previous_status || '-'} → {h.new_status || '-'})
+                      {h.performed_by && <span> · {h.performed_by}</span>}
+                      {h.reason && <span className="italic"> — {h.reason}</span>}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
@@ -1589,6 +1661,7 @@ function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jc
     cable_length_meters: item?.cable_length_meters ?? '',
     cable_attenuation_per_km: item?.cable_attenuation_per_km ?? (0.35 as string | number),
     description: item?.description || '',
+    ...fieldInfoInit(item),
   });
   const mut = useMutation({
     mutationFn: (data: any) => item ? api.ftthOtbUpdate(item.id, data) : api.ftthOtbCreate(data),
@@ -1597,6 +1670,8 @@ function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jc
   });
   const submit = () => {
     const d: any = { ...form };
+    d.cable_cores = form.cable_cores === '' ? null : Number(form.cable_cores);
+    d.installed_at = form.installed_at || null;
     d.latitude = form.latitude === '' ? null : parseFloat(String(form.latitude));
     d.longitude = form.longitude === '' ? null : parseFloat(String(form.longitude));
     d.total_cores = parseInt(String(form.total_cores));
@@ -1651,6 +1726,8 @@ function OtbModal({ item, jcList, onClose, onSaved }: { item: FTTHOtb | null; jc
         <FormField label={t('pg_ftth.attenuationDbKm')}><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
       {item && <CoreStatusPanel ownerType="otb" ownerId={item.id} totalCores={parseInt(String(form.total_cores)) || 0} />}
+      <FieldInfoSection form={form} setForm={setForm} />
+      {item && <NodePhotos kind="otb" id={item.id} />}
       <FormField label={t('pg_ftth.description')}><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1705,6 +1782,7 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
     cable_length_meters: item?.cable_length_meters ?? '',
     cable_attenuation_per_km: item?.cable_attenuation_per_km ?? (0.35 as string | number),
     description: item?.description || '',
+    ...fieldInfoInit(item),
   });
   const mut = useMutation({
     mutationFn: (data: any) => item ? api.ftthOdcUpdate(item.id, data) : api.ftthOdcCreate(data),
@@ -1713,6 +1791,8 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
   });
   const submit = () => {
     const d: any = { ...form };
+    d.cable_cores = form.cable_cores === '' ? null : Number(form.cable_cores);
+    d.installed_at = form.installed_at || null;
     d.latitude = form.latitude === '' ? null : parseFloat(String(form.latitude));
     d.longitude = form.longitude === '' ? null : parseFloat(String(form.longitude));
     d.otb_id = form.otb_id === '' ? null : parseInt(String(form.otb_id));
@@ -1783,6 +1863,8 @@ function OdcModal({ item, parent, parentKind, otbList, jcList, onClose, onSaved 
         <FormField label={t('pg_ftth.attenuationDbKm')}><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
       {item && <CoreStatusPanel ownerType="odc" ownerId={item.id} totalCores={parseInt(String(form.total_cores)) || 0} />}
+      <FieldInfoSection form={form} setForm={setForm} />
+      {item && <NodePhotos kind="odc" id={item.id} />}
       <FormField label={t('pg_ftth.description')}><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1817,6 +1899,7 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, odpList, onClose,
     cable_length_meters: item?.cable_length_meters ?? '',
     cable_attenuation_per_km: item?.cable_attenuation_per_km ?? (0.35 as string | number),
     description: item?.description || '',
+    ...fieldInfoInit(item),
   });
   const mut = useMutation({
     mutationFn: (data: any) => item ? api.ftthOdpUpdate(item.id, data) : api.ftthOdpCreate(data),
@@ -1829,6 +1912,8 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, odpList, onClose,
   });
   const submit = () => {
     const d: any = { ...form };
+    d.cable_cores = form.cable_cores === '' ? null : Number(form.cable_cores);
+    d.installed_at = form.installed_at || null;
     d.latitude = form.latitude === '' ? null : parseFloat(String(form.latitude));
     d.longitude = form.longitude === '' ? null : parseFloat(String(form.longitude));
     d.odc_id = form.odc_id === '' ? null : parseInt(String(form.odc_id));
@@ -1916,6 +2001,8 @@ function OdpModal({ item, parent, parentKind, odcList, jcList, odpList, onClose,
         <FormField label={t('pg_ftth.incomingCableLengthM')}><input className="input-field" type="number" step="1" value={form.cable_length_meters} onChange={e => setForm({ ...form, cable_length_meters: e.target.value })} placeholder={t('pg_ftth.eG100')} /></FormField>
         <FormField label={t('pg_ftth.attenuationDbKm')}><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
+      <FieldInfoSection form={form} setForm={setForm} />
+      {item && <NodePhotos kind="odp" id={item.id} />}
       <FormField label={t('pg_ftth.description')}><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
     </Modal>
   );
@@ -1943,6 +2030,7 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
     cable_length_meters: item?.cable_length_meters ?? '',
     cable_attenuation_per_km: item?.cable_attenuation_per_km ?? (0.35 as string | number),
     description: item?.description || '',
+    ...fieldInfoInit(item),
   });
   const mut = useMutation({
     mutationFn: (data: any) => item ? api.ftthJcUpdate(item.id, data) : api.ftthJcCreate(data),
@@ -1951,6 +2039,8 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
   });
   const submit = () => {
     const d: any = { ...form };
+    d.cable_cores = form.cable_cores === '' ? null : Number(form.cable_cores);
+    d.installed_at = form.installed_at || null;
     d.latitude = form.latitude === '' ? null : parseFloat(String(form.latitude));
     d.longitude = form.longitude === '' ? null : parseFloat(String(form.longitude));
     d.total_cores = parseInt(String(form.total_cores));
@@ -2062,6 +2152,8 @@ function JcModal({ item, parent, parentKind, otbList, odcList, jcList, ponList, 
         <FormField label={t('pg_ftth.attenuationDbKm')}><input className="input-field" type="number" step="0.01" value={form.cable_attenuation_per_km} onChange={e => setForm({ ...form, cable_attenuation_per_km: e.target.value })} /></FormField>
       </div>
       {item && <CoreStatusPanel ownerType="jc" ownerId={item.id} totalCores={parseInt(String(form.total_cores)) || 0} />}
+      <FieldInfoSection form={form} setForm={setForm} />
+      {item && <NodePhotos kind="jc" id={item.id} />}
       <FormField label={t('pg_ftth.description')}><textarea className="input-field" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></FormField>
 
       {item && (
