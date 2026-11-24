@@ -1,0 +1,1 @@
+import{S as e}from"./vendor-query-2p5E-Hqe.js";import{t}from"./utils-B1gi_UrD.js";var n=e();function r({children:e,className:r}){return(0,n.jsx)(`div`,{className:t(`space-y-4 md:space-y-5`,r),children:e})}export{r as t};

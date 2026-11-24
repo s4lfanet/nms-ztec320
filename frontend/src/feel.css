@@ -1,0 +1,124 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   "Rasa" aplikasi — gerak kecil yang MENJAWAB tindakan pengguna.
+   Hapus `import './feel.css'` di main.tsx untuk mematikan seluruhnya.
+
+   Prinsip (supaya terasa dibuat tangan, bukan template):
+   1. Gerak hanya sebagai jawaban: menekan, memilih, membuka, memuat.
+      Tidak ada animasi masuk di setiap kartu, tidak ada yang berulang
+      tanpa alasan (kecuali indikator data live).
+   2. Benda bergerak DARI tempat asalnya: sorotan tab/menu meluncur ke
+      pilihan baru, panel terbuka dari tombolnya, bilah progres mengalir
+      dari kiri.
+   3. Cepat dan bertenaga: 120–260 ms, satu kurva yang sama ("--ease-out")
+      — mulai cepat, berhenti lembut seperti benda fisik.
+   4. Hormati prefers-reduced-motion: semuanya jadi instan.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-spring: cubic-bezier(.3, 1.35, .5, 1);
+}
+
+/* 1) Tombol: terasa ditekan ─────────────────────────────────────────────── */
+.btn-primary, .btn-cancel, .btn-danger, .btn-warning, .btn-accent, .btn-ghost {
+  transition-property: background-color, border-color, color, box-shadow, transform;
+  transition-duration: .15s, .15s, .15s, .15s, .12s;
+  transition-timing-function: var(--ease-out);
+}
+.btn-primary:active:not(:disabled), .btn-cancel:active:not(:disabled), .btn-danger:active:not(:disabled),
+.btn-warning:active:not(:disabled), .btn-accent:active:not(:disabled), .btn-ghost:active:not(:disabled) {
+  transform: scale(.97);
+}
+
+/* 2) Sorotan yang meluncur — Tabs, menu samping, bar bawah HP ───────────── */
+.slide-ind {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  z-index: 0;
+  transition: transform .26s var(--ease-out), width .26s var(--ease-out), height .26s var(--ease-out), opacity .15s ease;
+  will-change: transform;
+}
+/* Tabs: pil yang sama dengan .tab-btn-active, tapi berpindah */
+.tab-ind {
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+}
+html.light .tab-ind { background: rgba(255, 255, 255, .95); box-shadow: 0 2px 8px -3px rgba(30, 41, 59, .2); }
+[data-sliding] > .tab-btn { position: relative; z-index: 1; }
+[data-sliding] > .tab-btn.tab-btn-active { background: transparent; border-color: transparent; box-shadow: none; }
+
+/* Menu samping: bilah aksen di tepi kiri yang meluncur antar menu */
+.nav-ind {
+  width: 3px !important;
+  border-radius: 0 3px 3px 0;
+  background: var(--color-accent);
+  box-shadow: 0 0 12px rgb(var(--accent-rgb, 14 165 233) / .55);
+}
+
+/* Bar bawah HP: garis aksen di tepi atas tab aktif */
+.bnav-ind { height: 2px !important; }
+.bnav-ind::after {
+  content: ''; position: absolute; top: 0; left: 50%; width: 28px; height: 2px; margin-left: -14px;
+  border-radius: 0 0 2px 2px; background: var(--color-accent); box-shadow: 0 0 8px var(--color-accent);
+}
+.bnav-item:active > div:first-child { transform: scale(.88); }
+.bnav-item > div:first-child { transition: transform .18s var(--ease-spring), background-color .2s ease; }
+
+/* 3) Bilah progres tipis di tepi atas ───────────────────────────────────── */
+.top-progress {
+  position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 80;
+  pointer-events: none; transform-origin: 0 50%; transform: scaleX(0); opacity: 0;
+  background: linear-gradient(90deg, transparent, var(--color-accent) 30%, var(--color-accent));
+  box-shadow: 0 0 8px var(--color-accent);
+}
+.top-progress[data-phase="run"]  { opacity: 1; transform: scaleX(.82); transition: transform 2.4s cubic-bezier(.1, .7, .2, 1), opacity .1s; }
+.top-progress[data-phase="done"] { opacity: 0; transform: scaleX(1); transition: transform .22s var(--ease-out), opacity .3s ease .18s; }
+.top-progress[data-phase="idle"] { transition: none; }
+
+/* 4) Panel yang terbuka meluncur dari tombolnya ─────────────────────────── */
+.reveal { animation: revealDown .24s var(--ease-out) backwards; transform-origin: top; }
+@keyframes revealDown {
+  from { opacity: 0; transform: translateY(-6px) scaleY(.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 5) Kerangka loading: kilau yang mengalir, bukan kedip */
+.skeleton-shimmer {
+  position: relative; overflow: hidden; background: var(--bg-glass);
+}
+.skeleton-shimmer::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .07), transparent);
+  animation: shimmer 1.4s var(--ease-out) infinite;
+}
+html.light .skeleton-shimmer::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .7), transparent); }
+@keyframes shimmer { to { transform: translateX(100%); } }
+
+/* 6) Kartu/baris yang bisa diketuk: sedikit terangkat saat disorot ──────── */
+@media (hover: hover) {
+  a.glass-card, button.glass-card, .card-hover {
+    transition: transform .18s var(--ease-out), border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+  }
+  a.glass-card:hover, button.glass-card:hover, .card-hover:hover {
+    transform: translateY(-1px);
+    border-color: var(--border-hover);
+    box-shadow: 0 8px 22px -14px rgba(0, 0, 0, .55);
+  }
+}
+a.glass-card:active, button.glass-card:active, .card-hover:active { transform: scale(.995); }
+
+/* 7) Ikon chevron/expand berputar halus */
+.rotate-smooth { transition: transform .22s var(--ease-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  .slide-ind, .top-progress, .reveal, .skeleton-shimmer::after,
+  .btn-primary, .btn-cancel, .btn-danger, .btn-warning, .btn-accent, .btn-ghost,
+  a.glass-card, button.glass-card, .card-hover, .bnav-item > div:first-child, .rotate-smooth {
+    transition: none !important; animation: none !important;
+  }
+  .btn-primary:active, .btn-cancel:active, .btn-danger:active, .btn-warning:active, .btn-accent:active, .btn-ghost:active,
+  a.glass-card:hover, button.glass-card:hover, .card-hover:hover { transform: none; }
+}

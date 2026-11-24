@@ -267,7 +267,7 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
                 ) : p.watched ? <Star size={13} className="text-warning" fill="currentColor" aria-label={t('devx.watching')} /> : null}
               </span>
               {openPort === p.id && (
-                <div className="basis-full w-full pt-2 space-y-3">
+                <div className="reveal basis-full w-full pt-2 space-y-3">
                   {p.oper_status === 'up' && <PortLive portId={p.id} speedMbps={p.speed_mbps} />}
                   <PortDetail port={p} />
                   <RangePicker value={range} onChange={setRange} />

@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Aplikasi terasa lebih hidup (gerak yang menjawab tindakan)
+
+#### Diubah
+- **Tab di semua halaman:** sorotan tab meluncur ke tab yang dipilih, bukan berganti mendadak.
+- **Menu samping:** bilah aksen bercahaya di tepi kiri berpindah ke menu yang aktif.
+- **Bar bawah HP:** garis aksen pindah ke tab aktif, dan ikon "mengempis" sesaat ketika diketuk.
+- **Tombol:** terasa ditekan (sedikit mengecil saat ditekan).
+- **Bilah progres tipis** di tepi atas layar saat pindah halaman atau saat data halaman sedang dimuat. Refresh otomatis di latar tidak memunculkannya.
+- **Kerangka loading** memakai kilau yang mengalir, bukan kedip.
+- **Panel yang dibuka** (mis. detail port) meluncur turun dari tombolnya.
+- **Kartu yang bisa diketuk** sedikit terangkat saat disorot (desktop).
+- Semua gerak singkat (di bawah 0,3 detik), dan mati otomatis bila perangkat memakai mode "kurangi gerakan".
+
 ### 2026-11-25 — Tombol "Detail" di setiap port
 
 #### Diubah
