@@ -2289,5 +2289,30 @@
     "secondsAgo": "diperbarui {{n}} dtk lalu",
     "minutesAgo": "diperbarui {{n}} mnt lalu",
     "updating": "memperbarui…"
+  },
+  "ftthq": {
+    "title": "Kualitas data",
+    "allGood": "Tidak ditemukan masalah: core, jalur, dan koordinat tercatat konsisten.",
+    "summary": "{{n}} temuan, {{crit}} di antaranya membuat data salah. Ketuk kategori untuk melihat node-nya.",
+    "unassigned": "{{n}} dari {{total}} ONU belum dipasang ke port ODP.",
+    "more": "+{{n}} lainnya",
+    "cat": {
+      "core_conflict": "Core dipakai ganda",
+      "core_out_of_range": "Core di luar kapasitas kabel",
+      "pon_mismatch": "ONU tidak cocok dengan PON jalurnya",
+      "missing_splice": "Feed JC tanpa splice",
+      "orphan": "Node belum tersambung",
+      "odp_full": "ODP penuh",
+      "no_coordinates": "Tanpa koordinat"
+    },
+    "hint": {
+      "core_conflict": "Satu core tercatat menyuplai lebih dari satu node — salah satunya keliru",
+      "core_out_of_range": "Nomor core melebihi jumlah core kabel sumber",
+      "pon_mismatch": "Terdaftar di OLT/PON berbeda dengan jalur fisik ODP-nya",
+      "missing_splice": "Node mengambil core keluar JC yang belum dibuat splice-nya",
+      "orphan": "Sumber kabel masuk belum diisi atau sudah dihapus",
+      "odp_full": "Semua port terpakai — siapkan ODP tambahan",
+      "no_coordinates": "Tidak tampil di peta"
+    }
   }
 }

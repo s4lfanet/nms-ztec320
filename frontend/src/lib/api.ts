@@ -223,6 +223,7 @@ export const api = {
 
   // FTTH Infrastructure
   ftthStats: () => request<FTTHStats>('/api/ftth/stats'),
+  ftthQuality: () => request<FTTHQualityReport>('/api/ftth/quality'),
   ftthTree: () => request<{ success: boolean; tree: FTTHItem[] }>('/api/ftth/tree'),
   ftthMap: () => request<{ success: boolean; markers: FTTHMarker[]; lines: FTTHLine[] }>('/api/ftth/map'),
   ftthOtbList: () => request<{ success: boolean; items: FTTHOtb[] }>('/api/ftth/otb'),
@@ -241,7 +242,7 @@ export const api = {
   ftthOdpDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/odp/${id}`, { method: 'DELETE' }),
   ftthOdpPorts: (odpId: number) => request<{ success: boolean; ports: FTTHOdpPort[] }>(`/api/ftth/odp/${odpId}/ports`),
   ftthOdpSeedOnuCoords: (odpId: number) => request<{ success: boolean; updated: number; skipped: number; message: string }>(`/api/ftth/odp/${odpId}/seed-onu-coords`, { method: 'POST' }),
-  ftthOdpPortUpdate: (id: number, data: Partial<FTTHOdpPort> & { latitude?: number | null; longitude?: number | null }) => request<{ success: boolean; port: FTTHOdpPort }>(`/api/ftth/odp-port/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  ftthOdpPortUpdate: (id: number, data: Partial<FTTHOdpPort> & { latitude?: number | null; longitude?: number | null }) => request<{ success: boolean; port: FTTHOdpPort; warning?: string | null }>(`/api/ftth/odp-port/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthOdpPortDelete: (id: number) => request<{ success: boolean }>(`/api/ftth/odp-port/${id}`, { method: 'DELETE' }),
   ftthJcList: () => request<{ success: boolean; items: FTTHJc[] }>('/api/ftth/jc'),
   ftthJcCreate: (data: Partial<FTTHJc>) => request<{ success: boolean; item: FTTHJc }>('/api/ftth/jc', { method: 'POST', body: JSON.stringify(data) }),
@@ -573,6 +574,16 @@ export interface FanInfo {
 
 export interface OltModelPhoto {
   key: string; vendor: string; model: string; olt_count: number; image_url: string | null;
+}
+
+export interface FTTHQualityIssue { kind: string; id: number; name: string; message: string }
+export interface FTTHQualityReport {
+  success: boolean;
+  total: number;
+  counts: Record<string, number>;
+  issues: Record<string, FTTHQualityIssue[]>;
+  onus_unassigned: number;
+  onus_total: number;
 }
 
 export interface CardInfo {

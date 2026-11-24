@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FtthQualityPanel } from '../components/ftth/FtthQualityPanel';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -694,6 +695,8 @@ function OverviewTab({ stats, onTab }: { stats: FTTHStats | undefined; onTab: (t
         </div>
       )}
 
+      <FtthQualityPanel />
+
       {/* Per-OLT Breakdown */}
       {stats.per_olt.length > 0 && (
         <div>
@@ -1040,7 +1043,7 @@ function OdpPortPanel({ odp, ports, availableOnus, jcList, onClose, onUpdated }:
 
   const saveMut = useMutation({
     mutationFn: (data: Partial<FTTHOdpPort> & { id: number; latitude?: number | null; longitude?: number | null }) => api.ftthOdpPortUpdate(data.id, data),
-    onSuccess: () => { toast.success(t('pg_ftth.portUpdated')); qc.invalidateQueries({ queryKey: ['ftth-odp-ports', odp.id] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); setEditingPort(null); setShowLink(null); onUpdated(); },
+    onSuccess: (res) => { toast.success(t('pg_ftth.portUpdated')); if (res?.warning) toast.warning(res.warning); qc.invalidateQueries({ queryKey: ['ftth-quality'] }); qc.invalidateQueries({ queryKey: ['ftth-odp-ports', odp.id] }); qc.invalidateQueries({ queryKey: ['ftth-tree'] }); setEditingPort(null); setShowLink(null); onUpdated(); },
     onError: (e: Error) => toast.error(e.message),
   });
 

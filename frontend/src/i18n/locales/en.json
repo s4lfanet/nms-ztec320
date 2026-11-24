@@ -2289,5 +2289,30 @@
     "secondsAgo": "updated {{n}}s ago",
     "minutesAgo": "updated {{n}} min ago",
     "updating": "updating…"
+  },
+  "ftthq": {
+    "title": "Data quality",
+    "allGood": "No problems found: cores, paths and coordinates are consistent.",
+    "summary": "{{n}} findings, {{crit}} of which make the data wrong. Tap a category to see the nodes.",
+    "unassigned": "{{n}} of {{total}} ONUs are not assigned to an ODP port.",
+    "more": "+{{n}} more",
+    "cat": {
+      "core_conflict": "Core used twice",
+      "core_out_of_range": "Core beyond cable capacity",
+      "pon_mismatch": "ONU does not match its path's PON",
+      "missing_splice": "JC feed without a splice",
+      "orphan": "Unconnected nodes",
+      "odp_full": "Full ODPs",
+      "no_coordinates": "No coordinates"
+    },
+    "hint": {
+      "core_conflict": "One core is recorded as feeding more than one node — one of them is wrong",
+      "core_out_of_range": "Core number exceeds the source cable's core count",
+      "pon_mismatch": "Registered on a different OLT/PON than its ODP's physical path",
+      "missing_splice": "Node uses a JC output core that has no splice yet",
+      "orphan": "Incoming feed not set or already deleted",
+      "odp_full": "All ports used — plan an extra ODP",
+      "no_coordinates": "Not shown on the map"
+    }
   }
 }
