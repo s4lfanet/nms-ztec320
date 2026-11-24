@@ -290,6 +290,7 @@ export const api = {
     return request<SnmpGraphData>(`/api/snmp/graph?${qs}`);
   },
   snmpDeviceMetrics: (id: number) => request<{ success: boolean; metrics: { metric: string; name: string }[] }>(`/api/snmp/devices/${id}/metrics`),
+  snmpPortDetail: (portId: number) => request<{ success: boolean; port: SnmpPort; detail: SnmpPortDetail }>(`/api/snmp/ports/${portId}`),
   snmpSparks: (deviceId: number) =>
     request<{ success: boolean; points: number; step_s: number; ports: Record<string, { in: (number | null)[]; out: (number | null)[] }> }>(`/api/snmp/devices/${deviceId}/sparks`),
   snmpPortLive: (portId: number) =>
@@ -894,11 +895,18 @@ export interface SnmpDeviceForm {
   v3_user?: string; v3_level?: string; v3_auth_proto?: string; v3_auth_pass?: string; v3_priv_proto?: string; v3_priv_pass?: string;
   location?: string; notes?: string; enabled?: boolean;
 }
+export interface SnmpPortDetail {
+  mtu: number | null; duplex: string; ip_addrs: string[];
+  sfp: { vendor: string; part: string; serial: string; type: string; connector: number | null; wavelength_nm: number | null; link_m: number | null; rates: string } | null;
+  optical: { rx_dbm: number | null; tx_dbm: number | null; temp_c: number | null; volt: number | null; bias_ma: number | null; rx_loss: boolean | null; tx_fault: boolean | null; at: string | null } | null;
+  stats: Record<string, number>; stats_at: string | null;
+}
 export interface SnmpPort {
   id: number; if_index: number; name: string; descr: string; alias: string; if_type: number | null;
   speed_mbps: number | null; mac: string; admin_status: string; oper_status: string; status_changed_at: string | null;
   ignored: boolean; in_bps: number | null; out_bps: number | null; in_err_rate: number | null; out_err_rate: number | null;
   in_pps?: number | null; out_pps?: number | null; has_counters?: boolean;
+  rx_dbm?: number | null; tx_dbm?: number | null; rx_loss?: boolean | null; sfp_type?: string | null;
   in_errors: number | null; out_errors: number | null; util_pct: number | null; watched: boolean;
 }
 export interface TopoNode {

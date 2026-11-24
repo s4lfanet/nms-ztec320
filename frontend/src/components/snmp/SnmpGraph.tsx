@@ -8,7 +8,7 @@ import { fmtBps } from '../../lib/snmpFormat';
 
 export type GraphRange = '6h' | '24h' | '7d' | '30d' | '1y';
 export const RANGES: GraphRange[] = ['6h', '24h', '7d', '30d', '1y'];
-export type GraphUnit = 'bps' | 'pct' | 'temp' | 'volt' | 'rpm' | 'watt' | 'amp' | 'err' | 'pps';
+export type GraphUnit = 'bps' | 'pct' | 'temp' | 'volt' | 'rpm' | 'watt' | 'amp' | 'err' | 'pps' | 'dbm';
 
 export interface GraphSeries { metric: string; label: string; color: string }
 
@@ -18,6 +18,7 @@ export function fmtValue(v: number | null | undefined, unit: GraphUnit): string 
     case 'bps': return fmtBps(v);
     case 'pct': return `${v.toFixed(v < 10 ? 1 : 0)}%`;
     case 'temp': return `${v.toFixed(1)}°C`;
+    case 'dbm': return `${v.toFixed(2)} dBm`;
     case 'volt': return `${v.toFixed(1)} V`;
     case 'rpm': return `${Math.round(v)} rpm`;
     case 'watt': return `${v.toFixed(1)} W`;
@@ -100,7 +101,7 @@ export function SnmpGraph({ deviceId, portId, series, unit, range, height = 180,
               <XAxis dataKey="t" tickFormatter={v => tickTime(String(v), range)} tick={{ fontSize: 10, fill: 'var(--color-tx3)' }}
                 interval="preserveStartEnd" minTickGap={40} />
               <YAxis tickFormatter={v => fmtValue(Number(v), unit)} tick={{ fontSize: 10, fill: 'var(--color-tx3)' }} width={62}
-                domain={unit === 'pct' ? [0, 100] : [0, 'auto']} allowDecimals />
+                domain={unit === 'pct' ? [0, 100] : unit === 'dbm' ? ['auto', 'auto'] : [0, 'auto']} allowDecimals />
               <Tooltip
                 contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 12 }}
                 labelFormatter={v => new Date(String(v)).toLocaleString()}

@@ -319,6 +319,11 @@ def collect_discovery(params):
             mt = await c.get([MT_SERIAL, MT_FIRMWARE, MT_VERSION])
             out['mikrotik'] = {'serial': _text(mt.get(MT_SERIAL)), 'firmware': _text(mt.get(MT_FIRMWARE)),
                                'version': _text(mt.get(MT_VERSION))}
+        try:  # detail port (MTU, duplex, IP, modul SFP) — opsional
+            import snmp_portinfo
+            out['portinfo'] = await snmp_portinfo.collect_static(c, mikrotik='mikrotik' in out)
+        except Exception:
+            out['portinfo'] = None
         try:  # topologi (LLDP/CDP/MNDP) — opsional; gagal tidak menggagalkan discovery
             import snmp_topology
             out['neighbors'] = await snmp_topology.collect(c, mikrotik='mikrotik' in out)
@@ -359,6 +364,11 @@ def collect_poll(params, mikrotik=False):
                 if idx.isdigit() and int(idx) in ports:
                     ports[int(idx)][key] = v
         out['ports'], out['hc'] = ports, hc_ok
+        try:  # optik SFP + statistik ethernet (MikroTik), discard — opsional
+            import snmp_portinfo
+            out['portinfo'] = await snmp_portinfo.collect_dynamic(c, mikrotik=mikrotik)
+        except Exception:
+            out['portinfo'] = None
         # CPU
         try:
             loads = [v for v in (await c.walk(HR_CPU_LOAD)).values() if isinstance(v, int)]
@@ -462,6 +472,11 @@ def apply_discovery(dev, data):
     for idx, p in existing.items():
         if idx not in seen and not p.deleted:
             p.deleted = True
+    if data.get('portinfo'):
+        import snmp_portinfo
+        db.session.flush()
+        live_ports = {p.if_index: p for p in SnmpPort.query.filter_by(device_id=dev.id, deleted=False).all()}
+        snmp_portinfo.apply_static(live_ports, data['portinfo'])
     nb = data.get('neighbors')
     if nb is not None:
         import snmp_topology
@@ -495,6 +510,21 @@ def apply_poll(dev, data, now=None):
     dev.uptime_s = uptime_s
     ports = {p.if_index: p for p in SnmpPort.query.filter_by(device_id=dev.id).all()}
     hc = data.get('hc', True)
+    pinfo = data.get('portinfo')
+    first_ext = set()   # port yang baru pertama kali memakai counter error MikroTik
+    if pinfo and pinfo.get('stats'):
+        # MikroTik tidak mengisi ifIn/OutErrors — pakai jumlah kolom error mtxrInterfaceStats (Counter64)
+        import snmp_portinfo
+        for idx, (rx_e, tx_e) in snmp_portinfo.mikrotik_error_overrides(pinfo, ports).items():
+            r = (data.get('ports') or {}).get(idx)
+            if r is None:
+                continue
+            if rx_e is not None and not r.get('in_err'):
+                r['in_err'] = rx_e
+            if tx_e is not None and not r.get('out_err'):
+                r['out_err'] = tx_e
+            if ports.get(idx) is not None and ports[idx].ext_at is None:
+                first_ext.add(idx)
     for idx, r in (data.get('ports') or {}).items():
         p = ports.get(idx)
         if not p:
@@ -516,8 +546,9 @@ def apply_poll(dev, data, now=None):
         cap = (p.speed_mbps or 0) * 1_000_000 * 1.2 / 8
         p.in_bps = round(rin * 8, 1) if rin is not None and (not cap or rin <= cap) else (None if secs else p.in_bps)
         p.out_bps = round(rout * 8, 1) if rout is not None and (not cap or rout <= cap) else (None if secs else p.out_bps)
-        ein = _rate(r.get('in_err'), p.in_errors, secs, False)
-        eout = _rate(r.get('out_err'), p.out_errors, secs, False)
+        esecs = 0 if idx in first_ext else secs   # sumber counter berganti → jangan hitung lonjakan palsu
+        ein = _rate(r.get('in_err'), p.in_errors, esecs, False)
+        eout = _rate(r.get('out_err'), p.out_errors, esecs, False)
         pin = _rate(r.get('in_pkts'), p.in_pkts, secs, hc)
         pout = _rate(r.get('out_pkts'), p.out_pkts, secs, hc)
         p.in_pps = round(pin, 1) if pin is not None else (None if secs else p.in_pps)
@@ -562,6 +593,9 @@ def apply_poll(dev, data, now=None):
         row.name, row.value, row.unit, row.updated_at = s['name'][:150], s['value'], s['unit'], now
     # Riwayat untuk grafik
     samples = []
+    if pinfo:
+        import snmp_portinfo
+        snmp_portinfo.apply_dynamic({i: p for i, p in ports.items() if not p.deleted}, pinfo, now, samples)
     for p in ports.values():
         if p.deleted or p.counter_at != now:
             continue
