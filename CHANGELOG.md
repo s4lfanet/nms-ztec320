@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-24 — Pemantauan perangkat SNMP tahap 2: grafik riwayat
+
+#### Ditambahkan
+- **Grafik riwayat ala Observium** di Perangkat jaringan → detail perangkat:
+  - Tab **Grafik**: CPU, memori, suhu, tegangan, daya, arus, kipas, penyimpanan (semua sensor yang tersedia).
+  - Tab **Port**: ketuk nama port untuk grafik trafik masuk/keluar dan error/detik.
+  - Rentang 6 jam / 24 jam / 7 hari / 30 hari / 1 tahun; statistik sekarang, rata-rata, maks, dan 95th percentile.
+- Penyimpanan bertingkat (ala RRD): sampel tiap poll (5 menit) disimpan 48 jam, ringkasan per jam (rata-rata/maks/min) disimpan ±13 bulan. Pembersihan otomatis tiap jam. API `/api/snmp/graph`, `/api/snmp/devices/<id>/metrics`.
+
 ### 2026-11-24 — Pemantauan perangkat SNMP (ala Observium) tahap 1
 
 #### Ditambahkan

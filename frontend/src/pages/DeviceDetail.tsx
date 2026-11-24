@@ -13,6 +13,11 @@ import { cn, timeAgo } from '../lib/utils';
 import { fmtBps, fmtSpeed, fmtUptime, STATUS_DOT } from '../lib/snmpFormat';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { DeviceFormModal } from './Devices';
+import { SnmpGraph, RangePicker, type GraphRange, type GraphUnit } from '../components/snmp/SnmpGraph';
+
+const PALETTE = ['var(--color-accent)', 'var(--color-info)', 'var(--color-warning)', 'var(--color-success)', 'var(--color-danger)', '#a78bfa'];
+const KIND_UNIT: Record<string, GraphUnit> = { cpu: 'pct', memory: 'pct', storage: 'pct', temperature: 'temp', voltage: 'volt', fan: 'rpm', power: 'watt', current: 'amp' };
+const KIND_ORDER = ['cpu', 'memory', 'temperature', 'voltage', 'power', 'current', 'fan', 'storage'];
 
 const SENSOR_ICON: Record<string, React.ReactNode> = {
   temperature: <Thermometer size={14} />, fan: <Fan size={14} />, voltage: <Zap size={14} />, power: <Zap size={14} />,
@@ -28,7 +33,8 @@ export function DeviceDetail() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const canEdit = useHasPerm()('settings_ip_olts');
-  const [tab, setTab] = useState<'overview' | 'ports' | 'events'>('overview');
+  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'events'>('overview');
+  const [range, setRange] = useState<GraphRange>('24h');
   const [editing, setEditing] = useState(false);
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
     queryKey: ['snmp-device', did], queryFn: () => api.snmpDevice(did), refetchInterval: 30_000, enabled: !!did,
@@ -80,12 +86,14 @@ export function DeviceDetail() {
 
       <Tabs active={tab} onChange={k => setTab(k as typeof tab)} tabs={[
         { key: 'overview', label: t('dev.tabOverview') },
+        { key: 'graphs', label: t('dev.tabGraphs') },
         { key: 'ports', label: `${t('dev.tabPorts')} (${data.ports.length})` },
         { key: 'events', label: t('dev.tabEvents') },
       ]} />
 
       {tab === 'overview' && <Overview device={d} sensors={data.sensors} />}
-      {tab === 'ports' && <Ports ports={data.ports} canEdit={canEdit} deviceId={did} />}
+      {tab === 'graphs' && <DeviceGraphs deviceId={did} range={range} setRange={setRange} />}
+      {tab === 'ports' && <Ports ports={data.ports} canEdit={canEdit} deviceId={did} range={range} setRange={setRange} />}
       {tab === 'events' && (
         <Card title={t('dev.tabEvents')}>
           {data.events.length === 0 ? <p className="text-sm text-tx3">{t('dev.noEvents')}</p> : (
@@ -145,7 +153,38 @@ function Overview({ device: d, sensors }: { device: SnmpDevice; sensors: SnmpSen
   );
 }
 
-function Ports({ ports, canEdit, deviceId }: { ports: SnmpPort[]; canEdit: boolean; deviceId: number }) {
+function DeviceGraphs({ deviceId, range, setRange }: { deviceId: number; range: GraphRange; setRange: (r: GraphRange) => void }) {
+  const { t } = useTranslation();
+  const { data } = useQuery({ queryKey: ['snmp-device-metrics', deviceId], queryFn: () => api.snmpDeviceMetrics(deviceId) });
+  const groups = useMemo(() => {
+    const g: Record<string, { metric: string; name: string }[]> = {};
+    for (const m of data?.metrics || []) {
+      const kind = m.metric.split(':')[0];
+      (g[kind] = g[kind] || []).push(m);
+    }
+    return KIND_ORDER.filter(k => g[k]).map(k => ({ kind: k, items: g[k] }));
+  }, [data]);
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end"><RangePicker value={range} onChange={setRange} /></div>
+      {groups.length === 0 ? (
+        <Card><p className="text-sm text-tx3">{t('graph.waitFirst')}</p></Card>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {groups.map(g => (
+            <Card key={g.kind} title={t(`graph.kind.${g.kind}`)}>
+              <SnmpGraph deviceId={deviceId} range={range} unit={KIND_UNIT[g.kind] || 'pct'}
+                series={g.items.slice(0, 6).map((m, i) => ({ metric: m.metric, label: m.name, color: PALETTE[i % PALETTE.length] }))} />
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[]; canEdit: boolean; deviceId: number; range: GraphRange; setRange: (r: GraphRange) => void }) {
+  const [openPort, setOpenPort] = useState<number | null>(null);
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<'active' | 'down' | 'all'>('active');
@@ -164,14 +203,15 @@ function Ports({ ports, canEdit, deviceId }: { ports: SnmpPort[]; canEdit: boole
       {shown.length === 0 ? <p className="text-sm text-tx3">{t('dev.noPorts')}</p> : (
         <ul className="divide-y divide-brd">
           {shown.map(p => (
-            <li key={p.id} className={cn('py-2.5 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4', p.ignored && 'opacity-50')}>
-              <div className="flex items-center gap-2 min-w-0 sm:w-[38%]">
+            <li key={p.id} className={cn('py-2.5 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-1 sm:gap-4', p.ignored && 'opacity-50')}>
+              <button type="button" onClick={() => setOpenPort(openPort === p.id ? null : p.id)} aria-expanded={openPort === p.id}
+                className="flex items-center gap-2 min-w-0 sm:w-[38%] text-left" title={t('graph.showTraffic')}>
                 <span className={cn('w-2 h-2 rounded-full shrink-0', p.admin_status !== 'up' ? 'bg-tx3' : p.oper_status === 'up' ? 'bg-success' : 'bg-danger')} />
                 <span className="min-w-0">
                   <span className="block text-sm text-tx1 truncate">{p.name}{p.speed_mbps ? <span className="text-xs text-tx3"> · {fmtSpeed(p.speed_mbps)}</span> : null}</span>
                   {p.alias && <span className="block text-xs text-tx3 truncate">{p.alias}</span>}
                 </span>
-              </div>
+              </button>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-tx2 sm:flex-1 pl-4 sm:pl-0">
                 {p.oper_status === 'up' ? (
                   <>
@@ -191,6 +231,15 @@ function Ports({ ports, canEdit, deviceId }: { ports: SnmpPort[]; canEdit: boole
                   title={p.ignored ? t('dev.unignoreHint') : t('dev.ignoreHint')}>
                   {p.ignored ? <Eye size={13} /> : <EyeOff size={13} />}{p.ignored ? t('dev.unignore') : t('dev.ignore')}
                 </button>
+              )}
+              {openPort === p.id && (
+                <div className="basis-full w-full pt-2 space-y-3">
+                  <RangePicker value={range} onChange={setRange} />
+                  <SnmpGraph deviceId={deviceId} portId={p.id} range={range} unit="bps" title={t('graph.traffic')}
+                    series={[{ metric: 'in', label: t('dev.in'), color: 'var(--color-success)' }, { metric: 'out', label: t('dev.out'), color: 'var(--color-info)' }]} />
+                  <SnmpGraph deviceId={deviceId} portId={p.id} range={range} unit="err" height={110} title={t('graph.errors')}
+                    series={[{ metric: 'in_err', label: t('dev.in'), color: 'var(--color-warning)' }, { metric: 'out_err', label: t('dev.out'), color: 'var(--color-danger)' }]} />
+                </div>
               )}
             </li>
           ))}
