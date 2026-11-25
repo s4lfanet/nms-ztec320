@@ -3,6 +3,7 @@ SNMP SET (name/reboot/enable). No walks — HA7304 agents time out on them."""
 from unittest.mock import patch
 
 from app import app
+from tests.test_link_state import ctx  # noqa: F401
 from models import db, OLT
 from olt_adapters import RackAdapterRegistry
 from olt_adapters.hioso_adapter import (
@@ -23,7 +24,7 @@ def _fake_batch(table):
     return fn
 
 
-def _olt(model='HA7304', name='HA7304-T'):
+def _olt(model='HA7304', name='HA7304-GET-T'):
     olt = OLT(name=name, ip_address='10.20.30.40', vendor='hioso', model=model,
               snmp_enabled=True, telnet_enabled=False)
     db.session.add(olt)
@@ -31,14 +32,14 @@ def _olt(model='HA7304', name='HA7304-T'):
     return olt
 
 
-def test_distance_and_nul_name():
+def test_distance_and_nul_name(ctx):
     assert calc_ha7304_distance_m(100) == 150
     assert calc_ha7304_distance_m(0) is None
     assert clean_snmp_text(b'RUMAH-ANDI\x00\x13\xff') == 'RUMAH-ANDI'
     assert clean_snmp_text(b'\x00\x00\x00') == ''
 
 
-def test_get_collector_batches_and_skips_empty_onu():
+def test_get_collector_batches_and_skips_empty_onu(ctx):
     table = {
         f'{B}.39.1.3.21': 1, f'{B}.39.1.1.1': 2, f'{B}.39.1.2.5': 1,
         f'{B}.11.1.3.21': 'a4f33b4c9bdb', f'{B}.11.1.1.1': 'f83e9545d7f8',
@@ -75,7 +76,7 @@ def test_get_collector_batches_and_skips_empty_onu():
         assert b['status'] == 'los' and b['name'] == 'NA' and b['rx_power'] is None
 
 
-def test_two_pon_scans_128_onu():
+def test_two_pon_scans_128_onu(ctx):
     with app.app_context():
         olt = _olt('HA7302CS', 'HA7302-T')
         ad = RackAdapterRegistry.get_adapter(olt)
@@ -83,7 +84,7 @@ def test_two_pon_scans_128_onu():
         assert ad._is_ha7304_get_model()
 
 
-def test_set_name_reboot_enable_oids():
+def test_set_name_reboot_enable_oids(ctx):
     sent = []
 
     def fake_set(self_sc, pairs, write_community=None):
@@ -106,7 +107,7 @@ def test_set_name_reboot_enable_oids():
         assert sent[3][0][0][1] == b'x' * 30  # 30 chars: no NUL
 
 
-def test_other_models_not_get_mode():
+def test_other_models_not_get_mode(ctx):
     with app.app_context():
         for m in ('HA7304C', 'HA7304V', 'HA7404'):
             olt = _olt(m, f'X-{m}')
