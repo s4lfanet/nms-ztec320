@@ -542,6 +542,9 @@ def run_alert_monitor(app):
             time.sleep(interval)
             with app.app_context():
                 _check_onus()
+                import job_health
+                job_health.beat('alert-monitor')
+                job_health.check(skip=('alert-monitor',))
         except Exception as e:
             logger.error(f"[ALERT] Monitor error: {e}")
             time.sleep(30)

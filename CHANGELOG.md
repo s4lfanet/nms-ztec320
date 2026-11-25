@@ -4,6 +4,15 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Audit job latar belakang: pemantau job mati, perapian data redaman, cron backup DB
+
+#### Ditambahkan
+- **Pemantau "job mati"**: alert monitor, poller MikroTik, poller SNMP, cron trafik, dan cron backup DB mencatat detak. Bila ada yang berhenti melebihi batasnya, masuk bel dan Telegram/WA sekali (⚠️ Job terhenti), lalu pesan pulih saat berjalan lagi. Job tanpa perangkat (mis. belum ada MikroTik) tidak dianggap mati. Poller SNMP memeriksa alert monitor, karena alert monitor tidak bisa mendeteksi dirinya sendiri.
+
+#### Diperbaiki
+- **Tabel sampel redaman ONU membengkak tanpa batas**: `rx_history.py` (rangkum per jam + buang yang lama) tidak pernah dijadwalkan. Sekarang dijalankan tiap jam dari poller di dalam aplikasi, di thread sendiri.
+- **Apply Update menghapus cron backup DB**: `update_vps.sh` membuang semua baris cron berpola `salfanet-nms` dan tidak memasang ulang `db_backup.py`. Sekarang ikut dipasang (4 cron).
+
 ### 2026-11-25 — HIOSO HA7304 (4 PON) & seri 2 PON: SNMP GET per OID
 
 #### Ditambahkan
