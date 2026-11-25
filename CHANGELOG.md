@@ -4,6 +4,23 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Audit keamanan & perbaikan
+
+#### Keamanan
+- **Injeksi perintah ke OLT ditutup:** teks berisi baris baru/karakter kontrol di form OLT/ONU (nama, deskripsi, VLAN, dll.) kini ditolak, sehingga tidak bisa menyelipkan perintah OLT tambahan.
+- **Peta FTTH:** nama ONU/pelanggan/titik di popup kini di-escape (sebelumnya HTML ikut dirender).
+- **Pengaturan alert & eskalasi** hanya bisa diubah akun berizin Kustomisasi (sebelumnya semua akun, termasuk demo).
+- **Pillow** diperbarui ke 13 dan pembuatan ikon logo hanya membaca PNG/JPG/WEBP/GIF.
+- **`/metrics`** tidak lagi publik (token `METRICS_TOKEN` atau super admin).
+- **Konfigurasi sistem:** kunci rahasia terenkripsi disamarkan untuk non-super-admin.
+- **Batas ukuran request** 25 MB (kecuali restore database).
+- Laporan lengkap: `docs/SECURITY-AUDIT-2026-11.md`.
+
+#### Diperbaiki
+- **Provisioning dengan profil TR-069** tidak lagi mengirim password ACS `***` ke OLT; password asli diambil dari profil.
+- **Apply Update** kini ikut menginstal paket Python bila `requirements.txt` berubah.
+- **Kolom VLAN trunk** (Konfigurasi OLT) menerima daftar per baris; baris baru otomatis diubah jadi koma.
+
 ### 2026-11-25 — AI Agent membaca Monitoring SNMP
 
 #### Ditambahkan

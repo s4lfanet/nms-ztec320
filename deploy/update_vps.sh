@@ -9,6 +9,10 @@ echo "=== Pull ==="
 git checkout -- frontend/dist 2>/dev/null || true
 git clean -fdq frontend/dist 2>/dev/null || true
 git pull origin main
+# Paket Python (mis. upgrade keamanan Pillow) — idempoten, gagal tidak menghentikan update.
+if [ -x .venv/bin/pip ]; then
+    .venv/bin/pip install -q --disable-pip-version-check -r backend/requirements.txt || echo "WARN: pip install gagal"
+fi
 # This script runs as root, so files git just created/changed are owned by root.
 # The web app (and its in-app "Apply Update" button) runs as the salfanet user
 # and could then no longer update/delete them ("Permission denied"). Hand the

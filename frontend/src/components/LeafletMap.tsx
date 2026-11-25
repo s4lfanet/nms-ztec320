@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
 import { cn } from '../lib/utils';
+import { escapeHtml as esc } from '../lib/html';
 
 // Standard OpenStreetMap tiles — free, no API key. CartoDB's free dark basemap
 // (formerly used here) started requiring a registered API key; this avoids that
@@ -197,11 +198,6 @@ function createDivIcon(color: string, type: string): HTMLElement {
 }
 
 // ─── Rich popup builder — type-specific sections for each FTTH element ───
-function esc(s: unknown): string {
-  if (s == null || s === '') return '';
-  return String(s).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
-}
-
 function popupRow(label: string, value: unknown, opts?: { color?: string; bold?: boolean }): string {
   const v = value == null || value === '' ? '' : String(value);
   if (!v) return '';
@@ -226,7 +222,7 @@ function buildPopupHtml(m: MapMarker): string {
   html += `<strong style="font-size:13px">${esc(m.name)}</strong>`;
   html += `</div>`;
   html += `<div style="font-size:10px;color:var(--text-3);margin-bottom:2px">${typeLabel}`;
-  if (m.subtype) html += ` · ${esc(m.subtype).toUpperCase()}`;
+  if (m.subtype) html += ` · ${esc(String(m.subtype).toUpperCase())}`;
   if (m.status) html += ` · <span style="color:${statusColor};font-weight:600">● ${esc(m.status)}</span>`;
   html += `</div>`;
 
@@ -313,7 +309,7 @@ function buildPopupHtml(m: MapMarker): string {
     if (m.description) html += popupSection('Notes', [popupRow('', m.description)]);
   } else if (m.type === 'jc') {
     const infra: string[] = [
-      popupRow('Type', m.subtype ? esc(m.subtype).toUpperCase() : ''),
+      popupRow('Type', m.subtype ? String(m.subtype).toUpperCase() : ''),
       popupRow('From', m.parent_name ? `${esc(m.parent_type || '').toUpperCase()}: ${m.parent_name}` : ''),
       popupRow('Splices', m.splice_count != null ? m.splice_count : ''),
       popupRow('Cores', m.total_cores),
@@ -508,7 +504,7 @@ export function LeafletMap({
           line.session_uptime ? `Uptime: ${line.session_uptime}` : '',
         ].filter(Boolean).join(' · ');
         pl.bindTooltip(
-          `<b>${line.label}</b><br/>${i18n.t(st.label)}${extra ? `<br/>${extra}` : ''}`,
+          `<b>${esc(line.label)}</b><br/>${esc(i18n.t(st.label))}${extra ? `<br/>${esc(extra)}` : ''}`,
           { sticky: true }
         );
       }
@@ -567,7 +563,7 @@ export function LeafletMap({
                 d.ping.loss_pct != null ? `loss ${d.ping.loss_pct}%` : '',
                 d.source ? `via ${d.source}` : '',
               ].filter(Boolean).join(' · ');
-              out.innerHTML = `<span style="color:${st.color};font-weight:600">${i18n.t(st.label)}</span><br/>${parts}`;
+              out.innerHTML = `<span style="color:${st.color};font-weight:600">${esc(i18n.t(st.label))}</span><br/>${esc(parts)}`;
               if (d.state) {
                 m.link_state = d.state.link_state;
                 m.rtt_ms = d.state.rtt_ms;

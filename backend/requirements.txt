@@ -39,6 +39,6 @@ prometheus-client>=0.20.0
 pytest>=8.0
 
 # === Image processing (PWA/favicon generation from uploaded logo) ===
-Pillow>=10,<12
+Pillow>=13,<14
 fpdf2>=2.9
 pywebpush>=2.0

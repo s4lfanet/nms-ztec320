@@ -582,7 +582,7 @@ function UplinkCard({ uplink, canManage, onToggle, onDesc, onVlan, onVlanRemove,
                 <textarea value={vlanVal} onChange={e => setVlanVal(e.target.value)} rows={2}
                   className="w-full px-3 py-2 rounded-lg bg-glass border border-brd text-xs font-mono" placeholder="e.g. 30,100,151" />
                 <div className="flex gap-2">
-                  <button onClick={() => { onVlan.mutate({ uplinkId: Number(uplink.id), vlans: vlanVal, mode: vlanMode }); setEditingVlan(false); }} className="px-3 py-1 rounded-lg bg-accent text-white text-xs">{t('common.save')}</button>
+                  <button onClick={() => { onVlan.mutate({ uplinkId: Number(uplink.id), vlans: vlanVal.split(/[\s,]+/).filter(Boolean).join(','), mode: vlanMode }); setEditingVlan(false); }} className="px-3 py-1 rounded-lg bg-accent text-white text-xs">{t('common.save')}</button>
                   <button onClick={() => setEditingVlan(false)} className="px-3 py-1 rounded-lg bg-glass text-xs">{t('common.cancel')}</button>
                 </div>
               </div>

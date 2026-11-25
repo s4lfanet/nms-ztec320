@@ -317,6 +317,7 @@ def system_update_apply():
     frontend_dir = os.path.join(repo_root, 'frontend')
     try:
         # Step 1: git pull
+        before = _run_cmd(['git', 'rev-parse', 'HEAD'], cwd=app_dir, timeout=10).stdout.strip()
         pull = _run_cmd(['git', 'pull', 'origin', 'main'], cwd=app_dir, timeout=60)
         if pull.returncode != 0:
             return jsonify({'success': False, 'message': f'Git pull failed: {pull.stderr[:300]}'})
@@ -325,6 +326,24 @@ def system_update_apply():
         # Check if anything changed
         if 'Already up to date' in pull_output or 'Already up-to-date' in pull_output:
             return jsonify({'success': True, 'message': 'Already up to date. No changes needed.', 'restarted': False})
+
+        # Step 1b: paket Python. Sebelumnya Apply Update tidak pernah menginstal ulang
+        # requirements.txt, sehingga upgrade keamanan (mis. Pillow) tidak sampai ke
+        # server. Hanya bila file itu berubah; gagal = dicatat, update tetap jalan.
+        deps_step = 'unchanged'
+        try:
+            changed = _run_cmd(['git', 'diff', '--name-only', before, 'HEAD', '--', 'backend/requirements.txt'],
+                               cwd=app_dir, timeout=10).stdout.strip() if before else ''
+            if changed:
+                import sys as _sys
+                pip = _run_cmd([_sys.executable, '-m', 'pip', 'install', '-q', '--disable-pip-version-check',
+                                '-r', os.path.join(app_dir, 'requirements.txt')], cwd=app_dir, timeout=300)
+                deps_step = 'installed' if pip.returncode == 0 else f'failed: {(pip.stderr or pip.stdout)[-200:]}'
+                if pip.returncode != 0:
+                    logger.warning(f'[system_update] pip install failed: {(pip.stderr or pip.stdout)[-500:]}')
+        except Exception as e:
+            deps_step = f'failed: {e}'
+            logger.warning(f'[system_update] dependency step failed: {e}')
 
         # Step 2: frontend/dist/ is committed to the repo, so `git pull` above
         # already brought in the current pre-built frontend — no need to
@@ -378,7 +397,7 @@ def system_update_apply():
         if restart.returncode != 0:
             return jsonify({'success': True, 'message': f'Update applied but service restart failed: {restart.stderr[:200]}. Please restart manually.', 'restarted': False})
 
-        log_action('system_update', 'system', detail=f'Git pull + service restart (frontend: {frontend_step}). Pull: {pull_output[:100]}')
+        log_action('system_update', 'system', detail=f'Git pull + service restart (frontend: {frontend_step}, python deps: {deps_step}). Pull: {pull_output[:100]}')
         return jsonify({
             'success': True,
             'message': 'Update applied successfully. Service restarted.',
@@ -390,6 +409,9 @@ def system_update_apply():
         return jsonify({'success': False, 'message': f'Update failed: {type_name}: {str(e)[:200]}'})
 
 
+_SECRET_KEY_RE = re.compile(r'(_enc$|password|passwd|secret|token|api_key|private|community)', re.I)
+
+
 @bp.route('/api/system-config', methods=['GET'])
 @login_required
 def get_system_config():
@@ -399,7 +421,8 @@ def get_system_config():
     configs = SystemConfig.query.all()
     result = {}
     for c in configs:
-        if c.key in _SENSITIVE_KEYS and not is_admin:
+        # audit 2026-11: juga kunci terenkripsi/rahasia lain (ciphertext tetap tidak perlu dikirim)
+        if not is_admin and (c.key in _SENSITIVE_KEYS or _SECRET_KEY_RE.search(c.key)):
             result[c.key] = '***' if c.value else ''
         else:
             result[c.key] = c.value
@@ -428,6 +451,10 @@ def update_system_config():
                     'odp_outage_threshold', 'outage_correlation_enabled', 'outage_ratio_threshold',
                     'escalation_enabled', 'escalation_ack_minutes', 'escalation_ttr_hours'}
     if not current_user.is_super_admin:
+        # audit 2026-11: pengaturan alert/eskalasi hanya untuk yang boleh membuka
+        # Pengaturan Alert (izin customization), bukan semua akun (mis. akun demo).
+        if not current_user.has_permission('customization'):
+            return jsonify({'success': False, 'message': 'Permission denied: customization'}), 403
         for key in data:
             if key not in allowed_keys:
                 return jsonify({'success': False, 'message': f'Permission denied: only super admin can update {key}'}), 403
