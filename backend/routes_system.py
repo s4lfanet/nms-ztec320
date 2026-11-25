@@ -536,26 +536,11 @@ def backup_database():
     backup_filename = os.path.basename(backup_path)
     backup_size = os.path.getsize(backup_path)
 
-    # Optional remote upload via SCP (in addition to the local copy above)
-    # Uses known_hosts verification (no StrictHostKeyChecking=no).
-    # Admin must pre-populate known_hosts via: ssh-keyscan -H <backup-host> >> ~/.ssh/known_hosts
-    remote_target = os.environ.get('BACKUP_REMOTE_SCP_TARGET', '')
-    scp_key = os.environ.get('BACKUP_REMOTE_SCP_KEY', os.path.expanduser('~/.ssh/id_rsa'))
-    remote_uploaded = False
-    remote_error = ''
-    if remote_target:
-        scp_cmd = ['scp', '-i', scp_key,
-                   '-o', 'BatchMode=yes',
-                   '-o', 'ConnectTimeout=30',
-                   backup_path, remote_target]
-        try:
-            result = subprocess.run(scp_cmd, capture_output=True, timeout=120)
-            if result.returncode == 0:
-                remote_uploaded = True
-            else:
-                remote_error = result.stderr.decode()[:300]
-        except Exception as e:
-            remote_error = str(e)[:300]
+    # Optional salinan ke server lain (env BACKUP_REMOTE_SCP_TARGET); cron per jam juga mengunggah sekali sehari.
+    from db_backup import remote_target, upload_remote
+    remote_uploaded, remote_error = False, ''
+    if remote_target():
+        remote_uploaded, remote_error = upload_remote(backup_path)
 
     try:
         prune_old_db_backups(os.path.dirname(backup_path))
@@ -571,6 +556,26 @@ def backup_database():
         'remote_uploaded': remote_uploaded,
         'remote_error': remote_error,
     })
+
+
+@bp.route('/api/system/health', methods=['GET'])
+@super_admin_required
+def system_health():
+    """Status job latar belakang + backup (DB, salinan luar, konfigurasi OLT)."""
+    import job_health, backup_health
+    return jsonify({'success': True, 'jobs': job_health.status(), 'backup': backup_health.status()})
+
+
+@bp.route('/api/system/backups/<filename>', methods=['GET'])
+@super_admin_required
+def download_db_backup(filename):
+    import backup_health
+    from flask import send_file
+    path = backup_health.safe_backup_path(filename)
+    if not path:
+        return jsonify({'success': False, 'message': 'Backup tidak ditemukan'}), 404
+    log_action('download_db_backup', 'system', detail=filename)
+    return send_file(path, as_attachment=True, download_name=filename)
 
 
 @bp.route('/api/system/restore-db', methods=['POST'])

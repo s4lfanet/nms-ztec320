@@ -9,6 +9,7 @@ import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card } from '../components/ui';
 import { refreshAfterServerUpdate, uiIsStale, type RefreshPhase } from '../lib/swUpdate';
+import { SystemHealth } from '../components/SystemHealth';
 import { confirm as confirmDialog } from '../components/ConfirmDialog';
 
 interface UpdateCheckResult {
@@ -228,6 +229,8 @@ export function SystemUpdate() {
           )}
         </Card>
       )}
+
+      <SystemHealth />
 
       {/* Info card */}
       <Card className="border-accent/20 bg-accent/5">

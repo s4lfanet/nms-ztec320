@@ -97,6 +97,28 @@ def create_db_backup(db_uri, dest_dir=DEFAULT_BACKUP_DIR):
     return False, None, f'Unsupported database type in URI: {db_uri.split("://")[0]}'
 
 
+def remote_target():
+    """Tujuan salinan luar server (env BACKUP_REMOTE_SCP_TARGET), '' bila tak diatur."""
+    return os.environ.get('BACKUP_REMOTE_SCP_TARGET', '').strip()
+
+
+def upload_remote(path, timeout=120):
+    """Salin file backup ke server lain via scp (known_hosts harus sudah berisi host tujuan).
+    → (berhasil, error). Tanpa target → (False, 'belum diatur')."""
+    target = remote_target()
+    if not target:
+        return False, 'belum diatur'
+    key = os.environ.get('BACKUP_REMOTE_SCP_KEY', os.path.expanduser('~/.ssh/id_rsa'))
+    try:
+        r = subprocess.run(['scp', '-i', key, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=30', path, target],
+                           capture_output=True, timeout=timeout)
+        if r.returncode == 0:
+            return True, ''
+        return False, r.stderr.decode(errors='replace')[:300]
+    except Exception as e:
+        return False, str(e)[:300]
+
+
 def prune_old_db_backups(dest_dir=DEFAULT_BACKUP_DIR, max_hourly=MAX_HOURLY, max_daily=MAX_DAILY):
     """Keep the most recent `max_hourly` backups plus one per day for `max_daily`
     more days beyond that; delete the rest."""
@@ -139,6 +161,7 @@ if __name__ == '__main__':
         sys.exit(0)
 
     from app import app
+    import backup_health
 
     with app.app_context():
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -159,4 +182,8 @@ if __name__ == '__main__':
             job_health.beat('db-backup')
         except Exception:
             pass
+        try:
+            backup_health.remote_cycle(path)
+        except Exception as e:
+            print(f'  Remote copy error: {e}')
         print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] DB backup done.')
