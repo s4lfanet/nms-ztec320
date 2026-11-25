@@ -1459,6 +1459,8 @@ class SnmpDevice(db.Model):
     os_version = db.Column(db.String(100), default='')
     serial = db.Column(db.String(100), default='')
     discovered_at = db.Column(db.DateTime, nullable=True)
+    tables_at = db.Column(db.DateTime, nullable=True)            # ARP/MAC terakhir dibaca (snmp_tables)
+    tables_note = db.Column(db.String(255), default='')          # hasil/kesalahan pembacaan ARP/MAC terakhir
     # Hasil poll
     status = db.Column(db.String(10), default='unknown')          # up, down, warn (ping ok, SNMP gagal), unknown
     status_reason = db.Column(db.String(255), default='')
@@ -1581,6 +1583,32 @@ class SnmpNeighbor(db.Model):
     remote_ip = db.Column(db.String(45), default='')
     remote_device_id = db.Column(db.Integer, nullable=True)    # cocok ke SnmpDevice terdaftar
     remote_port_id = db.Column(db.Integer, nullable=True)
+    first_seen = db.Column(db.DateTime, nullable=True)
+    last_seen = db.Column(db.DateTime, nullable=True)
+
+
+class SnmpArp(db.Model):
+    """Tabel ARP perangkat SNMP (snmp_tables) — IP ↔ MAC per interface, dengan riwayat terakhir terlihat."""
+    __tablename__ = 'snmp_arp'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    port_id = db.Column(db.Integer, nullable=True)
+    if_index = db.Column(db.Integer, nullable=True)
+    ip = db.Column(db.String(45), nullable=False, index=True)
+    mac = db.Column(db.String(17), default='', index=True)
+    first_seen = db.Column(db.DateTime, nullable=True)
+    last_seen = db.Column(db.DateTime, nullable=True)
+
+
+class SnmpFdb(db.Model):
+    """Tabel MAC (forwarding database) switch/bridge — MAC dipelajari di port mana, per VLAN."""
+    __tablename__ = 'snmp_fdb'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    port_id = db.Column(db.Integer, nullable=True, index=True)
+    if_index = db.Column(db.Integer, nullable=True)
+    vlan = db.Column(db.Integer, nullable=True)
+    mac = db.Column(db.String(17), nullable=False, index=True)
     first_seen = db.Column(db.DateTime, nullable=True)
     last_seen = db.Column(db.DateTime, nullable=True)
 

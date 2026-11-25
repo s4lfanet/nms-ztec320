@@ -7,7 +7,7 @@ from flask_login import login_required, current_user
 import json
 from datetime import timedelta
 
-from models import db, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor
+from models import db, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb
 from helpers import utc_iso, log_action, permission_required
 import snmp_monitor
 
@@ -233,7 +233,7 @@ def snmp_device_delete(device_id):
     d = db.session.get(SnmpDevice, device_id)
     if not d:
         return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
-    for model in (SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor):
+    for model in (SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb):
         model.query.filter_by(device_id=d.id).delete()
     SnmpNeighbor.query.filter_by(remote_device_id=d.id).update({'remote_device_id': None, 'remote_port_id': None})
     from models import Notification
@@ -715,4 +715,134 @@ def snmp_port_detail(port_id):
     p = db.session.get(SnmpPort, port_id)
     if not p or p.deleted:
         return jsonify({'success': False, 'message': 'Port tidak ditemukan'}), 404
-    return jsonify({'success': True, 'port': _port_dict(p), 'detail': snmp_portinfo.detail_dict(p)})
+    d = db.session.get(SnmpDevice, p.device_id)
+    return jsonify({'success': True, 'port': _port_dict(p), 'detail': snmp_portinfo.detail_dict(p),
+                    'macs': _port_macs(p, d)})
+
+
+# ─── ARP & tabel MAC (snmp_tables) ───
+import snmp_tables  # noqa: E402
+from sqlalchemy import func, or_  # noqa: E402
+
+TABLE_LIMIT = 5000
+SEARCH_LIMIT = 200
+
+
+def _seen(r, d):
+    """Masih ada di pembacaan terakhir perangkat?"""
+    return bool(d and d.tables_at and r.last_seen and r.last_seen >= d.tables_at)
+
+
+def _arp_dict(r, d, ports):
+    p = ports.get(r.port_id)
+    return {'ip': r.ip, 'mac': r.mac, 'port_id': r.port_id, 'port': p.name if p else '', 'port_alias': (p.alias or '') if p else '',
+            'first_seen': utc_iso(r.first_seen), 'last_seen': utc_iso(r.last_seen), 'active': _seen(r, d)}
+
+
+def _fdb_dict(r, d, ports):
+    p = ports.get(r.port_id)
+    return {'mac': r.mac, 'vlan': r.vlan, 'port_id': r.port_id, 'port': p.name if p else (f'#{r.if_index}' if r.if_index else ''),
+            'port_alias': (p.alias or '') if p else '',
+            'first_seen': utc_iso(r.first_seen), 'last_seen': utc_iso(r.last_seen), 'active': _seen(r, d)}
+
+
+def _port_macs(p, d):
+    """MAC yang dipelajari di port ini (+ IP bila ada di ARP perangkat mana pun)."""
+    rows = SnmpFdb.query.filter_by(port_id=p.id).order_by(SnmpFdb.last_seen.desc()).limit(100).all()
+    arp_rows = SnmpArp.query.filter_by(port_id=p.id).order_by(SnmpArp.last_seen.desc()).limit(100).all()
+    macs = {r.mac for r in rows}
+    ip_of = {}
+    if macs:
+        for a in SnmpArp.query.filter(SnmpArp.mac.in_(macs)).all():
+            ip_of.setdefault(a.mac, a.ip)
+    out = [{'mac': r.mac, 'vlan': r.vlan, 'ip': ip_of.get(r.mac, ''), 'source': 'fdb',
+            'last_seen': utc_iso(r.last_seen), 'active': _seen(r, d)} for r in rows]
+    out += [{'mac': a.mac, 'vlan': None, 'ip': a.ip, 'source': 'arp', 'last_seen': utc_iso(a.last_seen),
+             'active': _seen(a, d)} for a in arp_rows if a.mac not in macs]
+    return out
+
+
+@bp.route('/api/snmp/devices/<int:device_id>/tables', methods=['GET'])
+@login_required
+def snmp_device_tables(device_id):
+    d = db.session.get(SnmpDevice, device_id)
+    if not d:
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    ports = {p.id: p for p in SnmpPort.query.filter_by(device_id=d.id).all()}
+    arp = SnmpArp.query.filter_by(device_id=d.id).order_by(SnmpArp.last_seen.desc(), SnmpArp.ip).limit(TABLE_LIMIT).all()
+    fdb = SnmpFdb.query.filter_by(device_id=d.id).order_by(SnmpFdb.last_seen.desc(), SnmpFdb.mac).limit(TABLE_LIMIT).all()
+    # IP untuk baris MAC: ARP perangkat ini dulu, lalu ARP perangkat lain (router di atas switch)
+    ip_of = {r.mac: r.ip for r in reversed(arp)}
+    missing = {r.mac for r in fdb} - set(ip_of)
+    if missing:
+        for a in SnmpArp.query.filter(SnmpArp.mac.in_(list(missing)[:2000])).order_by(SnmpArp.last_seen).all():
+            ip_of[a.mac] = a.ip
+    return jsonify({'success': True, 'tables_at': utc_iso(d.tables_at), 'note': d.tables_note or '',
+                    'arp': [_arp_dict(r, d, ports) for r in arp],
+                    'fdb': [{**_fdb_dict(r, d, ports), 'ip': ip_of.get(r.mac, '')} for r in fdb],
+                    'truncated': len(arp) >= TABLE_LIMIT or len(fdb) >= TABLE_LIMIT})
+
+
+@bp.route('/api/snmp/devices/<int:device_id>/tables/refresh', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_device_tables_refresh(device_id):
+    d = db.session.get(SnmpDevice, device_id)
+    if not d:
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    snmp_monitor.refresh_runtime()
+    snmp_monitor.update_tables([d], force=True)
+    db.session.refresh(d)
+    return jsonify({'success': True, 'tables_at': utc_iso(d.tables_at), 'note': d.tables_note or ''})
+
+
+@bp.route('/api/snmp/search', methods=['GET'])
+@login_required
+def snmp_search():
+    """Cari MAC / IP di semua tabel ARP & MAC → perangkat dan port tempat terlihat."""
+    q = (request.args.get('q') or '').strip()
+    kind, val = snmp_tables.norm_query(q)
+    if len(val) < 3:
+        return jsonify({'success': True, 'kind': kind, 'results': []})
+    arp_q, fdb_q = SnmpArp.query, SnmpFdb.query
+    if kind == 'mac':
+        like = f'%{val}%'
+        arp_q = arp_q.filter(func.replace(SnmpArp.mac, ':', '').like(like))
+        fdb_q = fdb_q.filter(func.replace(SnmpFdb.mac, ':', '').like(like))
+    elif kind == 'ip':
+        arp_q = arp_q.filter(or_(SnmpArp.ip == val, SnmpArp.ip.like(f'{val}%')))
+        fdb_q = None
+    else:
+        return jsonify({'success': True, 'kind': kind, 'results': []})
+    arp = arp_q.order_by(SnmpArp.last_seen.desc()).limit(SEARCH_LIMIT).all()
+    fdb = fdb_q.order_by(SnmpFdb.last_seen.desc()).limit(SEARCH_LIMIT).all() if fdb_q is not None else []
+    # pencarian IP juga menampilkan port switch tempat MAC-nya dipelajari
+    if kind == 'ip' and arp:
+        macs = {a.mac for a in arp if a.mac}
+        fdb = SnmpFdb.query.filter(SnmpFdb.mac.in_(macs)).order_by(SnmpFdb.last_seen.desc()).limit(SEARCH_LIMIT).all()
+    dev_ids = {r.device_id for r in arp} | {r.device_id for r in fdb}
+    devs = {d.id: d for d in SnmpDevice.query.filter(SnmpDevice.id.in_(dev_ids)).all()} if dev_ids else {}
+    port_ids = {r.port_id for r in arp if r.port_id} | {r.port_id for r in fdb if r.port_id}
+    ports = {p.id: p for p in SnmpPort.query.filter(SnmpPort.id.in_(port_ids)).all()} if port_ids else {}
+    ip_of = {}
+    for a in arp:
+        ip_of.setdefault(a.mac, a.ip)
+    if fdb and not ip_of:
+        for a in SnmpArp.query.filter(SnmpArp.mac.in_({r.mac for r in fdb})).limit(SEARCH_LIMIT).all():
+            ip_of.setdefault(a.mac, a.ip)
+    res = []
+    for r in fdb:
+        d = devs.get(r.device_id)
+        res.append({'type': 'fdb', 'device_id': r.device_id, 'device': d.name if d else '?', **_fdb_dict(r, d, ports),
+                    'ip': ip_of.get(r.mac, '')})
+    in_fdb = {(r.device_id, r.mac) for r in fdb}
+    for r in arp:
+        if (r.device_id, r.mac) in in_fdb:
+            continue  # sudah tampil di baris MAC perangkat yang sama (IP-nya ikut di sana)
+        d = devs.get(r.device_id)
+        res.append({'type': 'arp', 'device_id': r.device_id, 'device': d.name if d else '?', **_arp_dict(r, d, ports),
+                    'vlan': None})
+    # yang masih aktif dulu, lalu yang terbaru
+    res.sort(key=lambda x: x['last_seen'] or '', reverse=True)
+    res.sort(key=lambda x: not x['active'])  # stabil: tetap terbaru dulu di tiap kelompok
+    return jsonify({'success': True, 'kind': kind, 'results': res[:SEARCH_LIMIT]})

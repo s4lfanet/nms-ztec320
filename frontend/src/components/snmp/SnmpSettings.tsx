@@ -14,6 +14,8 @@ const DISC = [1, 3, 6, 12, 24, 48, 168];
 const RAW = [24, 48, 72, 168];
 const HOURLY = [30, 90, 180, 400, 730, 1100];
 const EVENTS = [7, 30, 90, 180, 365];
+const TABLES = [5, 15, 30, 60, 180, 360, 1440];
+const TABLES_KEEP = [24, 72, 168, 336, 720, 2160];
 
 type Form = Record<string, string>;
 
@@ -107,6 +109,7 @@ export function SnmpSettings() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {field(t('snset.poll'), choose('snmp_poll_interval', POLL, minutes), <span className="text-[11px] text-tx3">{t('snset.pollHint')}</span>)}
           {field(t('snset.discovery'), choose('snmp_discovery_hours', DISC, hours), <span className="text-[11px] text-tx3">{t('snset.discoveryHint')}</span>)}
+          {field(t('snset.tables'), choose('snmp_tables_minutes', TABLES, n => minutes(n * 60)), <span className="text-[11px] text-tx3">{t('snset.tablesHint')}</span>)}
         </div>
       </Card>
 
@@ -134,13 +137,15 @@ export function SnmpSettings() {
       </Card>
 
       <Card title={t('snset.storage')} icon={<Database size={16} />}>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {field(t('snset.raw'), choose('snmp_raw_hours', RAW, hours),
             <span className="text-[11px] text-tx3">{t('snset.rows', { n: (data.volume?.raw ?? 0).toLocaleString('id-ID') })}</span>)}
           {field(t('snset.hourly'), choose('snmp_hourly_days', HOURLY, days),
             <span className="text-[11px] text-tx3">{t('snset.rows', { n: (data.volume?.hourly ?? 0).toLocaleString('id-ID') })}</span>)}
           {field(t('snset.events'), choose('snmp_event_days', EVENTS, days),
             <span className="text-[11px] text-tx3">{t('snset.rows', { n: (data.volume?.events ?? 0).toLocaleString('id-ID') })}</span>)}
+          {field(t('snset.tablesKeep'), choose('snmp_tables_keep_hours', TABLES_KEEP, hours),
+            <span className="text-[11px] text-tx3">{t('snset.rows', { n: ((data.volume?.arp ?? 0) + (data.volume?.fdb ?? 0)).toLocaleString('id-ID') })}</span>)}
         </div>
         <p className="text-[11px] text-tx3 mt-2">{t('snset.storageHint')}</p>
       </Card>

@@ -668,6 +668,50 @@ def _poll_one(params, mikrotik):
         return ('warn' if pr else 'down', None, int((time.time() - t0) * 1000), (_friendly(e), pr))
 
 
+def collect_tables(params):
+    """ARP & tabel MAC (snmp_tables). Murni jaringan."""
+    import snmp_tables
+
+    async def fn(c):
+        return snmp_tables.parse(await snmp_tables.collect(c))
+    return _run(fn, params, timeout=_RUNTIME['timeout'] + 1)
+
+
+def update_tables(devs, force=False):
+    """Baca ARP/MAC untuk perangkat yang jatuh tempo (`snmp_tables_minutes`), paralel."""
+    import snmp_tables
+    from models import db
+    now = _now()
+    every = timedelta(minutes=_cfg_int('snmp_tables_minutes', 30, 5, 1440))
+    due = [d for d in devs if force or not d.tables_at or now - d.tables_at >= every]
+    if not due:
+        return 0
+    jobs = {d.id: device_params(d) for d in due}
+
+    def one(params):
+        try:
+            return collect_tables(params), None
+        except Exception as e:
+            return None, _friendly(e)
+    with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(jobs))) as ex:
+        futs = {did: ex.submit(one, p) for did, p in jobs.items()}
+        res = {did: f.result() for did, f in futs.items()}
+    now = _now()
+    for d in due:
+        parsed, err = res[d.id]
+        try:
+            if parsed is None:
+                d.tables_at, d.tables_note = now, (err or '')[:255]
+            else:
+                n_arp, n_fdb = snmp_tables.apply(d, parsed, now)
+                d.tables_note = f'{n_arp} ARP, {n_fdb} MAC'
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.warning('snmp tables %s failed: %s', d.host, e)
+    return len(due)
+
+
 def discover_device(dev):
     """Discovery sinkron untuk satu perangkat (dipanggil di thread latar)."""
     from models import db
@@ -676,6 +720,10 @@ def discover_device(dev):
         data = collect_discovery(device_params(dev))
         apply_discovery(dev, data)
         db.session.commit()
+        try:  # ARP/MAC ikut dibaca agar tab ARP/MAC langsung terisi; gagal tidak menggagalkan discovery
+            update_tables([dev], force=True)
+        except Exception as e:
+            logger.warning('snmp tables after discovery %s failed: %s', dev.host, e)
         return True, ''
     except Exception as e:
         db.session.rollback()
@@ -721,6 +769,11 @@ def poll_all(devices=None):
     LAST_CYCLE.update(at=now, secs=round(time.time() - t_start, 1), devices=len(devs),
                       failed=sum(1 for r in results.values() if r[0] != 'ok'))
     _save_last_cycle()
+    try:
+        update_tables([d for d in devs if results[d.id][0] == 'ok'])
+    except Exception as e:
+        db.session.rollback()
+        logger.warning('snmp tables cycle failed: %s', e)
     return len(devs)
 
 
@@ -735,6 +788,10 @@ def prune_events():
     SnmpEvent.query.filter(SnmpEvent.created_at < now - timedelta(days=g['snmp_event_days'])).delete()
     SnmpSample.query.filter(SnmpSample.ts < now - timedelta(hours=g['snmp_raw_hours'])).delete()
     SnmpSampleHourly.query.filter(SnmpSampleHourly.hour < now - timedelta(days=g['snmp_hourly_days'])).delete()
+    from models import SnmpArp, SnmpFdb
+    keep = now - timedelta(hours=g['snmp_tables_keep_hours'])
+    SnmpArp.query.filter(SnmpArp.last_seen < keep).delete()
+    SnmpFdb.query.filter(SnmpFdb.last_seen < keep).delete()
     db.session.commit()
 
 
@@ -759,6 +816,8 @@ GENERAL = {
     'snmp_raw_hours': (RAW_RETENTION_HOURS, 24, 168),
     'snmp_hourly_days': (HOURLY_RETENTION_DAYS, 30, 1100),
     'snmp_event_days': (EVENT_RETENTION_DAYS, 7, 365),
+    'snmp_tables_minutes': (30, 5, 1440),           # baca ARP/MAC tiap N menit
+    'snmp_tables_keep_hours': (168, 1, 2160),       # simpan entri ARP/MAC yang sudah hilang selama N jam
 }
 DEFAULT_VERSIONS = ('1', '2c', '3')
 LAST_CYCLE = {'at': None, 'secs': None, 'devices': 0, 'failed': 0}
@@ -860,8 +919,9 @@ def save_general(data):
 def data_volume():
     """Jumlah baris riwayat (untuk memperkirakan dampak pengaturan penyimpanan)."""
     from models import SnmpSample, SnmpSampleHourly, SnmpEvent
+    from models import SnmpArp, SnmpFdb
     return {'raw': SnmpSample.query.count(), 'hourly': SnmpSampleHourly.query.count(),
-            'events': SnmpEvent.query.count()}
+            'events': SnmpEvent.query.count(), 'arp': SnmpArp.query.count(), 'fdb': SnmpFdb.query.count()}
 
 
 def run_snmp_poller(app):

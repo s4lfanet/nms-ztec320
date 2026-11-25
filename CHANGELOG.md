@@ -4,6 +4,22 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Tabel ARP/MAC dan pencarian MAC/IP (Monitoring SNMP)
+
+#### Ditambahkan
+- **Tab ARP/MAC di detail perangkat:**
+  - tabel MAC switch berisi MAC, IP, port, VLAN, dan status terlihat/terakhir terlihat;
+  - tabel ARP router;
+  - saringan dan pilihan "hanya yang masih terlihat";
+  - tombol Baca sekarang.
+- **Tab Cari MAC/IP** di halaman Monitoring SNMP: ketik MAC dalam format apa pun (atau sebagian) atau IP, lalu lihat di perangkat dan port mana MAC tersebut terlihat, termasuk riwayat bila sudah pindah atau hilang.
+- **MAC di port ini** di detail port: daftar pelanggan atau perangkat di balik port, beserta IP-nya.
+- **Dua pengaturan baru:** interval baca ARP/MAC (bawaan 30 menit) dan lama riwayat ARP/MAC (bawaan 7 hari).
+
+#### Catatan
+- Hanya membaca SNMP (BRIDGE-MIB/Q-BRIDGE dan IP-MIB); konfigurasi perangkat tidak diubah.
+- Router MikroTik biasanya hanya memberi ARP. Tabel MAC muncul untuk switch yang mendukung BRIDGE-MIB.
+
 ### 2026-11-25 — Pengaturan Monitoring SNMP
 
 #### Ditambahkan
