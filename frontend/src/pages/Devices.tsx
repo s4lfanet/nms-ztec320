@@ -225,7 +225,7 @@ export function DeviceFormModal({ device, initial, onClose }: { device?: SnmpDev
           <div className="grid grid-cols-3 gap-2" role="radiogroup">
             {(['2c', '3', '1'] as const).map(v => (
               <button key={v} type="button" role="radio" aria-checked={form.snmp_version === v} onClick={() => set({ snmp_version: v })}
-                className={cn('p-2 rounded-lg border text-xs', form.snmp_version === v ? 'border-accent bg-accent/10 text-tx1' : 'border-brd text-tx2 hover:border-tx3')}>
+                className={cn('p-2 rounded-lg border text-xs', form.snmp_version === v ? 'border-accent bg-accent/10 text-tx1' : 'border-line text-tx2 hover:border-tx3')}>
                 SNMP v{v}
               </button>
             ))}
@@ -236,7 +236,7 @@ export function DeviceFormModal({ device, initial, onClose }: { device?: SnmpDev
             <input className="input-field font-mono" type="text" autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={form.community}
               onChange={e => set({ community: e.target.value })} placeholder={secretPh(device?.has_community)} /></label>
         ) : (
-          <div className="space-y-3 rounded-lg border border-brd p-3">
+          <div className="space-y-3 rounded-lg border border-line p-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block"><span className="label-sm">{t('dev.v3User')}</span>
                 <input className="input-field" value={form.v3_user} onChange={e => set({ v3_user: e.target.value })} autoComplete="off" /></label>

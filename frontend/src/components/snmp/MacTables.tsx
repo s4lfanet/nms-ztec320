@@ -52,7 +52,7 @@ function MacRow({ mac, ip, port, alias, vlan, active, last, device, onu }: {
 
 function Head({ cols }: { cols: string[] }) {
   return (
-    <div className={cn('hidden md:grid gap-x-4 pb-2 border-b border-brd text-[11px] text-tx3',
+    <div className={cn('hidden md:grid gap-x-4 pb-2 border-b border-line text-[11px] text-tx3',
       cols.length === 6 ? 'grid-cols-[1.2fr_1fr_1.4fr_1.6fr_0.6fr_1fr]' : 'grid-cols-[1.2fr_1fr_1.8fr_0.6fr_1fr]')}>
       {cols.map(c => <span key={c}>{c}</span>)}
     </div>
@@ -121,7 +121,7 @@ export function DeviceTables({ deviceId, canEdit }: { deviceId: number; canEdit:
       ) : (
         <>
           <Head cols={['MAC', 'IP', t('mact.port'), 'VLAN', t('mact.status')]} />
-          <ul className="divide-y divide-brd">
+          <ul className="divide-y divide-line">
             {rows.slice(0, limit).map(r => (
               <MacRow key={`${r.mac}-${r.ip ?? ''}-${r.vlan ?? ''}`} mac={r.mac} ip={r.ip} port={r.port} alias={r.port_alias}
                 vlan={r.vlan} active={r.active} last={r.last_seen} />
@@ -165,7 +165,7 @@ export function MacSearch() {
             <>
               <p className="text-xs text-tx3 mb-1">{t('mact.found', { n: res.length })}</p>
               <Head cols={['MAC', 'IP', t('mact.device'), t('mact.port'), 'VLAN', t('mact.status')]} />
-              <ul className="divide-y divide-brd">
+              <ul className="divide-y divide-line">
                 {res.map((r, i) => (
                   <MacRow key={`${r.type}-${r.device_id}-${r.mac}-${r.ip}-${i}`} mac={r.mac} ip={r.ip} port={r.port} alias={r.port_alias}
                     vlan={r.vlan} active={r.active} last={r.last_seen} device={{ id: r.device_id, name: r.device }} onu={r.onu} />
@@ -187,7 +187,7 @@ export function PortMacs({ macs }: { macs: SnmpPortMac[] }) {
   return (
     <div>
       {macs.length === 0 ? <p className="text-xs text-tx3 py-1">{t('mact.portEmpty')}</p> : (
-        <ul className="divide-y divide-brd">
+        <ul className="divide-y divide-line">
           {list.map(m => (
             <li key={`${m.source}-${m.mac}-${m.vlan ?? ''}`} className={cn('py-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs', !m.active && 'opacity-70')}>
               <span className="font-mono text-tx1">{m.mac}</span>

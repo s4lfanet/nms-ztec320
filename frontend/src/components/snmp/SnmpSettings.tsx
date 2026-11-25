@@ -121,7 +121,7 @@ export function SnmpSettings() {
             value={val('snmp_retries')} onChange={e => set('snmp_retries', e.target.value)} />, defHint('snmp_retries'))}
         </div>
         <p className="text-[11px] text-tx3 mt-2">{t('snset.worst', { s: worst })}</p>
-        <div className="border-t border-brd mt-4 pt-4">
+        <div className="border-t border-line mt-4 pt-4">
           <p className="text-xs text-tx2 mb-3">{t('snset.newDevice')}</p>
           <div className="grid grid-cols-2 gap-3">
             {field(t('snset.version'), (

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Pause, Play, Radio } from 'lucide-react';
 import { api } from '../../lib/api';
 import { fmtBps } from '../../lib/snmpFormat';
@@ -99,7 +99,7 @@ export function PortLive({ portId, speedMbps }: { portId: number; speedMbps: num
   const fmtPps = (v: number | null | undefined) => (v == null ? '—' : v >= 1000 ? `${(v / 1000).toFixed(1)}k pps` : `${Math.round(v)} pps`);
 
   return (
-    <div className="rounded-lg border border-brd p-3 space-y-2">
+    <div className="rounded-lg border border-line p-3 space-y-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-tx1">
           <Radio size={14} className={cn(running && !error ? 'text-success animate-pulse' : 'text-tx3')} />
@@ -127,8 +127,9 @@ export function PortLive({ portId, speedMbps }: { portId: number; speedMbps: num
         {points.length > 1 && (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={points} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="t" hide />
-              <YAxis width={56} tick={{ fontSize: 10, fill: 'var(--text-3)' }} tickFormatter={v => fmtBps(v)} allowDecimals={false} />
+              <YAxis width={56} tick={{ fontSize: 10, fill: 'var(--text-3)' }} axisLine={{ stroke: 'var(--chart-grid)' }} tickLine={{ stroke: 'var(--chart-grid)' }} tickFormatter={v => fmtBps(v)} allowDecimals={false} />
               <Tooltip formatter={v => fmtBps(Number(v))} labelFormatter={l => new Date(Number(l)).toLocaleTimeString()}
                 contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', fontSize: 12 }} />
               <Area type="monotone" dataKey="in" name={t('dev.in')} stroke="var(--color-success)" fill="var(--color-success)" fillOpacity={0.15} isAnimationActive={false} />

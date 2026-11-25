@@ -31,7 +31,7 @@ export function ProblemList({ problems, limit }: { problems: SnmpProblem[]; limi
     );
   }
   return (
-    <ul className="divide-y divide-brd">
+    <ul className="divide-y divide-line">
       {list.map((p, i) => (
         <li key={`${p.category}-${p.device_id}-${p.port_id ?? 0}-${i}`}>
           <Link to={`/dashboard/devices/${p.device_id}`} className="flex items-start gap-2 py-2 hover:bg-glass rounded-md px-1">
@@ -60,7 +60,7 @@ function UtilBar({ pct }: { pct: number | null }) {
   const tone = pct >= 80 ? 'bg-danger' : pct >= 60 ? 'bg-warning' : 'bg-success';
   return (
     <span className="inline-flex items-center gap-1.5 tabular-nums">
-      <span className="w-14 h-1.5 rounded-full bg-brd overflow-hidden" aria-hidden="true">
+      <span className="w-14 h-1.5 rounded-full bg-line overflow-hidden" aria-hidden="true">
         <span className={cn('block h-full', tone)} style={{ width: `${Math.min(100, pct)}%` }} />
       </span>
       {pct}%
@@ -72,7 +72,7 @@ export function PortList({ ports, empty }: { ports: SnmpPortBrief[]; empty: stri
   const { t } = useTranslation();
   if (ports.length === 0) return <p className="text-sm text-tx3 py-2">{empty}</p>;
   return (
-    <ul className="divide-y divide-brd">
+    <ul className="divide-y divide-line">
       {ports.map(p => (
         <li key={p.port_id}>
           <Link to={`/dashboard/devices/${p.device_id}?tab=ports`} className="py-2 px-1 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 hover:bg-glass rounded-md">
@@ -136,7 +136,7 @@ export function NetworkDevicesCard() {
       </div>
       <ProblemList problems={data.problems} limit={3} />
       {data.top_ports.length > 0 && (
-        <div className="mt-2 pt-2 border-t border-brd">
+        <div className="mt-2 pt-2 border-t border-line">
           <div className="text-xs text-tx3 mb-1">{t('devx.topTraffic')}</div>
           <PortList ports={data.top_ports.slice(0, 2)} empty="" />
         </div>

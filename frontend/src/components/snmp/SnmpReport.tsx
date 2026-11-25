@@ -46,7 +46,7 @@ export function SnmpReport() {
               <option value="all">{t('devx.scopeAll')}</option>
             </select>
           </label>
-          <a className="btn-cancel border border-brd inline-flex items-center gap-1.5 text-sm ml-auto px-3 py-2 rounded-lg" href={api.snmpReportCsvUrl(q)} download>
+          <a className="btn-cancel border border-line inline-flex items-center gap-1.5 text-sm ml-auto px-3 py-2 rounded-lg" href={api.snmpReportCsvUrl(q)} download>
             <Download size={14} />{t('devx.csv')}
           </a>
         </div>
@@ -56,7 +56,7 @@ export function SnmpReport() {
         <>
           <Card title={t('devx.devAvail')} icon={<FileBarChart size={16} />} bodyClassName="p-3">
             {data.devices.length === 0 ? <p className="text-sm text-tx3">{t('devx.noData')}</p> : (
-              <ul className="divide-y divide-brd">
+              <ul className="divide-y divide-line">
                 {data.devices.map(d => (
                   <li key={d.device_id} className="py-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
                     <span className="text-sm text-tx1 sm:w-[34%] truncate">{d.device_name} <span className="text-xs text-tx3 font-mono">{d.host}</span></span>
@@ -76,7 +76,7 @@ export function SnmpReport() {
             {data.ports.length === 0 ? (
               <p className="text-sm text-tx3">{scope === 'watched' ? t('devx.noWatchedReport') : t('devx.noData')}</p>
             ) : (
-              <ul className="divide-y divide-brd">{data.ports.map(p => <ReportRow key={p.port_id} p={p} />)}</ul>
+              <ul className="divide-y divide-line">{data.ports.map(p => <ReportRow key={p.port_id} p={p} />)}</ul>
             )}
           </Card>
         </>
