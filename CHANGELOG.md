@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Tulisan lebih terbaca di tema gelap
+
+#### Diperbaiki
+- **Teks sekunder lebih terang di tema gelap di semua halaman.** Ini mencakup angka di sumbu grafik, IP, keterangan waktu, label kecil, dan statistik.
+  - Kontrasnya naik dari sekitar 3,6:1 menjadi minimal 5,8:1. Standar WCAG untuk teks kecil adalah 4,5:1.
+- **Semua grafik ikut tema.**
+  - Angka sumbu, tooltip, dan garis sumbu tidak lagi memakai abu-abu gelap atau latar putih bawaan.
+  - Angka sumbu grafik SNMP sedikit diperbesar.
+- **Tema terang:** teks keterangan yang terlalu pucat juga dipertegas. Sebelumnya 2,7:1, sekarang sekitar 4,6:1.
+
 ### 2026-11-25 — Monitoring SNMP: garis tampil di tema gelap
 
 #### Diperbaiki

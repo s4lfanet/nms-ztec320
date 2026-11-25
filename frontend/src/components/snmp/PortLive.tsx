@@ -129,7 +129,7 @@ export function PortLive({ portId, speedMbps }: { portId: number; speedMbps: num
             <AreaChart data={points} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="t" hide />
-              <YAxis width={56} tick={{ fontSize: 10, fill: 'var(--text-3)' }} axisLine={{ stroke: 'var(--chart-grid)' }} tickLine={{ stroke: 'var(--chart-grid)' }} tickFormatter={v => fmtBps(v)} allowDecimals={false} />
+              <YAxis width={56} tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={{ stroke: 'var(--chart-grid)' }} tickLine={{ stroke: 'var(--chart-grid)' }} tickFormatter={v => fmtBps(v)} allowDecimals={false} />
               <Tooltip formatter={v => fmtBps(Number(v))} labelFormatter={l => new Date(Number(l)).toLocaleTimeString()}
                 contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', fontSize: 12 }} />
               <Area type="monotone" dataKey="in" name={t('dev.in')} stroke="var(--color-success)" fill="var(--color-success)" fillOpacity={0.15} isAnimationActive={false} />

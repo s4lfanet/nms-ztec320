@@ -98,9 +98,9 @@ export function SnmpGraph({ deviceId, portId, series, unit, range, height = 180,
                 ))}
               </defs>
               <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="t" tickFormatter={v => tickTime(String(v), range)} tick={{ fontSize: 10, fill: 'var(--color-tx3)' }} axisLine={{ stroke: 'var(--chart-grid)' }} tickLine={{ stroke: 'var(--chart-grid)' }}
+              <XAxis dataKey="t" tickFormatter={v => tickTime(String(v), range)} tick={{ fontSize: 11, fill: 'var(--color-tx3)' }} axisLine={{ stroke: 'var(--chart-grid)' }} tickLine={{ stroke: 'var(--chart-grid)' }}
                 interval="preserveStartEnd" minTickGap={40} />
-              <YAxis tickFormatter={v => fmtValue(Number(v), unit)} tick={{ fontSize: 10, fill: 'var(--color-tx3)' }} width={62} axisLine={{ stroke: 'var(--chart-grid)' }} tickLine={{ stroke: 'var(--chart-grid)' }}
+              <YAxis tickFormatter={v => fmtValue(Number(v), unit)} tick={{ fontSize: 11, fill: 'var(--color-tx3)' }} width={62} axisLine={{ stroke: 'var(--chart-grid)' }} tickLine={{ stroke: 'var(--chart-grid)' }}
                 domain={unit === 'pct' ? [0, 100] : unit === 'dbm' ? ['auto', 'auto'] : [0, 'auto']} allowDecimals />
               <Tooltip
                 contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 12 }}

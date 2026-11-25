@@ -25,8 +25,10 @@
   --line-color: rgba(148, 163, 184, 0.18);
   --chart-grid: rgba(148, 163, 184, 0.22);
   --text-1: #F1F5F9;
-  --text-2: #94A3B8;
-  --text-3: #64748B;
+  /* Kontras teks (WCAG AA ≥ 4.5:1 sampai latar #1F2630): tx2 ≈ 7–9:1,
+     tx3 ≈ 5.8–7.5:1 — dulu #64748B hanya 3.4–3.8:1 di kartu gelap. */
+  --text-2: #B6C2D2;
+  --text-3: #93A1B6;
   --scrollbar-thumb: rgba(148, 163, 184, 0.18);
   --scrollbar-hover: rgba(148, 163, 184, 0.32);
   --focus-ring: 0 0 0 2px #090B0E, 0 0 0 3.5px #0EA5E9;
@@ -49,7 +51,7 @@ html.light {
   --chart-grid: rgba(100, 116, 139, 0.28);
   --text-1: #26334A;
   --text-2: #51617C;
-  --text-3: #8A9BB0;
+  --text-3: #64748B; /* dulu #8A9BB0 = 2.7:1, kini ≈4.6:1 */
   --scrollbar-thumb: rgba(100, 116, 139, 0.28);
   --scrollbar-hover: rgba(100, 116, 139, 0.45);
   --focus-ring: 0 0 0 2px #FFFFFF, 0 0 0 3.5px #0284C7;
@@ -981,3 +983,18 @@ html { font-size: 16px; }
     textarea.input-field { padding: 12px 14px; }
   }
 }
+
+/* Recharts — warna bawaan (#666 angka sumbu, #ccc border tooltip, teks
+   mewarisi induk) tidak cocok untuk tema gelap. Paksa ke token tema supaya
+   SEMUA grafik terbaca di kedua tema, termasuk grafik yang tidak mengatur
+   `tick`/`contentStyle` sendiri. */
+.recharts-cartesian-axis-tick-value { fill: var(--text-3); }
+.recharts-cartesian-axis-line,
+.recharts-cartesian-axis-tick-line { stroke: var(--chart-grid); }
+.recharts-default-tooltip {
+  background-color: var(--bg-surface) !important;
+  border-color: var(--border-hover) !important;
+  color: var(--text-1);
+}
+.recharts-tooltip-label { color: var(--text-2); }
+.recharts-label { fill: var(--text-2); }
