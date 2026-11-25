@@ -299,6 +299,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 57. **Garis di tema gelap: pakai `line`, bukan `brd`, untuk pemisah baris & grid grafik** — `--border-color` gelap (#212834) nyaris sama dengan latar kartu (apalagi bila warna kartu dikustomisasi), sehingga `divide-brd`/`border-b border-brd` dan grid Recharts tidak terlihat. Token: `--line-color` (gelap `rgba(148,163,184,.18)`, terang = `--border-color`, jadi tema terang tidak berubah) → utilitas `divide-line`/`border-line`/`bg-line`; `--chart-grid` untuk `<CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />` + `axisLine`/`tickLine`. Sudah dipakai di semua komponen SNMP (`components/snmp/*`, `Devices.tsx`, `DeviceDetail.tsx`); grafik baru wajib memakai `--chart-grid`.
 
+58. **Kontras teks tema gelap & warna Recharts** — `--text-3` gelap dulu #64748B (3.4–3.8:1 di kartu, gagal WCAG AA untuk teks 10–12px) → kini `--text-2: #B6C2D2`, `--text-3: #93A1B6` (≥5.8:1 sampai latar #1F2630). Tema terang: `--text-3` #64748B — catatan: `lightpath.css` ikut MENIMPA `--text-3` untuk `html.light` (dulu #6b7c93), jadi ubah keduanya. Jangan turunkan teks dengan `text-tx3/60` dsb. untuk informasi yang perlu dibaca. `index.css` punya aturan global Recharts (`.recharts-cartesian-axis-tick-value` fill `--text-3`, tooltip bawaan memakai `--bg-surface`/`--text-1`, label `--text-2`, garis sumbu `--chart-grid`) supaya grafik yang tidak mengatur `tick`/`contentStyle` tidak memakai abu #666/latar putih bawaan Recharts. Saat menguji CSS baru di Playwright blokir service worker (`new_context(service_workers='block')`) — SW bisa menyajikan CSS lama.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |
