@@ -7,7 +7,7 @@ from flask_login import login_required, current_user
 import json
 from datetime import timedelta
 
-from models import db, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb
+from models import db, SnmpMaintenance, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb
 from helpers import utc_iso, log_action, permission_required
 import snmp_monitor
 
@@ -38,6 +38,7 @@ def _device_dict(d, ports=None):
         'status': d.status or 'unknown', 'status_reason': d.status_reason or '', 'status_changed_at': _iso(d.status_changed_at),
         'last_poll_at': _iso(d.last_poll_at), 'last_ok_at': _iso(d.last_ok_at), 'poll_ms': d.poll_ms,
         'uptime_s': d.uptime_s, 'cpu_pct': d.cpu_pct, 'mem_pct': d.mem_pct, 'temperature': d.temperature,
+        'parent_id': d.parent_id,
         'ports_total': len(active), 'ports_up': sum(1 for p in active if p.oper_status == 'up'),
         'ports_down': sum(1 for p in active if p.oper_status != 'up'),
         # Community v1/v2c ditampilkan apa adanya untuk pengelola (seperti community OLT);
@@ -117,6 +118,23 @@ def _apply(d, data, creating=False):
             setattr(d, k, (data.get(k) or '').strip()[:2000])
     if 'enabled' in data:
         d.enabled = bool(data['enabled'])
+    if 'parent_id' in data:
+        raw = data.get('parent_id')
+        if raw in (None, '', 0, '0'):
+            d.parent_id = None
+        else:
+            try:
+                pid = int(raw)
+            except (TypeError, ValueError):
+                return 'Induk tidak valid'
+            if not db.session.get(SnmpDevice, pid):
+                return 'Perangkat induk tidak ditemukan'
+            if d.id is not None:
+                import snmp_depend
+                parents = {x.id: x.parent_id for x in SnmpDevice.query.all()}
+                if snmp_depend.would_cycle(d.id, pid, parents):
+                    return 'Induk tidak boleh perangkat itu sendiri atau turunannya'
+            d.parent_id = pid
     if (d.snmp_version or '2c') == '3' and not d.v3_user:
         return 'User SNMPv3 wajib diisi'
     if (d.snmp_version or '2c') != '3' and not d._community_enc:
@@ -150,6 +168,12 @@ def snmp_devices_list():
     for p in SnmpPort.query.filter_by(deleted=False).all():
         ports.setdefault(p.device_id, []).append(p)
     items = [_device_dict(d, ports.get(d.id, [])) for d in devs]
+    import snmp_depend
+    scope = snmp_depend.Scope()
+    for it, d in zip(items, devs):
+        it['in_maintenance'] = scope.in_maintenance(d)
+        pd = scope.parent_down(d)
+        it['parent_down'] = pd.name if pd else ''
     summary = {s: sum(1 for i in items if i['status'] == s and i['enabled']) for s in ('up', 'down', 'warn', 'unknown')}
     summary['ports_down'] = sum(i['ports_down'] for i in items if i['enabled'])
     return jsonify({'success': True, 'devices': items, 'summary': summary})
@@ -236,6 +260,8 @@ def snmp_device_delete(device_id):
     for model in (SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb):
         model.query.filter_by(device_id=d.id).delete()
     SnmpNeighbor.query.filter_by(remote_device_id=d.id).update({'remote_device_id': None, 'remote_port_id': None})
+    SnmpDevice.query.filter_by(parent_id=d.id).update({'parent_id': None})
+    SnmpMaintenance.query.filter_by(device_id=d.id).delete()
     from models import Notification
     for n in Notification.query.filter_by(target_type='snmp', target_id=d.id, resolved=False).all():
         n.resolved, n.is_read = True, True
@@ -398,6 +424,7 @@ def snmp_settings_get():
     return jsonify({
         'success': True, 'settings': snmp_alerts.get_settings(), 'defaults': snmp_alerts.DEFAULTS,
         'general': snmp_monitor.get_general(),
+        'digest': __import__('snmp_digest').settings(),
         'general_defaults': {k: v[0] for k, v in snmp_monitor.GENERAL.items()},
         'general_limits': {k: [v[1], v[2]] for k, v in snmp_monitor.GENERAL.items()},
         # community bawaan hanya untuk pengelola perangkat (seperti community perangkat)
@@ -413,13 +440,23 @@ def snmp_settings_get():
 @permission_required('settings_ip_olts')
 def snmp_settings_put():
     data = request.get_json() or {}
-    changed = snmp_alerts.save_settings(data) + snmp_monitor.save_general(data)
+    import snmp_digest
+    changed = snmp_alerts.save_settings(data) + snmp_monitor.save_general(data) + snmp_digest.save_settings(data)
     db.session.commit()
     snmp_monitor.refresh_runtime()
     if changed:
         log_action('snmp_settings', 'monitoring', target='SNMP', detail=', '.join(changed))
     return jsonify({'success': True, 'settings': snmp_alerts.get_settings(),
                     'general': snmp_monitor.get_general()})
+
+
+@bp.route('/api/snmp/digest/send', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_digest_send():
+    import snmp_digest
+    ok = snmp_digest.send()
+    return jsonify({'success': ok, 'message': 'Ringkasan dikirim ke kanal notifikasi' if ok else 'Belum ada perangkat SNMP'})
 
 
 def _util(p):
@@ -633,6 +670,75 @@ def snmp_report():
         return Response('﻿' + _report_csv(rep), mimetype='text/csv; charset=utf-8',
                         headers={'Content-Disposition': f'attachment; filename=laporan-snmp-{month}.csv'})
     return jsonify({'success': True, **rep})
+
+
+# ─── Pemeliharaan perangkat (menahan alert) ───
+
+def _maint_dict(m, names):
+    return {'id': m.id, 'device_id': m.device_id, 'device_name': names.get(m.device_id, 'Semua perangkat SNMP') if m.device_id else 'Semua perangkat SNMP',
+            'start': _iso(m.start_time), 'end': _iso(m.end_time), 'reason': m.reason or '', 'created_by': m.created_by or '',
+            'active': m.start_time <= snmp_monitor._now().replace(tzinfo=None) <= m.end_time}
+
+
+@bp.route('/api/snmp/maintenance', methods=['GET'])
+@login_required
+def snmp_maintenance_list():
+    import snmp_depend
+    now = snmp_depend._naive_now()
+    names = {d.id: d.name for d in SnmpDevice.query.all()}
+    q = SnmpMaintenance.query.filter(SnmpMaintenance.end_time >= now - timedelta(days=1))
+    if request.args.get('device_id', type=int):
+        did = request.args.get('device_id', type=int)
+        q = q.filter((SnmpMaintenance.device_id == did) | (SnmpMaintenance.device_id.is_(None)))
+    rows = q.order_by(SnmpMaintenance.start_time).limit(200).all()
+    return jsonify({'success': True, 'items': [_maint_dict(m, names) for m in rows]})
+
+
+@bp.route('/api/snmp/maintenance', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_maintenance_create():
+    import snmp_depend
+    data = request.get_json() or {}
+    try:
+        start = snmp_depend.parse_when(data.get('start')) if data.get('start') else snmp_depend._naive_now()
+        end = snmp_depend.parse_when(data.get('end'))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Waktu tidak valid'}), 400
+    if end <= start:
+        return jsonify({'success': False, 'message': 'Waktu selesai harus setelah waktu mulai'}), 400
+    if end - start > timedelta(days=30):
+        return jsonify({'success': False, 'message': 'Maksimal 30 hari per jendela'}), 400
+    did = data.get('device_id')
+    if did in (None, '', 0):
+        did = None
+    else:
+        try:
+            did = int(did)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Perangkat tidak valid'}), 400
+        if not db.session.get(SnmpDevice, did):
+            return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    m = SnmpMaintenance(device_id=did, start_time=start, end_time=end,
+                        reason=(data.get('reason') or '').strip()[:300], created_by=current_user.username)
+    db.session.add(m)
+    db.session.commit()
+    log_action('snmp_maintenance_add', 'monitoring', target=str(did or 'semua'), detail=m.reason)
+    names = {d.id: d.name for d in SnmpDevice.query.all()}
+    return jsonify({'success': True, 'item': _maint_dict(m, names)})
+
+
+@bp.route('/api/snmp/maintenance/<int:mid>', methods=['DELETE'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_maintenance_delete(mid):
+    m = db.session.get(SnmpMaintenance, mid)
+    if not m:
+        return jsonify({'success': False, 'message': 'Tidak ditemukan'}), 404
+    db.session.delete(m)
+    db.session.commit()
+    log_action('snmp_maintenance_delete', 'monitoring', target=str(m.device_id or 'semua'))
+    return jsonify({'success': True})
 
 
 # ─── Tahap 4: topologi (LLDP/CDP/MNDP) ───

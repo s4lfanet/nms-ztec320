@@ -440,6 +440,7 @@ def migrate_schema():
     # OLT table - add new columns
     add_col('snmp_devices', 'tables_at', 'DATETIME')
     add_col('snmp_devices', 'tables_note', 'VARCHAR(255)')
+    add_col('snmp_devices', 'parent_id', 'INTEGER')
     add_col('snmp_ports', 'mtu', 'INTEGER')
     add_col('snmp_ports', 'duplex', 'VARCHAR(8)')
     add_col('snmp_ports', 'ip_addrs', 'TEXT')

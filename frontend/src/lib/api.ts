@@ -306,6 +306,11 @@ export const api = {
     request<SnmpReportData>(`/api/snmp/report?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`),
   snmpReportCsvUrl: (q: { month: string; scope: string; tz: number }) =>
     `/api/snmp/report?${new URLSearchParams({ month: q.month, scope: q.scope, tz: String(q.tz), format: 'csv' })}`,
+  snmpMaintenance: (deviceId?: number) => request<{ success: boolean; items: SnmpMaintenance[] }>(`/api/snmp/maintenance${deviceId ? `?device_id=${deviceId}` : ''}`),
+  snmpMaintenanceCreate: (data: { device_id: number | null; start?: string; end: string; reason?: string }) =>
+    request<{ success: boolean; item: SnmpMaintenance }>('/api/snmp/maintenance', { method: 'POST', body: JSON.stringify(data) }),
+  snmpMaintenanceDelete: (id: number) => request<{ success: boolean }>(`/api/snmp/maintenance/${id}`, { method: 'DELETE' }),
+  snmpDigestSend: () => request<{ success: boolean; message: string }>('/api/snmp/digest/send', { method: 'POST' }),
   snmpPortUpdate: (id: number, data: { ignored?: boolean; watched?: boolean }) => request<{ success: boolean; port: SnmpPort }>(`/api/snmp/ports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthExport: () => '/api/ftth/export',
   ftthExportJson: () => '/api/ftth/export.json',
@@ -943,11 +948,16 @@ export interface SnmpDevice {
   last_poll_at: string | null; last_ok_at: string | null; poll_ms: number | null;
   uptime_s: number | null; cpu_pct: number | null; mem_pct: number | null; temperature: number | null;
   ports_total: number; ports_up: number; ports_down: number;
+  parent_id?: number | null; in_maintenance?: boolean; parent_down?: string;
+}
+export interface SnmpMaintenance {
+  id: number; device_id: number | null; device_name: string; start: string | null; end: string | null;
+  reason: string; created_by: string; active: boolean;
 }
 export interface SnmpDeviceForm {
   name: string; host: string; port?: number; snmp_version: '1' | '2c' | '3'; community?: string;
   v3_user?: string; v3_level?: string; v3_auth_proto?: string; v3_auth_pass?: string; v3_priv_proto?: string; v3_priv_pass?: string;
-  location?: string; notes?: string; enabled?: boolean;
+  location?: string; notes?: string; enabled?: boolean; parent_id?: number | null;
 }
 export interface SnmpPortDetail {
   mtu: number | null; duplex: string; ip_addrs: string[];
@@ -1409,6 +1419,7 @@ export interface SnmpSettingsData {
   settings: Record<string, number>;
   defaults: Record<string, number>;
   general: Record<string, number>;
+  digest?: { snmp_digest_enabled: number; snmp_digest_day: number; snmp_digest_hour: number };
   general_defaults: Record<string, number>;
   general_limits: Record<string, [number, number]>;
   /** community hanya dikirim ke pengelola perangkat (settings_ip_olts) */

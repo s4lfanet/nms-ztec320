@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — SNMP gaya PRTG: induk-anak, jadwal pemeliharaan, ringkasan mingguan
+
+#### Ditambahkan
+- **Perangkat induk (dependency)**: di form perangkat SNMP pilih "Perangkat induk". Bila induk turun, alert "turun" semua turunannya (anak, cucu) ditahan. Yang terkirim satu alert induk, berisi daftar perangkat di bawahnya yang ikut tak terjangkau. Anak yang tetap terjangkau dan induk yang sudah pulih tetap dialert normal. Lingkaran induk ditolak.
+- **Jadwal pemeliharaan perangkat SNMP**: di form perangkat, tombol "Mulai sekarang" dengan durasi (jam) dan alasan. Selama aktif, alert perangkat itu (turun, CPU, suhu, port) ditahan. Maksimal 30 hari per jendela. Lencana "Pemeliharaan" dan "Induk … turun" tampil di daftar perangkat.
+- **Ringkasan mingguan SNMP** ke Telegram/WhatsApp (Pengaturan SNMP): ketersediaan rata-rata, perangkat paling sering/lama turun, port paling sering naik-turun, dan port paling padat. Bawaan nonaktif. Pilih hari dan jam, atau "Kirim sekarang".
+
 ### 2026-11-25 — Audit job latar belakang: pemantau job mati, perapian data redaman, cron backup DB
 
 #### Ditambahkan

@@ -1491,6 +1491,7 @@ class SnmpDevice(db.Model):
     cpu_pct = db.Column(db.Float, nullable=True)
     mem_pct = db.Column(db.Float, nullable=True)
     temperature = db.Column(db.Float, nullable=True)
+    parent_id = db.Column(db.Integer, nullable=True)              # perangkat induk (dependency): induk turun → alert anak ditahan
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     @staticmethod
@@ -1629,6 +1630,19 @@ class SnmpFdb(db.Model):
     mac = db.Column(db.String(17), nullable=False, index=True)
     first_seen = db.Column(db.DateTime, nullable=True)
     last_seen = db.Column(db.DateTime, nullable=True)
+
+
+class SnmpMaintenance(db.Model):
+    """Jendela pemeliharaan perangkat SNMP: selama aktif, alert perangkat itu ditahan.
+    device_id NULL = semua perangkat SNMP. Waktu disimpan UTC naif."""
+    __tablename__ = 'snmp_maintenance'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, nullable=True, index=True)
+    start_time = db.Column(db.DateTime, nullable=False)
+    end_time = db.Column(db.DateTime, nullable=False, index=True)
+    reason = db.Column(db.String(300), default='')
+    created_by = db.Column(db.String(100), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class SnmpEvent(db.Model):

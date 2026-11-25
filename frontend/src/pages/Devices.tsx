@@ -14,6 +14,7 @@ import { TopologyMap } from '../components/snmp/TopologyMap';
 import { MikrotikSecurity } from '../components/snmp/MikrotikSecurity';
 import { toast } from '../components/Toast';
 import { api, type SnmpDevice, type SnmpDeviceForm } from '../lib/api';
+import { MaintenancePanel, ParentSelect } from '../components/snmp/SnmpDepend';
 import { cn, timeAgo } from '../lib/utils';
 import { fmtUptime, STATUS_DOT } from '../lib/snmpFormat';
 import { useHasPerm } from '../hooks/useHasPerm';
@@ -120,6 +121,8 @@ function DeviceRow({ d }: { d: SnmpDevice }) {
           {d.os_version && <span className="text-tx3"> · v{d.os_version}</span>}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-tx2 md:flex-1">
+          {d.in_maintenance && <span className="px-1.5 py-0.5 rounded border border-warning/40 bg-warning/10 text-warning">{t('snmpdep.badgeMaint')}</span>}
+          {d.parent_down && <span className="px-1.5 py-0.5 rounded border border-line text-tx3" title={d.parent_down}>{t('snmpdep.badgeParent', { name: d.parent_down })}</span>}
           {d.status === 'down' || d.status === 'warn' ? (
             <span className={d.status === 'down' ? 'text-danger' : 'text-warning'}>
               {t(`dev.st.${d.status}`)} {d.status_changed_at && `· ${timeAgo(d.status_changed_at)}`}
@@ -155,6 +158,7 @@ export function DeviceFormModal({ device, initial, onClose }: { device?: SnmpDev
     v3_auth_proto: device?.v3_auth_proto || 'SHA', v3_auth_pass: '',
     v3_priv_proto: device?.v3_priv_proto || 'AES', v3_priv_pass: '',
     location: device?.location || '', notes: device?.notes || '', enabled: device?.enabled ?? true,
+    parent_id: device?.parent_id ?? null,
     ...(device ? {} : initial),
   });
   // Perangkat baru: isi versi & community bawaan dari Pengaturan (bila belum diisi)
@@ -269,8 +273,10 @@ export function DeviceFormModal({ device, initial, onClose }: { device?: SnmpDev
             )}
           </div>
         )}
+        <ParentSelect value={form.parent_id} selfId={device?.id} onChange={v => set({ parent_id: v })} />
         <label className="block"><span className="label-sm">{t('dev.notes')}</span>
           <textarea className="input-field" rows={2} value={form.notes} onChange={e => set({ notes: e.target.value })} /></label>
+        {device && <MaintenancePanel deviceId={device.id} />}
         {device && (
           <label className="flex items-center gap-2 text-sm text-tx2">
             <input type="checkbox" checked={form.enabled} onChange={e => set({ enabled: e.target.checked })} /> {t('dev.enabled')}

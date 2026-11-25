@@ -91,6 +91,8 @@ def check_snmp_devices(now, notifications_to_create, alerts_to_send):
     pulih → resolved + pesan pulih. 'warn' (ping OK, SNMP diam) tidak dialert."""
     from models import SnmpDevice
     down_after = timedelta(minutes=_cfg_num('snmp_down_minutes', 4))
+    from snmp_depend import Scope
+    scope = Scope(now)
     for dev in SnmpDevice.query.filter_by(enabled=True).all():
         since = (now - dev.status_changed_at) if dev.status_changed_at else None
         down = dev.status == 'down' and since is not None and since >= down_after
@@ -99,12 +101,19 @@ def check_snmp_devices(now, notifications_to_create, alerts_to_send):
         base = {'olt_id': None, 'olt_name': dev.name, 'olt_ip': dev.host, 'target_type': 'snmp', 'target_id': dev.id}
         label = ' '.join(x for x in (dev.vendor, dev.hardware) if x and x != 'Generic')
         if down and not notif:
+            held, _why = scope.suppressed(dev)
+            if held:
+                continue  # pemeliharaan, atau induknya turun (alert induk sudah mewakili)
             mins = int(since.total_seconds() // 60)
             title = f'🔴 Perangkat turun: {dev.name}'
             msg = (f'🔴 PERANGKAT TIDAK TERJANGKAU\n\nPerangkat: {dev.name} ({dev.host})'
                    + (f'\nJenis: {label}' if label else '')
                    + (f'\nLokasi: {dev.location}' if dev.location else '')
                    + f'\nTurun sejak: {mins} menit lalu\nSebab: {dev.status_reason or "-"}')
+            kids = scope.affected_children(dev)
+            if kids:
+                names = ', '.join(k.name for k in kids[:8]) + (f' (+{len(kids) - 8} lagi)' if len(kids) > 8 else '')
+                msg += f'\n\n⛓️ {len(kids)} perangkat di bawahnya ikut tak terjangkau: {names}\n(alert terpisah untuk perangkat itu ditahan)'
             notifications_to_create.append({'olt_id': None, 'onu_id': None, 'severity': 'critical',
                                             'category': 'snmp_down', 'title': title, 'message': msg,
                                             'target_roles': '', 'target_type': 'snmp', 'target_id': dev.id})
