@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Peta topologi SNMP: lapisan status gaya PRTG
+
+#### Ditambahkan
+- Peta topologi kini menampilkan **garis putus-putus dependensi induk-anak** (bila tidak ada link LLDP di antara pasangan itu), **lencana "M"** untuk perangkat yang sedang dalam pemeliharaan, dan **cincin kuning/merah** untuk perangkat yang punya sensor kustom berstatus Warning/Down. Peta juga tampil bila hanya ada dependensi tanpa LLDP.
+
 ### 2026-11-26 — Sensor kustom bergaya PRTG (ambang bertingkat)
 
 #### Ditambahkan

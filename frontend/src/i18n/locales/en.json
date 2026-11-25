@@ -2627,7 +2627,9 @@
     "linkDown": "Down",
     "neighbors": "Neighbors",
     "noNeighbors": "No neighbors detected. Enable LLDP (or Neighbor Discovery on MikroTik) and run Discovery.",
-    "neighborsHint": "Updated on every discovery. Known devices are linked automatically by IP, name (sysName/identity) or MAC."
+    "neighborsHint": "Updated on every discovery. Known devices are linked automatically by IP, name (sysName/identity) or MAC.",
+    "legendDep": "Parent-child dependency",
+    "legendBadges": "M = maintenance · ring = sensor Warning/Down"
   },
   "pdet": {
     "spec": "Specification",

@@ -307,3 +307,25 @@ def build():
             'last_seen': n.last_seen,
         }
     return list(nodes.values()), list(links.values())
+
+
+def annotate(nodes, now=None):
+    """Lapisan gaya PRTG di atas peta: penanda pemeliharaan, status sensor kustom, dan garis
+    dependensi induk-anak. Mengubah `nodes` di tempat; mengembalikan daftar dependensi."""
+    from models import SnmpDevice, SnmpSensorRule
+    from snmp_depend import Scope
+    scope = Scope(now)
+    rules = {}
+    for r in SnmpSensorRule.query.filter_by(enabled=True).all():
+        c = rules.setdefault(r.device_id, {'warning': 0, 'down': 0})
+        if r.status in c:
+            c[r.status] += 1
+    for n in nodes:
+        did = n.get('device_id')
+        d = scope.by_id.get(did) if did else None
+        n['parent_id'] = d.parent_id if d else None
+        n['in_maintenance'] = bool(d and scope.in_maintenance(d))
+        c = rules.get(did, {})
+        n['rules_warn'], n['rules_down'] = c.get('warning', 0), c.get('down', 0)
+    return [{'id': f'dep{d.id}', 'source': f'd{d.parent_id}', 'target': f'd{d.id}'}
+            for d in scope.devs if d.parent_id and d.parent_id in scope.by_id]
