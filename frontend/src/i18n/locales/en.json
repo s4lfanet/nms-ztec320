@@ -2776,5 +2776,30 @@
     "portTitle": "MACs on this port ({{n}})",
     "portEmpty": "No MAC has been recorded on this port yet.",
     "customer": "Customer: {{name}}"
+  },
+  "iplog": {
+    "origin": "Origin (IP · ISP · device)",
+    "filterThis": "Show all activity from this IP",
+    "clearIp": "Clear IP filter",
+    "scope_private": "Local network (LAN)",
+    "scope_loopback": "Local server/proxy — real IP not available",
+    "scope_cgnat": "CGNAT (ISP internal network)",
+    "lookupOff": "ISP lookup off",
+    "lookingUp": "Looking up ISP…",
+    "panelTitle": "ISP & IP location info",
+    "panelHint": "The user's real IP is read from Cloudflare. To show the ISP/ASN, the server looks up each public IP once with the provider below (cached 30 days). Local IPs are never sent out.",
+    "provider": "Provider",
+    "prov_ipinfo": "IPinfo Lite (recommended)",
+    "prov_ipapi": "ip-api.com (city + ISP, non-commercial)",
+    "prov_off": "Off",
+    "token": "IPinfo token",
+    "tokenSaved": "Saved — fill in to replace",
+    "tokenPh": "Paste the token from your IPinfo dashboard",
+    "ipinfoNote": "Free, unlimited and allowed for business use: ISP/ASN + country. Create a free token at",
+    "ipapiNote": "No token and city-level, but ip-api.com's free service is for non-commercial use only and runs over plain HTTP.",
+    "offNote": "Only the IP, country (from Cloudflare) and device are shown.",
+    "saved": "IP info settings saved",
+    "attribution": "IP data by",
+    "enableHint": "enable to see the ISP"
   }
 }

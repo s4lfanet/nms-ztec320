@@ -65,8 +65,11 @@ def api_action_logs():
     category = request.args.get('category', '').strip()
     search = request.args.get('search', '').strip()
     user_filter = request.args.get('username', '').strip()
+    ip_filter = request.args.get('ip', '').strip()
 
     q = ActionLog.query
+    if ip_filter:
+        q = q.filter(ActionLog.ip_address == ip_filter)
     if category:
         q = q.filter(ActionLog.category == category)
     if user_filter:
@@ -79,12 +82,22 @@ def api_action_logs():
                 ActionLog.target.ilike(like),
                 ActionLog.detail.ilike(like),
                 ActionLog.username.ilike(like),
+                ActionLog.ip_address.ilike(like),
             )
         )
     total = q.count()
+    per_page = max(1, min(per_page, 200))
     logs = q.order_by(ActionLog.id.desc()).offset((page - 1) * per_page).limit(per_page).all()
 
     categories = [r[0] for r in db.session.query(ActionLog.category).distinct().all() if r[0]]
+
+    # Info ISP/ASN dari cache; IP yang belum dikenal dicari di latar (halaman
+    # berikutnya / refresh 10 dtk sudah membawa hasilnya).
+    import ip_info
+    infos, missing = ip_info.cached([l.ip_address for l in logs])
+    if missing:
+        ip_info.ensure_async(missing)
+    cfg = ip_info.get_config()
 
     return jsonify({
         'logs': [{
@@ -95,14 +108,34 @@ def api_action_logs():
             'target': l.target,
             'detail': l.detail,
             'ip_address': l.ip_address,
+            'ip_country': l.ip_country or '',
+            'user_agent': l.user_agent or '',
+            'ip_info': infos.get(l.ip_address),
             'created_at': utc_iso(l.created_at),
         } for l in logs],
+        'ip_lookup': {'provider': cfg['provider'], 'has_token': cfg['has_token'],
+                      'can_edit': bool(current_user.is_super_admin)},
         'total': total,
         'page': page,
         'per_page': per_page,
         'pages': (total + per_page - 1) // per_page,
         'categories': sorted(categories),
     })
+
+
+@bp.route('/api/ip-lookup/settings', methods=['GET', 'PUT'])
+@super_admin_required
+def ip_lookup_settings():
+    """Penyedia info ISP untuk Log Aktivitas (token tidak pernah dikirim balik)."""
+    import ip_info
+    if request.method == 'PUT':
+        data = request.get_json() or {}
+        ip_info.save_config(data)
+        db.session.commit()
+        cfg = ip_info.get_config()
+        log_action('ip_lookup_settings', 'system', target=cfg['provider'],
+                   detail='Penyedia info IP diubah' + (' (token diperbarui)' if 'token' in data else ''))
+    return jsonify({'success': True, **ip_info.get_config()})
 
 
 @bp.route('/api/action-logs/verify')

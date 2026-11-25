@@ -36,24 +36,25 @@ def utc_iso(dt):
     return dt.isoformat() + '+00:00'
 
 
-def log_action(action, category='general', target='', detail=''):
-    """Record an action to the audit log."""
+def log_action(action, category='general', target='', detail='', username=None):
+    """Record an action to the audit log.
+
+    `username` mengganti nama dari sesi — untuk peristiwa tanpa login (mis. login gagal)."""
     try:
         uid = getattr(current_user, 'id', None) if current_user else None
         uname = getattr(current_user, 'username', '') if current_user else ''
-        # app.py installs ProxyFix(x_for=1, ...), which already rewrites
-        # request.remote_addr from a trusted X-Forwarded-For header (the
-        # outermost single hop). Reading X-Forwarded-For/X-Real-IP directly
-        # here bypassed that trust boundary — a caller could set either
-        # header to any value and have it land straight in the audit log,
-        # since Flask never validates that the request actually came through
-        # the reverse proxy ProxyFix expects.
-        ip = request.remote_addr or '' if request else ''
+        if username is not None:
+            uname = username
+        # IP asli lewat client_ip(): CF-Connecting-IP hanya dipercaya bila
+        # permintaan datang dari proxy lokal (cloudflared/Nginx), bukan header
+        # bebas dari klien — lihat client_ip.py.
+        from client_ip import client_meta
+        ip, country, ua = client_meta()
         entry = ActionLog(
-            user_id=uid, username=uname or '',
+            user_id=uid, username=(uname or '')[:80],
             action=action, category=category,
             target=str(target)[:200], detail=str(detail)[:2000],
-            ip_address=ip or '',
+            ip_address=ip or '', ip_country=country or '', user_agent=ua or '',
         )
         db.session.add(entry)
         # Flush first so the created_at default is assigned, then stamp the

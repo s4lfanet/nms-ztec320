@@ -1116,6 +1116,22 @@ class OLTConfigBackup(db.Model):
     olt = db.relationship('OLT', backref=db.backref('config_backups', lazy=True))
 
 
+class IpInfo(db.Model):
+    """Cache info IP publik (ISP/ASN/negara) untuk Log Aktivitas — `ip_info.py`."""
+    __tablename__ = 'ip_info'
+    ip = db.Column(db.String(45), primary_key=True)
+    asn = db.Column(db.String(16), default='')
+    as_name = db.Column(db.String(200), default='')
+    as_domain = db.Column(db.String(120), default='')
+    country_code = db.Column(db.String(8), default='')
+    country = db.Column(db.String(80), default='')
+    region = db.Column(db.String(80), default='')
+    city = db.Column(db.String(80), default='')
+    provider = db.Column(db.String(16), default='')
+    error = db.Column(db.String(200), default='')
+    fetched_at = db.Column(db.DateTime, nullable=True)
+
+
 class ActionLog(db.Model):
     """Audit log for all user actions"""
     __tablename__ = 'action_logs'
@@ -1127,6 +1143,8 @@ class ActionLog(db.Model):
     target = db.Column(db.String(200), default='')
     detail = db.Column(db.Text, default='')
     ip_address = db.Column(db.String(50), default='')
+    ip_country = db.Column(db.String(8), default='')      # CF-IPCountry saat kejadian
+    user_agent = db.Column(db.String(300), default='')    # browser/perangkat
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     # Fase 11 — tamper-evident chain: hash = sha256(row payload + prev_hash)
     prev_hash = db.Column(db.String(64), default='')

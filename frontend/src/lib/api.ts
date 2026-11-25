@@ -376,16 +376,20 @@ export const api = {
     request<{ success: boolean; message?: string }>(`/api/role/${id}`, { method: 'DELETE' }),
 
   // Action Logs
-  actionLogs: (params: { page?: number; per_page?: number; category?: string; search?: string; username?: string }) => {
+  actionLogs: (params: { page?: number; per_page?: number; category?: string; search?: string; username?: string; ip?: string }) => {
     const qs = new URLSearchParams();
     if (params.page) qs.set('page', String(params.page));
     if (params.per_page) qs.set('per_page', String(params.per_page));
     if (params.category) qs.set('category', params.category);
     if (params.search) qs.set('search', params.search);
     if (params.username) qs.set('username', params.username);
+    if (params.ip) qs.set('ip', params.ip);
     return request<ActionLogsResponse>(`/api/action-logs?${qs}`);
   },
   actionLogsVerify: () => request<{ verified: boolean; checked: number; first_bad_id: number | null; archived: boolean; detail: string }>('/api/action-logs/verify'),
+  ipLookupSettings: () => request<IpLookupConfig & { success: boolean }>('/api/ip-lookup/settings'),
+  ipLookupSave: (data: { provider?: IpLookupConfig['provider']; token?: string }) =>
+    request<IpLookupConfig & { success: boolean }>('/api/ip-lookup/settings', { method: 'PUT', body: JSON.stringify(data) }),
   actionLogsArchive: (days: number) => request<{ success: boolean; archived: number; file: string | null; detail: string }>('/api/action-logs/archive', { method: 'POST', body: JSON.stringify({ days }) }),
 
   // Web Push (VAPID) — Fase 14
@@ -554,14 +558,26 @@ export interface TrafficLiveResponse {
   ts: number;
 }
 
+/** Info IP dari cache server: publik → ISP/ASN/negara; non-publik → scope. */
+export interface IpInfoData {
+  scope?: 'private' | 'loopback' | 'cgnat';
+  asn?: string; as_name?: string; as_domain?: string;
+  country_code?: string; country?: string; region?: string; city?: string;
+}
+export interface IpLookupConfig { provider: 'off' | 'ipinfo' | 'ip-api'; has_token: boolean }
 export interface ActionLogEntry {
   id: number; username: string; action: string; category: string;
   target: string; detail: string; ip_address: string; created_at: string | null;
+  /** negara dari Cloudflare saat kejadian (CF-IPCountry) */
+  ip_country?: string;
+  user_agent?: string;
+  ip_info?: IpInfoData | null;
 }
 export interface ActionLogsResponse {
   logs: ActionLogEntry[];
   total: number; page: number; per_page: number; pages: number;
   categories: string[];
+  ip_lookup?: IpLookupConfig & { can_edit: boolean };
 }
 
 export interface NotificationEntry {
