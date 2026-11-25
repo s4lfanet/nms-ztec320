@@ -4,6 +4,19 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Pengaturan Monitoring SNMP
+
+#### Ditambahkan
+- **Tab Pengaturan** di halaman Monitoring SNMP (pengelola perangkat), dengan bagian:
+  - **Status pemantauan:** kapan siklus terakhir berjalan, berapa lama, berapa perangkat dan yang gagal, plus peringatan bila satu siklus hampir selama interval poll.
+  - **Jadwal:** interval poll (1 menit–1 jam) dan discovery ulang (1 jam–7 hari).
+  - **Koneksi SNMP:** timeout dan coba ulang, serta versi dan community bawaan yang otomatis mengisi form Tambah perangkat.
+  - **Penyimpanan riwayat:** lama data mentah, data per jam, dan log event, dengan jumlah baris yang tersimpan.
+  - **Ambang alert:** dipindah dari pop-up ke sini, lengkap dengan nilai bawaan tiap kolom dan tombol "Isi nilai bawaan".
+
+#### Diubah
+- Tab halaman Monitoring SNMP tampil sebagai grid di HP.
+
 ### 2026-11-25 — Kustomisasi rapi di HP
 
 #### Diperbaiki

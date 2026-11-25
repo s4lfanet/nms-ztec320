@@ -194,8 +194,17 @@ class SnmpClient:
             pass
 
 
-def _run(coro_fn, params, timeout=3, retries=1):
+# Timeout/retry SNMP dari Pengaturan Monitoring SNMP. Disalin ke variabel modul
+# (bukan dibaca di thread pekerja, yang tidak punya app context) oleh
+# refresh_runtime() di awal setiap siklus poll / discovery.
+_RUNTIME = {'timeout': 3, 'retries': 1}
+
+
+def _run(coro_fn, params, timeout=None, retries=None):
     """Jalankan fungsi async dengan klien baru di event loop sendiri (aman di thread)."""
+    timeout = _RUNTIME['timeout'] if timeout is None else timeout
+    retries = _RUNTIME['retries'] if retries is None else retries
+
     async def main():
         c = SnmpClient(params, timeout, retries)
         await c._setup()
@@ -274,7 +283,7 @@ def test_connection(params):
     async def fn(c):
         return await c.get([OID_SYS['name'], OID_SYS['descr'], OID_SYS['object_id']])
     try:
-        r = _run(fn, params, timeout=3, retries=1)
+        r = _run(fn, params)
     except Exception as e:
         return {'ok': False, 'error': _friendly(e)}
     if r.get(OID_SYS['descr']) is None and r.get(OID_SYS['name']) is None:
@@ -330,7 +339,7 @@ def collect_discovery(params):
         except Exception:
             out['neighbors'] = None
         return out
-    return _run(fn, params, timeout=4, retries=1)
+    return _run(fn, params, timeout=_RUNTIME['timeout'] + 1)  # discovery membaca lebih banyak tabel
 
 
 def collect_poll(params, mikrotik=False):
@@ -416,7 +425,7 @@ def collect_poll(params, mikrotik=False):
                         sensors.append({'kind': kind, 'key': f'mts.{k}', 'name': name, 'value': v / div, 'unit': u})
         out['sensors'] = sensors
         return out
-    return _run(fn, params, timeout=3, retries=1)
+    return _run(fn, params)
 
 
 def ping(host):
@@ -662,6 +671,7 @@ def _poll_one(params, mikrotik):
 def discover_device(dev):
     """Discovery sinkron untuk satu perangkat (dipanggil di thread latar)."""
     from models import db
+    refresh_runtime()
     try:
         data = collect_discovery(device_params(dev))
         apply_discovery(dev, data)
@@ -681,9 +691,12 @@ def poll_all(devices=None):
     devs = devices if devices is not None else SnmpDevice.query.filter_by(enabled=True).all()
     if not devs:
         return 0
+    refresh_runtime()
+    t_start = time.time()
+    disc_hours = _cfg_int('snmp_discovery_hours', DISCOVERY_HOURS, 1, 168)
     now = _now()
     for d in devs:
-        if not d.discovered_at or now - d.discovered_at > timedelta(hours=DISCOVERY_HOURS):
+        if not d.discovered_at or now - d.discovered_at > timedelta(hours=disc_hours):
             discover_device(d)
     jobs = {d.id: (device_params(d), (d.os_name == 'routeros')) for d in devs}
     with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(jobs))) as ex:
@@ -705,6 +718,9 @@ def poll_all(devices=None):
             d.ping_ms = pr.get('avg_rtt_ms') if pr else None
             set_status(d, state, msg, now)
         db.session.commit()
+    LAST_CYCLE.update(at=now, secs=round(time.time() - t_start, 1), devices=len(devs),
+                      failed=sum(1 for r in results.values() if r[0] != 'ok'))
+    _save_last_cycle()
     return len(devs)
 
 
@@ -715,9 +731,10 @@ HOURLY_RETENTION_DAYS = 400
 def prune_events():
     from models import db, SnmpEvent, SnmpSample, SnmpSampleHourly
     now = _now()
-    SnmpEvent.query.filter(SnmpEvent.created_at < now - timedelta(days=EVENT_RETENTION_DAYS)).delete()
-    SnmpSample.query.filter(SnmpSample.ts < now - timedelta(hours=RAW_RETENTION_HOURS)).delete()
-    SnmpSampleHourly.query.filter(SnmpSampleHourly.hour < now - timedelta(days=HOURLY_RETENTION_DAYS)).delete()
+    g = get_general()
+    SnmpEvent.query.filter(SnmpEvent.created_at < now - timedelta(days=g['snmp_event_days'])).delete()
+    SnmpSample.query.filter(SnmpSample.ts < now - timedelta(hours=g['snmp_raw_hours'])).delete()
+    SnmpSampleHourly.query.filter(SnmpSampleHourly.hour < now - timedelta(days=g['snmp_hourly_days'])).delete()
     db.session.commit()
 
 
@@ -729,6 +746,122 @@ def _cfg_int(key, default, lo, hi):
     except (TypeError, ValueError):
         v = default
     return max(lo, min(hi, v))
+
+
+# ─── Pengaturan umum (halaman Monitoring SNMP → Pengaturan) ───
+# key: (bawaan, min, maks). Disimpan di SystemConfig; nilai di luar batas dijepit.
+# snmp_raw_hours minimal 24: grafik 24 jam & grafik mini port dibaca dari data mentah.
+GENERAL = {
+    'snmp_poll_interval': (300, 60, 3600),          # detik
+    'snmp_discovery_hours': (DISCOVERY_HOURS, 1, 168),
+    'snmp_timeout': (3, 1, 15),                     # detik per permintaan
+    'snmp_retries': (1, 0, 5),
+    'snmp_raw_hours': (RAW_RETENTION_HOURS, 24, 168),
+    'snmp_hourly_days': (HOURLY_RETENTION_DAYS, 30, 1100),
+    'snmp_event_days': (EVENT_RETENTION_DAYS, 7, 365),
+}
+DEFAULT_VERSIONS = ('1', '2c', '3')
+LAST_CYCLE = {'at': None, 'secs': None, 'devices': 0, 'failed': 0}
+
+
+def _save_last_cycle():
+    """Simpan ringkasan siklus terakhir ke SystemConfig (dibaca halaman Pengaturan)."""
+    import json
+    from models import db, SystemConfig
+    try:
+        txt = json.dumps({'at': LAST_CYCLE['at'].isoformat() if LAST_CYCLE['at'] else None,
+                          'secs': LAST_CYCLE['secs'], 'devices': LAST_CYCLE['devices'], 'failed': LAST_CYCLE['failed']})
+        row = SystemConfig.query.filter_by(key='snmp_last_cycle').first()
+        if row:
+            row.value = txt
+        else:
+            db.session.add(SystemConfig(key='snmp_last_cycle', value=txt))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def last_cycle():
+    """→ {'at': datetime|None, 'secs', 'devices', 'failed'}"""
+    import json
+    from datetime import datetime
+    from models import SystemConfig
+    row = SystemConfig.query.filter_by(key='snmp_last_cycle').first()
+    try:
+        d = json.loads(row.value) if row and row.value else {}
+    except ValueError:
+        d = {}
+    at = d.get('at')
+    return {'at': datetime.fromisoformat(at) if at else None, 'secs': d.get('secs'),
+            'devices': d.get('devices', 0), 'failed': d.get('failed', 0)}
+
+
+def get_general():
+    return {k: _cfg_int(k, d, lo, hi) for k, (d, lo, hi) in GENERAL.items()}
+
+
+def refresh_runtime():
+    try:
+        g = get_general()
+        _RUNTIME.update(timeout=g['snmp_timeout'], retries=g['snmp_retries'])
+    except Exception:  # di luar app context / DB belum siap → pakai nilai terakhir
+        pass
+
+
+def get_new_device_defaults(with_secret=False):
+    """Versi & community bawaan untuk form Tambah perangkat."""
+    from models import SystemConfig, decrypt_field
+    rows = {r.key: r.value for r in SystemConfig.query.filter(
+        SystemConfig.key.in_(['snmp_default_version', 'snmp_default_community'])).all()}
+    ver = rows.get('snmp_default_version') or '2c'
+    out = {'snmp_version': ver if ver in DEFAULT_VERSIONS else '2c',
+           'has_community': bool(rows.get('snmp_default_community'))}
+    if with_secret:
+        try:
+            out['community'] = decrypt_field(rows.get('snmp_default_community') or '') or ''
+        except Exception:
+            out['community'] = ''
+    return out
+
+
+def save_general(data):
+    """Simpan nilai yang dikirim. → daftar key yang berubah (community tidak ditulis ke log)."""
+    from models import db, SystemConfig, encrypt_field
+    changed = []
+
+    def put(k, txt):
+        row = SystemConfig.query.filter_by(key=k).first()
+        if row:
+            if row.value != txt:
+                row.value = txt
+                changed.append(k)
+        else:
+            db.session.add(SystemConfig(key=k, value=txt))
+            changed.append(k)
+
+    for k, (_d, lo, hi) in GENERAL.items():
+        if k not in data:
+            continue
+        try:
+            v = int(round(float(data[k])))
+        except (TypeError, ValueError):
+            continue
+        put(k, str(max(lo, min(hi, v))))
+    if data.get('snmp_default_version') in DEFAULT_VERSIONS:
+        put('snmp_default_version', data['snmp_default_version'])
+    if 'snmp_default_community' in data:
+        c = str(data['snmp_default_community'] or '').strip()[:100]
+        cur = get_new_device_defaults(with_secret=True).get('community', '')
+        if c != cur:
+            put('snmp_default_community', encrypt_field(c) if c else '')
+    return changed
+
+
+def data_volume():
+    """Jumlah baris riwayat (untuk memperkirakan dampak pengaturan penyimpanan)."""
+    from models import SnmpSample, SnmpSampleHourly, SnmpEvent
+    return {'raw': SnmpSample.query.count(), 'hourly': SnmpSampleHourly.query.count(),
+            'events': SnmpEvent.query.count()}
 
 
 def run_snmp_poller(app):

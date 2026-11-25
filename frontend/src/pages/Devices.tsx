@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Router, Plus, Search, Cpu, MemoryStick, Thermometer, PlugZap } from 'lucide-react';
+import { Router, Plus, Search, Cpu, MemoryStick, Thermometer, PlugZap, Settings2 } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, EmptyState, LoadingOverlay, Modal, StatusStrip, Tabs } from '../components/ui';
-import { AlertThresholdsButton, DevicesOverview, useSnmpSummary } from '../components/snmp/SnmpOverview';
+import { DevicesOverview, useSnmpSummary } from '../components/snmp/SnmpOverview';
+import { SnmpSettings } from '../components/snmp/SnmpSettings';
 import { SnmpReport } from '../components/snmp/SnmpReport';
 import { TopologyMap } from '../components/snmp/TopologyMap';
 import { toast } from '../components/Toast';
@@ -23,7 +24,8 @@ export function Devices() {
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
-  const [view, setView] = useState<'list' | 'topology' | 'report'>('list');
+  const [view, setView] = useState<'list' | 'topology' | 'report' | 'settings'>(
+    () => (new URLSearchParams(window.location.search).get('tab') === 'settings' ? 'settings' : 'list'));
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
     queryKey: ['snmp-devices'], queryFn: api.snmpDevices, refetchInterval: 30_000,
   });
@@ -43,22 +45,27 @@ export function Devices() {
         live={{ updatedAt: dataUpdatedAt, fetching: isFetching }}
         action={canEdit && (
           <div className="flex flex-wrap gap-2">
-            {devices.length > 0 && <AlertThresholdsButton />}
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => setAdding(true)}>{t('dev.add')}</Button>
           </div>
         )}
       />
-      {isLoading ? <LoadingOverlay /> : devices.length === 0 ? (
+      {isLoading ? <LoadingOverlay /> : devices.length === 0 && view !== 'settings' ? (
         <EmptyState icon={Router} title={t('dev.emptyTitle')} description={t('dev.emptyDesc')}
-          action={canEdit && <Button variant="primary" icon={<Plus size={16} />} onClick={() => setAdding(true)}>{t('dev.add')}</Button>} />
+          action={canEdit && (
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button variant="primary" icon={<Plus size={16} />} onClick={() => setAdding(true)}>{t('dev.add')}</Button>
+              <Button variant="secondary" icon={<Settings2 size={16} />} onClick={() => setView('settings')}>{t('snset.tab')}</Button>
+            </div>
+          )} />
       ) : (
         <div className="space-y-4">
-          <Tabs active={view} onChange={k => setView(k as typeof view)} tabs={[
+          <Tabs mobileGrid={canEdit ? 4 : 3} active={view} onChange={k => setView(k as typeof view)} tabs={[
             { key: 'list', label: t('devx.tabList') },
             { key: 'topology', label: t('topo.tab') },
             { key: 'report', label: t('devx.tabReport') },
+            ...(canEdit ? [{ key: 'settings', label: t('snset.tab') }] : []),
           ]} />
-          {view === 'report' ? <SnmpReport /> : view === 'topology' ? <TopologyMap /> : <>
+          {view === 'settings' ? <SnmpSettings /> : view === 'report' ? <SnmpReport /> : view === 'topology' ? <TopologyMap /> : <>
           {summary.data && <DevicesOverview summary={summary.data} />}
           <StatusStrip
             aria-label={t('dev.statusSummary')}
@@ -144,6 +151,17 @@ export function DeviceFormModal({ device, initial, onClose }: { device?: SnmpDev
     location: device?.location || '', notes: device?.notes || '', enabled: device?.enabled ?? true,
     ...(device ? {} : initial),
   });
+  // Perangkat baru: isi versi & community bawaan dari Pengaturan (bila belum diisi)
+  const { data: snset } = useQuery({ queryKey: ['snmp-settings'], queryFn: api.snmpSettings, enabled: !device });
+  useEffect(() => {
+    const nd = snset?.new_device;
+    if (device || !nd) return;
+    setForm(f => ({
+      ...f,
+      snmp_version: initial?.snmp_version || (f.snmp_version === '2c' ? nd.snmp_version : f.snmp_version),
+      community: f.community || nd.community || '',
+    }));
+  }, [snset, device, initial?.snmp_version]);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<{ ok: boolean; text: string } | null>(null);

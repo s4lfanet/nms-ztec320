@@ -393,18 +393,33 @@ from models import Notification  # noqa: E402
 @bp.route('/api/snmp/settings', methods=['GET'])
 @login_required
 def snmp_settings_get():
-    return jsonify({'success': True, 'settings': snmp_alerts.get_settings(), 'defaults': snmp_alerts.DEFAULTS})
+    can_edit = current_user.has_permission('settings_ip_olts')
+    lc = snmp_monitor.last_cycle()
+    return jsonify({
+        'success': True, 'settings': snmp_alerts.get_settings(), 'defaults': snmp_alerts.DEFAULTS,
+        'general': snmp_monitor.get_general(),
+        'general_defaults': {k: v[0] for k, v in snmp_monitor.GENERAL.items()},
+        'general_limits': {k: [v[1], v[2]] for k, v in snmp_monitor.GENERAL.items()},
+        # community bawaan hanya untuk pengelola perangkat (seperti community perangkat)
+        'new_device': snmp_monitor.get_new_device_defaults(with_secret=can_edit),
+        'last_cycle': {'at': utc_iso(lc['at']) if lc['at'] else None, 'secs': lc['secs'],
+                       'devices': lc['devices'], 'failed': lc['failed']},
+        'volume': snmp_monitor.data_volume() if can_edit else None,
+    })
 
 
 @bp.route('/api/snmp/settings', methods=['PUT'])
 @login_required
 @permission_required('settings_ip_olts')
 def snmp_settings_put():
-    changed = snmp_alerts.save_settings(request.get_json() or {})
+    data = request.get_json() or {}
+    changed = snmp_alerts.save_settings(data) + snmp_monitor.save_general(data)
     db.session.commit()
+    snmp_monitor.refresh_runtime()
     if changed:
         log_action('snmp_settings', 'monitoring', target='SNMP', detail=', '.join(changed))
-    return jsonify({'success': True, 'settings': snmp_alerts.get_settings()})
+    return jsonify({'success': True, 'settings': snmp_alerts.get_settings(),
+                    'general': snmp_monitor.get_general()})
 
 
 def _util(p):
