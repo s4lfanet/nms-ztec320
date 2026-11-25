@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Kustomisasi rapi di HP
+
+#### Diperbaiki
+- **Tab menu Kustomisasi:** tidak lagi satu baris yang harus digeser; di HP tampil grid 4 kolom dengan ikon di atas label, seperti halaman lain, lengkap dengan sorotan yang meluncur.
+- **RX Colors:** isian Min/Max/Warna/Label tidak lagi bertumpuk; di HP tersusun 2×2, teks warna tidak terpotong.
+- **API Tokens:** di HP tampil sebagai kartu per token, tidak lagi tabel yang terpotong di kanan.
+
 ### 2026-11-25 — Aplikasi terasa lebih hidup (gerak yang menjawab tindakan)
 
 #### Diubah
