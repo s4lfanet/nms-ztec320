@@ -505,3 +505,18 @@ def security_settings_put():
         log_action('mikrotik_security_settings', 'settings', 'Keamanan MikroTik', ', '.join(changed)[:300])
     return jsonify({'success': True, 'changed': changed, 'invalid': bad,
                     'settings': mikrotik_security.get_settings()})
+
+
+@bp.route('/api/mikrotik/security/audit/<int:dev_id>', methods=['POST'])
+@permission_required('settings_ip_olts')
+def security_audit_run(dev_id):
+    """Audit konfigurasi sekarang (hanya membaca router)."""
+    import mikrotik_audit
+    d = db.session.get(MikrotikDevice, dev_id)
+    if not d:
+        return jsonify({'success': False, 'message': 'Router tidak ditemukan'}), 404
+    r = mikrotik_audit.run(d)
+    log_action('mikrotik_security_audit', 'settings', d.name, f'skor {r.get("score")}' if r.get('ok') else r.get('error', '')[:200])
+    if not r.get('ok'):
+        return jsonify({'success': False, 'message': r.get('error') or 'Audit gagal'}), 502
+    return jsonify({'success': True, 'audit': mikrotik_audit.result(d.id)})

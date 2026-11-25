@@ -392,6 +392,8 @@ export const api = {
   mtSecuritySettings: () => request<{ success: boolean; settings: MtSecSettings; limits: Record<string, [number, number]>; ai_enabled: boolean }>('/api/mikrotik/security/settings'),
   mtSecuritySave: (data: Partial<MtSecSettings>) =>
     request<{ success: boolean; changed: string[]; invalid: string[]; settings: MtSecSettings }>('/api/mikrotik/security/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  mtSecurityAudit: (deviceId: number) =>
+    request<{ success: boolean; audit: MtAudit; message?: string }>(`/api/mikrotik/security/audit/${deviceId}`, { method: 'POST' }),
   ipLookupSettings: () => request<IpLookupConfig & { success: boolean }>('/api/ip-lookup/settings'),
   ipLookupSave: (data: { provider?: IpLookupConfig['provider']; token?: string }) =>
     request<IpLookupConfig & { success: boolean }>('/api/ip-lookup/settings', { method: 'PUT', body: JSON.stringify(data) }),
@@ -569,24 +571,32 @@ export interface IpInfoData {
   asn?: string; as_name?: string; as_domain?: string;
   country_code?: string; country?: string; region?: string; city?: string;
 }
-export type MtSecKind = 'bruteforce' | 'distributed' | 'success_after_fail' | 'new_ip' | 'user_change';
+export type MtSecKind = 'bruteforce' | 'distributed' | 'success_after_fail' | 'new_ip' | 'user_change' | 'fw_list' | 'audit';
+export interface MtAuditFinding { id: string; severity: 'critical' | 'warning' | 'info'; title: string; detail: string; fix: string }
+export interface MtAudit { at: string | null; score: number | null; version: string; findings: MtAuditFinding[]; error: string }
 export interface MtSecSettings {
   mt_sec_enabled: number; mt_sec_interval: number; mt_sec_bf_threshold: number; mt_sec_bf_minutes: number;
   mt_sec_dist_threshold: number; mt_sec_quiet_minutes: number; mt_sec_alert_success: number;
   mt_sec_alert_new_ip: number; mt_sec_alert_user_change: number; mt_sec_ai_analysis: number;
   mt_sec_retention_days: number; mt_sec_whitelist: string;
+  mt_sec_alert_fw: number; mt_sec_fw_digest_minutes: number; mt_sec_alert_audit: number; mt_audit_hours: number;
+  mt_sec_fw_lists: string;
 }
 export interface MtSecSummary {
   hours: number;
   ip_lookup?: IpLookupConfig['provider'];
-  totals: { fails: number; attackers: number; logins: number; user_changes: number; open_alerts: number };
+  totals: { fails: number; attackers: number; logins: number; user_changes: number; open_alerts: number; fw_new: number };
+  fw_lists: { list: string; router: string; active: number; seen: number;
+    recent: { ip: string; active: boolean; first_seen: string | null; last_seen: string | null; times: number;
+      comment: string; customer: string; info?: IpInfoData | null }[] }[];
   routers: { id: number; name: string; host: string; enabled: boolean; reachable: boolean; fails: number;
-    attackers: number; logins: number; open_alerts: number; last_read_at: string | null; learning: boolean; error: string }[];
+    attackers: number; logins: number; open_alerts: number; last_read_at: string | null; learning: boolean; error: string;
+    audit: MtAudit | null }[];
   attackers: { ip: string; count: number; users: string[]; via: string[]; routers: string[]; last: string | null;
     info?: IpInfoData | null }[];
   alerts: { id: number; router: string; kind: MtSecKind; key: string; severity: string; count: number; detail: string;
     opened_at: string | null; last_seen_at: string | null; closed_at: string | null; ai_text: string }[];
-  events: { id: number; router: string; kind: 'login_fail' | 'login_ok' | 'user_change'; user: string; ip: string;
+  events: { id: number; router: string; kind: 'login_fail' | 'login_ok' | 'user_change' | 'fw_list' | 'audit'; user: string; ip: string;
     via: string; by: string; new_ip: boolean; message: string; at: string | null }[];
 }
 export interface IpLookupConfig { provider: 'off' | 'ipinfo' | 'ip-api'; has_token: boolean }

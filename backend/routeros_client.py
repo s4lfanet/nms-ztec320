@@ -237,6 +237,24 @@ class RouterOSClient:
             return rows if isinstance(rows, list) else []
         return self._conn.talk('/log/print', f'=.proplist={props}')
 
+    def read(self, path, props=None, query=None):
+        """Baca-saja menu RouterOS apa pun: path 'ip/service' → '/ip/service/print' (API) atau
+        GET /rest/ip/service (REST). `query` = {kolom: nilai} saring persis di sisi router.
+        HANYA untuk print/GET — jangan dipakai untuk perintah yang mengubah konfigurasi."""
+        path = path.strip('/')
+        if self.api_mode == 'rest':
+            params = dict(query or {})
+            if props:
+                params['.proplist'] = props
+            rows = self._rest('GET', path, params=params)
+            return rows if isinstance(rows, list) else ([rows] if isinstance(rows, dict) else [])
+        words = [f'/{path}/print']
+        if props:
+            words.append(f'=.proplist={props}')
+        for k, v in (query or {}).items():
+            words.append(f'?{k}={v}')
+        return self._conn.talk(*words)
+
     def ping(self, address, count=3, timeout=None):
         """Ping `address` from the Mikrotik. Returns
         {'sent': int, 'received': int, 'loss_pct': float, 'avg_rtt_ms': float|None}

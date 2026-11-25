@@ -29,13 +29,13 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from models import (db, SystemConfig, MikrotikDevice, Notification, MtSecState, MtSecEvent,
-                    MtSecLogin, MtSecAlert)
+                    MtSecLogin, MtSecAlert, MtSecFwSeen, MtSecAudit)
 
 logger = logging.getLogger(__name__)
 
 CATEGORY = 'mt_security'
 TARGET = 'mt_sec'
-KINDS = ('bruteforce', 'distributed', 'success_after_fail', 'new_ip', 'user_change')
+KINDS = ('bruteforce', 'distributed', 'success_after_fail', 'new_ip', 'user_change', 'fw_list', 'audit')
 MAX_NEW_ROWS = 500          # per pembacaan (buffer memori router default 1000 baris)
 LEARNING = timedelta(hours=24)
 
@@ -51,12 +51,20 @@ DEFAULTS = {
     'mt_sec_alert_user_change': 1,
     'mt_sec_ai_analysis': 1,
     'mt_sec_retention_days': 30,
+    'mt_sec_alert_fw': 1,              # alert IP baru di address-list firewall yang dipantau
+    'mt_sec_fw_digest_minutes': 60,    # IP baru per daftar dikumpulkan jadi satu pesan per jendela ini
+    'mt_sec_alert_audit': 1,           # alert temuan KRITIS baru dari audit konfigurasi
+    'mt_audit_hours': 24,              # audit konfigurasi otomatis tiap N jam (0 = hanya manual)
 }
+FW_LISTS_KEY = 'mt_sec_fw_lists'
+FW_LISTS_DEFAULT = 'nms-portscan\nnms-portscan-lan\nnms-synflood\nnms-bruteforce'
 LIMITS = {
     'mt_sec_enabled': (0, 1), 'mt_sec_interval': (30, 900), 'mt_sec_bf_threshold': (2, 100),
     'mt_sec_bf_minutes': (1, 240), 'mt_sec_dist_threshold': (5, 1000), 'mt_sec_quiet_minutes': (5, 720),
     'mt_sec_alert_success': (0, 1), 'mt_sec_alert_new_ip': (0, 1), 'mt_sec_alert_user_change': (0, 1),
     'mt_sec_ai_analysis': (0, 1), 'mt_sec_retention_days': (1, 365),
+    'mt_sec_alert_fw': (0, 1), 'mt_sec_fw_digest_minutes': (5, 1440), 'mt_sec_alert_audit': (0, 1),
+    'mt_audit_hours': (0, 168),
 }
 WHITELIST_KEY = 'mt_sec_whitelist'
 
@@ -69,7 +77,7 @@ def _now():
 
 def get_settings():
     rows = {r.key: r.value for r in SystemConfig.query.filter(
-        SystemConfig.key.in_(list(DEFAULTS) + [WHITELIST_KEY])).all()}
+        SystemConfig.key.in_(list(DEFAULTS) + [WHITELIST_KEY, FW_LISTS_KEY])).all()}
     out = {}
     for k, d in DEFAULTS.items():
         try:
@@ -79,7 +87,16 @@ def get_settings():
         lo, hi = LIMITS[k]
         out[k] = min(max(v, lo), hi)
     out[WHITELIST_KEY] = rows.get(WHITELIST_KEY) or ''
+    out[FW_LISTS_KEY] = rows[FW_LISTS_KEY] if rows.get(FW_LISTS_KEY) is not None else FW_LISTS_DEFAULT
     return out
+
+
+_LIST_RE = re.compile(r'^[A-Za-z0-9_.:-]{1,63}$')
+
+
+def fw_lists(cfg):
+    """Nama address-list yang dipantau (aman untuk query API)."""
+    return [x for x in dict.fromkeys(re.split(r'[\s,;]+', cfg.get(FW_LISTS_KEY) or '')) if x and _LIST_RE.match(x)][:20]
 
 
 def _parse_whitelist(text):
@@ -131,6 +148,10 @@ def save_settings(data):
             continue
         lo, hi = LIMITS[k]
         put(k, str(min(max(v, lo), hi)))
+    if FW_LISTS_KEY in data:
+        names = [x for x in dict.fromkeys(re.split(r'[\s,;]+', str(data.get(FW_LISTS_KEY) or '')[:2000]))
+                 if x and _LIST_RE.match(x)][:20]
+        put(FW_LISTS_KEY, '\n'.join(names))
     bad = []
     if WHITELIST_KEY in data:
         text, bad = normalize_whitelist(str(data.get(WHITELIST_KEY) or '')[:4000])
@@ -293,14 +314,81 @@ def collect(dev, cli, now=None):
             db.session.rollback()
         logger.warning('mt-sec %s /log failed: %s', dev.host, e)
         return 0
+    n = 0
     try:
         n = ingest(dev, rows, now)
         db.session.commit()
-        return n
     except Exception as e:
         db.session.rollback()
         logger.warning('mt-sec %s ingest failed: %s', dev.host, e)
-        return 0
+    # Address-list firewall yang dipantau (nms-portscan, nms-synflood, …)
+    lists = fw_lists(cfg)
+    if lists:
+        try:
+            entries = []
+            for name in lists:
+                for r in cli.read('ip/firewall/address-list', 'list,address,comment,disabled', {'list': name}) or []:
+                    if not str(r.get('disabled', '')).lower() in ('true', 'yes'):
+                        entries.append(r)
+            ingest_fw(dev, entries, lists, now)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.warning('mt-sec %s address-list read failed: %s', dev.host, e)
+    # Audit konfigurasi terjadwal
+    if cfg['mt_audit_hours']:
+        try:
+            a = db.session.get(MtSecAudit, dev.id)
+            if not a or not a.at or (now - a.at).total_seconds() >= cfg['mt_audit_hours'] * 3600:
+                import mikrotik_audit
+                mikrotik_audit.run(dev, cli, now)
+        except Exception as e:
+            db.session.rollback()
+            logger.warning('mt-sec %s audit failed: %s', dev.host, e)
+    return n
+
+
+def ingest_fw(dev, entries, lists, now):
+    """Catat IP di address-list yang dipantau. IP yang tidak ada di pembacaan sebelumnya → peristiwa fw_list.
+    Daftar yang pertama kali dibaca = baseline (isinya tidak dialert)."""
+    seen = {(r.list, r.address): r for r in MtSecFwSeen.query.filter(MtSecFwSeen.device_id == dev.id,
+                                                                    MtSecFwSeen.list.in_(lists)).all()}
+    # Pembacaan sebelumnya = last_seen terbaru. IP yang TIDAK ada di pembacaan itu (baru, atau keluar lalu masuk
+    # lagi setelah timeout) dianggap baru — NMS yang sempat mati tidak membuat isi daftar lama dialert ulang.
+    # Per daftar ada baris penanda (address='') yang mencatat kapan daftar itu terakhir dibaca — juga untuk daftar
+    # kosong, supaya IP PERTAMA yang masuk ke daftar yang baru dipasang tetap dialert.
+    prev = {}
+    for lst in lists:
+        mark = seen.get((lst, ''))
+        if mark and mark.last_seen:
+            prev[lst] = mark.last_seen
+        if not mark:
+            mark = MtSecFwSeen(device_id=dev.id, list=lst, address='', first_seen=now, times=0)
+            db.session.add(mark)
+            seen[(lst, '')] = mark
+        mark.last_seen = now
+    added = 0
+    for e in entries:
+        lst, addr = str(e.get('list') or '')[:64], str(e.get('address') or '')[:64]
+        if not lst or not addr:
+            continue
+        row = seen.get((lst, addr))
+        first = lst not in prev
+        fresh = row is None or (not first and row.last_seen is not None and row.last_seen < prev[lst])
+        if row is None:
+            row = MtSecFwSeen(device_id=dev.id, list=lst, address=addr, first_seen=now, times=0)
+            db.session.add(row)
+            seen[(lst, addr)] = row
+        if fresh:
+            row.times = (row.times or 0) + 1
+        row.last_seen, row.comment = now, str(e.get('comment') or '')[:200]
+        if fresh and not first:
+            ip = addr.split('/')[0]
+            db.session.add(MtSecEvent(device_id=dev.id, kind='fw_list', user=lst, ip=ip, via='firewall',
+                                      message=f'{addr} masuk daftar {lst}' + (f' ({row.comment})' if row.comment else ''),
+                                      created_at=now))
+            added += 1
+    return added
 
 
 def prune(now=None):
@@ -310,6 +398,7 @@ def prune(now=None):
     n = MtSecEvent.query.filter(MtSecEvent.created_at < cut).delete(synchronize_session=False)
     MtSecAlert.query.filter(MtSecAlert.closed_at.isnot(None), MtSecAlert.closed_at < cut).delete(
         synchronize_session=False)
+    MtSecFwSeen.query.filter(MtSecFwSeen.last_seen < cut).delete(synchronize_session=False)
     db.session.commit()
     return n
 
@@ -486,6 +575,82 @@ def _check_device(ctx, dev, cfg, nets, now):
             _emit(ctx, dev, a, title, msg)
 
 
+def _customer_for(ip):
+    """IP lokal → pelanggan (sesi PPPoE dengan IP itu)."""
+    try:
+        from models import OnuLinkState, ONU
+        st = OnuLinkState.query.filter_by(pppoe_ip=ip).first()
+        if not st:
+            return ''
+        o = db.session.get(ONU, st.onu_id) if st.onu_id else None
+        name = (o.name if o and o.name else '') or st.pppoe_user or ''
+        return f'pelanggan {name}' + (f' (PPPoE {st.pppoe_user})' if st.pppoe_user and st.pppoe_user != name else '')
+    except Exception:
+        return ''
+
+
+def _check_fw_and_audit(ctx, dev, cfg, nets, now):
+    """Peristiwa firewall (digabung per daftar per jendela) & temuan audit kritis baru."""
+    pending = MtSecEvent.query.filter(MtSecEvent.device_id == dev.id, MtSecEvent.alerted.is_(False),
+                                      MtSecEvent.kind.in_(('fw_list', 'audit'))).order_by(MtSecEvent.id).all()
+    by_list = {}
+    for e in pending:
+        if e.kind == 'audit':
+            e.alerted = True
+            if not cfg['mt_sec_alert_audit']:
+                continue
+            titles = [t.strip() for t in (e.message or '').split('|') if t.strip()]
+            a = MtSecAlert(device_id=dev.id, kind='audit', key=e.by[:160], severity='critical', count=len(titles),
+                           detail=(e.message or '')[:500], opened_at=now, last_seen_at=e.created_at, closed_at=now)
+            db.session.add(a)
+            db.session.flush()
+            title = f'🛡️ Audit keamanan: {len(titles)} masalah kritis di MikroTik {dev.name}'
+            msg = (_head(dev, '🛡️ AUDIT KONFIGURASI — MASALAH KRITIS')
+                   + '\n' + '\n'.join(f'- {t}' for t in titles[:8])
+                   + '\n\nDetail & cara memperbaiki ada di tab Keamanan (Audit konfigurasi).')
+            _emit(ctx, dev, a, title, msg)
+            continue
+        if e.ip and _whitelisted(e.ip, nets):
+            e.alerted = True
+            continue
+        by_list.setdefault(e.user, []).append(e)
+    win = timedelta(minutes=cfg['mt_sec_fw_digest_minutes'])
+    for lst, evs in by_list.items():
+        if not cfg['mt_sec_alert_fw']:
+            for e in evs:
+                e.alerted = True
+            continue
+        last = (MtSecAlert.query.filter_by(device_id=dev.id, kind='fw_list', key=lst)
+                .order_by(MtSecAlert.id.desc()).first())
+        if last and last.opened_at and now - last.opened_at < win:
+            continue     # tunggu jendela berikutnya → digabung jadi satu pesan
+        for e in evs:
+            e.alerted = True
+        ips = list(dict.fromkeys(e.ip for e in evs))
+        lan = 'lan' in lst.lower()
+        a = MtSecAlert(device_id=dev.id, kind='fw_list', key=lst, severity='warning', count=len(ips),
+                       detail=', '.join(ips[:20])[:500], opened_at=now, last_seen_at=evs[-1].created_at, closed_at=now)
+        db.session.add(a)
+        db.session.flush()
+        lines = []
+        for ip in ips[:8]:
+            extra = _customer_for(ip) if lan or not _is_public(ip) else _origin(ip)
+            lines.append(f'- {ip}' + (f' — {extra}' if extra else ''))
+        if len(ips) > 8:
+            lines.append(f'- … dan {len(ips) - 8} IP lain')
+        if lan:
+            title = f'🟠 Perangkat lokal tertangkap firewall ({lst}) — MikroTik {dev.name}'
+            head = '🟠 SERANGAN DARI JARINGAN LOKAL'
+            tip = ('⚠️ Kemungkinan perangkat pelanggan terinfeksi malware/bot. Hubungi pelanggan, minta ganti '
+                   'password router/WiFi dan pindai perangkat; bila berlanjut, batasi sementara.')
+        else:
+            title = f'🟠 Firewall menangkap {len(ips)} IP ({lst}) — MikroTik {dev.name}'
+            head = '🟠 FIREWALL MENANGKAP SERANGAN'
+            tip = 'ℹ️ IP sudah masuk daftar firewall router. Pastikan ada aturan drop untuk daftar ini.'
+        msg = (_head(dev, head) + f'\nDaftar: {lst}\nIP baru: {len(ips)}\n' + '\n'.join(lines) + '\n\n' + tip)
+        _emit(ctx, dev, a, title, msg)
+
+
 def _is_public(ip):
     try:
         return ipaddress.ip_address(ip).is_global
@@ -534,6 +699,7 @@ def check_security(now, notifications_to_create, alerts_to_send):
     for dev in MikrotikDevice.query.filter_by(enabled=True).all():
         try:
             _check_device(ctx, dev, cfg, nets, now)
+            _check_fw_and_audit(ctx, dev, cfg, nets, now)
         except Exception as e:
             logger.warning('[MT-SEC] %s: %s', dev.name, e)
     _close_quiet(ctx, cfg, now)
@@ -640,7 +806,9 @@ def summary(hours=24, device_id=None, limit=50):
             continue
         st = states.get(d.id)
         df = [e for e in fails if e.device_id == d.id]
+        import mikrotik_audit
         routers.append({'id': d.id, 'name': d.name, 'host': d.host, 'enabled': bool(d.enabled),
+                        'audit': mikrotik_audit.result(d.id),
                         'reachable': bool(d.last_ok), 'fails': len(df),
                         'attackers': len({e.ip for e in df}),
                         'logins': sum(1 for e in evs if e.device_id == d.id and e.kind == 'login_ok'),
@@ -648,11 +816,38 @@ def summary(hours=24, device_id=None, limit=50):
                         'last_read_at': iso(st.last_read_at) if st else None,
                         'learning': bool(not st or not st.baseline_at or now - st.baseline_at < LEARNING),
                         'error': (st.last_error if st else '') or ''})
+    fwq = MtSecFwSeen.query.filter(MtSecFwSeen.last_seen >= since, MtSecFwSeen.address != '')
+    if device_id:
+        fwq = fwq.filter(MtSecFwSeen.device_id == device_id)
+    fw = {}
+    for r in fwq.order_by(MtSecFwSeen.last_seen.desc()).limit(3000).all():
+        st = states.get(r.device_id)
+        active = bool(st and st.last_read_at and r.last_seen and r.last_seen >= st.last_read_at)
+        g = fw.setdefault((r.device_id, r.list), {'list': r.list, 'router': devs[r.device_id].name if r.device_id in devs else '',
+                                                  'active': 0, 'seen': 0, 'recent': []})
+        g['seen'] += 1
+        g['active'] += int(active)
+        if len(g['recent']) < 15:
+            ip = r.address.split('/')[0]
+            g['recent'].append({'ip': ip, 'active': active, 'first_seen': iso(r.first_seen), 'last_seen': iso(r.last_seen),
+                                'times': r.times or 1, 'comment': r.comment or '',
+                                'customer': _customer_for(ip) if 'lan' in r.list.lower() or not _is_public(ip) else ''})
+    fw_ips = [x['ip'] for g in fw.values() for x in g['recent'] if _is_public(x['ip'])]
+    if fw_ips:
+        more, miss2 = ip_info.cached(fw_ips)
+        infos.update(more)
+        if miss2:
+            ip_info.ensure_async(miss2)
+    for g in fw.values():
+        for x in g['recent']:
+            x['info'] = infos.get(x['ip'])
     return {
         'hours': hours,
+        'fw_lists': sorted(fw.values(), key=lambda g: (-g['active'], g['router'], g['list'])),
         'totals': {'fails': len(fails), 'attackers': len([a for a in attackers if a != '(tanpa IP)']),
                    'logins': sum(1 for e in evs if e.kind == 'login_ok'),
                    'user_changes': sum(1 for e in evs if e.kind == 'user_change'),
+                   'fw_new': sum(1 for e in evs if e.kind == 'fw_list'),
                    'open_alerts': len(open_alerts)},
         'routers': routers,
         'attackers': [{'ip': a['ip'], 'count': a['count'], 'users': sorted(a['users'])[:8],

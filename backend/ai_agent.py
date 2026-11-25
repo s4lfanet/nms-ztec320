@@ -527,9 +527,18 @@ def tool_mikrotik_security(args):
         a['asal'] = info.get('scope') or ' · '.join(x for x in (
             ' '.join(y for y in (info.get('asn'), info.get('as_name')) if y),
             ', '.join(y for y in (info.get('city'), info.get('country') or info.get('country_code')) if y)) if x) or None
+    for r in d['routers']:
+        au = r.get('audit') or {}
+        if au.get('findings'):
+            au['findings'] = [{'tingkat': f['severity'], 'masalah': f['title'], 'perbaikan': f.get('fix', '')}
+                              for f in au['findings']]
+    for g in d.get('fw_lists', []):
+        g['recent'] = [{k: v for k, v in x.items() if k != 'info'} for x in g['recent'][:8]]
     d['catatan'] = ('fails = login gagal; attackers = IP sumber login gagal; alerts kind: bruteforce, distributed, '
-                    'success_after_fail (login berhasil setelah gagal — paling berbahaya), new_ip, user_change. '
-                    'NMS hanya membaca log; blokir IP dilakukan admin di RouterOS.')
+                    'success_after_fail (login berhasil setelah gagal — paling berbahaya), new_ip, user_change, '
+                    'fw_list (IP masuk address-list firewall nms-*, mis. port scan/SYN flood; daftar *-lan = dari '
+                    'jaringan lokal/pelanggan), audit (temuan kritis audit konfigurasi). routers[].audit = skor 0-100 '
+                    '& temuan audit konfigurasi. NMS hanya membaca router; blokir IP/perbaikan dilakukan admin di RouterOS.')
     return d
 
 
@@ -1281,7 +1290,16 @@ def _cmd_security(arg):
         lines.append('\n*Alert aktif*')
         for a in act[:6]:
             lines.append(f"- {a['router']}: {a['kind']} {a['key']} ({a['count']}×)")
+    fwl = [g for g in d.get('fw_lists', []) if g['active']]
+    if fwl:
+        lines.append('\n*Ditangkap firewall (aktif)*')
+        for g in fwl[:6]:
+            lines.append(f"- {g['router']} {g['list']}: {g['active']} IP")
     for r in d['routers']:
+        au = r.get('audit') or {}
+        if au.get('score') is not None:
+            crit = sum(1 for f in au.get('findings', []) if f.get('tingkat') == 'critical')
+            lines.append(f"\n🛡️ {r['name']}: skor audit {au['score']}/100" + (f" · {crit} kritis" if crit else ''))
         if r['error']:
             lines.append(f"\n⚠️ {r['name']}: {r['error']}")
     if not t['fails'] and not act:
