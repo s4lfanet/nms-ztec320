@@ -799,6 +799,19 @@ def onu_action(onu_id):
 
     if not olt:
         return jsonify({'success': False, 'message': 'OLT not found'})
+    # HiOSO HA7304 / 2-PON without CLI: reboot via SNMP SET (write community)
+    if action == 'reboot' and olt.snmp_enabled and not olt.cli_enabled and (olt.vendor or '').lower() == 'hioso':
+        from olt_adapters.hioso_adapter import HiosoAdapter
+        ha = HiosoAdapter(olt)
+        if ha._is_ha7304_get_model():
+            if not current_user.has_permission('reboot_onu'):
+                return jsonify({'success': False, 'message': 'Permission denied: reboot_onu'}), 403
+            success, msg = ha.reboot_onu_snmp(onu.port, onu.onu_id)
+            logger.info(f"[onu-action] HiOSO SNMP reboot ONU {onu_id}: success={success} msg={msg}")
+            if success:
+                _auto_sync_olt(onu.olt_id)
+            return jsonify({'success': success, 'message': 'Reboot dikirim via SNMP' if success else msg})
+
     unsupported = _zte_cli_unsupported(olt)
     if unsupported:
         return unsupported
