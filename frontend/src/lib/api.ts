@@ -298,7 +298,7 @@ export const api = {
     request<{ success: boolean; points: number; step_s: number; ports: Record<string, { in: (number | null)[]; out: (number | null)[] }> }>(`/api/snmp/devices/${deviceId}/sparks`),
   snmpPortLive: (portId: number) =>
     request<{ success: boolean; ts: number; in: number; out: number; pin: number | null; pout: number | null; in_err: number | null; out_err: number | null; oper: string; hc: boolean; speed_mbps: number | null }>(`/api/snmp/ports/${portId}/live`),
-  snmpTopology: () => request<{ success: boolean; nodes: TopoNode[]; links: TopoLink[] }>('/api/snmp/topology'),
+  snmpTopology: () => request<{ success: boolean; nodes: TopoNode[]; links: TopoLink[]; deps?: TopoDep[] }>('/api/snmp/topology'),
   snmpSummary: () => request<SnmpSummary>('/api/snmp/summary'),
   snmpSettings: () => request<SnmpSettingsData>('/api/snmp/settings'),
   snmpSettingsSave: (data: Record<string, number | string>) => request<{ success: boolean; settings: Record<string, number>; general: Record<string, number> }>('/api/snmp/settings', { method: 'PUT', body: JSON.stringify(data) }),
@@ -985,7 +985,9 @@ export interface SnmpPort {
 }
 export interface TopoNode {
   id: string; device_id: number | null; name: string; host: string; status: string; vendor: string; hardware: string; external: boolean;
+  parent_id?: number | null; in_maintenance?: boolean; rules_warn?: number; rules_down?: number;
 }
+export interface TopoDep { id: string; source: string; target: string }
 export interface TopoLink {
   id: string; source: string; target: string;
   source_port: { port_id: number | null; port: string; alias: string }; target_port: { port_id: number | null; port: string; alias: string };

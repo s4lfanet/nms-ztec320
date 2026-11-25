@@ -818,7 +818,8 @@ def snmp_topology_get():
     nodes, links = snmp_topology.build()
     for lk in links:
         lk['last_seen'] = _iso(lk['last_seen'])
-    return jsonify({'success': True, 'nodes': nodes, 'links': links})
+    deps = snmp_topology.annotate(nodes)
+    return jsonify({'success': True, 'nodes': nodes, 'links': links, 'deps': deps})
 
 
 # ─── Port ala Observium: grafik mini 24 jam & mode Live ───

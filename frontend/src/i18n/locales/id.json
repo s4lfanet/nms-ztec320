@@ -2627,7 +2627,9 @@
     "linkDown": "Putus",
     "neighbors": "Tetangga",
     "noNeighbors": "Tidak ada tetangga terdeteksi. Aktifkan LLDP (atau Neighbor Discovery di MikroTik) lalu jalankan Discovery.",
-    "neighborsHint": "Diperbarui setiap discovery. Perangkat yang dikenali otomatis dihubungkan lewat IP, nama (sysName/identity), atau MAC."
+    "neighborsHint": "Diperbarui setiap discovery. Perangkat yang dikenali otomatis dihubungkan lewat IP, nama (sysName/identity), atau MAC.",
+    "legendDep": "Dependensi induk-anak",
+    "legendBadges": "M = pemeliharaan · cincin = sensor Warning/Down"
   },
   "pdet": {
     "spec": "Spesifikasi",

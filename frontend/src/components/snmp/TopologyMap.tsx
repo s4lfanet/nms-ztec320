@@ -106,22 +106,25 @@ export function TopologyMap() {
   const W = narrow ? 520 : 1000, Hh = narrow ? 640 : 620;
   const { data, isLoading } = useQuery({ queryKey: ['snmp-topology'], queryFn: api.snmpTopology, refetchInterval: 60_000 });
 
-  const { nodes, links } = useMemo(() => {
+  const { nodes, links, deps } = useMemo(() => {
     const ns = (data?.nodes || []).filter(n => showExternal || !n.external);
     const ids = new Set(ns.map(n => n.id));
     const ls = (data?.links || []).filter(l => ids.has(l.source) && ids.has(l.target));
+    // garis dependensi hanya untuk pasangan yang belum punya link fisik (LLDP) di antaranya
+    const pair = new Set(ls.flatMap(l => [`${l.source}>${l.target}`, `${l.target}>${l.source}`]));
+    const ds = (data?.deps || []).filter(d => ids.has(d.source) && ids.has(d.target) && !pair.has(`${d.source}>${d.target}`));
     // perangkat terdaftar tanpa sambungan tetap ditampilkan (supaya terlihat belum terhubung)
-    return { nodes: ns, links: ls };
+    return { nodes: ns, links: ls, deps: ds };
   }, [data, showExternal]);
   // tata letak dihitung dari struktur saja (id node & link), bukan angka trafik yang berubah tiap poll
-  const shape = nodes.map(n => n.id).join(',') + '|' + links.map(l => l.id).join(',');
+  const shape = nodes.map(n => n.id).join(',') + '|' + links.map(l => l.id).join(',') + '|' + deps.map(d => d.id).join(',');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const pos = useMemo(() => layout(nodes, links, W, Hh), [shape, W, Hh]);
+  const pos = useMemo(() => layout(nodes, [...links, ...deps] as unknown as TopoLink[], W, Hh), [shape, W, Hh]);
   const byId = useMemo(() => Object.fromEntries(nodes.map(n => [n.id, n])), [nodes]);
   const selected = links.find(l => l.id === sel) || null;
 
   if (isLoading) return <LoadingOverlay />;
-  if (!data || data.links.length === 0) {
+  if (!data || (data.links.length === 0 && (data.deps?.length ?? 0) === 0)) {
     return (
       <EmptyState icon={Network} title={t('topo.emptyTitle')} description={t('topo.emptyDesc')} />
     );
@@ -137,9 +140,16 @@ export function TopologyMap() {
           <span className="inline-flex items-center gap-1.5"><i className="inline-block w-5 h-[3px] rounded" style={{ background: 'var(--color-accent)' }} />{t('topo.legendOk')}</span>
           <span className="inline-flex items-center gap-1.5"><i className="inline-block w-5 h-[3px] rounded" style={{ background: 'var(--color-warning)' }} />≥60%</span>
           <span className="inline-flex items-center gap-1.5"><i className="inline-block w-5 h-[3px] rounded" style={{ background: 'var(--color-danger)' }} />{t('topo.legendBad')}</span>
+          {deps.length > 0 && <span className="inline-flex items-center gap-1.5"><i className="inline-block w-5 border-t-2 border-dashed" style={{ borderColor: 'var(--text-3)' }} />{t('topo.legendDep')}</span>}
+          {nodes.some(n => n.in_maintenance || n.rules_warn || n.rules_down) && <span>{t('topo.legendBadges')}</span>}
           <span className="ml-auto">{t('topo.tapHint')}</span>
         </div>
         <svg viewBox={`0 0 ${W} ${Hh}`} className="w-full h-auto rounded-lg bg-glass" role="img" aria-label={t('topo.aria', { n: nodes.length, l: links.length })}>
+          {deps.map(d => {
+            const a = pos[d.source], b = pos[d.target];
+            if (!a || !b) return null;
+            return <line key={d.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--text-3)" strokeWidth={1.6} strokeDasharray="2 6" strokeLinecap="round" opacity={0.7} />;
+          })}
           {links.map(l => {
             const a = pos[l.source], b = pos[l.target];
             if (!a || !b) return null;
@@ -164,11 +174,20 @@ export function TopologyMap() {
               <g key={n.id} transform={`translate(${p.x},${p.y})`}
                 className={n.device_id ? 'cursor-pointer' : undefined}
                 onClick={() => n.device_id && navigate(`/dashboard/devices/${n.device_id}`)}>
-                <title>{[n.name, n.host, n.hardware].filter(Boolean).join(' · ')}</title>
+                <title>{[n.name, n.host, n.hardware, n.in_maintenance ? t('snmpdep.badgeMaint') : '', n.rules_down ? `${t('snrule.st.down')}: ${n.rules_down}` : '', n.rules_warn ? `${t('snrule.st.warning')}: ${n.rules_warn}` : ''].filter(Boolean).join(' · ')}</title>
                 <circle r={r + 4} fill="var(--bg-surface)" />
+                {(n.rules_down || n.rules_warn) ? (
+                  <circle r={r + 6} fill="none" strokeWidth={3} stroke={n.rules_down ? 'var(--color-danger)' : 'var(--color-warning)'} />
+                ) : null}
                 <circle r={r} fill={n.external ? 'var(--bg-surface)' : NODE_COLOR[n.status] || NODE_COLOR.unknown}
                   stroke={NODE_COLOR[n.status] || NODE_COLOR.unknown} strokeWidth={n.external ? 2 : 0}
                   strokeDasharray={n.external ? '3 3' : undefined} />
+                {n.in_maintenance && (
+                  <g transform={`translate(${r + 2},${-r - 2})`}>
+                    <circle r={8} fill="var(--color-warning)" stroke="var(--bg-surface)" strokeWidth={2} />
+                    <text y={4} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--bg-surface)">M</text>
+                  </g>
+                )}
                 <text y={r + 17} textAnchor="middle" fontSize={n.external ? 12 : 14} fontWeight={n.external ? 400 : 600}
                   fill={n.external ? 'var(--text-3)' : 'var(--text-1)'} stroke="var(--bg-surface)" strokeWidth={4} paintOrder="stroke">
                   {n.name.length > 22 ? n.name.slice(0, 21) + '…' : n.name}

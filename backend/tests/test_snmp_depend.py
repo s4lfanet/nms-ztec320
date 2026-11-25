@@ -131,3 +131,24 @@ def test_digest_text_and_schedule(ctx):
     c = _client()
     c.put('/api/snmp/settings', headers=H, json={'snmp_digest_enabled': 1})
     assert snmp_digest.settings()['snmp_digest_enabled'] == 1
+
+
+def test_topology_annotations_and_deps(ctx):
+    import snmp_topology
+    from models import SnmpSensorRule
+    p = _dev('Core-T', '10.70.0.1')
+    c = _dev('SW-T', '10.70.0.2', parent=p.id)
+    now = sm._now()
+    db.session.add(SnmpMaintenance(device_id=c.id, start_time=now - timedelta(minutes=1), end_time=now + timedelta(hours=1)))
+    db.session.add(SnmpSensorRule(device_id=p.id, metric='cpu:cpu', name='x', warn=1, status='down'))
+    db.session.add(SnmpSensorRule(device_id=p.id, metric='cpu:cpu', name='y', warn=1, status='warning'))
+    db.session.commit()
+    nodes, _links = snmp_topology.build()
+    deps = snmp_topology.annotate(nodes)
+    by = {n['device_id']: n for n in nodes}
+    assert {'id': f'dep{c.id}', 'source': f'd{p.id}', 'target': f'd{c.id}'} in deps
+    assert by[c.id]['in_maintenance'] and by[c.id]['parent_id'] == p.id and not by[p.id]['in_maintenance']
+    assert by[p.id]['rules_down'] == 1 and by[p.id]['rules_warn'] == 1
+    cl = _client()
+    r = cl.get('/api/snmp/topology', headers=H).get_json()
+    assert r['success'] and any(d['target'] == f'd{c.id}' for d in r['deps'])
