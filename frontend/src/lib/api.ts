@@ -314,6 +314,7 @@ export const api = {
   snmpMaintenanceCreate: (data: { device_id: number | null; start?: string; end: string; reason?: string }) =>
     request<{ success: boolean; item: SnmpMaintenance }>('/api/snmp/maintenance', { method: 'POST', body: JSON.stringify(data) }),
   snmpMaintenanceDelete: (id: number) => request<{ success: boolean }>(`/api/snmp/maintenance/${id}`, { method: 'DELETE' }),
+  snmpReportSend: () => request<{ success: boolean; message: string }>('/api/snmp/report/send', { method: 'POST' }),
   snmpDigestSend: () => request<{ success: boolean; message: string }>('/api/snmp/digest/send', { method: 'POST' }),
   snmpPortUpdate: (id: number, data: { ignored?: boolean; watched?: boolean }) => request<{ success: boolean; port: SnmpPort }>(`/api/snmp/ports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthExport: () => '/api/ftth/export',
@@ -1431,7 +1432,7 @@ export interface SnmpSettingsData {
   settings: Record<string, number>;
   defaults: Record<string, number>;
   general: Record<string, number>;
-  digest?: { snmp_digest_enabled: number; snmp_digest_day: number; snmp_digest_hour: number };
+  digest?: { snmp_digest_enabled: number; snmp_digest_day: number; snmp_digest_hour: number; snmp_digest_pdf: number };
   general_defaults: Record<string, number>;
   general_limits: Record<string, [number, number]>;
   /** community hanya dikirim ke pengelola perangkat (settings_ip_olts) */

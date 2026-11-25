@@ -2974,7 +2974,10 @@
     "d4": "Jumat",
     "d5": "Sabtu",
     "d6": "Minggu",
-    "saved": "Tersimpan"
+    "saved": "Tersimpan",
+    "digestPdf": "Sertakan laporan PDF (Telegram & WA bawaan)",
+    "sendPdf": "Kirim PDF sekarang",
+    "downloadPdf": "Unduh PDF"
   },
   "snrule": {
     "tab": "Sensor",

@@ -82,17 +82,23 @@ export function DigestCard() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ['snmp-settings'], queryFn: api.snmpSettings });
   const cur = data?.digest;
-  const [form, setForm] = useState<{ on?: boolean; day?: number; hour?: number }>({});
+  const [form, setForm] = useState<{ on?: boolean; day?: number; hour?: number; pdf?: boolean }>({});
   const on = form.on ?? !!cur?.snmp_digest_enabled;
   const day = form.day ?? cur?.snmp_digest_day ?? 0;
   const hour = form.hour ?? cur?.snmp_digest_hour ?? 7;
+  const pdf = form.pdf ?? !!cur?.snmp_digest_pdf;
   const save = useMutation({
-    mutationFn: () => api.snmpSettingsSave({ snmp_digest_enabled: on ? 1 : 0, snmp_digest_day: day, snmp_digest_hour: hour }),
+    mutationFn: () => api.snmpSettingsSave({ snmp_digest_enabled: on ? 1 : 0, snmp_digest_day: day, snmp_digest_hour: hour, snmp_digest_pdf: pdf ? 1 : 0 }),
     onSuccess: () => { toast.success(t('snmpdep.saved')); setForm({}); qc.invalidateQueries({ queryKey: ['snmp-settings'] }); },
     onError: (e) => toast.error((e as Error).message),
   });
   const send = useMutation({
     mutationFn: api.snmpDigestSend,
+    onSuccess: (r) => (r.success ? toast.success(r.message) : toast.error(r.message)),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const sendPdf = useMutation({
+    mutationFn: api.snmpReportSend,
     onSuccess: (r) => (r.success ? toast.success(r.message) : toast.error(r.message)),
     onError: (e) => toast.error((e as Error).message),
   });
@@ -102,6 +108,9 @@ export function DigestCard() {
       <p className="text-xs text-tx3 mb-3">{t('snmpdep.digestHint')}</p>
       <label className="flex items-center gap-2 text-sm text-tx2 mb-3">
         <input type="checkbox" checked={on} onChange={e => setForm(f => ({ ...f, on: e.target.checked }))} /> {t('snmpdep.digestOn')}
+      </label>
+      <label className="flex items-center gap-2 text-sm text-tx2 mb-3">
+        <input type="checkbox" checked={pdf} onChange={e => setForm(f => ({ ...f, pdf: e.target.checked }))} /> {t('snmpdep.digestPdf')}
       </label>
       <div className="grid grid-cols-2 gap-3 max-w-sm">
         <label className="block"><span className="label-sm">{t('snmpdep.day')}</span>
@@ -116,6 +125,8 @@ export function DigestCard() {
       <div className="flex flex-wrap gap-2 mt-3">
         <Button variant="primary" onClick={() => save.mutate()} loading={save.isPending} disabled={!Object.keys(form).length}>{t('common.save')}</Button>
         <Button variant="secondary" onClick={() => send.mutate()} loading={send.isPending}>{t('snmpdep.sendNow')}</Button>
+        <Button variant="secondary" onClick={() => sendPdf.mutate()} loading={sendPdf.isPending}>{t('snmpdep.sendPdf')}</Button>
+        <Button variant="secondary" onClick={() => { window.location.href = '/api/snmp/report.pdf'; }}>{t('snmpdep.downloadPdf')}</Button>
       </div>
     </Card>
   );

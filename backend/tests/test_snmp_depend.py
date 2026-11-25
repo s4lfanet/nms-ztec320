@@ -152,3 +152,31 @@ def test_topology_annotations_and_deps(ctx):
     cl = _client()
     r = cl.get('/api/snmp/topology', headers=H).get_json()
     assert r['success'] and any(d['target'] == f'd{c.id}' for d in r['deps'])
+
+
+def test_snmp_pdf_report_builds_and_sends(ctx, monkeypatch):
+    import snmp_report
+    from models import BotConfig
+    assert snmp_report.build_pdf() is None or True
+    _dev('Core-Ünï', '10.9.0.1', status='down')
+    _dev('Edge', '10.9.0.2')
+    pdf = snmp_report.build_pdf()
+    assert pdf.startswith(b'%PDF')
+    sent = []
+    monkeypatch.setattr(snmp_report, '_telegram_document', lambda c, p, fn, cap: sent.append(('tg', fn)) or True)
+    monkeypatch.setattr(snmp_report, '_wa_native_document', lambda c, p, fn, cap: sent.append(('wa', fn)) or True)
+    db.session.add(BotConfig(bot_type='telegram', bot_token='t', chat_id='1', enabled=True))
+    db.session.add(BotConfig(bot_type='whatsapp_native', phone_number='0812', api_url='x', enabled=True))
+    db.session.commit()
+    res = snmp_report.send_pdf()
+    assert res == {'telegram': True, 'whatsapp': True} and len(sent) == 2
+    c = _client()
+    r = c.get('/api/snmp/report.pdf', headers=H)
+    assert r.status_code == 200 and r.data.startswith(b'%PDF')
+    r = c.post('/api/snmp/report/send', headers=H)
+    assert r.get_json()['success'] is True
+    # digest dengan opsi PDF mengirim keduanya
+    monkeypatch.setattr('alerts._send_external_alerts', lambda *a, **k: None)
+    snmp_digest.save_settings({'snmp_digest_pdf': 1}); db.session.commit()
+    sent.clear()
+    assert snmp_digest.send() is True and len(sent) == 2
