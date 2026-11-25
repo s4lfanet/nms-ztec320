@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Laporan PDF mingguan SNMP (Telegram / WA bawaan)
+
+#### Ditambahkan
+- Laporan PDF berisi ringkasan, ketersediaan per perangkat, sensor kustom bermasalah, port paling sering naik-turun dan port terpadat. Opsi "Sertakan laporan PDF" di kartu ringkasan mingguan (SNMP → Pengaturan); tombol "Kirim PDF sekarang" dan "Unduh PDF". Terkirim sebagai file ke Telegram dan WA bawaan NMS; WA gateway pihak ketiga tetap menerima ringkasan teks.
+- Endpoint `/send-file` di gateway WA bawaan (**restart `wa_gateway` setelah Apply Update**).
+
 ### 2026-11-26 — Peta topologi SNMP: lapisan status gaya PRTG
 
 #### Ditambahkan

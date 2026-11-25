@@ -2974,7 +2974,10 @@
     "d4": "Friday",
     "d5": "Saturday",
     "d6": "Sunday",
-    "saved": "Saved"
+    "saved": "Saved",
+    "digestPdf": "Attach PDF report (Telegram & built-in WA)",
+    "sendPdf": "Send PDF now",
+    "downloadPdf": "Download PDF"
   },
   "snrule": {
     "tab": "Sensors",

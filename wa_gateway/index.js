@@ -186,6 +186,34 @@ app.post('/send', async (req, res) => {
   }
 });
 
+app.post('/send-file', async (req, res) => {
+  if (!connected || !sock) {
+    return res.status(503).json({ error: 'WhatsApp not connected. Scan QR code first.' });
+  }
+  const { phone, data, filename, mimetype, caption } = req.body;
+  if (!phone || !data || !filename) {
+    return res.status(400).json({ error: 'phone, data (base64) and filename are required' });
+  }
+  try {
+    let jid = phone.replace(/[^0-9]/g, '');
+    if (jid.startsWith('08')) jid = '62' + jid.substring(1);
+    else if (jid.startsWith('8') && jid.length >= 9) jid = '62' + jid;
+    else if (jid.startsWith('0')) jid = '62' + jid.substring(1);
+    if (!jid.includes('@')) jid = `${jid}@s.whatsapp.net`;
+    await sock.sendMessage(jid, {
+      document: Buffer.from(data, 'base64'),
+      fileName: filename,
+      mimetype: mimetype || 'application/pdf',
+      caption: caption || '',
+    });
+    console.log(`[WA] File ${filename} sent to ${phone}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[WA] Send file error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/logout', async (req, res) => {
   try {
     if (sock) {

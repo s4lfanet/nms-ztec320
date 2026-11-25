@@ -24,12 +24,14 @@ def settings():
             return d
     return {'snmp_digest_enabled': i('snmp_digest_enabled', 0, 0, 1),
             'snmp_digest_day': i('snmp_digest_day', 0, 0, 6),
-            'snmp_digest_hour': i('snmp_digest_hour', 7, 0, 23)}
+            'snmp_digest_hour': i('snmp_digest_hour', 7, 0, 23),
+            'snmp_digest_pdf': i('snmp_digest_pdf', 0, 0, 1)}
 
 
 def save_settings(data):
     changed = []
-    for k, (lo, hi) in {'snmp_digest_enabled': (0, 1), 'snmp_digest_day': (0, 6), 'snmp_digest_hour': (0, 23)}.items():
+    for k, (lo, hi) in {'snmp_digest_enabled': (0, 1), 'snmp_digest_day': (0, 6), 'snmp_digest_hour': (0, 23),
+                         'snmp_digest_pdf': (0, 1)}.items():
         if k in data:
             try:
                 v = min(max(int(data[k]), lo), hi)
@@ -136,6 +138,12 @@ def send(now=None):
     _send_external_alerts([{'olt_id': None, 'olt_name': 'SNMP', 'olt_ip': '', 'type': 'snmp_digest',
                             'severity': 'info', 'is_recovery': False,
                             'title': '📊 Ringkasan mingguan SNMP', 'message': text}], AlertRule.query.first())
+    if settings()['snmp_digest_pdf']:
+        try:
+            import snmp_report
+            snmp_report.send_pdf(now)
+        except Exception as e:
+            logger.warning('snmp digest pdf failed: %s', e)
     return True
 
 

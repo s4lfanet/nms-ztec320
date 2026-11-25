@@ -460,6 +460,37 @@ def snmp_digest_send():
     return jsonify({'success': ok, 'message': 'Ringkasan dikirim ke kanal notifikasi' if ok else 'Belum ada perangkat SNMP'})
 
 
+@bp.route('/api/snmp/report.pdf')
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_report_pdf():
+    import snmp_report
+    days = min(max(request.args.get('days', 7, type=int), 1), 31)
+    pdf = snmp_report.build_pdf(days=days)
+    if not pdf:
+        return jsonify({'success': False, 'message': 'Belum ada perangkat SNMP'}), 404
+    return Response(pdf, mimetype='application/pdf',
+                    headers={'Content-Disposition': 'attachment; filename="laporan-snmp.pdf"'})
+
+
+@bp.route('/api/snmp/report/send', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_report_send():
+    import snmp_report
+    res = snmp_report.send_pdf()
+    if res is None:
+        return jsonify({'success': False, 'message': 'Belum ada perangkat SNMP'})
+    if not res:
+        return jsonify({'success': False, 'message': 'Tidak ada kanal Telegram / WA bawaan yang aktif'})
+    ok = [k for k, v in res.items() if v]
+    bad = [k for k, v in res.items() if not v]
+    msg = ('Terkirim: ' + ', '.join(ok)) if ok else 'Gagal kirim ke semua kanal'
+    if bad and ok:
+        msg += ' (gagal: ' + ', '.join(bad) + ')'
+    return jsonify({'success': bool(ok), 'message': msg})
+
+
 def _util(p):
     if not p.speed_mbps:
         return None
