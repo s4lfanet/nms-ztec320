@@ -1586,6 +1586,28 @@ class SnmpSensor(db.Model):
     __table_args__ = (db.UniqueConstraint('device_id', 'kind', 'key', name='uq_snmp_sensor'),)
 
 
+class SnmpSensorRule(db.Model):
+    """Sensor kustom bergaya PRTG: satu metrik + ambang bertingkat (OK → Warning → Down).
+    metric: in/out (bit/s), in_err/out_err (error/dtk) untuk port, atau '<kind>:<key>' sensor perangkat
+    (mis. cpu:cpu). Status dihitung tiap siklus alert dari sampel `minutes` terakhir."""
+    __tablename__ = 'snmp_sensor_rules'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    port_id = db.Column(db.Integer, nullable=True)
+    metric = db.Column(db.String(80), nullable=False)
+    name = db.Column(db.String(120), default='')
+    op = db.Column(db.String(2), default='gt')               # gt: nilai > ambang melanggar; lt: nilai < ambang
+    warn = db.Column(db.Float, nullable=True)
+    crit = db.Column(db.Float, nullable=True)
+    minutes = db.Column(db.Integer, default=10)              # harus melanggar terus selama durasi ini
+    enabled = db.Column(db.Boolean, default=True)
+    status = db.Column(db.String(10), default='unknown')     # unknown, ok, warning, down
+    last_value = db.Column(db.Float, nullable=True)
+    status_since = db.Column(db.DateTime, nullable=True)
+    created_by = db.Column(db.String(100), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class SnmpNeighbor(db.Model):
     """Tetangga hasil LLDP/CDP/MNDP (snmp_topology) — diperbarui tiap discovery."""
     __tablename__ = 'snmp_neighbors'

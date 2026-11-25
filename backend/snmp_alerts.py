@@ -19,12 +19,12 @@ pelanggan sengaja tidak dialert agar tidak berisik.
 import logging
 from datetime import timedelta
 
-from models import db, Notification, SystemConfig, SnmpDevice, SnmpPort, SnmpEvent, SnmpSample
+from models import db, Notification, SystemConfig, SnmpDevice, SnmpPort, SnmpEvent, SnmpSample, SnmpSensorRule
 
 logger = logging.getLogger(__name__)
 
 CATEGORIES = ('snmp_port_down', 'snmp_port_flap', 'snmp_port_util', 'snmp_port_err', 'snmp_cpu', 'snmp_temp',
-              'snmp_optical')
+              'snmp_optical', 'snmp_rule')
 
 DEFAULTS = {
     'snmp_down_minutes': 4,
@@ -115,7 +115,7 @@ class _Ctx:
         return (category, target_type, target_id) in self.open
 
     def toggle(self, dev, category, target_type, target_id, active, severity, title, message,
-               recovery_title, recovery_msg):
+               recovery_title, recovery_msg, quiet_recovery=False):
         key = (category, target_type, target_id)
         notif = self.open.get(key)
         base = {'olt_id': None, 'olt_name': dev.name, 'olt_ip': dev.host,
@@ -129,8 +129,9 @@ class _Ctx:
             self.open[key] = True  # cegah duplikat dalam siklus yang sama
         elif not active and notif is not None and notif is not True:
             notif.resolved, notif.resolved_at, notif.is_read = True, self.now, True
-            self.alerts.append(dict(base, type=category + '_recovery', severity='info', title=recovery_title,
-                                    message=recovery_msg, is_recovery=True))
+            if not quiet_recovery:  # naik/turun level (Warning ↔ Down) tidak perlu pesan "pulih"
+                self.alerts.append(dict(base, type=category + '_recovery', severity='info', title=recovery_title,
+                                        message=recovery_msg, is_recovery=True))
             del self.open[key]
 
 
@@ -250,9 +251,49 @@ def _check_port(c, dev, p, cfg):
              f'✅ Error port normal: {dev.name} {label}', f'✅ Error di port {label} ({dev.name}) sudah berhenti.')
 
 
+_UNIT = {'in': 'bit/s', 'out': 'bit/s', 'in_err': 'err/dtk', 'out_err': 'err/dtk'}
+
+
+def _fmt_rule_val(metric, v):
+    if v is None:
+        return '-'
+    return _fmt_bps(v) if metric in ('in', 'out') else f'{v:g}'
+
+
+def _check_rules(c, dev, rules, poll_seconds):
+    """Sensor kustom: hitung level, simpan status, kirim alert saat berubah."""
+    import snmp_rules
+    for r in rules:
+        level, last = snmp_rules.evaluate(r, c.now, poll_seconds)
+        r.last_value = last
+        if level is None:
+            continue  # data belum cukup — pertahankan status & alert
+        if r.status != level:
+            r.status, r.status_since = level, c.now
+        sym = '>' if r.op == 'gt' else '<'
+        thr = r.crit if level == 'down' else r.warn
+        what = (f'{r.name}' + (f' ({_fmt_rule_val(r.metric, last)})' if last is not None else ''))
+        body = (f'\nSensor: {r.name}\nNilai: {_fmt_rule_val(r.metric, last)}\n'
+                f'Ambang {"Down" if level == "down" else "Warning"}: {sym} {_fmt_rule_val(r.metric, thr)} '
+                f'selama ≥ {r.minutes} menit')
+        c.toggle(dev, 'snmp_rule', 'snmp_rule_c', r.id, level == 'down', 'critical',
+                 f'🔴 Sensor DOWN: {dev.name} — {r.name}', _head(dev, '🔴 SENSOR DOWN') + body,
+                 f'✅ Sensor pulih: {dev.name} — {r.name}', f'✅ Sensor {what} di {dev.name} kembali normal.',
+                 quiet_recovery=(level == 'warning'))
+        c.toggle(dev, 'snmp_rule', 'snmp_rule_w', r.id, level == 'warning', 'warning',
+                 f'🟠 Sensor WARNING: {dev.name} — {r.name}', _head(dev, '🟠 SENSOR WARNING') + body,
+                 f'✅ Sensor pulih: {dev.name} — {r.name}', f'✅ Sensor {what} di {dev.name} kembali normal.',
+                 quiet_recovery=(level == 'down'))
+
+
 def check_snmp_thresholds(now, notifications_to_create, alerts_to_send):
     cfg = get_settings()
     c = _Ctx(now, notifications_to_create, alerts_to_send)
+    try:
+        import snmp_monitor
+        poll_s = snmp_monitor._cfg_int('snmp_poll_interval', 300, 60, 3600)
+    except Exception:
+        poll_s = 300
     from snmp_depend import Scope
     scope = Scope(now)
     for dev in SnmpDevice.query.filter_by(enabled=True).all():
@@ -262,13 +303,23 @@ def check_snmp_thresholds(now, notifications_to_create, alerts_to_send):
             continue  # pemeliharaan: alert ambang ditahan (perangkat 'up' = terjangkau, induk turun tidak relevan)
         try:
             _check_device(c, dev, cfg)
+            rules = SnmpSensorRule.query.filter_by(device_id=dev.id, enabled=True).all()
+            if rules:
+                _check_rules(c, dev, rules, poll_s)
             for p in SnmpPort.query.filter_by(device_id=dev.id, watched=True, ignored=False, deleted=False).all():
                 _check_port(c, dev, p, cfg)
         except Exception as e:  # satu perangkat bermasalah tidak menghentikan yang lain
             logger.warning(f'[SNMP-ALERT] {dev.name}: {e}')
     # Port yang tidak lagi dipantau / perangkat dihapus → tutup alert yang masih terbuka
     for (cat, ttype, tid), n in list(c.open.items()):
-        if n is True or ttype != 'snmp_port':
+        if n is True:
+            continue
+        if ttype in ('snmp_rule_w', 'snmp_rule_c'):  # aturan dihapus/dinonaktifkan → tutup alertnya
+            r = db.session.get(SnmpSensorRule, tid)
+            if not r or not r.enabled:
+                n.resolved, n.resolved_at, n.is_read = True, now, True
+            continue
+        if ttype != 'snmp_port':
             continue
         p = db.session.get(SnmpPort, tid)
         if not p or not p.watched or p.ignored or p.deleted:
