@@ -194,4 +194,10 @@ with app.app_context():
             watchdog.cancel()
             release_sync_lock(olt.id, lock_token)
 
+try:
+    with app.app_context():
+        import job_health
+        job_health.beat('traffic-poller')
+except Exception:
+    pass
 print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Traffic poll complete')

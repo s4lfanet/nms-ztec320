@@ -39,6 +39,7 @@ from ws_bridge import ws_broadcast_dashboard
 logger = logging.getLogger(__name__)
 
 _poll_lock = threading.Lock()
+_rx_lock = threading.Lock()
 _rr_cursor = {}  # mikrotik_id -> round-robin offset into its session list
 
 # ONU names that can never be PPPoE usernames — e.g. HiOSO sync stores 'NA'
@@ -443,6 +444,33 @@ def _broadcast_state(st):
         pass
 
 
+def _rx_maintenance_async(app):
+    """Rangkum sampel redaman ONU lama jadi per-jam + buang yang kedaluwarsa (sekali per jam).
+    rx_history.py semula hanya skrip cron yang tidak pernah dijadwalkan → tabel
+    onu_rx_samples terus membengkak. Idempoten; jalan di thread sendiri agar poller tak tertahan."""
+    def work():
+        try:
+            with app.app_context():
+                import rx_history
+                rx_history.aggregate_rx_hourly()
+                rx_history.prune_rx_history()
+        except Exception as e:
+            logger.warning('rx history maintenance failed: %s', e)
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+    if not _rx_lock.acquire(blocking=False):
+        return
+
+    def run():
+        try:
+            work()
+        finally:
+            _rx_lock.release()
+    threading.Thread(target=run, daemon=True, name='rx-maint').start()
+
+
 def run_link_poller(app):
     """Daemon loop — started from run_server.py alongside the alert monitor."""
     with app.app_context():
@@ -456,10 +484,16 @@ def run_link_poller(app):
             db.session.rollback()
             logger.warning('vps routes re-apply failed: %s', e)
         last_prune = 0.0
+        last_rx_maint = 0.0
         last_acs_sync = time.time() - 25 * 60  # sinkron ACS pertama ±5 menit setelah start
         while True:
             interval = _cfg_int('link_check_interval', 45, 15, 600)
             try:
+                import job_health
+                job_health.beat('link-poller')
+                if time.time() - last_rx_maint > 3600:
+                    last_rx_maint = time.time()
+                    _rx_maintenance_async(app)
                 if _poll_lock.acquire(blocking=False):
                     try:
                         devs = MikrotikDevice.query.filter_by(enabled=True).all()

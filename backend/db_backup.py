@@ -154,4 +154,9 @@ if __name__ == '__main__':
         else:
             print(f'  FAILED: {err}')
             sys.exit(1)
+        try:
+            import job_health
+            job_health.beat('db-backup')
+        except Exception:
+            pass
         print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] DB backup done.')
