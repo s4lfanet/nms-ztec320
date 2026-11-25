@@ -2776,5 +2776,30 @@
     "portTitle": "MAC di port ini ({{n}})",
     "portEmpty": "Belum ada MAC yang tercatat di port ini.",
     "customer": "Pelanggan: {{name}}"
+  },
+  "iplog": {
+    "origin": "Asal (IP · ISP · perangkat)",
+    "filterThis": "Tampilkan semua aktivitas dari IP ini",
+    "clearIp": "Hapus saringan IP",
+    "scope_private": "Jaringan lokal (LAN)",
+    "scope_loopback": "Server/proxy lokal — IP asli tidak terbaca",
+    "scope_cgnat": "CGNAT (jaringan internal ISP)",
+    "lookupOff": "Info ISP nonaktif",
+    "lookingUp": "Mencari info ISP…",
+    "panelTitle": "Info ISP & lokasi IP",
+    "panelHint": "IP asli pengguna dibaca dari Cloudflare. Untuk menampilkan ISP/ASN, server mencari setiap IP publik sekali ke penyedia di bawah (disimpan 30 hari). IP lokal tidak pernah dikirim keluar.",
+    "provider": "Penyedia",
+    "prov_ipinfo": "IPinfo Lite (disarankan)",
+    "prov_ipapi": "ip-api.com (kota + ISP, non-komersial)",
+    "prov_off": "Nonaktif",
+    "token": "Token IPinfo",
+    "tokenSaved": "Tersimpan — isi untuk mengganti",
+    "tokenPh": "Tempel token dari dasbor IPinfo",
+    "ipinfoNote": "Gratis tanpa batas dan boleh untuk usaha: ISP/ASN + negara. Buat token gratis di",
+    "ipapiNote": "Tanpa token dan sampai level kota, tetapi layanan gratis ip-api.com hanya untuk penggunaan non-komersial dan lewat HTTP (tidak terenkripsi).",
+    "offNote": "Hanya IP, negara (dari Cloudflare) dan perangkat yang ditampilkan.",
+    "saved": "Pengaturan info IP disimpan",
+    "attribution": "Data IP oleh",
+    "enableHint": "aktifkan untuk melihat ISP"
   }
 }

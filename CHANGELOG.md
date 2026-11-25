@@ -4,6 +4,27 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Log Aktivitas: IP asli, ISP, dan perangkat
+
+#### Diperbaiki
+- **IP di Log Aktivitas kini IP asli pengguna.** Sebelumnya di belakang Cloudflare Tunnel semua tercatat 127.0.0.1.
+- **Batas percobaan login kini per IP pengguna.** Sebelumnya 5 kali salah dari siapa pun memblokir login semua orang sementara.
+- **IP tidak bisa dipalsukan** lewat header dari jaringan lokal/luar.
+
+#### Ditambahkan
+- **Kolom Asal di Log Aktivitas:**
+  - bendera negara dan IP (ketuk untuk melihat semua aktivitas dari IP itu);
+  - ISP/ASN, misalnya "AS7713 PT Telekomunikasi Indonesia", beserta lokasinya;
+  - perangkat/browser, misalnya "Chrome 131 · Android 14";
+  - keterangan untuk IP lokal (LAN), CGNAT, atau proxy.
+- **Login gagal dan login yang diblokir kini tercatat**, lengkap dengan IP dan username yang dicoba; baris ditandai merah.
+- **Panel "Info ISP & lokasi IP"** (super admin) untuk memilih penyedia:
+  - IPinfo Lite (disarankan): gratis dan boleh untuk usaha, perlu token gratis;
+  - ip-api.com: sampai level kota, tapi khusus non-komersial;
+  - nonaktif.
+
+  IP lokal tidak pernah dikirim keluar.
+
 ### 2026-11-25 — Audit keamanan & perbaikan
 
 #### Keamanan

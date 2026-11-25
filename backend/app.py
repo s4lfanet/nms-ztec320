@@ -527,6 +527,8 @@ def migrate_schema():
     # Fase 11 — tamper-evident audit chain
     add_col('action_logs', 'prev_hash', 'VARCHAR(64)', "''")
     add_col('action_logs', 'hash', 'VARCHAR(64)', "''")
+    add_col('action_logs', 'ip_country', 'VARCHAR(8)', "''")
+    add_col('action_logs', 'user_agent', 'VARCHAR(300)', "''")
 
     # Fase 14 — Web Push channel toggle on alert rules
     add_col('alert_rules', 'notify_push', 'BOOLEAN', '0')

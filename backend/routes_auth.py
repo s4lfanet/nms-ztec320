@@ -48,14 +48,17 @@ def api_me():
 
 @bp.route('/api/auth/login', methods=['POST'])
 def api_login():
-    # app.py installs ProxyFix(x_for=1, ...), which already normalizes
-    # request.remote_addr from a trusted X-Forwarded-For header. Reading the
-    # header directly here let a caller set an arbitrary X-Forwarded-For and
-    # get a fresh rate-limit bucket on every login attempt, defeating the
-    # brute-force protection below entirely.
-    client_ip = request.remote_addr
+    # IP asli lewat client_ip.client_ip(): di belakang Cloudflare Tunnel
+    # remote_addr selalu 127.0.0.1, jadi batas percobaan berlaku untuk SEMUA
+    # orang sekaligus. CF-Connecting-IP hanya dipercaya dari proxy lokal, jadi
+    # header palsu dari klien tidak bisa membuat bucket baru per percobaan.
+    from client_ip import client_ip as _client_ip
+    client_ip = _client_ip()
     allowed, retry_after = check_rate_limit(client_ip)
     if not allowed:
+        _uname = str((request.get_json(silent=True) or {}).get('username', ''))[:80]
+        log_action('login_blocked', 'auth', target=_uname, username=_uname,
+                   detail=f'Login diblokir sementara ({retry_after} dtk) — terlalu banyak percobaan gagal')
         return jsonify({'success': False, 'error_code': 'rate_limited', 'retry_after': retry_after, 'message': f'Too many login attempts. Please try again in {retry_after} seconds.'}), 429
 
     data = request.get_json() or {}
@@ -94,6 +97,9 @@ def api_login():
             'language': user.language or 'id',
         }})
     record_failed_login(client_ip)
+    _uname = str(username)[:80]
+    log_action('login_failed', 'auth', target=_uname, username=_uname,
+               detail='Username tidak dikenal' if not user else 'Password salah')
     return jsonify({'success': False, 'error_code': 'invalid_credentials', 'message': 'Invalid credentials'}), 401
 
 

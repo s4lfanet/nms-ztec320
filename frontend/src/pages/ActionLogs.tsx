@@ -5,7 +5,8 @@ import { cn } from '../lib/utils';
 import { api } from '../lib/api';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
-import { ChevronLeft, ChevronRight, ChevronFirst, ChevronLast, User, Server, Radio, Shield, ShieldCheck, ShieldAlert, KeyRound, Activity, Archive } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronFirst, ChevronLast, User, Server, Radio, Shield, ShieldCheck, ShieldAlert, KeyRound, Activity, Archive, X } from 'lucide-react';
+import { IpOrigin, IpLookupPanel } from '../components/IpOrigin';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, Card, EmptyState, Select } from '../components/ui';
@@ -41,6 +42,7 @@ export function ActionLogs() {
   const [category, setCategory] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [ipFilter, setIpFilter] = useState(() => new URLSearchParams(window.location.search).get('ip') || '');
   const [verifyState, setVerifyState] = useState<'idle' | 'checking' | 'ok' | 'bad'>('idle');
   const [verifyDetail, setVerifyDetail] = useState('');
   const [archiving, setArchiving] = useState(false);
@@ -79,8 +81,8 @@ export function ActionLogs() {
   }, []);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['action-logs', page, category, search],
-    queryFn: () => api.actionLogs({ page, per_page: perPage, category: category || undefined, search: search || undefined }),
+    queryKey: ['action-logs', page, category, search, ipFilter],
+    queryFn: () => api.actionLogs({ page, per_page: perPage, category: category || undefined, search: search || undefined, ip: ipFilter || undefined }),
     refetchInterval: 10000,
   });
 
@@ -93,6 +95,10 @@ export function ActionLogs() {
   const totalPages = data?.pages || 1;
   const total = data?.total || 0;
   const categories = data?.categories || [];
+  const lookup = data?.ip_lookup;
+  const filterIp = (ip: string) => { setIpFilter(ip); setPage(1); };
+  // login gagal / diblokir ditonjolkan
+  const isAlert = (a: string) => a === 'login_failed' || a === 'login_blocked';
 
   return (
     <PageContainer className="animate-fade-in">
@@ -127,6 +133,8 @@ export function ActionLogs() {
         }
       />
 
+      {lookup?.can_edit && <IpLookupPanel config={lookup} />}
+
       {/* Filters */}
       <Card bodyClassName="p-3 md:p-4">
         <FilterBar className="flex-nowrap flex-col sm:flex-row items-stretch sm:items-center">
@@ -147,10 +155,17 @@ export function ActionLogs() {
               ...categories.map(c => ({ value: c, label: c })),
             ]}
           />
-          {(search || category) && (
+          {ipFilter && (
+            <button type="button" onClick={() => filterIp('')}
+              className="inline-flex items-center gap-1.5 px-2.5 h-9 rounded-lg bg-accent/10 border border-accent/25 text-accent text-xs font-mono shrink-0"
+              title={t('iplog.clearIp')}>
+              IP {ipFilter} <X size={13} />
+            </button>
+          )}
+          {(search || category || ipFilter) && (
             <Button
               variant="ghost"
-              onClick={() => { setSearch(''); setSearchInput(''); setCategory(''); setPage(1); }}
+              onClick={() => { setSearch(''); setSearchInput(''); setCategory(''); setIpFilter(''); setPage(1); }}
             >
               Clear
             </Button>
@@ -170,14 +185,14 @@ export function ActionLogs() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-brd bg-glass/30">
-                <th className="px-3 py-3 text-center text-xs font-medium text-tx3 uppercase w-12">#</th>
+                <th className="px-3 py-3 text-center text-xs font-medium text-tx3 uppercase w-12 hidden 2xl:table-cell">#</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('pg_actionlogs.time')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">User</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('pg_actionlogs.category')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">{t('pg_actionlogs.action')}</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Target</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">Detail</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase">IP</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase hidden 2xl:table-cell">Detail</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-tx3 uppercase w-[250px]">{t('iplog.origin')}</th>
               </tr>
             </thead>
             <tbody>
@@ -186,8 +201,8 @@ export function ActionLogs() {
               ) : logs.length === 0 ? (
                 <tr><td colSpan={8}><EmptyState icon={Activity} title={t('pg_actionlogs.noLogEntriesFound')} /></td></tr>
               ) : logs.map((l, i) => (
-                <tr key={l.id} className="border-b border-brd/50 hover:bg-glass/50 transition-colors">
-                  <td className="px-3 py-2.5 text-center text-xs text-tx3 font-mono">{(page - 1) * perPage + i + 1}</td>
+                <tr key={l.id} className={cn('border-b border-brd/50 hover:bg-glass/50 transition-colors', isAlert(l.action) && 'bg-danger/[0.04]')}>
+                  <td className="px-3 py-2.5 text-center text-xs text-tx3 font-mono hidden 2xl:table-cell">{(page - 1) * perPage + i + 1}</td>
                   <td className="px-4 py-2.5 text-xs text-tx3 whitespace-nowrap">{formatDate(l.created_at)}</td>
                   <td className="px-4 py-2.5">
                     <span className="font-medium text-tx2">{l.username || '—'}</span>
@@ -199,11 +214,17 @@ export function ActionLogs() {
                     </span>
                   </td>
                   <td className="px-4 py-2.5">
-                    <code className="text-xs text-accent">{l.action}</code>
+                    <code className={cn('text-xs', isAlert(l.action) ? 'text-danger' : 'text-accent')}>{l.action}</code>
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-tx2 max-w-[180px] truncate" title={l.target}>{l.target || '—'}</td>
-                  <td className="px-4 py-2.5 text-xs text-tx3 max-w-[300px] truncate" title={l.detail}>{l.detail || '—'}</td>
-                  <td className="px-4 py-2.5 text-xs text-tx3 whitespace-nowrap">{l.ip_address || '—'}</td>
+                  <td className="px-4 py-2.5 text-xs max-w-[200px]">
+                    <div className="text-tx2 truncate" title={l.target}>{l.target || '—'}</div>
+                    {l.detail && <div className="2xl:hidden text-tx3 truncate" title={l.detail}>{l.detail}</div>}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-tx3 max-w-[240px] truncate hidden 2xl:table-cell" title={l.detail}>{l.detail || '—'}</td>
+                  <td className="px-4 py-2.5 w-[250px] max-w-[250px]">
+                    <IpOrigin ip={l.ip_address} country={l.ip_country} ua={l.user_agent} info={l.ip_info}
+                      provider={lookup?.provider} onFilter={filterIp} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -229,16 +250,27 @@ export function ActionLogs() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <code className="text-xs text-accent">{l.action}</code>
+                <code className={cn('text-xs', isAlert(l.action) ? 'text-danger' : 'text-accent')}>{l.action}</code>
                 <span className="text-xs text-tx3">{formatDate(l.created_at)}</span>
               </div>
               {l.target && <div className="text-xs text-tx2 truncate">Target: {l.target}</div>}
               {l.detail && <div className="text-xs text-tx3 truncate">{l.detail}</div>}
-              {l.ip_address && <div className="text-xs text-tx3">IP: {l.ip_address}</div>}
+              {l.ip_address && (
+                <div className="pt-1">
+                  <IpOrigin ip={l.ip_address} country={l.ip_country} ua={l.user_agent} info={l.ip_info}
+                    provider={lookup?.provider} onFilter={filterIp} compact />
+                </div>
+              )}
             </div>
           ))}
         </div>
       </Card>
+
+      {lookup?.provider === 'ipinfo' && (
+        <p className="text-[11px] text-tx3 text-right -mt-2">
+          {t('iplog.attribution')} <a href="https://ipinfo.io" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">IPinfo</a>
+        </p>
+      )}
 
       {/* Pagination */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">

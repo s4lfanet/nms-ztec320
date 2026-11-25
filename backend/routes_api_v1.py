@@ -57,7 +57,8 @@ def api_auth(required_ability='*'):
                 return _err('Rate limit exceeded (100/min)', 429)
             # Update last used
             token.last_used_at = datetime.now(timezone.utc)
-            token.last_used_ip = request.remote_addr or ''
+            from client_ip import client_ip as _cip
+            token.last_used_ip = _cip() or ''
             db.session.commit()
             g.api_token = token
             g.api_user = token.user
