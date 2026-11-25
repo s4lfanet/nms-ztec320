@@ -4,6 +4,28 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Keamanan MikroTik: deteksi brute force & alert Telegram/WhatsApp
+
+#### Ditambahkan
+- **Tab Keamanan di Monitoring SNMP.** Router MikroTik yang terhubung lewat API kini dipantau dari log-nya. NMS hanya membaca log dan tidak mengubah konfigurasi router.
+- **Deteksi:**
+  - **brute force**: banyak login gagal dari satu IP;
+  - **serangan dari banyak IP**;
+  - **login berhasil setelah serangkaian gagal**: password kemungkinan tertebak;
+  - **login dari IP publik baru**: setelah masa belajar 24 jam;
+  - **akun user router ditambah, dihapus, atau diubah**.
+- **Alert dikirim ke Telegram, WhatsApp, lonceng, dan push.**
+  - Isi alert: IP penyerang, ISP/negara, user yang dicoba, dan layanan (winbox/ssh/api/web), plus saran tindakan.
+  - Saat serangan berhenti, dikirim pesan "serangan berhenti".
+- **Analisis AI menyusul** (bila AI agent aktif): tingkat bahaya dan langkah penanganan di RouterOS.
+  - AI agent mendapat tool `mikrotik_security`.
+  - Perintah cepat baru: `/keamanan [router]`.
+- **Pengaturan:**
+  - ambang batas dan jendela waktu;
+  - daftar IP admin yang diabaikan;
+  - jenis alert yang aktif;
+  - lama penyimpanan riwayat.
+
 ### 2026-11-25 — Tulisan lebih terbaca di tema gelap
 
 #### Diperbaiki

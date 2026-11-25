@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Router, Plus, Search, Cpu, MemoryStick, Thermometer, PlugZap, Settings2 } from 'lucide-react';
+import { Router, Plus, Search, Cpu, MemoryStick, Thermometer, PlugZap, Settings2, ShieldAlert } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button, EmptyState, LoadingOverlay, Modal, StatusStrip, Tabs } from '../components/ui';
@@ -11,6 +11,7 @@ import { SnmpSettings } from '../components/snmp/SnmpSettings';
 import { MacSearch } from '../components/snmp/MacTables';
 import { SnmpReport } from '../components/snmp/SnmpReport';
 import { TopologyMap } from '../components/snmp/TopologyMap';
+import { MikrotikSecurity } from '../components/snmp/MikrotikSecurity';
 import { toast } from '../components/Toast';
 import { api, type SnmpDevice, type SnmpDeviceForm } from '../lib/api';
 import { cn, timeAgo } from '../lib/utils';
@@ -25,9 +26,9 @@ export function Devices() {
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
-  const [view, setView] = useState<'list' | 'topology' | 'search' | 'report' | 'settings'>(() => {
+  const [view, setView] = useState<'list' | 'topology' | 'search' | 'report' | 'security' | 'settings'>(() => {
     const q = new URLSearchParams(window.location.search).get('tab');
-    return q === 'settings' || q === 'search' ? q : 'list';
+    return q === 'settings' || q === 'search' || (q === 'security' && canEdit) ? q : 'list';
   });
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
     queryKey: ['snmp-devices'], queryFn: api.snmpDevices, refetchInterval: 30_000,
@@ -52,12 +53,13 @@ export function Devices() {
           </div>
         )}
       />
-      {isLoading ? <LoadingOverlay /> : devices.length === 0 && view !== 'settings' ? (
+      {isLoading ? <LoadingOverlay /> : devices.length === 0 && view !== 'settings' && view !== 'security' ? (
         <EmptyState icon={Router} title={t('dev.emptyTitle')} description={t('dev.emptyDesc')}
           action={canEdit && (
             <div className="flex flex-wrap justify-center gap-2">
               <Button variant="primary" icon={<Plus size={16} />} onClick={() => setAdding(true)}>{t('dev.add')}</Button>
               <Button variant="secondary" icon={<Settings2 size={16} />} onClick={() => setView('settings')}>{t('snset.tab')}</Button>
+              <Button variant="secondary" icon={<ShieldAlert size={16} />} onClick={() => setView('security')}>{t('mtsec.tab')}</Button>
             </div>
           )} />
       ) : (
@@ -67,9 +69,9 @@ export function Devices() {
             { key: 'topology', label: t('topo.tab') },
             { key: 'search', label: t('mact.searchTab') },
             { key: 'report', label: t('devx.tabReport') },
-            ...(canEdit ? [{ key: 'settings', label: t('snset.tab') }] : []),
+            ...(canEdit ? [{ key: 'security', label: t('mtsec.tab') }, { key: 'settings', label: t('snset.tab') }] : []),
           ]} />
-          {view === 'settings' ? <SnmpSettings /> : view === 'search' ? <MacSearch /> : view === 'report' ? <SnmpReport /> : view === 'topology' ? <TopologyMap /> : <>
+          {view === 'settings' ? <SnmpSettings /> : view === 'security' ? <MikrotikSecurity canEdit={canEdit} /> : view === 'search' ? <MacSearch /> : view === 'report' ? <SnmpReport /> : view === 'topology' ? <TopologyMap /> : <>
           {summary.data && <DevicesOverview summary={summary.data} />}
           <StatusStrip
             aria-label={t('dev.statusSummary')}

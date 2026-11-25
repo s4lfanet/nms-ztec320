@@ -508,6 +508,31 @@ def tool_mikrotik(args):
                                                  pppoe_user=s.pppoe_user or None) for s in down]}
 
 
+def tool_mikrotik_security(args):
+    """Keamanan router MikroTik: percobaan login gagal (brute force), IP penyerang + ISP/negara,
+    login berhasil terbaru, perubahan akun user, alert keamanan aktif. Data dari log router (poller)."""
+    import mikrotik_security
+    hours = max(1, min(int(args.get('hours') or 24), 720))
+    dev_id = None
+    if args.get('router'):
+        from models import MikrotikDevice
+        q = str(args['router']).lower()
+        cands = [m for m in MikrotikDevice.query.all() if q in (m.name or '').lower() or q == (m.host or '').lower()]
+        if not cands:
+            return {'error': f'Router "{args["router"]}" tidak ditemukan'}
+        dev_id = cands[0].id
+    d = mikrotik_security.summary(hours=hours, device_id=dev_id, limit=25)
+    for a in d['attackers']:
+        info = a.pop('info', None) or {}
+        a['asal'] = info.get('scope') or ' · '.join(x for x in (
+            ' '.join(y for y in (info.get('asn'), info.get('as_name')) if y),
+            ', '.join(y for y in (info.get('city'), info.get('country') or info.get('country_code')) if y)) if x) or None
+    d['catatan'] = ('fails = login gagal; attackers = IP sumber login gagal; alerts kind: bruteforce, distributed, '
+                    'success_after_fail (login berhasil setelah gagal — paling berbahaya), new_ip, user_change. '
+                    'NMS hanya membaca log; blokir IP dilakukan admin di RouterOS.')
+    return d
+
+
 def tool_diagnose(args):
     """Diagnosis otomatis pelanggan: gabungan status ONU, redaman, PPPoE/ping,
     riwayat putus 24 jam, dan insiden FTTH di jalurnya."""
@@ -730,6 +755,11 @@ TOOLS = [
     ('mikrotik', 'Status PPPoE pelanggan dari MikroTik: sesi aktif, IP, uptime, ping/loss. Tanpa ONU → '
                  'ringkasan router (CPU, RAM, suhu, versi) & ONU yang online tapi PPPoE putus.',
      {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_mikrotik),
+    ('mikrotik_security', 'Keamanan router MikroTik (dari log router): brute force/percobaan login gagal, IP penyerang '
+                          'beserta ISP & negara, login berhasil terbaru, perubahan akun user router, alert keamanan aktif '
+                          'dan analisisnya. Filter router (nama/IP) & jam (default 24).',
+     {'type': 'object', 'properties': {'router': {'type': 'string'}, 'hours': {'type': 'integer'}}},
+     tool_mikrotik_security),
     ('diagnose', 'Diagnosis otomatis keluhan pelanggan ("internet mati/lemot/putus-putus"): status optik, '
                  'redaman, PPPoE & ping, jumlah putus 24 jam, gangguan massal di jalurnya, plus saran tindakan. '
                  'Pakai ini PERTAMA untuk keluhan pelanggan.',
@@ -804,7 +834,7 @@ SYSTEM_PROMPT = (
     "ftth_free_ports; port/uplink OLT → olt_detail; trafik → traffic; sering putus/riwayat → onu_history; "
     "PPPoE/internet pelanggan → mikrotik; modem/SSID/WiFi → tr069; router/switch/server yang dipantau SNMP "
     "→ snmp_devices, satu perangkat → snmp_device, satu port/uplink-nya → snmp_port; cari MAC atau IP di "
-    "jaringan (di port mana) → find_mac. Untuk keluhan pelanggan, mulai dari "
+    "jaringan (di port mana) → find_mac; serangan/brute force/login mencurigakan ke router MikroTik → mikrotik_security. Untuk keluhan pelanggan, mulai dari "
     "diagnose, tambah onu_location bila perlu kunjungan, lalu beri kesimpulan singkat. "
     "Selalu ambil data lewat tool sebelum menyebut angka atau status — jangan menebak. "
     "Kamu hanya bisa MEMBACA data NMS; jika diminta reboot/ubah konfigurasi, jelaskan "
@@ -1044,6 +1074,7 @@ def _cmd_menu(_arg):
             '/diagnosa <ID atau nama> — kenapa internet pelanggan bermasalah\n'
             '/snmp [nama perangkat] — status router/switch Monitoring SNMP\n'
             '/mac <MAC atau IP> — MAC/IP itu terlihat di perangkat & port mana\n'
+            '/keamanan [router] — serangan/login mencurigakan ke MikroTik 24 jam\n'
             '/reset — mulai percakapan AI baru\n\n'
             'Pertanyaan bebas (tanpa /) dijawab oleh AI.')
 
@@ -1232,6 +1263,32 @@ def _cmd_mac(arg):
     return '\n'.join(out)
 
 
+def _cmd_security(arg):
+    d = tool_mikrotik_security({'router': arg} if arg else {})
+    if d.get('error'):
+        return d['error']
+    t = d['totals']
+    lines = [f"*Keamanan MikroTik — 24 jam*",
+             f"Login gagal: {t['fails']}× dari {t['attackers']} IP · login berhasil: {t['logins']} · "
+             f"perubahan user: {t['user_changes']} · alert aktif: {t['open_alerts']}"]
+    if d['attackers']:
+        lines.append('\n*IP penyerang teratas*')
+        for a in d['attackers'][:8]:
+            lines.append(f"- {a['ip']} — {a['count']}× ({', '.join(a['via']) or '-'}; user {', '.join(a['users'][:3])})"
+                         + (f" · {a['asal']}" if a.get('asal') else ''))
+    act = [a for a in d['alerts'] if not a['closed_at']]
+    if act:
+        lines.append('\n*Alert aktif*')
+        for a in act[:6]:
+            lines.append(f"- {a['router']}: {a['kind']} {a['key']} ({a['count']}×)")
+    for r in d['routers']:
+        if r['error']:
+            lines.append(f"\n⚠️ {r['name']}: {r['error']}")
+    if not t['fails'] and not act:
+        lines.append('\nTidak ada percobaan login gagal. ✅')
+    return '\n'.join(lines)
+
+
 QUICK_COMMANDS = {
     'menu': _cmd_menu, 'bantuan': _cmd_menu, 'help': _cmd_menu, 'start': _cmd_menu,
     'ringkasan': _cmd_summary, 'status': _cmd_summary,
@@ -1244,6 +1301,7 @@ QUICK_COMMANDS = {
     'diagnosa': _cmd_diagnose, 'diag': _cmd_diagnose,
     'snmp': _cmd_snmp, 'perangkat': _cmd_snmp,
     'mac': _cmd_mac, 'ip': _cmd_mac,
+    'keamanan': _cmd_security, 'security': _cmd_security, 'serangan': _cmd_security,
 }
 
 

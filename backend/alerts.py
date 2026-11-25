@@ -813,6 +813,11 @@ def _check_onus_for_tenant(force_send=False):
         check_snmp_thresholds(now, notifications_to_create, alerts_to_send)
     except Exception as e:
         logger.warning(f"[ALERT] snmp threshold check failed: {e}")
+    try:
+        from mikrotik_security import check_security
+        check_security(now, notifications_to_create, alerts_to_send)
+    except Exception as e:
+        logger.warning(f"[ALERT] mikrotik security check failed: {e}")
 
     # ─── Check unregistered ONUs via Telnet (show pon onu uncfg — ZTE CLI only) ───
     for olt in olts:
@@ -1347,6 +1352,7 @@ def _deep_link_url(target_type, target_id):
         'pon': f'/dashboard/onus?pon={target_id}',
         'incident': f'/dashboard/incidents/{target_id}',
         'mikrotik': '/dashboard/settings/mikrotik',
+        'mt_sec': '/dashboard/devices?tab=security',
     }
     path = routes.get(target_type)
     return f'{base}{path}' if path else ''
