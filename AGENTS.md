@@ -285,6 +285,8 @@ ip route 0.0.0.0 0.0.0.0 <gateway>        # Set default gateway
 
 50. **Rasa aplikasi — `feel.css` (dimuat paling akhir di `main.tsx`)** — gerak hanya sebagai JAWABAN tindakan (tekan, pilih, buka, muat); jangan menambah animasi masuk per kartu atau loop tanpa alasan. Satu kurva `--ease-out`, 120–260 ms, semua mati di `prefers-reduced-motion`. Isi: tombol `.btn-*` mengecil saat ditekan; sorotan yang MELUNCUR lewat `hooks/useSlidingIndicator(selector, deps)` (mengukur elemen aktif, kali pertama tanpa transisi) di `Tabs` (`[aria-selected=true]`, kontainer `data-sliding` membuat `.tab-btn-active` transparan), menu samping (`a[aria-current=page]`, bilah `.nav-ind`) dan bar bawah HP (`.bnav-active`, `.bnav-ind`); `TopProgress` (AppShell) — bilah 2px saat pindah halaman atau saat query belum punya data (`useIsFetching` predicate `data === undefined`; refetch latar TIDAK memunculkannya); `.reveal` untuk panel yang dibuka (detail port); `Skeleton` = `.skeleton-shimmer`; `a/button.glass-card` & `.card-hover` terangkat 1px saat hover. Komponen baru: pakai kelas ini, jangan membuat animasi sendiri.
 
+51. **Tab halaman memakai `components/ui/Tabs`** — jangan membuat baris tab sendiri (tombol + `border-b` + `overflow-x-auto`): di HP jadi baris yang harus digeser dan tidak ikut sorotan meluncur. Banyak tab → `mobileGrid={3|4}`. Kustomisasi (7 tab) memakai `mobileGrid={4}`; baris rentang RX Colors = grid 2×2 di HP (nomor + hapus ditumpuk di kiri), 4 kolom mulai `sm`; daftar API token = kartu di HP, tabel mulai `md`.
+
 ## Database Tables
 
 | Table | Purpose | Key Fields |

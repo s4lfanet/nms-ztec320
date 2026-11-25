@@ -11,7 +11,7 @@ import {
 import { PageContainer } from '../components/layout/PageContainer';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Button, Card, Select } from '../components/ui';
+import { Button, Card, Select, Tabs } from '../components/ui';
 import { OltModelPhotos } from '../components/OltModelPhotos';
 
 interface Column { id: string; column_name: string; column_key: string; visible_desktop: boolean; visible_mobile: boolean; sort_order: number; }
@@ -118,46 +118,23 @@ export function Customization() {
     <PageContainer className="animate-fade-in">
       <PageHeader title={t('pg_cust.customization')} description={t('pg_cust.setColumnsSignalFilter')} />
 
-      {/* Tabs */}
-      <Card bodyClassName="p-0">
-        <div className="flex border-b border-brd overflow-x-auto">
-          <button onClick={() => setActiveTab('desktop')}
-            className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
-              activeTab === 'desktop' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
-            <Monitor size={16} /> Desktop
-          </button>
-          <button onClick={() => setActiveTab('mobile')}
-            className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
-              activeTab === 'mobile' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
-            <Smartphone size={16} /> Mobile
-          </button>
-          <button onClick={() => setActiveTab('signal')}
-            className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
-              activeTab === 'signal' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
-            <Signal size={16} /> Signal Filter
-          </button>
-          <button onClick={() => setActiveTab('rxcolors')}
-            className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
-              activeTab === 'rxcolors' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
-            <Palette size={16} /> RX Colors
-          </button>
-          <button onClick={() => setActiveTab('oltphotos')}
-            className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
-              activeTab === 'oltphotos' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
-            <ImageIcon size={16} /> {t('olts.modelPhotosTab')}
-          </button>
-          <button onClick={() => setActiveTab('timezone')}
-            className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
-              activeTab === 'timezone' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
-            <Clock size={16} /> Timezone
-          </button>
-          <button onClick={() => setActiveTab('tokens')}
-            className={cn('flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap transition-colors',
-              activeTab === 'tokens' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-tx3 hover:text-tx1')}>
-            <Key size={16} /> API Tokens
-          </button>
-        </div>
+      {/* Tabs — komponen bersama: grid 4 kolom di HP, satu baris di desktop */}
+      <Tabs
+        mobileGrid={4}
+        active={activeTab}
+        onChange={k => setActiveTab(k as typeof activeTab)}
+        tabs={[
+          { key: 'desktop', label: 'Desktop', icon: <Monitor size={16} /> },
+          { key: 'mobile', label: 'Mobile', icon: <Smartphone size={16} /> },
+          { key: 'signal', label: 'Signal Filter', icon: <Signal size={16} /> },
+          { key: 'rxcolors', label: 'RX Colors', icon: <Palette size={16} /> },
+          { key: 'oltphotos', label: t('olts.modelPhotosTab'), icon: <ImageIcon size={16} /> },
+          { key: 'timezone', label: 'Timezone', icon: <Clock size={16} /> },
+          { key: 'tokens', label: 'API Tokens', icon: <Key size={16} /> },
+        ]}
+      />
 
+      <Card bodyClassName="p-0">
         {/* Desktop Table Tab */}
         {activeTab === 'desktop' && (
           <div className="p-4 md:p-6">
@@ -577,41 +554,47 @@ function RxColorsTab() {
         {ranges.map((r, i) => {
           const colorOpt = colorOptions.find(c => c.value === r.color);
           return (
-            <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-glass border border-brd">
-              <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0', colorOpt?.class || colorOptions[2].class)}>
+            <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-glass border border-brd">
+              {/* nomor + hapus ditumpuk di kiri: kolom isian dapat ruang penuh di HP */}
+              <div className="flex flex-col items-center gap-2 flex-shrink-0 sm:flex-row-reverse sm:order-last sm:mt-4">
+                <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold sm:hidden', colorOpt?.class || colorOptions[2].class)}>
+                  {i + 1}
+                </div>
+                <button onClick={() => removeRange(i)} aria-label="Hapus rentang"
+                  className="p-2 rounded-lg hover:bg-danger/10 text-tx3 hover:text-danger transition-colors">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              <div className={cn('hidden sm:flex w-8 h-8 mt-4 rounded-lg items-center justify-center text-xs font-bold flex-shrink-0 order-first', colorOpt?.class || colorOptions[2].class)}>
                 {i + 1}
               </div>
-              <div className="grid grid-cols-2 gap-2 flex-1">
-                <div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 min-w-0 order-none">
+                <div className="min-w-0">
                   <label className="text-[10px] text-tx3 block mb-0.5">Min (dBm)</label>
                   <input type="number" step="0.5" value={r.min}
                     onChange={e => updateRange(i, 'min', parseFloat(e.target.value))}
-                    className="w-full px-2 py-1.5 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none" />
+                    className="w-full min-w-0 px-2 py-1.5 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[10px] text-tx3 block mb-0.5">Max (dBm)</label>
                   <input type="number" step="0.5" value={r.max}
                     onChange={e => updateRange(i, 'max', parseFloat(e.target.value))}
-                    className="w-full px-2 py-1.5 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none" />
+                    className="w-full min-w-0 px-2 py-1.5 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none" />
+                </div>
+                <div className="min-w-0">
+                  <label className="text-[10px] text-tx3 block mb-0.5">{t('pg_cust.colour')}</label>
+                  <select value={r.color} onChange={e => updateRange(i, 'color', e.target.value)}
+                    className="w-full min-w-0 px-2 py-1.5 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none">
+                    {colorOptions.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <label className="text-[10px] text-tx3 block mb-0.5">Label</label>
+                  <input type="text" value={r.label || ''} placeholder={t('pg_cust.eGGood')}
+                    onChange={e => updateRange(i, 'label', e.target.value)}
+                    className="w-full min-w-0 px-2 py-1.5 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none" />
                 </div>
               </div>
-              <div>
-                <label className="text-[10px] text-tx3 block mb-0.5">{t('pg_cust.colour')}</label>
-                <select value={r.color} onChange={e => updateRange(i, 'color', e.target.value)}
-                  className="px-2 py-1.5 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none">
-                  {colorOptions.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-tx3 block mb-0.5">Label</label>
-                <input type="text" value={r.label || ''} placeholder={t('pg_cust.eGGood')}
-                  onChange={e => updateRange(i, 'label', e.target.value)}
-                  className="w-24 px-2 py-1.5 rounded-lg bg-glass border border-brd text-sm focus:border-accent focus:outline-none" />
-              </div>
-              <button onClick={() => removeRange(i)}
-                className="p-2 rounded-lg hover:bg-danger/10 text-tx3 hover:text-danger transition-colors flex-shrink-0">
-                <Trash2 size={16} />
-              </button>
             </div>
           );
         })}
@@ -840,7 +823,35 @@ function ApiTokensTab() {
 
       {/* Token list */}
       {isLoading ? <div className="text-xs text-tx3">{t('pg_cust.loading2')}</div> : (
-        <div className="overflow-x-auto">
+        <>
+        {/* HP: kartu per token (tabel 8 kolom tidak muat) */}
+        <div className="md:hidden space-y-2">
+          {(tokens?.data || []).map(tok => (
+            <div key={tok.id} className="p-3 rounded-xl bg-glass border border-brd text-xs space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium text-sm truncate">{tok.name}</div>
+                  <div className="font-mono text-tx3">{tok.prefix}…</div>
+                </div>
+                {tok.revoked ? <span className="text-danger flex-shrink-0">{t('pg_cust.revoked')}</span> : <span className="text-success flex-shrink-0">{t('pg_cust.active')}</span>}
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-tx3">
+                <div>Abilities: <code className="text-tx2 break-all">{tok.abilities}</code></div>
+                <div>User: <span className="text-tx2">{tok.user}</span></div>
+                <div>{t('pg_cust.lastUsed')}: <span className="text-tx2">{tok.last_used_at ? new Date(tok.last_used_at).toLocaleString('id-ID') : '—'}</span></div>
+                <div>{t('pg_cust.expires')}: <span className="text-tx2">{tok.expires_at ? new Date(tok.expires_at).toLocaleString('id-ID') : 'permanent'}</span></div>
+              </div>
+              {!tok.revoked && (
+                <div className="text-right">
+                  <button onClick={() => { if (confirm(`Cabut token "${tok.name}"?`)) revokeMut.mutate(tok.id); }}
+                    className="text-danger hover:underline text-xs">{t('pg_cust.revoke')}</button>
+                </div>
+              )}
+            </div>
+          ))}
+          {(tokens?.data || []).length === 0 && <div className="py-4 text-center text-xs text-tx3">{t('pg_cust.noTokensYet')}</div>}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-tx3 border-b border-brd">
@@ -880,6 +891,7 @@ function ApiTokensTab() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* API docs hint */}
