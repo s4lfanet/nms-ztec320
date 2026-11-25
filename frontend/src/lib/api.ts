@@ -297,8 +297,8 @@ export const api = {
     request<{ success: boolean; ts: number; in: number; out: number; pin: number | null; pout: number | null; in_err: number | null; out_err: number | null; oper: string; hc: boolean; speed_mbps: number | null }>(`/api/snmp/ports/${portId}/live`),
   snmpTopology: () => request<{ success: boolean; nodes: TopoNode[]; links: TopoLink[] }>('/api/snmp/topology'),
   snmpSummary: () => request<SnmpSummary>('/api/snmp/summary'),
-  snmpSettings: () => request<{ success: boolean; settings: Record<string, number>; defaults: Record<string, number> }>('/api/snmp/settings'),
-  snmpSettingsSave: (data: Record<string, number>) => request<{ success: boolean; settings: Record<string, number> }>('/api/snmp/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  snmpSettings: () => request<SnmpSettingsData>('/api/snmp/settings'),
+  snmpSettingsSave: (data: Record<string, number | string>) => request<{ success: boolean; settings: Record<string, number>; general: Record<string, number> }>('/api/snmp/settings', { method: 'PUT', body: JSON.stringify(data) }),
   snmpReport: (q: { month: string; scope: string; tz: number; device_id?: number }) =>
     request<SnmpReportData>(`/api/snmp/report?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`),
   snmpReportCsvUrl: (q: { month: string; scope: string; tz: number }) =>
@@ -1349,3 +1349,16 @@ export interface OnuStatusHistoryRecord {
 }
 
 // (methods appended below inside api object)
+
+export interface SnmpSettingsData {
+  success: boolean;
+  settings: Record<string, number>;
+  defaults: Record<string, number>;
+  general: Record<string, number>;
+  general_defaults: Record<string, number>;
+  general_limits: Record<string, [number, number]>;
+  /** community hanya dikirim ke pengelola perangkat (settings_ip_olts) */
+  new_device: { snmp_version: '1' | '2c' | '3'; has_community: boolean; community?: string };
+  last_cycle: { at: string | null; secs: number | null; devices: number; failed: number };
+  volume: { raw: number; hourly: number; events: number } | null;
+}

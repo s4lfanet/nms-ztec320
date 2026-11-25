@@ -145,7 +145,7 @@ export function NetworkDevicesCard() {
   );
 }
 
-const FIELDS: { key: string; step: number; unit: string }[] = [
+export const FIELDS: { key: string; step: number; unit: string }[] = [
   { key: 'snmp_down_minutes', step: 1, unit: 'min' },
   { key: 'snmp_util_threshold', step: 1, unit: '%' },
   { key: 'snmp_util_cycles', step: 1, unit: 'poll' },
