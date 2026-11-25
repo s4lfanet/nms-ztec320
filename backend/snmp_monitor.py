@@ -938,6 +938,8 @@ def run_snmp_poller(app):
                 job_health.beat('snmp-poller')
                 # alert monitor tidak bisa mendeteksi dirinya sendiri — diperiksa dari sini
                 job_health.check(skip=tuple(n for n in job_health.JOBS if n != 'alert-monitor'))
+                import snmp_digest
+                snmp_digest.maybe_send()
                 if _poll_lock.acquire(blocking=False):
                     try:
                         poll_all()

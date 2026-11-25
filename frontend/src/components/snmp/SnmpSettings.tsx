@@ -7,6 +7,7 @@ import { toast } from '../Toast';
 import { api } from '../../lib/api';
 import { timeAgo } from '../../lib/utils';
 import { FIELDS } from './SnmpOverview';
+import { DigestCard } from './SnmpDepend';
 
 /** Pilihan yang masuk akal untuk tiap nilai; nilai tersimpan di luar daftar tetap ditampilkan. */
 const POLL = [60, 120, 300, 600, 900, 1800, 3600];
@@ -166,6 +167,8 @@ export function SnmpSettings() {
           ))}
         </div>
       </Card>
+
+      <DigestCard />
 
       <StickyActionBar>
         <Button variant="secondary" icon={<RotateCcw size={16} />} onClick={resetDefaults}>{t('snset.reset')}</Button>

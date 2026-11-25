@@ -253,9 +253,13 @@ def _check_port(c, dev, p, cfg):
 def check_snmp_thresholds(now, notifications_to_create, alerts_to_send):
     cfg = get_settings()
     c = _Ctx(now, notifications_to_create, alerts_to_send)
+    from snmp_depend import Scope
+    scope = Scope(now)
     for dev in SnmpDevice.query.filter_by(enabled=True).all():
         if dev.status != 'up':
             continue  # perangkat turun ditangani snmp_down; data lama jangan memicu alert
+        if scope.in_maintenance(dev):
+            continue  # pemeliharaan: alert ambang ditahan (perangkat 'up' = terjangkau, induk turun tidak relevan)
         try:
             _check_device(c, dev, cfg)
             for p in SnmpPort.query.filter_by(device_id=dev.id, watched=True, ignored=False, deleted=False).all():
