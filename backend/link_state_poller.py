@@ -233,6 +233,15 @@ def poll_device(dev):
     # RESERVED lock for the whole (slow) network round-trip and every other
     # writer (UI edits, OLT delete, sync commits) dies with 'database is locked'.
 
+    # Keamanan: baca log login router (brute force, login IP baru, perubahan user).
+    # Baca-saja, dibatasi mt_sec_interval, tidak pernah menggagalkan poll.
+    try:
+        import mikrotik_security
+        mikrotik_security.collect(dev, cli, now)
+    except Exception as e:
+        db.session.rollback()
+        logger.warning('mikrotik %s security read failed: %s', dev.host, e)
+
     # session name -> session row (name is the PPPoE username)
     sess_by_name = {s['name']: s for s in sessions if s.get('name')}
 
@@ -489,4 +498,10 @@ def run_link_poller(app):
                 except Exception as e:
                     db.session.rollback()
                     logger.warning('pppoe event prune failed: %s', e)
+                try:
+                    import mikrotik_security
+                    mikrotik_security.prune()
+                except Exception as e:
+                    db.session.rollback()
+                    logger.warning('mikrotik security prune failed: %s', e)
             time.sleep(interval)

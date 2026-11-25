@@ -1673,3 +1673,62 @@ class SnmpSampleHourly(db.Model):
     vmin = db.Column(db.Float, nullable=True)
     __table_args__ = (db.UniqueConstraint('device_id', 'port_id', 'metric', 'hour', name='uq_snmp_hourly'),
                       db.Index('ix_snmp_hourly_hour', 'hour'))
+
+
+# ════════════════ Keamanan MikroTik (log login via API RouterOS) ════════════════
+
+class MtSecState(db.Model):
+    """Posisi baca log per router (`.id` terakhir) + status pembacaan."""
+    __tablename__ = 'mt_sec_state'
+    device_id = db.Column(db.Integer, primary_key=True)
+    last_id = db.Column(db.Integer, nullable=True)        # .id log RouterOS (hex → int) terakhir yang diproses
+    baseline_at = db.Column(db.DateTime, nullable=True)   # pertama kali log dibaca (mulai masa belajar)
+    last_read_at = db.Column(db.DateTime, nullable=True)
+    last_error = db.Column(db.String(300), default='')
+
+
+class MtSecEvent(db.Model):
+    """Peristiwa keamanan dari log router: login_fail | login_ok | user_change."""
+    __tablename__ = 'mt_sec_events'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, index=True, nullable=False)
+    kind = db.Column(db.String(20), index=True, nullable=False)
+    user = db.Column(db.String(80), default='')
+    ip = db.Column(db.String(64), index=True, default='')
+    via = db.Column(db.String(20), default='')
+    by = db.Column(db.String(120), default='')            # user_change: pelaku
+    new_ip = db.Column(db.Boolean, default=False)         # login_ok dari IP yang belum pernah dipakai user ini
+    message = db.Column(db.String(300), default='')
+    log_time = db.Column(db.String(40), default='')       # waktu mentah dari router
+    created_at = db.Column(db.DateTime, index=True, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    alerted = db.Column(db.Boolean, default=False)        # sudah dievaluasi untuk alert sekali-kirim
+
+
+class MtSecLogin(db.Model):
+    """IP yang pernah dipakai login berhasil per (router, user) — dasar deteksi 'login dari IP baru'."""
+    __tablename__ = 'mt_sec_logins'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, index=True, nullable=False)
+    user = db.Column(db.String(80), default='')
+    ip = db.Column(db.String(64), default='')
+    via = db.Column(db.String(20), default='')
+    first_seen = db.Column(db.DateTime)
+    last_seen = db.Column(db.DateTime)
+    count = db.Column(db.Integer, default=1)
+    __table_args__ = (db.UniqueConstraint('device_id', 'user', 'ip', name='uq_mt_sec_login'),)
+
+
+class MtSecAlert(db.Model):
+    """Alert keamanan yang terbuka/selesai (dedupe per router+jenis+kunci IP/user)."""
+    __tablename__ = 'mt_sec_alerts'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, index=True, nullable=False)
+    kind = db.Column(db.String(30), nullable=False)       # bruteforce | distributed | success_after_fail | new_ip | user_change
+    key = db.Column(db.String(160), default='')
+    severity = db.Column(db.String(10), default='warning')
+    count = db.Column(db.Integer, default=0)
+    detail = db.Column(db.String(500), default='')
+    opened_at = db.Column(db.DateTime)
+    last_seen_at = db.Column(db.DateTime)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    ai_text = db.Column(db.Text, default='')

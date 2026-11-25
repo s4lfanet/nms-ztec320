@@ -387,6 +387,11 @@ export const api = {
     return request<ActionLogsResponse>(`/api/action-logs?${qs}`);
   },
   actionLogsVerify: () => request<{ verified: boolean; checked: number; first_bad_id: number | null; archived: boolean; detail: string }>('/api/action-logs/verify'),
+  mtSecurity: (hours = 24, deviceId?: number) =>
+    request<MtSecSummary & { success: boolean }>(`/api/mikrotik/security?hours=${hours}${deviceId ? `&device_id=${deviceId}` : ''}`),
+  mtSecuritySettings: () => request<{ success: boolean; settings: MtSecSettings; limits: Record<string, [number, number]>; ai_enabled: boolean }>('/api/mikrotik/security/settings'),
+  mtSecuritySave: (data: Partial<MtSecSettings>) =>
+    request<{ success: boolean; changed: string[]; invalid: string[]; settings: MtSecSettings }>('/api/mikrotik/security/settings', { method: 'PUT', body: JSON.stringify(data) }),
   ipLookupSettings: () => request<IpLookupConfig & { success: boolean }>('/api/ip-lookup/settings'),
   ipLookupSave: (data: { provider?: IpLookupConfig['provider']; token?: string }) =>
     request<IpLookupConfig & { success: boolean }>('/api/ip-lookup/settings', { method: 'PUT', body: JSON.stringify(data) }),
@@ -563,6 +568,26 @@ export interface IpInfoData {
   scope?: 'private' | 'loopback' | 'cgnat';
   asn?: string; as_name?: string; as_domain?: string;
   country_code?: string; country?: string; region?: string; city?: string;
+}
+export type MtSecKind = 'bruteforce' | 'distributed' | 'success_after_fail' | 'new_ip' | 'user_change';
+export interface MtSecSettings {
+  mt_sec_enabled: number; mt_sec_interval: number; mt_sec_bf_threshold: number; mt_sec_bf_minutes: number;
+  mt_sec_dist_threshold: number; mt_sec_quiet_minutes: number; mt_sec_alert_success: number;
+  mt_sec_alert_new_ip: number; mt_sec_alert_user_change: number; mt_sec_ai_analysis: number;
+  mt_sec_retention_days: number; mt_sec_whitelist: string;
+}
+export interface MtSecSummary {
+  hours: number;
+  ip_lookup?: IpLookupConfig['provider'];
+  totals: { fails: number; attackers: number; logins: number; user_changes: number; open_alerts: number };
+  routers: { id: number; name: string; host: string; enabled: boolean; reachable: boolean; fails: number;
+    attackers: number; logins: number; open_alerts: number; last_read_at: string | null; learning: boolean; error: string }[];
+  attackers: { ip: string; count: number; users: string[]; via: string[]; routers: string[]; last: string | null;
+    info?: IpInfoData | null }[];
+  alerts: { id: number; router: string; kind: MtSecKind; key: string; severity: string; count: number; detail: string;
+    opened_at: string | null; last_seen_at: string | null; closed_at: string | null; ai_text: string }[];
+  events: { id: number; router: string; kind: 'login_fail' | 'login_ok' | 'user_change'; user: string; ip: string;
+    via: string; by: string; new_ip: boolean; message: string; at: string | null }[];
 }
 export interface IpLookupConfig { provider: 'off' | 'ipinfo' | 'ip-api'; has_token: boolean }
 export interface ActionLogEntry {

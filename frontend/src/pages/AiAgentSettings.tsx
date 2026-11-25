@@ -38,6 +38,7 @@ const QUICK: [string, string][] = [
   ['/onu <ID|nama>', 'Detail satu ONU'],
   ['/snmp', 'Status perangkat Monitoring SNMP'],
   ['/mac <MAC|IP>', 'MAC/IP terlihat di perangkat & port mana'],
+  ['/keamanan [router]', 'Serangan & login mencurigakan ke MikroTik (24 jam)'],
   ['/menu', 'Daftar perintah'],
 ];
 

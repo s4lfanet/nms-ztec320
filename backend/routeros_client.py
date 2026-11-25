@@ -228,6 +228,15 @@ class RouterOSClient:
                 out.update({k: v for k, v in r.items() if not k.startswith('.')})
         return out
 
+    def get_log(self):
+        """/log (buffer memori router) → [{'.id','time','topics','message'}]. Baca-saja;
+        dipakai pemantauan keamanan (login gagal/berhasil, perubahan user)."""
+        props = '.id,time,topics,message'
+        if self.api_mode == 'rest':
+            rows = self._rest('GET', 'log', params={'.proplist': props})
+            return rows if isinstance(rows, list) else []
+        return self._conn.talk('/log/print', f'=.proplist={props}')
+
     def ping(self, address, count=3, timeout=None):
         """Ping `address` from the Mikrotik. Returns
         {'sent': int, 'received': int, 'loss_pct': float, 'avg_rtt_ms': float|None}

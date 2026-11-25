@@ -465,3 +465,43 @@ def vps_routes_test():
     if res is None:
         return jsonify({'success': False, 'message': 'Ping tidak bisa dijalankan di server'}), 500
     return jsonify({'success': True, 'ip': ip, 'ping': res, 'reachable': res.get('received', 0) > 0})
+
+
+# ───────────── Keamanan MikroTik (brute force / login mencurigakan) ─────────────
+
+@bp.route('/api/mikrotik/security', methods=['GET'])
+@permission_required('settings_ip_olts')
+def security_summary():
+    import mikrotik_security
+    try:
+        hours = max(1, min(int(request.args.get('hours') or 24), 24 * 30))
+    except ValueError:
+        hours = 24
+    dev_id = request.args.get('device_id', type=int)
+    import ip_info
+    data = mikrotik_security.summary(hours=hours, device_id=dev_id, limit=200)
+    return jsonify({'success': True, **data, 'ip_lookup': ip_info.get_config()['provider']})
+
+
+@bp.route('/api/mikrotik/security/settings', methods=['GET'])
+@permission_required('settings_ip_olts')
+def security_settings_get():
+    import mikrotik_security
+    import ai_agent
+    cfg = mikrotik_security.get_settings()
+    ai = ai_agent.get_config()
+    return jsonify({'success': True, 'settings': cfg, 'limits': mikrotik_security.LIMITS,
+                    'ai_enabled': ai.get('ai_enabled') == '1'})
+
+
+@bp.route('/api/mikrotik/security/settings', methods=['PUT'])
+@permission_required('settings_ip_olts')
+def security_settings_put():
+    import mikrotik_security
+    data = request.get_json(silent=True) or {}
+    changed, bad = mikrotik_security.save_settings(data)
+    db.session.commit()
+    if changed:
+        log_action('mikrotik_security_settings', 'settings', 'Keamanan MikroTik', ', '.join(changed)[:300])
+    return jsonify({'success': True, 'changed': changed, 'invalid': bad,
+                    'settings': mikrotik_security.get_settings()})
