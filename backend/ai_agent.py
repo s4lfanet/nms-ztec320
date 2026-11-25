@@ -554,6 +554,142 @@ def tool_tr069(args):
                      'status': w['status'] or None} for w in p.get('wan_conns') or []]}
 
 
+# ─────────────────────────── Monitoring SNMP (baca DB) ──────────────────────
+# Semua dari tabel hasil poller SNMP — tidak ada SNMP/Telnet langsung dari AI.
+
+def _mbps(bps):
+    return round(bps / 1e6, 1) if bps is not None else None
+
+
+def _snmp_device_find(name):
+    from models import SnmpDevice
+    q = (name or '').strip()
+    if not q:
+        return None, []
+    d = SnmpDevice.query.filter((SnmpDevice.name.ilike(q)) | (SnmpDevice.host == q)).first()
+    if d:
+        return d, []
+    cands = SnmpDevice.query.filter(SnmpDevice.name.ilike(f'%{q}%') | SnmpDevice.host.ilike(f'%{q}%') |
+                                    SnmpDevice.sys_name.ilike(f'%{q}%')).limit(6).all()
+    return (cands[0], []) if len(cands) == 1 else (None, [c.name for c in cands])
+
+
+def _snmp_port_line(p):
+    util = round(max(p.in_bps or 0, p.out_bps or 0) / (p.speed_mbps * 1e6) * 100, 1) if p.speed_mbps else None
+    return {'port': p.name, 'keterangan': p.alias or None, 'status': p.oper_status,
+            'kecepatan_mbps': p.speed_mbps, 'masuk_mbps': _mbps(p.in_bps), 'keluar_mbps': _mbps(p.out_bps),
+            'utilisasi_pct': util, 'error_per_detik': round((p.in_err_rate or 0) + (p.out_err_rate or 0), 3) or None,
+            'rx_sfp_dbm': p.dom_rx_dbm, 'dipantau': bool(p.watched) or None}
+
+
+def tool_snmp_devices(args):
+    """Ringkasan perangkat Monitoring SNMP: status, masalah aktif, port dipantau, trafik teratas."""
+    from models import SnmpDevice
+    from routes_snmp import build_summary
+    sm = build_summary()
+    devs = SnmpDevice.query.order_by(SnmpDevice.name).all()
+    return {
+        'jumlah': sm['counts'],
+        'perangkat': [{'nama': d.name, 'ip': d.host, 'status': d.status if d.enabled else 'nonaktif',
+                       'alasan': d.status_reason or None, 'model': ' '.join(x for x in (d.vendor, d.hardware) if x) or None,
+                       'cpu_pct': d.cpu_pct, 'ram_pct': d.mem_pct, 'suhu_c': d.temperature,
+                       'uptime_detik': d.uptime_s, 'cek_terakhir': _iso(d.last_poll_at)} for d in devs[:40]],
+        'masalah_aktif': [{'perangkat': p['device_name'], 'judul': p['title'], 'tingkat': p['severity'],
+                           'sejak': p['since']} for p in sm['problems'][:20]],
+        'port_dipantau': [{'perangkat': p['device_name'], 'port': p['name'], 'keterangan': p['alias'] or None,
+                           'status': p['oper_status'], 'masuk_mbps': _mbps(p['in_bps']), 'keluar_mbps': _mbps(p['out_bps']),
+                           'utilisasi_pct': p['util_pct']} for p in sm['watched_ports'][:20]],
+        'trafik_teratas': [{'perangkat': p['device_name'], 'port': p['name'], 'keterangan': p['alias'] or None,
+                            'masuk_mbps': _mbps(p['in_bps']), 'keluar_mbps': _mbps(p['out_bps']),
+                            'utilisasi_pct': p['util_pct']} for p in sm['top_ports'][:8]],
+    }
+
+
+def tool_snmp_device(args):
+    """Detail satu perangkat SNMP: sensor, port turun, port dipantau/tersibuk, tetangga, event terbaru."""
+    from models import SnmpPort, SnmpSensor, SnmpEvent, SnmpNeighbor
+    d, cands = _snmp_device_find(args.get('device'))
+    if not d:
+        return {'error': 'Perangkat SNMP tidak ditemukan', 'mungkin_maksud': cands} if cands else \
+            {'error': 'Perangkat SNMP tidak ditemukan'}
+    ports = SnmpPort.query.filter_by(device_id=d.id, deleted=False).filter(SnmpPort.ignored.is_(False)).all()
+    down = [p for p in ports if p.admin_status == 'up' and p.oper_status != 'up']
+    busy = sorted((p for p in ports if p.oper_status == 'up'), key=lambda p: max(p.in_bps or 0, p.out_bps or 0), reverse=True)
+    return {
+        'nama': d.name, 'ip': d.host, 'status': d.status if d.enabled else 'nonaktif', 'alasan': d.status_reason or None,
+        'model': ' '.join(x for x in (d.vendor, d.hardware) if x) or None, 'versi': d.os_version or None,
+        'serial': d.serial or None, 'lokasi': d.location or d.sys_location or None, 'uptime_detik': d.uptime_s,
+        'cpu_pct': d.cpu_pct, 'ram_pct': d.mem_pct, 'suhu_c': d.temperature, 'cek_terakhir': _iso(d.last_poll_at),
+        'sensor': [{'jenis': x.kind, 'nama': x.name, 'nilai': x.value, 'satuan': x.unit}
+                   for x in SnmpSensor.query.filter_by(device_id=d.id).limit(30).all() if x.value is not None],
+        'port_total': len(ports), 'port_aktif': sum(1 for p in ports if p.oper_status == 'up'),
+        'port_turun': [{'port': p.name, 'keterangan': p.alias or None, 'sejak': _iso(p.status_changed_at)} for p in down[:15]],
+        'port_dipantau': [_snmp_port_line(p) for p in ports if p.watched][:15],
+        'port_tersibuk': [_snmp_port_line(p) for p in busy[:8]],
+        'tetangga': [{'port_lokal': n.local_if_index, 'nama': n.remote_name or None, 'port_lawan': n.remote_port or None,
+                      'ip': n.remote_ip or None, 'via': n.protocol}
+                     for n in SnmpNeighbor.query.filter_by(device_id=d.id).limit(20).all()],
+        'event_terbaru': [{'waktu': _iso(e.created_at), 'pesan': e.message}
+                          for e in SnmpEvent.query.filter_by(device_id=d.id).order_by(SnmpEvent.created_at.desc()).limit(10).all()],
+    }
+
+
+def tool_snmp_port(args):
+    """Detail satu port: trafik sekarang & 24 jam, error, redaman SFP, MAC/pelanggan di port itu, event port."""
+    from models import SnmpPort, SnmpSample, SnmpEvent
+    from routes_snmp import _port_macs
+    d, cands = _snmp_device_find(args.get('device'))
+    if not d:
+        return {'error': 'Perangkat SNMP tidak ditemukan', 'mungkin_maksud': cands} if cands else \
+            {'error': 'Perangkat SNMP tidak ditemukan'}
+    q = (args.get('port') or '').strip()
+    base = SnmpPort.query.filter_by(device_id=d.id, deleted=False)
+    p = base.filter((SnmpPort.name.ilike(q)) | (SnmpPort.alias.ilike(q))).first() if q else None
+    if not p and q:
+        cands = base.filter(SnmpPort.name.ilike(f'%{q}%') | SnmpPort.alias.ilike(f'%{q}%')).limit(8).all()
+        if len(cands) != 1:
+            return {'error': f'Port "{q}" tidak ditemukan di {d.name}' if not cands else 'Port lebih dari satu yang cocok',
+                    'pilihan': [c.name + (f' ({c.alias})' if c.alias else '') for c in cands]}
+        p = cands[0]
+    if not p:
+        return {'error': 'Sebutkan nama port (mis. sfp-sfpplus1, ether3, atau keterangannya)'}
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
+    stats = {}
+    for metric in ('in', 'out'):
+        vals = [v for (v,) in db.session.query(SnmpSample.value).filter(
+            SnmpSample.port_id == p.id, SnmpSample.metric == metric, SnmpSample.ts >= since).all()]
+        if vals:
+            stats[metric] = {'rata_mbps': _mbps(sum(vals) / len(vals)), 'puncak_mbps': _mbps(max(vals))}
+    sfp = json.loads(p.sfp_info) if p.sfp_info else {}
+    macs = _port_macs(p, d)
+    return {
+        'perangkat': d.name, **_snmp_port_line(p), 'mtu': p.mtu, 'duplex': p.duplex or None,
+        'masuk_pps': p.in_pps, 'keluar_pps': p.out_pps, 'berubah_status': _iso(p.status_changed_at),
+        'trafik_24_jam': stats or None,
+        'sfp': {'tipe': sfp.get('type'), 'vendor': sfp.get('vendor'), 'panjang_gelombang_nm': sfp.get('wavelength_nm'),
+                'rx_dbm': p.dom_rx_dbm, 'tx_dbm': p.dom_tx_dbm, 'suhu_c': p.dom_temp_c,
+                'rx_loss': p.dom_rx_loss} if (sfp or p.dom_rx_dbm is not None) else None,
+        'mac_terlihat': sum(1 for m in macs if m['active']),
+        'mac': [{'mac': m['mac'], 'ip': m['ip'] or None, 'vlan': m['vlan'], 'aktif': m['active']} for m in macs[:15]],
+        'event_port': [{'waktu': _iso(e.created_at), 'pesan': e.message} for e in SnmpEvent.query.filter_by(
+            device_id=d.id, port_id=p.id).order_by(SnmpEvent.created_at.desc()).limit(8).all()],
+    }
+
+
+def tool_find_mac(args):
+    """Cari MAC / IP di tabel ARP & MAC semua perangkat SNMP (+ pelanggan PPPoE yang memakainya)."""
+    from routes_snmp import search_tables
+    r = search_tables(args.get('query') or '', limit=25)
+    if r['kind'] == 'text':
+        return {'error': 'Masukkan MAC (format bebas, boleh sebagian, min 4 karakter heksa) atau IP'}
+    return {'jenis': r['kind'], 'hasil': [{
+        'mac': x['mac'], 'ip': x.get('ip') or None, 'perangkat': x['device'], 'port': x['port'] or None,
+        'keterangan_port': x['port_alias'] or None, 'vlan': x.get('vlan'), 'masih_terlihat': x['active'],
+        'terakhir_terlihat': x['last_seen'],
+        'pelanggan': ({'onu_id': x['onu']['id'], 'nama': x['onu']['name'], 'pppoe': x['onu']['pppoe']} if x.get('onu') else None),
+    } for x in r['results']]}
+
+
 TOOLS = [
     ('nms_summary', 'Ringkasan semua OLT: status OLT, suhu, jumlah ONU online/offline/LOS/dying-gasp.',
      {'type': 'object', 'properties': {}}, tool_summary),
@@ -602,6 +738,19 @@ TOOLS = [
               'versi modem, perangkat terhubung, fault, terakhir lapor. Tanpa ONU → ringkasan modem yang '
               'tidak lapor ke ACS dan daftar fault GenieACS.',
      {'type': 'object', 'properties': {'onu_id': {'type': 'integer'}, 'query': {'type': 'string'}}}, tool_tr069),
+    ('snmp_devices', 'Ringkasan Monitoring SNMP (router/switch/server non-OLT): status tiap perangkat, CPU/RAM/suhu, '
+                     'masalah aktif (perangkat/port turun, utilisasi, error, redaman SFP), port dipantau, trafik teratas.',
+     {'type': 'object', 'properties': {}}, tool_snmp_devices),
+    ('snmp_device', 'Detail satu perangkat SNMP per nama/IP: sensor, port turun, port dipantau & tersibuk, '
+                    'tetangga LLDP/CDP/MNDP, event terbaru.',
+     {'type': 'object', 'properties': {'device': {'type': 'string'}}, 'required': ['device']}, tool_snmp_device),
+    ('snmp_port', 'Detail satu port perangkat SNMP (nama port atau keterangannya): trafik sekarang & 24 jam, '
+                  'utilisasi, error, redaman SFP RX/TX, MAC/IP yang terlihat di port itu, event port.',
+     {'type': 'object', 'properties': {'device': {'type': 'string'}, 'port': {'type': 'string'}},
+      'required': ['device', 'port']}, tool_snmp_port),
+    ('find_mac', 'Cari MAC (format bebas/sebagian) atau IP di tabel ARP & MAC semua perangkat SNMP: di perangkat '
+                 'dan port mana terlihat, VLAN, kapan terakhir, dan pelanggan PPPoE yang memakainya.',
+     {'type': 'object', 'properties': {'query': {'type': 'string'}}, 'required': ['query']}, tool_find_mac),
 ]
 _TOOL_FN = {t[0]: t[3] for t in TOOLS}
 
@@ -653,7 +802,9 @@ SYSTEM_PROMPT = (
     "tanpa judul '#'. "
     "Pilih tool yang tepat: lokasi/ODP pelanggan → onu_location; titik FTTH → ftth_node; port kosong → "
     "ftth_free_ports; port/uplink OLT → olt_detail; trafik → traffic; sering putus/riwayat → onu_history; "
-    "PPPoE/internet pelanggan → mikrotik; modem/SSID/WiFi → tr069. Untuk keluhan pelanggan, mulai dari "
+    "PPPoE/internet pelanggan → mikrotik; modem/SSID/WiFi → tr069; router/switch/server yang dipantau SNMP "
+    "→ snmp_devices, satu perangkat → snmp_device, satu port/uplink-nya → snmp_port; cari MAC atau IP di "
+    "jaringan (di port mana) → find_mac. Untuk keluhan pelanggan, mulai dari "
     "diagnose, tambah onu_location bila perlu kunjungan, lalu beri kesimpulan singkat. "
     "Selalu ambil data lewat tool sebelum menyebut angka atau status — jangan menebak. "
     "Kamu hanya bisa MEMBACA data NMS; jika diminta reboot/ubah konfigurasi, jelaskan "
@@ -891,6 +1042,8 @@ def _cmd_menu(_arg):
             '/alert [jam] — alert terbaru (default 6 jam)\n'
             '/insiden — gangguan massal yang sedang ditangani\n'
             '/diagnosa <ID atau nama> — kenapa internet pelanggan bermasalah\n'
+            '/snmp [nama perangkat] — status router/switch Monitoring SNMP\n'
+            '/mac <MAC atau IP> — MAC/IP itu terlihat di perangkat & port mana\n'
             '/reset — mulai percakapan AI baru\n\n'
             'Pertanyaan bebas (tanpa /) dijawab oleh AI.')
 
@@ -1027,6 +1180,58 @@ def _cmd_diagnose(arg):
     return '\n'.join(out)
 
 
+def _cmd_snmp(arg):
+    if arg:  # /snmp <nama perangkat> → detail singkat
+        d = tool_snmp_device({'device': arg})
+        if d.get('error'):
+            alt = d.get('mungkin_maksud')
+            return d['error'] + (f" — mungkin: {', '.join(alt)}" if alt else '')
+        res = [f"*{d['nama']}* ({d['ip']}) — {d['status']}" + (f": {d['alasan']}" if d.get('alasan') else '')]
+        vals = [f"CPU {round(d['cpu_pct'])}%" if d.get('cpu_pct') is not None else '',
+                f"RAM {round(d['ram_pct'])}%" if d.get('ram_pct') is not None else '',
+                f"suhu {round(d['suhu_c'])}°C" if d.get('suhu_c') is not None else '']
+        res.append(' | '.join(v for v in vals if v) + f" | port aktif {d['port_aktif']}/{d['port_total']}")
+        for p in d['port_turun'][:8]:
+            res.append(f"- TURUN {p['port']}" + (f" ({p['keterangan']})" if p.get('keterangan') else ''))
+        for p in d['port_tersibuk'][:5]:
+            res.append(f"- {p['port']}" + (f" ({p['keterangan']})" if p.get('keterangan') else '') +
+                       f": ↓{p['masuk_mbps'] or 0} ↑{p['keluar_mbps'] or 0} Mbps" +
+                       (f", {p['utilisasi_pct']}%" if p.get('utilisasi_pct') is not None else ''))
+        return '\n'.join(res)
+    r = tool_snmp_devices({})
+    if not r['perangkat']:
+        return 'Belum ada perangkat di Monitoring SNMP.'
+    c = r['jumlah']
+    out = [f"*Monitoring SNMP* — {c['up']} naik, {c['down']} turun, {c['warn']} SNMP gagal, dari {c['total']}"]
+    icon = {'up': '🟢', 'down': '🔴', 'warn': '🟠'}
+    for d in r['perangkat'][:15]:
+        cpu = f", CPU {round(d['cpu_pct'])}%" if d.get('cpu_pct') is not None else ''
+        out.append(f"{icon.get(d['status'], '⚪')} {d['nama']} ({d['ip']}){cpu}")
+    if r['masalah_aktif']:
+        out.append('*Masalah aktif:*')
+        out += [f"- {m['perangkat']}: {m['judul']}" for m in r['masalah_aktif'][:10]]
+    out.append('Detail: /snmp <nama perangkat>')
+    return '\n'.join(out)
+
+
+def _cmd_mac(arg):
+    if not arg:
+        return 'Format: /mac <MAC atau IP>, contoh: /mac 4c:5e:0c:aa atau /mac 10.0.0.5'
+    r = tool_find_mac({'query': arg})
+    if r.get('error'):
+        return r['error']
+    if not r['hasil']:
+        return f'"{arg}" tidak ditemukan di tabel ARP/MAC perangkat SNMP.'
+    out = [f"*{len(r['hasil'])} hasil \"{arg}\"*"]
+    for h in r['hasil'][:10]:
+        where = f"{h['perangkat']} {h['port'] or '-'}" + (f" ({h['keterangan_port']})" if h.get('keterangan_port') else '')
+        vlan = f" VLAN {h['vlan']}" if h.get('vlan') is not None else ''
+        seen = 'aktif' if h['masih_terlihat'] else f"terakhir {h['terakhir_terlihat'] or '-'}"
+        cust = f" — {h['pelanggan']['nama'] or h['pelanggan']['pppoe']}" if h.get('pelanggan') else ''
+        out.append(f"- {h['mac']} {h['ip'] or ''} @ {where}{vlan} [{seen}]{cust}")
+    return '\n'.join(out)
+
+
 QUICK_COMMANDS = {
     'menu': _cmd_menu, 'bantuan': _cmd_menu, 'help': _cmd_menu, 'start': _cmd_menu,
     'ringkasan': _cmd_summary, 'status': _cmd_summary,
@@ -1037,6 +1242,8 @@ QUICK_COMMANDS = {
     'alert': _cmd_alerts,
     'insiden': _cmd_incidents, 'incident': _cmd_incidents,
     'diagnosa': _cmd_diagnose, 'diag': _cmd_diagnose,
+    'snmp': _cmd_snmp, 'perangkat': _cmd_snmp,
+    'mac': _cmd_mac, 'ip': _cmd_mac,
 }
 
 

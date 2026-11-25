@@ -2774,6 +2774,7 @@
     "found": "{{n}} results",
     "sourceNote": "Rows with a VLAN come from switch MAC tables; rows without one come from router ARP. Currently seen entries are listed first.",
     "portTitle": "MACs on this port ({{n}})",
-    "portEmpty": "No MAC has been recorded on this port yet."
+    "portEmpty": "No MAC has been recorded on this port yet.",
+    "customer": "Customer: {{name}}"
   }
 }
