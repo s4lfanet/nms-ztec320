@@ -2477,6 +2477,32 @@ def _duplicate_serial_error(serial, olt_id, frame, slot, port, onu_id):
             f'Deregister it there first if you are moving this modem.')
 
 
+def _unmask_acs_password(cfg):
+    """Wizard memilih profil TR-069 dari /api/tr069, yang menyamarkan password ACS
+    menjadi '***' (audit izin). Tanpa ini '***' itu ikut terkirim ke OLT sebagai
+    password ACS. Ganti dengan password tersimpan dari profilnya (per id profil,
+    cadangan: URL + username ACS yang sama). Bila profil tak ditemukan → kosong
+    (telnet_client memakai bawaan) daripada mengirim '***'."""
+    if not isinstance(cfg, dict):
+        return cfg
+    pw = cfg.get('acs_pass')
+    if not isinstance(pw, str) or not pw.startswith('***'):
+        return cfg
+    prof = None
+    pid = cfg.get('tr069_profile_id') or cfg.get('profile_id')
+    try:
+        if pid:
+            prof = db.session.get(TR069Profile, int(pid))
+    except (TypeError, ValueError):
+        prof = None
+    if prof is None and cfg.get('acs_url'):
+        prof = TR069Profile.query.filter_by(acs_url=cfg.get('acs_url'),
+                                            acs_username=cfg.get('acs_user') or '').first()
+    out = dict(cfg)
+    out['acs_pass'] = (prof.acs_password if prof else '') or ''
+    return out
+
+
 def _sanitize_provisioning_input(name='', description='', tcont_profile='', traffic_profile='',
                                   sla_profile='', wifi_config=None, tr069_config=None,
                                   services=None, extra=None, serial='', onu_type='', vlan=None):
@@ -2501,8 +2527,8 @@ def _sanitize_provisioning_input(name='', description='', tcont_profile='', traf
         'traffic_profile': sanitize_cli_text(traffic_profile, 'traffic_profile', max_len=32),
         'sla_profile': sanitize_cli_text(sla_profile, 'sla_profile', max_len=32),
         'wifi_config': sanitize_cli_dict(wifi_config) if isinstance(wifi_config, dict) else wifi_config,
-        'tr069_config': sanitize_cli_dict(tr069_config) if isinstance(tr069_config, dict) else tr069_config,
-        'extra': sanitize_cli_dict(extra) if isinstance(extra, dict) else extra,
+        'tr069_config': sanitize_cli_dict(_unmask_acs_password(tr069_config)) if isinstance(tr069_config, dict) else tr069_config,
+        'extra': sanitize_cli_dict(_unmask_acs_password(extra)) if isinstance(extra, dict) else extra,
         'services': [sanitize_cli_dict(s) if isinstance(s, dict) else s for s in services] if services else services,
     }
     out['vlan'] = sanitize_cli_int(vlan, 'vlan', min_val=1, max_val=4094, default=100)

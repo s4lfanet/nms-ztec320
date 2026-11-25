@@ -1889,8 +1889,13 @@ def ftth_paths_delete(path_id):
 def ftth_auto_route():
     """Auto-route between two coordinates using OSRM public API."""
     data = request.get_json()
-    from_lat, from_lng = data['from_lat'], data['from_lng']
-    to_lat, to_lng = data['to_lat'], data['to_lng']
+    try:  # audit 2026-11: koordinat masuk ke URL → wajib angka valid
+        from_lat, from_lng = float(data['from_lat']), float(data['from_lng'])
+        to_lat, to_lng = float(data['to_lat']), float(data['to_lng'])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Koordinat tidak valid'}), 400
+    if not (-90 <= from_lat <= 90 and -90 <= to_lat <= 90 and -180 <= from_lng <= 180 and -180 <= to_lng <= 180):
+        return jsonify({'success': False, 'message': 'Koordinat di luar jangkauan'}), 400
     from_type, from_id = data.get('from_type', ''), data.get('from_id', 0)
     to_type, to_id = data.get('to_type', ''), data.get('to_id', 0)
 

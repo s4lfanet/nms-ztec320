@@ -44,7 +44,10 @@ def _render(logo, size, pad_ratio):
 def generate_branding_icons(src_path: str) -> None:
     """Render all derived icons from the logo at src_path."""
     from PIL import Image
-    logo = Image.open(src_path).convert('RGBA')
+    # Hanya dekoder format logo yang diizinkan (audit 2026-11): file berbahaya
+    # berformat lain (BMP RLE, JPEG2000, ...) tidak pernah sampai ke dekodernya.
+    with Image.open(src_path, formats=['PNG', 'JPEG', 'WEBP', 'GIF']) as im:
+        logo = im.convert('RGBA')
     os.makedirs(ICON_DIR, exist_ok=True)
     for name, size, pad in _ICONS:
         _render(logo, size, pad).save(os.path.join(ICON_DIR, name))

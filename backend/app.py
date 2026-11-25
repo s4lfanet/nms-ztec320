@@ -128,6 +128,64 @@ def _csrf_protection():
                 return jsonify({'error': 'Missing X-Requested-With header'}), 403
 
 
+# ─── Keamanan: input yang menuju CLI OLT (audit 2026-11) ───
+# Setiap perintah ke OLT (Telnet/SSH) adalah SATU baris. Karakter baris baru /
+# kontrol yang lolos di field teks (nama ONU, deskripsi port, nama VLAN, ...)
+# membuat baris perintah kedua → pengguna dengan izin pengaturan bisa
+# menjalankan perintah OLT apa pun (mis. reload) tanpa izin Terminal.
+# Pagar bersama untuk SEMUA permintaan JSON ke area yang menulis CLI; jalur
+# provisioning juga tetap memakai cli_sanitize (lebih ketat).
+_CLI_PATH_PREFIXES = ('/api/olt', '/api/onu', '/api/provision', '/api/pre-register',
+                      '/api/scan-unconfigured', '/api/ztp-config')
+_CLI_BAD_CHARS = frozenset(chr(c) for c in range(0x20)) | {chr(0x7f)}
+
+
+def _find_cli_bad_field(value, path='', depth=0):
+    """→ jalur field pertama yang berisi karakter kontrol (mis. 'wifi_config.ssids[0].name') / None."""
+    if depth > 8:
+        return None
+    if isinstance(value, str):
+        return (path or 'body') if any(ch in _CLI_BAD_CHARS for ch in value) else None
+    if isinstance(value, dict):
+        for k, v in value.items():
+            hit = _find_cli_bad_field(v, f'{path}.{k}' if path else str(k), depth + 1)
+            if hit:
+                return hit
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            hit = _find_cli_bad_field(v, f'{path}[{i}]', depth + 1)
+            if hit:
+                return hit
+    return None
+
+
+@app.before_request
+def _reject_cli_control_chars():
+    if request.method not in ('POST', 'PUT', 'PATCH') or not request.path.startswith(_CLI_PATH_PREFIXES):
+        return None
+    if not request.is_json:
+        return None
+    data = request.get_json(silent=True)
+    bad = _find_cli_bad_field(data) if data is not None else None
+    if bad:
+        logger.warning(f'[security] blocked control chars in {bad} for {request.method} {request.path}')
+        return jsonify({'success': False, 'message': f'Field "{bad}" berisi baris baru/karakter kontrol yang tidak diizinkan'}), 400
+    return None
+
+
+# Batas ukuran request (DoS). Restore database boleh lebih besar (super admin).
+_MAX_BODY_MB = int(os.environ.get('MAX_REQUEST_MB', '25') or 25)
+_BIG_BODY_PATHS = ('/api/system/restore-db',)
+
+
+@app.before_request
+def _limit_request_size():
+    n = request.content_length
+    if n and n > _MAX_BODY_MB * 1024 * 1024 and not request.path.startswith(_BIG_BODY_PATHS):
+        return jsonify({'success': False, 'message': f'Permintaan terlalu besar (maks {_MAX_BODY_MB} MB)'}), 413
+    return None
+
+
 @app.before_request
 def _enforce_password_change():
     """Block the API for accounts still on the installer default password.
@@ -182,7 +240,20 @@ def add_security_headers(response):
 
 @app.route('/metrics')
 def prometheus_metrics():
-    """Prometheus metrics endpoint for monitoring."""
+    """Prometheus metrics endpoint for monitoring.
+
+    Tidak publik (audit 2026-11): isinya daftar endpoint, ID OLT, dan pesan error
+    poll. Boleh diakses dengan `Authorization: Bearer <METRICS_TOKEN>` (env) atau
+    sesi super admin; selain itu 404."""
+    import hmac as _hmac
+    token = os.environ.get('METRICS_TOKEN', '')
+    auth = request.headers.get('Authorization', '')
+    ok = bool(token) and auth.startswith('Bearer ') and _hmac.compare_digest(auth[7:].strip(), token)
+    if not ok:
+        from flask_login import current_user as _cu
+        ok = bool(_cu.is_authenticated and getattr(_cu, 'is_super_admin', False))
+    if not ok:
+        return ('Not Found', 404)
     data, content_type = metrics_response()
     from flask import Response
     return Response(data, content_type=content_type)
