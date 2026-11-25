@@ -3012,5 +3012,34 @@
       "in_err": "Error masuk",
       "out_err": "Error keluar"
     }
+  },
+  "syshealth": {
+    "jobs": "Status job latar belakang",
+    "jobsHint": "Tiap job mencatat detak; bila macet melewati batasnya, alert dikirim ke Telegram/WA.",
+    "sec": "dtk",
+    "min": "mnt",
+    "hour": "jam",
+    "day": "hari",
+    "noBeat": "Belum berdetak",
+    "running": "Normal",
+    "stale": "Macet",
+    "backup": "Backup",
+    "latest": "Backup DB terakhir",
+    "ago": "lalu",
+    "files": "berkas",
+    "noBackup": "Belum ada backup database",
+    "diskFree": "Disk bebas",
+    "backupNow": "Backup sekarang",
+    "backupOk": "Backup dibuat",
+    "backupOkRemote": "Backup dibuat dan disalin ke server lain",
+    "offsite": "Salinan luar server",
+    "offsiteOff": "Belum diatur",
+    "offsiteFail": "Gagal",
+    "offsiteOk": "Terakhir berhasil",
+    "offsiteWait": "Menunggu jadwal harian",
+    "offsiteHint": "Backup hanya tersimpan di server ini. Isi BACKUP_REMOTE_SCP_TARGET di backend/.env (contoh user@host:/var/backups/nms/) agar backup harian disalin ke server lain.",
+    "download": "Unduh",
+    "oltBackup": "Backup konfigurasi OLT",
+    "never": "Belum pernah"
   }
 }

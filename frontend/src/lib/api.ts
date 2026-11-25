@@ -314,6 +314,8 @@ export const api = {
   snmpMaintenanceCreate: (data: { device_id: number | null; start?: string; end: string; reason?: string }) =>
     request<{ success: boolean; item: SnmpMaintenance }>('/api/snmp/maintenance', { method: 'POST', body: JSON.stringify(data) }),
   snmpMaintenanceDelete: (id: number) => request<{ success: boolean }>(`/api/snmp/maintenance/${id}`, { method: 'DELETE' }),
+  systemHealth: () => request<SystemHealth>('/api/system/health'),
+  systemBackupDb: () => request<{ success: boolean; filename: string; size_bytes: number; remote_uploaded: boolean; remote_error: string }>('/api/system/backup-db', { method: 'POST' }),
   snmpReportSend: () => request<{ success: boolean; message: string }>('/api/snmp/report/send', { method: 'POST' }),
   snmpDigestSend: () => request<{ success: boolean; message: string }>('/api/snmp/digest/send', { method: 'POST' }),
   snmpPortUpdate: (id: number, data: { ignored?: boolean; watched?: boolean }) => request<{ success: boolean; port: SnmpPort }>(`/api/snmp/ports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -1471,4 +1473,16 @@ export interface SnmpPortMac {
   source: 'fdb' | 'arp';
   last_seen: string | null;
   active: boolean;
+}
+
+
+export interface SystemHealth {
+  success: boolean;
+  jobs: { name: string; title: string; age_seconds: number | null; limit_seconds: number; ok: boolean }[];
+  backup: {
+    db: { count: number; latest: { name: string; size: number; age_seconds: number } | null; files: { name: string; size: number; age_seconds: number }[] };
+    remote: { configured: boolean; target: string; last_ok: string | null; status: string | null; error: string | null };
+    olt: { olt_id: number; name: string; interval_hours: number; last_backup_at: string | null; age_hours: number | null; stale: boolean }[];
+    disk: { free_pct: number; free_bytes: number } | null;
+  };
 }

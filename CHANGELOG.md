@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Status job & backup, salinan backup ke server lain
+
+#### Ditambahkan
+- Kartu **Status job & Backup** di Update Sistem: umur detak tiap job, backup DB terakhir + unduh, ruang disk, status backup konfigurasi OLT, tombol **Backup sekarang**.
+- Job `auto-backup` (backup konfigurasi OLT) kini dipantau; alert bila cron-nya berhenti.
+- Backup DB harian disalin ke server lain bila `BACKUP_REMOTE_SCP_TARGET` diisi (gagal/pulih diberitahu ke Telegram/WA).
+
 ### 2026-11-26 — Laporan PDF mingguan SNMP (Telegram / WA bawaan)
 
 #### Ditambahkan

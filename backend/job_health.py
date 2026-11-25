@@ -23,6 +23,7 @@ JOBS = {
     'snmp-poller': ('Poller perangkat SNMP', 30 * 60, 'snmp'),
     'traffic-poller': ('Poller trafik (cron 5 menit)', 45 * 60, 'olt'),
     'db-backup': ('Backup database (cron per jam)', 4 * 3600, None),
+    'auto-backup': ('Backup konfigurasi OLT (cron per jam)', 4 * 3600, 'olt_backup'),
 }
 
 
@@ -66,6 +67,9 @@ def _applicable(kind):
         if kind == 'snmp':
             from models import SnmpDevice
             return SnmpDevice.query.count() > 0
+        if kind == 'olt_backup':
+            from models import OLT
+            return OLT.query.filter_by(auto_backup_enabled=True).count() > 0
         if kind == 'olt':
             from models import OLT
             return OLT.query.filter_by(monitoring_enabled=True).count() > 0

@@ -3012,5 +3012,34 @@
       "in_err": "Errors in",
       "out_err": "Errors out"
     }
+  },
+  "syshealth": {
+    "jobs": "Background job status",
+    "jobsHint": "Each job records a heartbeat; if it stalls past its limit an alert goes to Telegram/WA.",
+    "sec": "s",
+    "min": "min",
+    "hour": "h",
+    "day": "d",
+    "noBeat": "No heartbeat yet",
+    "running": "OK",
+    "stale": "Stalled",
+    "backup": "Backups",
+    "latest": "Latest DB backup",
+    "ago": "ago",
+    "files": "files",
+    "noBackup": "No database backup yet",
+    "diskFree": "Disk free",
+    "backupNow": "Back up now",
+    "backupOk": "Backup created",
+    "backupOkRemote": "Backup created and copied to the remote server",
+    "offsite": "Off-site copy",
+    "offsiteOff": "Not configured",
+    "offsiteFail": "Failed",
+    "offsiteOk": "Last OK",
+    "offsiteWait": "Waiting for the daily run",
+    "offsiteHint": "Backups only live on this server. Set BACKUP_REMOTE_SCP_TARGET in backend/.env (e.g. user@host:/var/backups/nms/) to copy the daily backup to another server.",
+    "download": "Download",
+    "oltBackup": "OLT config backups",
+    "never": "Never"
   }
 }

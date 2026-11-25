@@ -124,6 +124,11 @@ def prune_old_backups(retention_days):
 
 
 with app.app_context():
+    try:
+        import job_health
+        job_health.beat('auto-backup')   # tanda cron hidup (sebelum kemungkinan exit awal)
+    except Exception:
+        pass
     now = datetime.now(timezone.utc)
     tz_name = get_system_timezone()
     local_now = get_local_now(tz_name)
