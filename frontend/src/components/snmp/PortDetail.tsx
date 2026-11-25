@@ -25,7 +25,7 @@ export function rxTone(rx: number | null | undefined, low: number) {
 function Row({ label, value, mono, tone }: { label: string; value: React.ReactNode; mono?: boolean; tone?: string }) {
   if (value == null || value === '') return null;
   return (
-    <div className="flex justify-between gap-3 py-1.5 text-xs border-b border-brd last:border-0">
+    <div className="flex justify-between gap-3 py-1.5 text-xs border-b border-line last:border-0">
       <span className="text-tx3 shrink-0">{label}</span>
       <span className={cn('text-right text-tx1 break-all', mono && 'font-mono', tone)}>{value}</span>
     </div>
@@ -34,7 +34,7 @@ function Row({ label, value, mono, tone }: { label: string; value: React.ReactNo
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-brd p-3">
+    <div className="rounded-lg border border-line p-3">
       <div className="text-xs font-semibold text-tx2 mb-1">{title}</div>
       {children}
     </div>
@@ -124,7 +124,7 @@ export function PortDetail({ port }: { port: SnmpPort }) {
                 {g.items.map(k => {
                   const v = det.stats[k] as number;
                   return (
-                    <div key={k} className="flex justify-between gap-2 py-1 text-xs border-b border-brd">
+                    <div key={k} className="flex justify-between gap-2 py-1 text-xs border-b border-line">
                       <span className="text-tx3 truncate">{t(`pdet.st.${k}`)}</span>
                       <span className={cn('tabular-nums', v > 0 && BAD.has(k) ? 'text-warning font-semibold' : 'text-tx1')}>{v.toLocaleString()}</span>
                     </div>

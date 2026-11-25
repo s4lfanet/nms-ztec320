@@ -20,6 +20,10 @@
   --bg-card-hover: #151A23;
   --border-color: #212834;
   --border-hover: #333E4F;
+  /* Garis pemisah baris & grid grafik — semi-transparan supaya tetap terlihat
+     di atas kartu gelap apa pun (kustomisasi warna kartu ikut aman). */
+  --line-color: rgba(148, 163, 184, 0.18);
+  --chart-grid: rgba(148, 163, 184, 0.22);
   --text-1: #F1F5F9;
   --text-2: #94A3B8;
   --text-3: #64748B;
@@ -41,6 +45,8 @@ html.light {
   --bg-card-hover: #F1F4F9;
   --border-color: #E0E6EE;
   --border-hover: #BFCBDA;
+  --line-color: var(--border-color);
+  --chart-grid: rgba(100, 116, 139, 0.28);
   --text-1: #26334A;
   --text-2: #51617C;
   --text-3: #8A9BB0;
@@ -74,6 +80,7 @@ html.light {
   --color-glass: var(--bg-glass);
   --color-glass-hover: var(--bg-glass-hover);
   --color-brd: var(--border-color);
+  --color-line: var(--line-color);
 }
 
 html {

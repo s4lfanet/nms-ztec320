@@ -39,7 +39,7 @@ function tickTime(iso: string, range: GraphRange) {
 export function RangePicker({ value, onChange }: { value: GraphRange; onChange: (r: GraphRange) => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded-lg border border-brd overflow-hidden" role="radiogroup" aria-label={t('graph.range')}>
+    <div className="inline-flex rounded-lg border border-line overflow-hidden" role="radiogroup" aria-label={t('graph.range')}>
       {RANGES.map(r => (
         <button key={r} type="button" role="radio" aria-checked={value === r} onClick={() => onChange(r)}
           className={cn('px-2.5 py-1 text-xs', value === r ? 'bg-accent/15 text-accent' : 'text-tx3 hover:text-tx1')}>
@@ -83,7 +83,7 @@ export function SnmpGraph({ deviceId, portId, series, unit, range, height = 180,
       {title && <p className="text-xs font-medium text-tx2 mb-1.5">{title}</p>}
       <div style={{ height }} className="relative">
         {empty ? (
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-tx3 border border-dashed border-brd rounded-lg">
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-tx3 border border-dashed border-line rounded-lg">
             {t('graph.noData')}
           </div>
         ) : (
@@ -97,10 +97,10 @@ export function SnmpGraph({ deviceId, portId, series, unit, range, height = 180,
                   </linearGradient>
                 ))}
               </defs>
-              <CartesianGrid stroke="var(--border-color, rgba(255,255,255,.06))" strokeDasharray="2 4" vertical={false} />
-              <XAxis dataKey="t" tickFormatter={v => tickTime(String(v), range)} tick={{ fontSize: 10, fill: 'var(--color-tx3)' }}
+              <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="t" tickFormatter={v => tickTime(String(v), range)} tick={{ fontSize: 10, fill: 'var(--color-tx3)' }} axisLine={{ stroke: 'var(--chart-grid)' }} tickLine={{ stroke: 'var(--chart-grid)' }}
                 interval="preserveStartEnd" minTickGap={40} />
-              <YAxis tickFormatter={v => fmtValue(Number(v), unit)} tick={{ fontSize: 10, fill: 'var(--color-tx3)' }} width={62}
+              <YAxis tickFormatter={v => fmtValue(Number(v), unit)} tick={{ fontSize: 10, fill: 'var(--color-tx3)' }} width={62} axisLine={{ stroke: 'var(--chart-grid)' }} tickLine={{ stroke: 'var(--chart-grid)' }}
                 domain={unit === 'pct' ? [0, 100] : unit === 'dbm' ? ['auto', 'auto'] : [0, 'auto']} allowDecimals />
               <Tooltip
                 contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 12 }}

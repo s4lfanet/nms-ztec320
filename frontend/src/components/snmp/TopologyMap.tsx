@@ -180,7 +180,7 @@ export function TopologyMap() {
         {selected && <LinkDetail l={selected} a={byId[selected.source]} b={byId[selected.target]} />}
       </Card>
       <Card title={t('topo.links', { n: links.length })} bodyClassName="p-3">
-        <ul className="divide-y divide-brd">
+        <ul className="divide-y divide-line">
           {links.map(l => (
             <li key={l.id}>
               <button type="button" onClick={() => setSel(l.id)} className={cn('w-full text-left py-2 px-1 rounded-md hover:bg-glass', sel === l.id && 'bg-glass')}>
@@ -219,7 +219,7 @@ function LinkLine({ l, a, b }: { l: TopoLink; a?: TopoNode; b?: TopoNode }) {
 
 function LinkDetail({ l, a, b }: { l: TopoLink; a?: TopoNode; b?: TopoNode }) {
   return (
-    <div className="mt-2 p-3 rounded-lg border border-brd bg-surface">
+    <div className="mt-2 p-3 rounded-lg border border-line bg-surface">
       <LinkLine l={l} a={a} b={b} />
       {(l.source_port.alias || l.target_port.alias) && (
         <p className="text-xs text-tx3 mt-1">{[l.source_port.alias, l.target_port.alias].filter(Boolean).join(' · ')}</p>

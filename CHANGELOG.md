@@ -4,6 +4,14 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Monitoring SNMP: garis tampil di tema gelap
+
+#### Diperbaiki
+- Grid grafik (CPU, memori, suhu, trafik port, dan lainnya) kini terlihat di tema gelap. Sebelumnya nyaris hilang karena warnanya sama dengan latar kartu.
+- Grafik Live port kini punya garis grid.
+- Garis pemisah baris di seluruh halaman Monitoring SNMP lebih jelas di tema gelap: daftar masalah, port dipantau, port, tetangga, ARP/MAC, laporan, spesifikasi port, dan topologi.
+- Tema terang tidak berubah.
+
 ### 2026-11-25 — Log Aktivitas: IP asli, ISP, dan perangkat
 
 #### Diperbaiki

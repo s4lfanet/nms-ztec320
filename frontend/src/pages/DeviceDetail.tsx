@@ -106,7 +106,7 @@ export function DeviceDetail() {
       {tab === 'events' && (
         <Card title={t('dev.tabEvents')}>
           {data.events.length === 0 ? <p className="text-sm text-tx3">{t('dev.noEvents')}</p> : (
-            <ul className="divide-y divide-brd">
+            <ul className="divide-y divide-line">
               {data.events.map(e => (
                 <li key={e.id} className="py-2 flex gap-3 text-sm">
                   <span className="text-xs text-tx3 w-24 shrink-0">{e.created_at ? timeAgo(e.created_at) : ''}</span>
@@ -147,7 +147,7 @@ function Overview({ device: d, sensors }: { device: SnmpDevice; sensors: SnmpSen
         {sensors.length === 0 ? <p className="text-sm text-tx3">{t('dev.noSensors')}</p> : (
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {sensors.map(s => (
-              <li key={s.id} className="flex items-center gap-2 rounded-lg bg-glass border border-brd px-2.5 py-2">
+              <li key={s.id} className="flex items-center gap-2 rounded-lg bg-glass border border-line px-2.5 py-2">
                 <span className="text-tx3">{SENSOR_ICON[s.kind] || <Gauge size={14} />}</span>
                 <span className="flex-1 min-w-0 text-xs text-tx2 truncate" title={s.name}>{s.name}</span>
                 <span className="text-sm font-medium text-tx1 tabular-nums">
@@ -217,7 +217,7 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
       </select>
     }>
       {shown.length === 0 ? <p className="text-sm text-tx3">{t('dev.noPorts')}</p> : (
-        <ul className="divide-y divide-brd">
+        <ul className="divide-y divide-line">
           {shown.map(p => (
             <li key={p.id} className={cn('py-2.5 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-1 sm:gap-4', p.ignored && 'opacity-50')}>
               <div className="flex items-center gap-2 min-w-0 sm:w-[38%]">
@@ -250,7 +250,7 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
                 {/* Tombol detail yang jelas terlihat (bukan baris yang harus diketuk) */}
                 <button type="button" onClick={() => setOpenPort(openPort === p.id ? null : p.id)} aria-expanded={openPort === p.id}
                   className={cn('inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
-                    openPort === p.id ? 'border-accent bg-accent/10 text-accent' : 'border-brd text-tx2 hover:border-accent hover:text-accent')}>
+                    openPort === p.id ? 'border-accent bg-accent/10 text-accent' : 'border-line text-tx2 hover:border-accent hover:text-accent')}>
                   <PanelBottomOpen size={14} className={cn('transition-transform', openPort === p.id && 'rotate-180')} />
                   {openPort === p.id ? t('pdet.close') : t('pdet.open')}
                 </button>
@@ -300,7 +300,7 @@ function Neighbors({ list }: { list: SnmpNeighbor[] }) {
   return (
     <Card title={t('topo.neighbors')}>
       {list.length === 0 ? <p className="text-sm text-tx3">{t('topo.noNeighbors')}</p> : (
-        <ul className="divide-y divide-brd">
+        <ul className="divide-y divide-line">
           {list.map(n => (
             <li key={n.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
               <span className="text-sm text-tx2 sm:w-[22%] truncate">{n.local_port || '—'}</span>
