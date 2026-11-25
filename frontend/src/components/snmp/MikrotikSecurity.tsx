@@ -9,13 +9,14 @@ import { api, type MtSecSettings, type MtSecSummary } from '../../lib/api';
 import { flag } from '../../lib/ua';
 import { cn, timeAgo } from '../../lib/utils';
 import { ipOriginText } from '../IpOrigin';
+import { AuditCard, FirewallScriptCard, FwListsCard } from './MikrotikSecurityExtra';
 
 const RANGES = [24, 24 * 7, 24 * 30];
-type EvFilter = 'all' | 'login_fail' | 'login_ok' | 'user_change';
+type EvFilter = 'all' | 'login_fail' | 'login_ok' | 'user_change' | 'fw_list' | 'audit';
 
 const KIND_TONE: Record<string, string> = {
   bruteforce: 'text-danger', distributed: 'text-danger', success_after_fail: 'text-danger',
-  new_ip: 'text-warning', user_change: 'text-warning',
+  new_ip: 'text-warning', user_change: 'text-warning', fw_list: 'text-warning', audit: 'text-danger',
 };
 
 /** Tab Keamanan di Monitoring SNMP: brute force & login mencurigakan ke router MikroTik (API). */
@@ -54,12 +55,13 @@ export function MikrotikSecurity({ canEdit }: { canEdit: boolean }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Stat label={t('mtsec.fails')} value={tot.fails} tone={tot.fails ? 'warn' : 'ok'} />
         <Stat label={t('mtsec.attackers')} value={tot.attackers} tone={tot.attackers ? 'warn' : 'ok'} />
         <Stat label={t('mtsec.alertsOpen')} value={tot.open_alerts} tone={tot.open_alerts ? 'crit' : 'ok'} />
         <Stat label={t('mtsec.logins')} value={tot.logins} />
         <Stat label={t('mtsec.userChanges')} value={tot.user_changes} tone={tot.user_changes ? 'warn' : undefined} />
+        <Stat label={t('mtsec.fwNew')} value={tot.fw_new} tone={tot.fw_new ? 'warn' : undefined} />
       </div>
 
       {openAlerts.length > 0 && (
@@ -85,6 +87,10 @@ export function MikrotikSecurity({ canEdit }: { canEdit: boolean }) {
       </Card>
 
       <SecAlerts alerts={data.alerts} />
+
+      <AuditCard routers={data.routers} canEdit={canEdit} />
+
+      <FwListsCard data={data} />
 
       <Card title={t('mtsec.topIps')} icon={<Crosshair size={16} />}>
         {data.attackers.length === 0 ? <p className="text-sm text-tx3">{t('mtsec.noAttack')}</p> : (
@@ -116,7 +122,7 @@ export function MikrotikSecurity({ canEdit }: { canEdit: boolean }) {
           <button type="button" className="text-xs text-accent !min-h-0" onClick={() => setIpFilter('')}>{t('mtsec.clearIp', { ip: ipFilter })}</button>
         ) : undefined}>
         <div className="flex flex-wrap gap-1.5 mb-3">
-          {(['all', 'login_fail', 'login_ok', 'user_change'] as EvFilter[]).map(k => (
+          {(['all', 'login_fail', 'login_ok', 'user_change', 'fw_list', 'audit'] as EvFilter[]).map(k => (
             <button key={k} type="button" onClick={() => setEvFilter(k)} aria-pressed={evFilter === k}
               className={cn('px-2.5 py-1 rounded-full text-xs border !min-h-0', evFilter === k ? 'border-accent bg-accent/10 text-accent' : 'border-line text-tx2 hover:text-tx1')}>
               {t(`mtsec.ev_${k}`)}
@@ -127,14 +133,14 @@ export function MikrotikSecurity({ canEdit }: { canEdit: boolean }) {
           <ul className="divide-y divide-line -my-1">
             {events.slice(0, 60).map(e => (
               <li key={e.id} className="py-2 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
-                <span className={cn('font-medium', e.kind === 'login_fail' ? 'text-danger' : e.kind === 'user_change' ? 'text-warning' : 'text-success')}>
+                <span className={cn('font-medium', e.kind === 'login_fail' || e.kind === 'audit' ? 'text-danger' : e.kind === 'login_ok' ? 'text-success' : 'text-warning')}>
                   {t(`mtsec.ev_${e.kind}`)}
                 </span>
                 {e.n > 1 && <span className="text-tx1 font-semibold num">{t('mtsec.times', { n: e.n })}</span>}
-                <span className="text-tx1">{e.user}</span>
+                {e.kind === 'audit' ? <span className="text-tx1">{e.message}</span> : <span className={cn('text-tx1', e.kind === 'fw_list' && 'font-mono')}>{e.user}</span>}
                 {e.ip && <span className="num text-tx2">{e.ip}</span>}
-                {e.via && <span className="text-tx3">{t('mtsec.via', { via: e.via })}</span>}
-                {e.by && <span className="text-tx3">{t('mtsec.by', { by: e.by })}</span>}
+                {e.via && e.kind !== 'fw_list' && <span className="text-tx3">{t('mtsec.via', { via: e.via })}</span>}
+                {e.by && e.kind === 'user_change' && <span className="text-tx3">{t('mtsec.by', { by: e.by })}</span>}
                 {e.new_ip && <span className="text-warning">{t('mtsec.newIp')}</span>}
                 <span className="text-tx3">{e.router}</span>
                 <span className="text-tx3 ml-auto">{e.at ? timeAgo(e.at) : ''}</span>
@@ -143,6 +149,8 @@ export function MikrotikSecurity({ canEdit }: { canEdit: boolean }) {
           </ul>
         )}
       </Card>
+
+      {canEdit && <FirewallScriptCard />}
 
       {canEdit && <SecSettings />}
     </div>
@@ -182,7 +190,7 @@ function SecAlerts({ alerts }: { alerts: MtSecSummary['alerts'] }) {
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
                 <span className={cn('font-medium', KIND_TONE[a.kind] || 'text-tx1')}>{t(`mtsec.kind_${a.kind}`)}</span>
                 <span className="text-tx1">{a.router}</span>
-                {a.key && <span className="num text-tx2">{a.key.replace('|', ' · ')}</span>}
+                {a.key && a.kind !== 'audit' && <span className="num text-tx2">{a.key.replace('|', ' · ')}</span>}
                 {a.count > 1 && <span className="text-xs text-tx2">{t('mtsec.times', { n: a.count })}</span>}
                 <span className={cn('text-xs', a.closed_at ? 'text-tx3' : 'text-danger')}>
                   {a.closed_at ? (['bruteforce', 'distributed'].includes(a.kind) ? t('mtsec.stopped') : t('mtsec.sent')) : t('mtsec.ongoing')}
@@ -209,6 +217,8 @@ function SecAlerts({ alerts }: { alerts: MtSecSummary['alerts'] }) {
 }
 
 const NUM_FIELDS: { key: keyof MtSecSettings; unit: string }[] = [
+  { key: 'mt_sec_fw_digest_minutes', unit: 'min' },
+  { key: 'mt_audit_hours', unit: 'h' },
   { key: 'mt_sec_bf_threshold', unit: '×' },
   { key: 'mt_sec_bf_minutes', unit: 'min' },
   { key: 'mt_sec_dist_threshold', unit: '×' },
@@ -216,7 +226,8 @@ const NUM_FIELDS: { key: keyof MtSecSettings; unit: string }[] = [
   { key: 'mt_sec_interval', unit: 's' },
   { key: 'mt_sec_retention_days', unit: 'd' },
 ];
-const TOGGLES: (keyof MtSecSettings)[] = ['mt_sec_enabled', 'mt_sec_alert_success', 'mt_sec_alert_new_ip', 'mt_sec_alert_user_change', 'mt_sec_ai_analysis'];
+const TOGGLES: (keyof MtSecSettings)[] = ['mt_sec_enabled', 'mt_sec_alert_success', 'mt_sec_alert_new_ip', 'mt_sec_alert_user_change',
+  'mt_sec_alert_fw', 'mt_sec_alert_audit', 'mt_sec_ai_analysis'];
 
 function SecSettings() {
   const { t } = useTranslation();
@@ -285,6 +296,12 @@ function SecSettings() {
                 placeholder="203.0.113.10&#10;10.0.0.0/8" value={String(val('mt_sec_whitelist'))}
                 onChange={e => setForm(f => ({ ...f, mt_sec_whitelist: e.target.value }))} />
               <span className="text-[11px] text-tx3">{t('mtsec.h_mt_sec_whitelist')}</span>
+            </label>
+            <label className="text-xs text-tx2 flex flex-col gap-1">
+              <span>{t('mtsec.f_mt_sec_fw_lists')}</span>
+              <textarea rows={3} className="input-field w-full font-mono text-xs" spellCheck={false}
+                value={String(val('mt_sec_fw_lists'))} onChange={e => setForm(f => ({ ...f, mt_sec_fw_lists: e.target.value }))} />
+              <span className="text-[11px] text-tx3">{t('mtsec.h_mt_sec_fw_lists')}</span>
             </label>
             <Notice tone="info">{t('mtsec.howto')}</Notice>
             <div className="flex justify-end">

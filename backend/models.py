@@ -1732,3 +1732,28 @@ class MtSecAlert(db.Model):
     last_seen_at = db.Column(db.DateTime)
     closed_at = db.Column(db.DateTime, nullable=True)
     ai_text = db.Column(db.Text, default='')
+
+
+class MtSecAudit(db.Model):
+    """Hasil audit konfigurasi keamanan terakhir per router (temuan JSON)."""
+    __tablename__ = 'mt_sec_audits'
+    device_id = db.Column(db.Integer, primary_key=True)
+    at = db.Column(db.DateTime)
+    score = db.Column(db.Integer, nullable=True)
+    version = db.Column(db.String(60), default='')
+    findings = db.Column(db.Text, default='[]')
+    error = db.Column(db.String(300), default='')
+
+
+class MtSecFwSeen(db.Model):
+    """IP di address-list firewall yang dipantau (mis. nms-portscan) — dasar alert 'IP baru masuk daftar'."""
+    __tablename__ = 'mt_sec_fw_seen'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, index=True, nullable=False)
+    list = db.Column(db.String(64), default='')
+    address = db.Column(db.String(64), default='')
+    comment = db.Column(db.String(200), default='')
+    first_seen = db.Column(db.DateTime)
+    last_seen = db.Column(db.DateTime)
+    times = db.Column(db.Integer, default=1)
+    __table_args__ = (db.UniqueConstraint('device_id', 'list', 'address', name='uq_mt_sec_fw'),)

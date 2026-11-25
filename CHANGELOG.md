@@ -4,6 +4,33 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — Keamanan MikroTik tahap 2: audit konfigurasi, firewall, generator script
+
+#### Ditambahkan
+- **Audit konfigurasi router** (tab Keamanan): skor 0–100 dan daftar masalah, masing-masing dengan cara memperbaikinya. Audit berjalan otomatis tiap 24 jam dan bisa dijalankan kapan saja lewat tombol "Audit sekarang". Hanya membaca router. Yang diperiksa:
+  - versi RouterOS rentan/lama;
+  - layanan Winbox/SSH/API terbuka ke semua IP;
+  - telnet/ftp aktif;
+  - user "admin" bawaan;
+  - DNS/proxy/SOCKS terbuka;
+  - scheduler/script mencurigakan;
+  - router tanpa firewall input.
+
+  Temuan kritis baru dikirim ke Telegram/WhatsApp.
+- **Ditangkap firewall:** NMS membaca address-list `nms-portscan`, `nms-portscan-lan`, `nms-synflood`, dan `nms-bruteforce` di router.
+  - IP baru dikirim sebagai alert, digabung per jam supaya tidak membanjiri.
+  - IP dari internet ditampilkan beserta ISP/negaranya.
+  - IP dari jaringan lokal dicocokkan ke nama pelanggan PPPoE, misalnya perangkat pelanggan yang terinfeksi dan memindai router.
+- **Generator script firewall:** script siap salin untuk:
+  - menangkap/memblokir port scan dan brute force;
+  - mencatat SYN flood;
+  - menutup DNS dari internet;
+  - mematikan telnet/ftp/www/proxy/SOCKS;
+  - membatasi layanan ke IP admin.
+
+  Script dijalankan admin sendiri di router; NMS tidak mengubah router.
+- **AI agent dan `/keamanan`** kini ikut menyebut skor audit dan IP yang ditangkap firewall.
+
 ### 2026-11-25 — Keamanan MikroTik: deteksi brute force & alert Telegram/WhatsApp
 
 #### Ditambahkan
