@@ -36,6 +36,8 @@ const QUICK: [string, string][] = [
   ['/insiden', 'Gangguan massal yang sedang ditangani'],
   ['/cari <kata>', 'Cari pelanggan (nama/PPPoE/SN)'],
   ['/onu <ID|nama>', 'Detail satu ONU'],
+  ['/snmp', 'Status perangkat Monitoring SNMP'],
+  ['/mac <MAC|IP>', 'MAC/IP terlihat di perangkat & port mana'],
   ['/menu', 'Daftar perintah'],
 ];
 

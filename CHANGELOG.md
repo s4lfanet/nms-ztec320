@@ -4,6 +4,20 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — AI Agent membaca Monitoring SNMP
+
+#### Ditambahkan
+- **AI Agent bisa menjawab pertanyaan tentang router/switch yang dipantau SNMP**, misalnya:
+  - "uplink core lagi berapa Mbps?"
+  - "port mana yang mati di CCR?"
+  - "redaman SFP ke POP Utara berapa?"
+  - "MAC 4c:5e:0c… ada di port mana?"
+
+  Tool barunya: ringkasan perangkat, detail perangkat, detail port (trafik 24 jam, error, SFP, MAC), dan pencarian MAC/IP.
+- **Perintah cepat tanpa AI:** `/snmp`, `/snmp <nama perangkat>`, `/mac <MAC atau IP>`.
+- **Pencarian MAC/IP** (AI maupun tab Cari MAC/IP) menampilkan pelanggan PPPoE yang memakai MAC atau IP tersebut, lengkap dengan link ke ONU-nya.
+- **`docs/ROADMAP-SNMP.md`:** rencana tahap berikutnya (sensor vendor lain, wireless MikroTik, VLAN per port, BGP/OSPF, penemuan otomatis, grup & aturan alert, billing per port).
+
 ### 2026-11-25 — Tabel ARP/MAC dan pencarian MAC/IP (Monitoring SNMP)
 
 #### Ditambahkan

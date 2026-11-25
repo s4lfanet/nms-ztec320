@@ -1385,6 +1385,8 @@ export interface SnmpSearchRow extends SnmpMacRow {
   device_id: number;
   device: string;
   ip: string;
+  /** pelanggan PPPoE yang caller-id / IP sesinya cocok */
+  onu: { id: number; name: string; pppoe: string } | null;
 }
 
 export interface SnmpPortMac {

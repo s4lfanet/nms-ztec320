@@ -438,8 +438,12 @@ def _port_brief(p, d):
 @bp.route('/api/snmp/summary', methods=['GET'])
 @login_required
 def snmp_summary():
-    """Ringkasan untuk halaman Perangkat & dashboard: jumlah per status, masalah
-    aktif (alert terbuka + perangkat turun), port dipantau, dan trafik teratas."""
+    return jsonify({'success': True, **build_summary()})
+
+
+def build_summary():
+    """Ringkasan untuk halaman Perangkat, dashboard, dan AI Agent: jumlah per status,
+    masalah aktif (alert terbuka + perangkat turun), port dipantau, trafik teratas."""
     devices = SnmpDevice.query.all()
     by_id = {d.id: d for d in devices}
     counts = {'total': len(devices), 'up': 0, 'warn': 0, 'down': 0, 'unknown': 0, 'disabled': 0}
@@ -483,9 +487,9 @@ def snmp_summary():
     top = sorted((p for p in live if (p.in_bps or 0) + (p.out_bps or 0) > 0),
                  key=lambda p: max(p.in_bps or 0, p.out_bps or 0), reverse=True)[:10]
     watched = sorted((p for p in ports if p.watched), key=lambda p: (by_id[p.device_id].name, p.if_index))
-    return jsonify({'success': True, 'counts': counts, 'problems': problems[:50],
-                    'top_ports': [_port_brief(p, by_id[p.device_id]) for p in top],
-                    'watched_ports': [_port_brief(p, by_id[p.device_id]) for p in watched]})
+    return {'counts': counts, 'problems': problems[:50],
+            'top_ports': [_port_brief(p, by_id[p.device_id]) for p in top],
+            'watched_ports': [_port_brief(p, by_id[p.device_id]) for p in watched]}
 
 
 def _month_bounds(month, tz_min):
@@ -800,26 +804,49 @@ def snmp_device_tables_refresh(device_id):
 @login_required
 def snmp_search():
     """Cari MAC / IP di semua tabel ARP & MAC → perangkat dan port tempat terlihat."""
-    q = (request.args.get('q') or '').strip()
-    kind, val = snmp_tables.norm_query(q)
-    if len(val) < 3:
-        return jsonify({'success': True, 'kind': kind, 'results': []})
+    return jsonify({'success': True, **search_tables(request.args.get('q') or '')})
+
+
+def _onu_matches(macs, ips):
+    """MAC / IP → pelanggan dari sesi PPPoE MikroTik (caller-id = MAC, IP sesi)."""
+    from models import OnuLinkState, ONU
+    out = {}
+    conds = []
+    if macs:
+        conds.append(func.lower(OnuLinkState.caller_id).in_([m.lower() for m in macs]))
+    if ips:
+        conds.append(OnuLinkState.pppoe_ip.in_(list(ips)))
+    if not conds:
+        return out
+    for s, o in db.session.query(OnuLinkState, ONU).join(ONU, OnuLinkState.onu_id == ONU.id) \
+            .filter(or_(*conds)).limit(SEARCH_LIMIT).all():
+        info = {'id': o.id, 'name': o.name or '', 'pppoe': s.pppoe_user or o.pppoe or ''}
+        if s.caller_id:
+            out.setdefault(s.caller_id.lower(), info)
+        if s.pppoe_ip:
+            out.setdefault(s.pppoe_ip, info)
+    return out
+
+
+def search_tables(q, limit=SEARCH_LIMIT):
+    """→ {'kind': 'mac'|'ip'|'text', 'results': [...]} — dipakai API & AI Agent."""
+    kind, val = snmp_tables.norm_query(q.strip())
+    if len(val) < 3 or kind == 'text':
+        return {'kind': kind, 'results': []}
     arp_q, fdb_q = SnmpArp.query, SnmpFdb.query
     if kind == 'mac':
         like = f'%{val}%'
         arp_q = arp_q.filter(func.replace(SnmpArp.mac, ':', '').like(like))
         fdb_q = fdb_q.filter(func.replace(SnmpFdb.mac, ':', '').like(like))
-    elif kind == 'ip':
+    else:
         arp_q = arp_q.filter(or_(SnmpArp.ip == val, SnmpArp.ip.like(f'{val}%')))
         fdb_q = None
-    else:
-        return jsonify({'success': True, 'kind': kind, 'results': []})
-    arp = arp_q.order_by(SnmpArp.last_seen.desc()).limit(SEARCH_LIMIT).all()
-    fdb = fdb_q.order_by(SnmpFdb.last_seen.desc()).limit(SEARCH_LIMIT).all() if fdb_q is not None else []
+    arp = arp_q.order_by(SnmpArp.last_seen.desc()).limit(limit).all()
+    fdb = fdb_q.order_by(SnmpFdb.last_seen.desc()).limit(limit).all() if fdb_q is not None else []
     # pencarian IP juga menampilkan port switch tempat MAC-nya dipelajari
     if kind == 'ip' and arp:
         macs = {a.mac for a in arp if a.mac}
-        fdb = SnmpFdb.query.filter(SnmpFdb.mac.in_(macs)).order_by(SnmpFdb.last_seen.desc()).limit(SEARCH_LIMIT).all()
+        fdb = SnmpFdb.query.filter(SnmpFdb.mac.in_(macs)).order_by(SnmpFdb.last_seen.desc()).limit(limit).all()
     dev_ids = {r.device_id for r in arp} | {r.device_id for r in fdb}
     devs = {d.id: d for d in SnmpDevice.query.filter(SnmpDevice.id.in_(dev_ids)).all()} if dev_ids else {}
     port_ids = {r.port_id for r in arp if r.port_id} | {r.port_id for r in fdb if r.port_id}
@@ -828,21 +855,25 @@ def snmp_search():
     for a in arp:
         ip_of.setdefault(a.mac, a.ip)
     if fdb and not ip_of:
-        for a in SnmpArp.query.filter(SnmpArp.mac.in_({r.mac for r in fdb})).limit(SEARCH_LIMIT).all():
+        for a in SnmpArp.query.filter(SnmpArp.mac.in_({r.mac for r in fdb})).limit(limit).all():
             ip_of.setdefault(a.mac, a.ip)
+    onus = _onu_matches({r.mac for r in fdb} | {r.mac for r in arp}, {r.ip for r in arp} | set(ip_of.values()))
+
+    def onu_for(mac, ip):
+        return onus.get((mac or '').lower()) or (onus.get(ip) if ip else None)
     res = []
     for r in fdb:
         d = devs.get(r.device_id)
+        ip = ip_of.get(r.mac, '')
         res.append({'type': 'fdb', 'device_id': r.device_id, 'device': d.name if d else '?', **_fdb_dict(r, d, ports),
-                    'ip': ip_of.get(r.mac, '')})
+                    'ip': ip, 'onu': onu_for(r.mac, ip)})
     in_fdb = {(r.device_id, r.mac) for r in fdb}
     for r in arp:
         if (r.device_id, r.mac) in in_fdb:
             continue  # sudah tampil di baris MAC perangkat yang sama (IP-nya ikut di sana)
         d = devs.get(r.device_id)
         res.append({'type': 'arp', 'device_id': r.device_id, 'device': d.name if d else '?', **_arp_dict(r, d, ports),
-                    'vlan': None})
-    # yang masih aktif dulu, lalu yang terbaru
+                    'vlan': None, 'onu': onu_for(r.mac, r.ip)})
     res.sort(key=lambda x: x['last_seen'] or '', reverse=True)
     res.sort(key=lambda x: not x['active'])  # stabil: tetap terbaru dulu di tiap kelompok
-    return jsonify({'success': True, 'kind': kind, 'results': res[:SEARCH_LIMIT]})
+    return {'kind': kind, 'results': res[:limit]}

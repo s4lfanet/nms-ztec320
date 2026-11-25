@@ -2774,6 +2774,7 @@
     "found": "{{n}} hasil",
     "sourceNote": "Baris dengan VLAN berasal dari tabel MAC switch; tanpa VLAN dari ARP router. Yang masih terlihat ditampilkan lebih dulu.",
     "portTitle": "MAC di port ini ({{n}})",
-    "portEmpty": "Belum ada MAC yang tercatat di port ini."
+    "portEmpty": "Belum ada MAC yang tercatat di port ini.",
+    "customer": "Pelanggan: {{name}}"
   }
 }

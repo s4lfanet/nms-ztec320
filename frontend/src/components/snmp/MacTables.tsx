@@ -24,9 +24,9 @@ function PortLabel({ port, alias }: { port: string; alias: string }) {
 }
 
 /** Satu baris: kartu di HP, kolom sejajar mulai md. */
-function MacRow({ mac, ip, port, alias, vlan, active, last, device }: {
+function MacRow({ mac, ip, port, alias, vlan, active, last, device, onu }: {
   mac: string; ip?: string; port: string; alias: string; vlan?: number | null; active: boolean; last: string | null;
-  device?: { id: number; name: string };
+  device?: { id: number; name: string }; onu?: { id: number; name: string; pppoe: string } | null;
 }) {
   const { t } = useTranslation();
   return (
@@ -41,6 +41,11 @@ function MacRow({ mac, ip, port, alias, vlan, active, last, device }: {
       <span className="flex min-w-0 col-span-2 md:col-span-1"><PortLabel port={port} alias={alias} /></span>
       <span className="text-xs text-tx3">{vlan != null ? t('mact.vlan', { v: vlan }) : ''}</span>
       <span className="text-xs text-right md:text-left"><Seen active={active} last={last} /></span>
+      {onu && (
+        <Link to={`/dashboard/onus/${onu.id}`} className="col-span-2 md:col-span-6 text-xs text-accent hover:underline truncate">
+          {t('mact.customer', { name: onu.name || onu.pppoe })}{onu.pppoe && onu.name ? ` · ${onu.pppoe}` : ''}
+        </Link>
+      )}
     </li>
   );
 }
@@ -163,7 +168,7 @@ export function MacSearch() {
               <ul className="divide-y divide-brd">
                 {res.map((r, i) => (
                   <MacRow key={`${r.type}-${r.device_id}-${r.mac}-${r.ip}-${i}`} mac={r.mac} ip={r.ip} port={r.port} alias={r.port_alias}
-                    vlan={r.vlan} active={r.active} last={r.last_seen} device={{ id: r.device_id, name: r.device }} />
+                    vlan={r.vlan} active={r.active} last={r.last_seen} device={{ id: r.device_id, name: r.device }} onu={r.onu} />
                 ))}
               </ul>
               <p className="text-[11px] text-tx3 mt-2">{t('mact.sourceNote')}</p>
