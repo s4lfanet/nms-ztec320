@@ -2973,5 +2973,39 @@
     "d5": "Sabtu",
     "d6": "Minggu",
     "saved": "Tersimpan"
+  },
+  "snrule": {
+    "tab": "Sensor",
+    "title": "Sensor kustom",
+    "add": "Tambah sensor",
+    "edit": "Ubah sensor",
+    "hint": "Pantau satu metrik dengan ambang bertingkat: Warning lalu Down. Status berubah hanya bila nilai melanggar terus selama durasi yang ditentukan.",
+    "empty": "Belum ada sensor kustom.",
+    "min": "mnt",
+    "saved": "Sensor tersimpan",
+    "source": "Yang dipantau",
+    "devSensors": "Sensor perangkat",
+    "portMetrics": "Port",
+    "name": "Nama",
+    "namePh": "mis. Trafik uplink ISP",
+    "op": "Melanggar bila",
+    "gt": "Nilai di atas ambang",
+    "lt": "Nilai di bawah ambang",
+    "duration": "Durasi (menit)",
+    "warn": "Ambang Warning",
+    "crit": "Ambang Down",
+    "formHint": "Isi minimal satu ambang. Trafik dalam Mbps. Ambang Down harus lebih parah dari Warning.",
+    "st": {
+      "ok": "OK",
+      "warning": "Warning",
+      "down": "Down",
+      "unknown": "Menunggu data"
+    },
+    "m": {
+      "in": "Trafik masuk",
+      "out": "Trafik keluar",
+      "in_err": "Error masuk",
+      "out_err": "Error keluar"
+    }
   }
 }

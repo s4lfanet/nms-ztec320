@@ -7,7 +7,7 @@ from flask_login import login_required, current_user
 import json
 from datetime import timedelta
 
-from models import db, SnmpMaintenance, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb
+from models import db, SnmpSensorRule, SnmpMaintenance, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb
 from helpers import utc_iso, log_action, permission_required
 import snmp_monitor
 
@@ -262,6 +262,7 @@ def snmp_device_delete(device_id):
     SnmpNeighbor.query.filter_by(remote_device_id=d.id).update({'remote_device_id': None, 'remote_port_id': None})
     SnmpDevice.query.filter_by(parent_id=d.id).update({'parent_id': None})
     SnmpMaintenance.query.filter_by(device_id=d.id).delete()
+    SnmpSensorRule.query.filter_by(device_id=d.id).delete()
     from models import Notification
     for n in Notification.query.filter_by(target_type='snmp', target_id=d.id, resolved=False).all():
         n.resolved, n.is_read = True, True
@@ -670,6 +671,71 @@ def snmp_report():
         return Response('﻿' + _report_csv(rep), mimetype='text/csv; charset=utf-8',
                         headers={'Content-Disposition': f'attachment; filename=laporan-snmp-{month}.csv'})
     return jsonify({'success': True, **rep})
+
+
+# ─── Sensor kustom (ambang bertingkat gaya PRTG) ───
+
+@bp.route('/api/snmp/devices/<int:did>/rules', methods=['GET'])
+@login_required
+def snmp_rules_list(did):
+    import snmp_rules
+    if not db.session.get(SnmpDevice, did):
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    rules = SnmpSensorRule.query.filter_by(device_id=did).order_by(SnmpSensorRule.id).all()
+    sensors = [{'metric': f'{s.kind}:{s.key}', 'name': s.name or s.key, 'kind': s.kind, 'unit': s.unit}
+               for s in SnmpSensor.query.filter_by(device_id=did).all()]
+    return jsonify({'success': True, 'rules': [snmp_rules.rule_dict(r) for r in rules], 'sensors': sensors})
+
+
+@bp.route('/api/snmp/devices/<int:did>/rules', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_rules_create(did):
+    import snmp_rules
+    if not db.session.get(SnmpDevice, did):
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    if SnmpSensorRule.query.filter_by(device_id=did).count() >= 50:
+        return jsonify({'success': False, 'message': 'Maksimal 50 sensor kustom per perangkat'}), 400
+    vals, err = snmp_rules.validate(did, request.get_json() or {})
+    if err:
+        return jsonify({'success': False, 'message': err}), 400
+    r = SnmpSensorRule(device_id=did, created_by=current_user.username, status='unknown', **vals)
+    db.session.add(r)
+    db.session.commit()
+    log_action('snmp_rule_add', 'monitoring', target=str(did), detail=r.name)
+    return jsonify({'success': True, 'rule': snmp_rules.rule_dict(r)})
+
+
+@bp.route('/api/snmp/rules/<int:rid>', methods=['PUT'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_rules_update(rid):
+    import snmp_rules
+    r = db.session.get(SnmpSensorRule, rid)
+    if not r:
+        return jsonify({'success': False, 'message': 'Tidak ditemukan'}), 404
+    vals, err = snmp_rules.validate(r.device_id, request.get_json() or {}, r)
+    if err:
+        return jsonify({'success': False, 'message': err}), 400
+    for k, v in vals.items():
+        setattr(r, k, v)
+    r.status, r.status_since = 'unknown', None   # ambang berubah → nilai ulang dari awal
+    db.session.commit()
+    log_action('snmp_rule_edit', 'monitoring', target=str(r.device_id), detail=r.name)
+    return jsonify({'success': True, 'rule': snmp_rules.rule_dict(r)})
+
+
+@bp.route('/api/snmp/rules/<int:rid>', methods=['DELETE'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_rules_delete(rid):
+    r = db.session.get(SnmpSensorRule, rid)
+    if not r:
+        return jsonify({'success': False, 'message': 'Tidak ditemukan'}), 404
+    db.session.delete(r)
+    db.session.commit()
+    log_action('snmp_rule_delete', 'monitoring', target=str(r.device_id), detail=r.name)
+    return jsonify({'success': True})
 
 
 # ─── Pemeliharaan perangkat (menahan alert) ───

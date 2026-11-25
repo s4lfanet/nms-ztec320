@@ -306,6 +306,10 @@ export const api = {
     request<SnmpReportData>(`/api/snmp/report?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`),
   snmpReportCsvUrl: (q: { month: string; scope: string; tz: number }) =>
     `/api/snmp/report?${new URLSearchParams({ month: q.month, scope: q.scope, tz: String(q.tz), format: 'csv' })}`,
+  snmpRules: (deviceId: number) => request<{ success: boolean; rules: SnmpRule[]; sensors: SnmpRuleSensor[] }>(`/api/snmp/devices/${deviceId}/rules`),
+  snmpRuleSave: (deviceId: number, id: number | null, data: Partial<Omit<SnmpRule, 'id' | 'device_id' | 'status' | 'last_value' | 'status_since'>>) =>
+    request<{ success: boolean; rule: SnmpRule }>(id ? `/api/snmp/rules/${id}` : `/api/snmp/devices/${deviceId}/rules`, { method: id ? 'PUT' : 'POST', body: JSON.stringify(data) }),
+  snmpRuleDelete: (id: number) => request<{ success: boolean }>(`/api/snmp/rules/${id}`, { method: 'DELETE' }),
   snmpMaintenance: (deviceId?: number) => request<{ success: boolean; items: SnmpMaintenance[] }>(`/api/snmp/maintenance${deviceId ? `?device_id=${deviceId}` : ''}`),
   snmpMaintenanceCreate: (data: { device_id: number | null; start?: string; end: string; reason?: string }) =>
     request<{ success: boolean; item: SnmpMaintenance }>('/api/snmp/maintenance', { method: 'POST', body: JSON.stringify(data) }),
@@ -950,6 +954,12 @@ export interface SnmpDevice {
   ports_total: number; ports_up: number; ports_down: number;
   parent_id?: number | null; in_maintenance?: boolean; parent_down?: string;
 }
+export interface SnmpRule {
+  id: number; device_id: number; port_id: number | null; metric: string; name: string; op: 'gt' | 'lt';
+  warn: number | null; crit: number | null; minutes: number; enabled: boolean;
+  status: 'unknown' | 'ok' | 'warning' | 'down'; last_value: number | null; status_since: string | null;
+}
+export interface SnmpRuleSensor { metric: string; name: string; kind: string; unit: string }
 export interface SnmpMaintenance {
   id: number; device_id: number | null; device_name: string; start: string | null; end: string | null;
   reason: string; created_by: string; active: boolean;

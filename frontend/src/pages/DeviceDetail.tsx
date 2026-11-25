@@ -13,6 +13,7 @@ import { cn, timeAgo } from '../lib/utils';
 import { fmtBps, fmtSpeed, fmtUptime, STATUS_DOT } from '../lib/snmpFormat';
 import { useHasPerm } from '../hooks/useHasPerm';
 import { DeviceFormModal } from './Devices';
+import { SensorRules } from '../components/snmp/SensorRules';
 import { PortLive, PortSpark } from '../components/snmp/PortLive';
 import { PortDetail, rxTone } from '../components/snmp/PortDetail';
 import { DeviceTables } from '../components/snmp/MacTables';
@@ -37,7 +38,7 @@ export function DeviceDetail() {
   const qc = useQueryClient();
   const canEdit = useHasPerm()('settings_ip_olts');
   const [params] = useSearchParams();
-  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'neighbors' | 'tables' | 'events'>(
+  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'neighbors' | 'tables' | 'rules' | 'events'>(
     () => { const q = params.get('tab'); return q === 'ports' || q === 'tables' ? q : 'overview'; });
   const [range, setRange] = useState<GraphRange>('24h');
   const [editing, setEditing] = useState(false);
@@ -95,6 +96,7 @@ export function DeviceDetail() {
         { key: 'ports', label: `${t('dev.tabPorts')} (${data.ports.length})` },
         { key: 'neighbors', label: `${t('topo.neighbors')} (${data.neighbors?.length ?? 0})` },
         { key: 'tables', label: t('mact.tab') },
+        { key: 'rules', label: t('snrule.tab') },
         { key: 'events', label: t('dev.tabEvents') },
       ]} />
 
@@ -103,6 +105,7 @@ export function DeviceDetail() {
       {tab === 'ports' && <Ports ports={data.ports} canEdit={canEdit} deviceId={did} range={range} setRange={setRange} />}
       {tab === 'neighbors' && <Neighbors list={data.neighbors || []} />}
       {tab === 'tables' && <DeviceTables deviceId={did} canEdit={canEdit} />}
+      {tab === 'rules' && <SensorRules deviceId={did} canEdit={canEdit} ports={data.ports} />}
       {tab === 'events' && (
         <Card title={t('dev.tabEvents')}>
           {data.events.length === 0 ? <p className="text-sm text-tx3">{t('dev.noEvents')}</p> : (

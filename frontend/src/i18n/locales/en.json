@@ -2973,5 +2973,39 @@
     "d5": "Saturday",
     "d6": "Sunday",
     "saved": "Saved"
+  },
+  "snrule": {
+    "tab": "Sensors",
+    "title": "Custom sensors",
+    "add": "Add sensor",
+    "edit": "Edit sensor",
+    "hint": "Watch one metric with tiered thresholds: Warning then Down. The status only changes when the value keeps breaching for the configured duration.",
+    "empty": "No custom sensors yet.",
+    "min": "min",
+    "saved": "Sensor saved",
+    "source": "Monitored value",
+    "devSensors": "Device sensors",
+    "portMetrics": "Ports",
+    "name": "Name",
+    "namePh": "e.g. ISP uplink traffic",
+    "op": "Breach when",
+    "gt": "Value above threshold",
+    "lt": "Value below threshold",
+    "duration": "Duration (minutes)",
+    "warn": "Warning threshold",
+    "crit": "Down threshold",
+    "formHint": "Fill in at least one threshold. Traffic is in Mbps. The Down threshold must be more severe than Warning.",
+    "st": {
+      "ok": "OK",
+      "warning": "Warning",
+      "down": "Down",
+      "unknown": "Waiting for data"
+    },
+    "m": {
+      "in": "Traffic in",
+      "out": "Traffic out",
+      "in_err": "Errors in",
+      "out_err": "Errors out"
+    }
   }
 }

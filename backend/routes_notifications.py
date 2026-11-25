@@ -35,7 +35,7 @@ ALARM_CATEGORIES = {'offline', 'dyinggasp', 'los', 'olt_offline', 'signal', 'sig
                     'olt_cpu_high', 'olt_mem_high', 'olt_temp_high', 'olt_backup_failed',
                     'odp_outage', 'outage', 'mikrotik_down', 'mikrotik_cpu', 'mikrotik_temp', 'snmp_down',
                     'snmp_port_down', 'snmp_port_flap', 'snmp_port_util', 'snmp_port_err', 'snmp_cpu', 'snmp_temp',
-                    'snmp_optical', 'mt_security', 'job_stale'}
+                    'snmp_optical', 'snmp_rule', 'mt_security', 'job_stale'}
 
 
 UNREGISTER_CATEGORIES = {'unconfig', 'unconfigured'}

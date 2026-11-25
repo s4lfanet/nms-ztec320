@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Sensor kustom bergaya PRTG (ambang bertingkat)
+
+#### Ditambahkan
+- **Tab "Sensor" di detail perangkat SNMP**: pantau satu metrik (CPU, suhu, tegangan, dst., atau trafik/error sebuah port) dengan ambang **Warning** dan **Down**, operator "di atas" atau "di bawah" (mis. trafik uplink di bawah X selama 10 menit), dan durasi. Status berubah hanya bila SEMUA sampel dalam durasi melanggar, jadi satu lonjakan tidak memicu alert.
+- Alert Telegram/WA/bel saat Warning dan saat Down. Naik dari Warning ke Down tidak mengirim pesan "pulih" palsu. Saat nilai normal kembali, terkirim pesan pulih. Mengikuti pemeliharaan perangkat. Menghapus atau menonaktifkan sensor menutup alertnya.
+
 ### 2026-11-25 — SNMP gaya PRTG: induk-anak, jadwal pemeliharaan, ringkasan mingguan
 
 #### Ditambahkan
