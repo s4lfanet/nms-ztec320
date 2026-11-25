@@ -8,6 +8,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Button, EmptyState, LoadingOverlay, Modal, StatusStrip, Tabs } from '../components/ui';
 import { DevicesOverview, useSnmpSummary } from '../components/snmp/SnmpOverview';
 import { SnmpSettings } from '../components/snmp/SnmpSettings';
+import { MacSearch } from '../components/snmp/MacTables';
 import { SnmpReport } from '../components/snmp/SnmpReport';
 import { TopologyMap } from '../components/snmp/TopologyMap';
 import { toast } from '../components/Toast';
@@ -24,8 +25,10 @@ export function Devices() {
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
-  const [view, setView] = useState<'list' | 'topology' | 'report' | 'settings'>(
-    () => (new URLSearchParams(window.location.search).get('tab') === 'settings' ? 'settings' : 'list'));
+  const [view, setView] = useState<'list' | 'topology' | 'search' | 'report' | 'settings'>(() => {
+    const q = new URLSearchParams(window.location.search).get('tab');
+    return q === 'settings' || q === 'search' ? q : 'list';
+  });
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
     queryKey: ['snmp-devices'], queryFn: api.snmpDevices, refetchInterval: 30_000,
   });
@@ -59,13 +62,14 @@ export function Devices() {
           )} />
       ) : (
         <div className="space-y-4">
-          <Tabs mobileGrid={canEdit ? 4 : 3} active={view} onChange={k => setView(k as typeof view)} tabs={[
+          <Tabs mobileGrid={canEdit ? 3 : 4} active={view} onChange={k => setView(k as typeof view)} tabs={[
             { key: 'list', label: t('devx.tabList') },
             { key: 'topology', label: t('topo.tab') },
+            { key: 'search', label: t('mact.searchTab') },
             { key: 'report', label: t('devx.tabReport') },
             ...(canEdit ? [{ key: 'settings', label: t('snset.tab') }] : []),
           ]} />
-          {view === 'settings' ? <SnmpSettings /> : view === 'report' ? <SnmpReport /> : view === 'topology' ? <TopologyMap /> : <>
+          {view === 'settings' ? <SnmpSettings /> : view === 'search' ? <MacSearch /> : view === 'report' ? <SnmpReport /> : view === 'topology' ? <TopologyMap /> : <>
           {summary.data && <DevicesOverview summary={summary.data} />}
           <StatusStrip
             aria-label={t('dev.statusSummary')}

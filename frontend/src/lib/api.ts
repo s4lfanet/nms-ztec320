@@ -290,7 +290,10 @@ export const api = {
     return request<SnmpGraphData>(`/api/snmp/graph?${qs}`);
   },
   snmpDeviceMetrics: (id: number) => request<{ success: boolean; metrics: { metric: string; name: string }[] }>(`/api/snmp/devices/${id}/metrics`),
-  snmpPortDetail: (portId: number) => request<{ success: boolean; port: SnmpPort; detail: SnmpPortDetail }>(`/api/snmp/ports/${portId}`),
+  snmpPortDetail: (portId: number) => request<{ success: boolean; port: SnmpPort; detail: SnmpPortDetail; macs?: SnmpPortMac[] }>(`/api/snmp/ports/${portId}`),
+  snmpDeviceTables: (id: number) => request<{ success: boolean; tables_at: string | null; note: string; arp: SnmpMacRow[]; fdb: SnmpMacRow[]; truncated: boolean }>(`/api/snmp/devices/${id}/tables`),
+  snmpDeviceTablesRefresh: (id: number) => request<{ success: boolean; tables_at: string | null; note: string }>(`/api/snmp/devices/${id}/tables/refresh`, { method: 'POST' }),
+  snmpSearch: (q: string) => request<{ success: boolean; kind: 'mac' | 'ip' | 'text'; results: SnmpSearchRow[] }>(`/api/snmp/search?q=${encodeURIComponent(q)}`),
   snmpSparks: (deviceId: number) =>
     request<{ success: boolean; points: number; step_s: number; ports: Record<string, { in: (number | null)[]; out: (number | null)[] }> }>(`/api/snmp/devices/${deviceId}/sparks`),
   snmpPortLive: (portId: number) =>
@@ -1360,5 +1363,35 @@ export interface SnmpSettingsData {
   /** community hanya dikirim ke pengelola perangkat (settings_ip_olts) */
   new_device: { snmp_version: '1' | '2c' | '3'; has_community: boolean; community?: string };
   last_cycle: { at: string | null; secs: number | null; devices: number; failed: number };
-  volume: { raw: number; hourly: number; events: number } | null;
+  volume: { raw: number; hourly: number; events: number; arp?: number; fdb?: number } | null;
+}
+
+/** Baris tabel ARP / MAC (FDB) perangkat SNMP. */
+export interface SnmpMacRow {
+  mac: string;
+  ip?: string;
+  vlan?: number | null;
+  port_id: number | null;
+  port: string;
+  port_alias: string;
+  first_seen: string | null;
+  last_seen: string | null;
+  /** masih ada di pembacaan terakhir perangkat */
+  active: boolean;
+}
+
+export interface SnmpSearchRow extends SnmpMacRow {
+  type: 'arp' | 'fdb';
+  device_id: number;
+  device: string;
+  ip: string;
+}
+
+export interface SnmpPortMac {
+  mac: string;
+  vlan: number | null;
+  ip: string;
+  source: 'fdb' | 'arp';
+  last_seen: string | null;
+  active: boolean;
 }

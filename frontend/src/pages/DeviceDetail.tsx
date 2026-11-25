@@ -15,6 +15,7 @@ import { useHasPerm } from '../hooks/useHasPerm';
 import { DeviceFormModal } from './Devices';
 import { PortLive, PortSpark } from '../components/snmp/PortLive';
 import { PortDetail, rxTone } from '../components/snmp/PortDetail';
+import { DeviceTables } from '../components/snmp/MacTables';
 import { SnmpGraph, RangePicker, type GraphRange, type GraphUnit } from '../components/snmp/SnmpGraph';
 
 const PALETTE = ['var(--color-accent)', 'var(--color-info)', 'var(--color-warning)', 'var(--color-success)', 'var(--color-danger)', '#a78bfa'];
@@ -36,7 +37,8 @@ export function DeviceDetail() {
   const qc = useQueryClient();
   const canEdit = useHasPerm()('settings_ip_olts');
   const [params] = useSearchParams();
-  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'neighbors' | 'events'>(params.get('tab') === 'ports' ? 'ports' : 'overview');
+  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'neighbors' | 'tables' | 'events'>(
+    () => { const q = params.get('tab'); return q === 'ports' || q === 'tables' ? q : 'overview'; });
   const [range, setRange] = useState<GraphRange>('24h');
   const [editing, setEditing] = useState(false);
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
@@ -87,11 +89,12 @@ export function DeviceDetail() {
         <Stat label={t('dev.lastPoll')} value={d.last_poll_at ? `${timeAgo(d.last_poll_at)}${d.poll_ms ? ` · ${d.poll_ms} ms` : ''}` : '—'} />
       </div>
 
-      <Tabs active={tab} onChange={k => setTab(k as typeof tab)} tabs={[
+      <Tabs mobileGrid={3} active={tab} onChange={k => setTab(k as typeof tab)} tabs={[
         { key: 'overview', label: t('dev.tabOverview') },
         { key: 'graphs', label: t('dev.tabGraphs') },
         { key: 'ports', label: `${t('dev.tabPorts')} (${data.ports.length})` },
         { key: 'neighbors', label: `${t('topo.neighbors')} (${data.neighbors?.length ?? 0})` },
+        { key: 'tables', label: t('mact.tab') },
         { key: 'events', label: t('dev.tabEvents') },
       ]} />
 
@@ -99,6 +102,7 @@ export function DeviceDetail() {
       {tab === 'graphs' && <DeviceGraphs deviceId={did} range={range} setRange={setRange} />}
       {tab === 'ports' && <Ports ports={data.ports} canEdit={canEdit} deviceId={did} range={range} setRange={setRange} />}
       {tab === 'neighbors' && <Neighbors list={data.neighbors || []} />}
+      {tab === 'tables' && <DeviceTables deviceId={did} canEdit={canEdit} />}
       {tab === 'events' && (
         <Card title={t('dev.tabEvents')}>
           {data.events.length === 0 ? <p className="text-sm text-tx3">{t('dev.noEvents')}</p> : (

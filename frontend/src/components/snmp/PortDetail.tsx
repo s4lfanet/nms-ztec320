@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { PortMacs } from './MacTables';
 import { useQuery } from '@tanstack/react-query';
 import { api, type SnmpPort } from '../../lib/api';
 import { fmtSpeed } from '../../lib/snmpFormat';
@@ -136,6 +137,11 @@ export function PortDetail({ port }: { port: SnmpPort }) {
         </Section>
       )}
 
+      {data?.macs && (
+        <Section title={t('mact.portTitle', { n: data.macs.filter(m => m.active).length })}>
+          <PortMacs macs={data.macs} />
+        </Section>
+      )}
     </div>
   );
 }
