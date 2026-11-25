@@ -87,6 +87,7 @@ def clean_snmp_text(val) -> str:
         else:
             raw = None
         if raw is not None:
+            raw = raw.split(b'\x00', 1)[0]  # HA7304: name is NUL-terminated
             if not raw or not all(32 <= b <= 126 for b in raw):
                 return ''
             return raw.decode('ascii', errors='ignore').strip()
@@ -98,6 +99,7 @@ def clean_snmp_text(val) -> str:
             raw = bytes.fromhex(s[2:])
         except ValueError:
             return ''
+        raw = raw.split(b'\x00', 1)[0]
         if not raw or not all(32 <= b <= 126 for b in raw):
             return ''
         return raw.decode('ascii', errors='ignore').strip()
@@ -200,6 +202,29 @@ def parse_onu_suffix(suffix: str) -> tuple[int, int, int]:
             return 1, port, onu_id
         return 1, 1, max(raw, 1)
     return 1, 1, 1
+
+
+def calc_ha7304_distance_m(raw) -> int | None:
+    """HA7304 / 2-PON series: raw column .25 value x 1.4955 = meters."""
+    try:
+        v = float(str(raw).strip().split()[0])
+    except Exception:
+        return None
+    if v <= 0:
+        return None
+    return max(1, int(round(v * 1.4955)))
+
+
+# HA7304 enterprise tree (.25355.3.2.6.3.2.1.<col>.1.<pon>.<onu>)
+HA7304_ONU = '.1.3.6.1.4.1.25355.3.2.6.3.2.1'
+HA7304_DDM = '.1.3.6.1.4.1.25355.3.2.6.14.2.1'
+HA7304_COL_REBOOT, HA7304_COL_ENABLE, HA7304_COL_NAME, HA7304_COL_STATUS = 22, 35, 37, 39
+HA7304_BATCH = 16  # OID per GET; HIOSO agent is slow, big PDUs time out
+
+
+def _is_zero_mac(val) -> bool:
+    t = format_mac_or_sn(val)
+    return not t or set(t.replace(':', '')) <= {'0'}
 
 
 class HiosoAdapter(BaseOLTAdapter):
@@ -607,6 +632,111 @@ class HiosoAdapter(BaseOLTAdapter):
 
         return onus, web_meta
 
+    # ── HA7304 (non-C/V) & 2-PON series: SNMP GET per OID, no walk ──────────
+    def _is_ha7304_get_model(self) -> bool:
+        m = (self.olt.model or '').upper().replace('HIOSO-', '').replace(' ', '')
+        return m in ('HA7304', 'HA7302', 'HA7302CS', 'HA7302C', 'HA7302V')
+
+    def _max_onu_per_pon(self) -> int:
+        return 128 if self._default_pon_count() == 2 else 64
+
+    def _ha7304_get(self, sc, oids: list[str]) -> dict:
+        """GET in small batches; returns {oid_str(no leading dot): value}."""
+        out = {}
+        for i in range(0, len(oids), HA7304_BATCH):
+            chunk = oids[i:i + HA7304_BATCH]
+            res = sc.batch_get(chunk)
+            if not res:  # one retry for a slow agent
+                res = sc.batch_get(chunk)
+            for k, v in (res or {}).items():
+                out[str(k).lstrip('.')] = v
+        return out
+
+    def _collect_from_mib_get(self, sc, cli_specs: dict = None) -> list:
+        """HA7304 collector: GET status for every possible ONU, then only read
+        the other columns for ONUs that exist (MAC != 00:00:00:00:00:00)."""
+        pons = self._default_pon_count()
+        per = self._max_onu_per_pon()
+        keys = [f'1.{p}.{o}' for p in range(1, pons + 1) for o in range(1, per + 1)]
+        base = HA7304_ONU.lstrip('.')
+
+        def col(c, ks):
+            res = self._ha7304_get(sc, [f'{HA7304_ONU}.{c}.{k}' for k in ks])
+            pre = f'{base}.{c}.'
+            return {k[len(pre):]: v for k, v in res.items() if k.startswith(pre)}
+
+        status = col(HA7304_COL_STATUS, keys)
+        if not status:
+            return []
+        present = list(status.keys())
+        mac = col(11, present)
+        present = [k for k in present if not _is_zero_mac(mac.get(k))]
+        mac = {k: mac[k] for k in present}
+        if not present:
+            return []
+        name = col(HA7304_COL_NAME, present)
+        chip = col(15, present)
+        dist = col(25, present)
+        online = [k for k in present if str(status.get(k)).strip() == '1']
+        ddm_base = HA7304_DDM.lstrip('.')
+        ddm = self._ha7304_get(sc, [f'{HA7304_DDM}.{c}.{k}' for k in online for c in (8, 4)])
+        rx = {k[len(f'{ddm_base}.8.'):]: v for k, v in ddm.items() if k.startswith(f'{ddm_base}.8.')}
+        tx = {k[len(f'{ddm_base}.4.'):]: v for k, v in ddm.items() if k.startswith(f'{ddm_base}.4.')}
+
+        fetched = {
+            'name': name, 'sn': mac, 'mac': {}, 'status': {k: status[k] for k in present},
+            'ports': {}, 'chip': chip, 'dyg': {}, 'dist': dist, 'rx': rx, 'tx': tx,
+        }
+        return self._build_epon_onus(fetched, 'epon', cli_specs or {}, dist_fn=calc_ha7304_distance_m)
+
+    def _snmp_collect(self, sc, cli_specs: dict) -> list:
+        """SNMP fallback order shared by collect_onus() and poll_olt()."""
+        model = (self.olt.model or '').upper()
+        if self._is_ha7304_get_model():
+            try:
+                onus = self._collect_from_mib_get(sc, cli_specs)
+                if onus:
+                    logger.info(f"[HiOSO:{self.olt.name}] Collected {len(onus)} ONUs via GET (HA7304)")
+                    return onus
+            except Exception as e:
+                logger.warning(f"[HiOSO:{self.olt.name}] GET collector failed, trying walk: {e}")
+        prefer_gpon = '74' in model and not self._is_ha7304_get_model() or 'GPON' in model
+        order = (
+            [('gpon', VENDOR_OIDS['hioso_gpon']), ('epon', VENDOR_OIDS['hioso_epon']), ('bdcom', VENDOR_OIDS['hioso_bdcom'])]
+            if prefer_gpon else
+            [('epon', VENDOR_OIDS['hioso_epon']), ('gpon', VENDOR_OIDS['hioso_gpon']), ('bdcom', VENDOR_OIDS['hioso_bdcom'])]
+        )
+        for mode, oids in order:
+            onus = self._collect_from_mib(sc, oids, mode, cli_specs=cli_specs)
+            if onus:
+                logger.info(f"[HiOSO:{self.olt.name}] Collected {len(onus)} ONUs via {mode.upper()} MIB")
+                return onus
+        return []
+
+    def _snmp_write(self, pairs) -> tuple[bool, str]:
+        from snmp_core import SNMPCollector
+        wc = self.olt.snmp_community_write or self.olt.snmp_community or 'private'
+        sc = SNMPCollector(self.olt.ip_address, wc, self.olt.snmp_port or 161)
+        try:
+            ok, err = sc.snmp_set(pairs, write_community=wc)
+        finally:
+            sc.close()
+        return ok, ('OK' if ok else (err or 'SNMP SET failed'))
+
+    def set_onu_name_snmp(self, port: int, onu_id: int, new_name: str) -> tuple[bool, str]:
+        """HA7304: name = bytes + trailing 0x00 (max 30 chars, 30 chars sent w/o NUL)."""
+        clean = re.sub(r'[^a-zA-Z0-9_\-. ]', '', (new_name or '').strip())[:30] or 'NA'
+        raw = clean.encode('ascii')
+        if len(raw) < 30:
+            raw += b'\x00'
+        return self._snmp_write([(f'{HA7304_ONU}.{HA7304_COL_NAME}.1.{port}.{onu_id}', raw, 'x')])
+
+    def reboot_onu_snmp(self, port: int, onu_id: int) -> tuple[bool, str]:
+        return self._snmp_write([(f'{HA7304_ONU}.{HA7304_COL_REBOOT}.1.{port}.{onu_id}', 1, 'i')])
+
+    def set_onu_enabled_snmp(self, port: int, onu_id: int, enabled: bool) -> tuple[bool, str]:
+        return self._snmp_write([(f'{HA7304_ONU}.{HA7304_COL_ENABLE}.1.{port}.{onu_id}', 1 if enabled else 2, 'i')])
+
     def _collect_from_mib(self, sc, oids: dict, mode: str, cli_specs: dict = None) -> list:
         """Walk a specific HiOSO SNMP MIB tree ('epon', 'gpon', or 'bdcom') and build normalized ONU dicts."""
         cli_specs = cli_specs or {}
@@ -622,6 +752,20 @@ class HiosoAdapter(BaseOLTAdapter):
         tx_oid = oids.get('onu_tx')
         rx_res = sc._run(sc._walk_async(rx_oid)) if rx_oid else {}
         tx_res = sc._run(sc._walk_async(tx_oid)) if tx_oid else {}
+
+        fetched = {
+            'name': name_res, 'sn': sn_res, 'mac': mac_res, 'status': status_res,
+            'ports': ports_res, 'chip': chip_res, 'dyg': dyg_res, 'dist': dist_res,
+            'rx': rx_res, 'tx': tx_res,
+        }
+        return self._build_epon_onus(fetched, mode, cli_specs)
+
+    def _build_epon_onus(self, f: dict, mode: str, cli_specs: dict, dist_fn=None) -> list:
+        """Normalize per-column {suffix: value} maps into ONU dicts."""
+        dist_fn = dist_fn or calc_hioso_distance_m
+        name_res, sn_res, mac_res, status_res = f['name'], f['sn'], f['mac'], f['status']
+        ports_res, chip_res, dyg_res, dist_res = f['ports'], f['chip'], f['dyg'], f['dist']
+        rx_res, tx_res = f['rx'], f['tx']
 
         all_keys = list(dict.fromkeys(
             list(status_res.keys()) + list(sn_res.keys()) + list(mac_res.keys()) + list(name_res.keys())
@@ -698,7 +842,7 @@ class HiosoAdapter(BaseOLTAdapter):
 
             dist_val = None
             if key in dist_res:
-                dist_val = calc_hioso_distance_m(dist_res[key])
+                dist_val = dist_fn(dist_res[key])
 
             onu_index = slot * 100000 + port * 1000 + onu_id
             onus.append({
@@ -743,21 +887,10 @@ class HiosoAdapter(BaseOLTAdapter):
                 self.olt.snmp_port or 161,
                 max_repetitions=15,
             )
-            model = (self.olt.model or '').upper()
-            prefer_gpon = '74' in model or 'GPON' in model
-
-            order = (
-                [('gpon', VENDOR_OIDS['hioso_gpon']), ('epon', VENDOR_OIDS['hioso_epon']), ('bdcom', VENDOR_OIDS['hioso_bdcom'])]
-                if prefer_gpon else
-                [('epon', VENDOR_OIDS['hioso_epon']), ('gpon', VENDOR_OIDS['hioso_gpon']), ('bdcom', VENDOR_OIDS['hioso_bdcom'])]
-            )
-            for mode, oids in order:
-                onus = self._collect_from_mib(sc, oids, mode, cli_specs=cli_specs)
-                if onus:
-                    logger.info(f"[HiOSO:{self.olt.name}] Collected {len(onus)} ONUs via {mode.upper()} MIB")
-                    sc.close()
-                    return onus
+            onus = self._snmp_collect(sc, cli_specs)
             sc.close()
+            if onus:
+                return onus
         except Exception as e:
             logger.error(f"[HiOSO:{self.olt.name}] collect_onus failed: {e}")
         return []
@@ -765,6 +898,15 @@ class HiosoAdapter(BaseOLTAdapter):
     def set_onu_name(self, port: int, onu_id: int, new_name: str) -> tuple[bool, str]:
         """Set ONU name directly on HiOSO OLT via Web (/goform/setOnu) and/or Telnet CLI."""
         clean_name = re.sub(r'[^a-zA-Z0-9_\-. ]', '', (new_name or '').strip())[:30] or 'NA'
+        # 0. HA7304 / 2-PON: SNMP SET (write community) — no Web/Telnet needed
+        if self._is_ha7304_get_model() and self.olt.snmp_enabled:
+            try:
+                ok, detail = self.set_onu_name_snmp(port, onu_id, clean_name)
+                if ok:
+                    return True, 'Updated on HiOSO OLT via SNMP'
+                logger.debug(f"[HiOSO:{self.olt.name}] SNMP set_onu_name failed, trying Web: {detail}")
+            except Exception as e:
+                logger.debug(f"[HiOSO:{self.olt.name}] SNMP set_onu_name error, trying Web: {e}")
         # 1. Try HTTP POST /goform/setOnu
         try:
             user = (self.olt.cli_username or 'admin').strip()
@@ -941,17 +1083,7 @@ class HiosoAdapter(BaseOLTAdapter):
                 logger.debug(f"[HiOSO:{self.olt.name}] Web poll fallback to SNMP: {e}")
 
             if not onus and self.olt.snmp_enabled:
-                model = (self.olt.model or '').upper()
-                prefer_gpon = '74' in model or 'GPON' in model
-                order = (
-                    [('gpon', VENDOR_OIDS['hioso_gpon']), ('epon', VENDOR_OIDS['hioso_epon']), ('bdcom', VENDOR_OIDS['hioso_bdcom'])]
-                    if prefer_gpon else
-                    [('epon', VENDOR_OIDS['hioso_epon']), ('gpon', VENDOR_OIDS['hioso_gpon']), ('bdcom', VENDOR_OIDS['hioso_bdcom'])]
-                )
-                for mode, oids in order:
-                    onus = self._collect_from_mib(sc, oids, mode, cli_specs=cli_specs)
-                    if onus:
-                        break
+                onus = self._snmp_collect(sc, cli_specs)
 
             if web_meta.get('firmware') and not sys_info.get('description'):
                 sys_info['description'] = f"Version {web_meta['firmware']}"

@@ -4,6 +4,16 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-25 — HIOSO HA7304 (4 PON) & seri 2 PON: SNMP GET per OID
+
+#### Ditambahkan
+- **Pembacaan ONU HA7304 / HA7302 lewat SNMP GET** (bukan walk — walk di OLT ini sering timeout): status ONU 1–64 per PON (seri 2 PON: 1–128) dibaca dalam batch ±16 OID, lalu kolom lain (MAC, nama, chip, jarak, redaman Rx/Tx) hanya untuk ONU yang ada. ONU kosong (MAC 00:00:00:00:00:00) tidak dihitung. Jarak = nilai mentah × 1,4955 m.
+- **Ganti nama ONU, reboot, enable/disable lewat SNMP SET** (community write): nama dikirim dengan byte 0x00 penutup (maks 30 karakter) supaya tidak muncul karakter acak di web OLT. Reboot dari tombol ONU berjalan lewat SNMP bila OLT tidak memakai CLI.
+- Nama ONU dibaca sampai byte 0x00 pertama.
+
+#### Tidak berubah
+- HA7304C / HA7304V / GPON tetap memakai jalur lama. Lapisan Telnet tidak disentuh.
+
 ### 2026-11-25 — Keamanan MikroTik tahap 2: audit konfigurasi, firewall, generator script
 
 #### Ditambahkan
