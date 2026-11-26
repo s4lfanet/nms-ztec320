@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Tahan alert SNMP yang naik-turun sesaat
+- Alert suhu, redaman SFP, dan error port baru dikirim bila kondisi bertahan ≥ `snmp_hold_minutes` (default 3 menit, 0 = mati). Kalau pulih sebelum itu, tidak ada pesan WARNING maupun UP, jadi grup tidak ramai oleh gangguan sesaat.
+
 ### 2026-11-26 — Alert SNMP lebih lengkap (gaya PRTG)
 - Semua alert SNMP (perangkat turun, port turun, CPU, suhu, utilisasi, redaman SFP, error, sensor kustom) kini diakhiri baris waktu dengan zona (🕒 Waktu: ... WIB).
 - Pesan pulih memuat nama perangkat dan lama bermasalah. Alert port turun menyebut ifOperStatus dan ifAdminStatus.

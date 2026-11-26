@@ -3,7 +3,7 @@ import secrets
 from datetime import timedelta
 
 from app import app, db
-from models import User, SnmpDevice, SnmpPort, SnmpEvent, SnmpSample, SnmpSampleHourly, Notification
+from models import SystemConfig, User, SnmpDevice, SnmpPort, SnmpEvent, SnmpSample, SnmpSampleHourly, Notification
 import snmp_monitor as sm
 import snmp_alerts as sa
 from routes_snmp import build_report
@@ -25,7 +25,9 @@ def _client():
 def _setup(now):
     d = SnmpDevice(name='Core', host='10.0.0.1', snmp_version='2c', status='up', status_changed_at=now - timedelta(hours=5))
     d.community = secrets.token_hex(4)
-    db.session.add(d); db.session.commit()
+    db.session.add(d)
+    db.session.add(SystemConfig(key='snmp_hold_minutes', value='0'))  # tes ini memeriksa alert langsung
+    db.session.commit()
     up = SnmpPort(device_id=d.id, if_index=1, name='sfp1', alias='UPLINK', speed_mbps=1000, admin_status='up',
                   oper_status='up', watched=True)
     acc = SnmpPort(device_id=d.id, if_index=2, name='ether2', speed_mbps=1000, admin_status='up', oper_status='down',

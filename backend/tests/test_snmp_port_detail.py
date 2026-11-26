@@ -3,7 +3,7 @@ import copy
 from datetime import timedelta
 
 from app import db
-from models import SnmpDevice, SnmpPort, SnmpSample, Notification
+from models import SystemConfig, SnmpDevice, SnmpPort, SnmpSample, Notification
 import snmp_monitor as sm
 import snmp_alerts as sa
 from tests.test_link_state import ctx  # noqa: F401
@@ -75,6 +75,7 @@ def test_optical_alert_with_hysteresis(ctx):
     d = _dev()
     port = SnmpPort.query.filter_by(device_id=d.id, if_index=1).one()
     port.watched = True
+    db.session.add(SystemConfig(key='snmp_hold_minutes', value='0'))  # tes ini memeriksa alert langsung
     db.session.commit()
     now = sm._now()
 
