@@ -17,6 +17,7 @@ import { SensorRules } from '../components/snmp/SensorRules';
 import { PortLive, PortSpark } from '../components/snmp/PortLive';
 import { PortDetail, rxTone } from '../components/snmp/PortDetail';
 import { DeviceTables } from '../components/snmp/MacTables';
+import { PORT_KINDS, countKinds, portKind, type PortKind } from '../lib/portKind';
 import { SnmpGraph, RangePicker, type GraphRange, type GraphUnit } from '../components/snmp/SnmpGraph';
 
 const PALETTE = ['var(--color-accent)', 'var(--color-info)', 'var(--color-warning)', 'var(--color-success)', 'var(--color-danger)', '#a78bfa'];
@@ -200,8 +201,17 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<'active' | 'down' | 'watched' | 'all'>('active');
-  const shown = useMemo(() => ports.filter(p =>
-    filter === 'all' ? true : filter === 'watched' ? p.watched : filter === 'down' ? (p.admin_status === 'up' && p.oper_status !== 'up' && !p.ignored) : (p.admin_status === 'up' && !p.ignored)), [ports, filter]);
+  const [kind, setKind] = useState<'all' | PortKind>('all');
+  const [q, setQ] = useState('');
+  const kindCounts = useMemo(() => countKinds(ports), [ports]);
+  const kindsPresent = PORT_KINDS.filter(k => kindCounts[k]);
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return ports.filter(p =>
+      (filter === 'all' ? true : filter === 'watched' ? p.watched : filter === 'down' ? (p.admin_status === 'up' && p.oper_status !== 'up' && !p.ignored) : (p.admin_status === 'up' && !p.ignored))
+      && (kind === 'all' || portKind(p) === kind)
+      && (!needle || p.name.toLowerCase().includes(needle) || (p.alias || '').toLowerCase().includes(needle) || (p.descr || '').toLowerCase().includes(needle)));
+  }, [ports, filter, kind, q]);
   const { data: snmpCfg } = useQuery({ queryKey: ['snmp-settings'], queryFn: api.snmpSettings, staleTime: 300_000 });
   const rxLow = snmpCfg?.settings.snmp_rx_low_dbm ?? -25;
   const { data: sparks } = useQuery({ queryKey: ['snmp-sparks', deviceId], queryFn: () => api.snmpSparks(deviceId), refetchInterval: 300_000 });
@@ -219,6 +229,23 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
         <option value="active">{t('dev.pfActive')}</option><option value="down">{t('dev.pfDown')}</option><option value="watched">{t('devx.pfWatched')}</option><option value="all">{t('dev.pfAll')}</option>
       </select>
     }>
+      {ports.length > 8 && (
+        <div className="mb-3 space-y-2">
+          <input className="input-field text-sm" value={q} onChange={e => setQ(e.target.value)} placeholder={t('dev.portSearch')} aria-label={t('dev.portSearch')} />
+          {kindsPresent.length > 1 && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1" role="group" aria-label={t('dev.portKind')}>
+              {(['all', ...kindsPresent] as const).map(k => (
+                <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={kind === k}
+                  className={cn('shrink-0 rounded-full border px-3 py-1 text-xs transition-colors',
+                    kind === k ? 'border-accent bg-accent/10 text-accent' : 'border-line text-tx2 hover:border-accent hover:text-accent')}>
+                  {t(`dev.pk.${k}`)} <span className="tabular-nums text-tx3">{k === 'all' ? ports.length : kindCounts[k]}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {(kind !== 'all' || q.trim()) && <p className="text-xs text-tx3">{t('dev.portShown', { n: shown.length, total: ports.length })}</p>}
+        </div>
+      )}
       {shown.length === 0 ? <p className="text-sm text-tx3">{t('dev.noPorts')}</p> : (
         <ul className="divide-y divide-line">
           {shown.map(p => (
