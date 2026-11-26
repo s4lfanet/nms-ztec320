@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../stores/auth';
 import { ImageIcon } from 'lucide-react';
 import { api, type OltModelPhoto } from '../lib/api';
 import { cn } from '../lib/utils';
 import { toast } from './Toast';
 import { confirm } from './ConfirmDialog';
-import { Card } from './ui';
+import { Button, Card } from './ui';
 import { OltDeviceArt } from './OltDeviceArt';
 import { OLT_MODEL_CATALOG, oltModelKey } from '../data/oltModels';
 
@@ -22,6 +23,24 @@ export function OltModelPhotos({ canManage, bare = false }: { canManage: boolean
   const [showAll, setShowAll] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const { data } = useQuery({ queryKey: ['olt-models'], queryFn: api.oltModels });
+  const { user } = useAuth();
+  const engine = useQuery({
+    queryKey: ['olt-image-engine'], queryFn: api.oltImageEngine, enabled: canManage,
+    refetchInterval: (q) => (q.state.data?.install.state === 'running' ? 3000 : false),
+  });
+  const bg = engine.data?.bg;
+  const inst = engine.data?.install;
+  const installing = inst?.state === 'running';
+  const startInstall = async () => {
+    try { await api.oltImageEngineInstall(); engine.refetch(); }
+    catch (err) { toast.error((err as Error).message); }
+  };
+  const prevState = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (prevState.current === 'running' && inst?.state === 'done') toast.success(t('olts.engineReady'));
+    if (prevState.current === 'running' && inst?.state === 'failed') toast.error(t('olts.engineFailed'));
+    prevState.current = inst?.state;
+  }, [inst?.state, t]);
 
   const rows = useMemo<Row[]>(() => {
     const byKey = new Map<string, Row>();
@@ -85,6 +104,20 @@ export function OltModelPhotos({ canManage, bare = false }: { canManage: boolean
   const body = (
     <>
       <p className="text-xs text-tx3 mb-2 max-w-[70ch]">{t('olts.modelPhotosHint')}</p>
+      {canManage && bg && (
+        <div className={cn('rounded-lg border p-2.5 mb-3 text-xs max-w-[70ch]', bg.engine === 'model' ? 'border-success/30 bg-success/5' : 'border-warning/40 bg-warning/5')}>
+          {bg.engine === 'model' ? <span className="text-success">{t('olts.engineOk')}</span> : (
+            <div className="space-y-2">
+              <div className="text-warning font-medium">{t('olts.engineOff')}</div>
+              <div className="text-tx3">{installing ? t(`olts.engineStep_${inst?.step === 'model' ? 'model' : 'pip'}`) : (bg.error || t('olts.engineOffHint'))}</div>
+              {inst?.state === 'failed' && inst.log && <pre className="text-[10px] text-danger whitespace-pre-wrap break-all max-h-24 overflow-auto">{inst.log}</pre>}
+              {user?.is_super_admin
+                ? <Button variant="primary" onClick={startInstall} loading={installing} disabled={installing}>{t('olts.engineInstall')}</Button>
+                : <div className="text-tx3">{t('olts.engineAdminOnly')}</div>}
+            </div>
+          )}
+        </div>
+      )}
       {rows.some(r => r.image_url) && (
         <button type="button" disabled={!!busyKey} onClick={reprocess} className="text-xs text-accent hover:underline mb-3">{t('olts.reprocess')}</button>
       )}

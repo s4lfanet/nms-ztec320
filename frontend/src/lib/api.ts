@@ -108,6 +108,8 @@ export const api = {
     if (!res.ok) throw new ApiError(data.message || `HTTP ${res.status}`, data.error_code, res.status, data);
     return data as { success: boolean; key: string; image_url: string; background_removed?: boolean; bg?: BgStatus };
   },
+  oltImageEngine: () => request<{ success: boolean; bg: BgStatus; install: EngineInstall }>('/api/olt-images/engine'),
+  oltImageEngineInstall: () => request<{ success: boolean; started: boolean; bg: BgStatus; install: EngineInstall }>('/api/olt-images/engine/install', { method: 'POST' }),
   oltImagesReprocess: () => request<{ success: boolean; total: number; removed: number; failed: number; bg: BgStatus }>('/api/olt-images/reprocess', { method: 'POST' }),
   oltModelImageDelete: (key: string) =>
     request<{ success: boolean }>(`/api/olt-models/${encodeURIComponent(key)}/image`, { method: 'DELETE' }),
@@ -1502,3 +1504,4 @@ export interface SystemHealth {
 export interface RestoreResult { success: boolean; message: string; pre_restore_backup?: string; restarting?: boolean }
 
 export interface BgStatus { engine: 'model' | 'fallback'; onnxruntime: boolean; model_file: boolean; error: string }
+export interface EngineInstall { state: 'idle' | 'running' | 'done' | 'failed'; step: string; log: string; started: number; finished: number }

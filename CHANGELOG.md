@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Pasang penghapus latar dari UI
+
+#### Ditambahkan
+- Kotak status + tombol **Pasang sekarang** di Kustomisasi → Foto OLT: memasang `onnxruntime` dan mengunduh model langsung dari NMS (tanpa masuk VPS), dengan kemajuan langkah dan pesan galat. Hanya super admin.
+- `numpy` ditambahkan eksplisit ke `requirements.txt`.
+
 ### 2026-11-26 — Proses ulang foto OLT + status hapus-latar
 
 #### Ditambahkan

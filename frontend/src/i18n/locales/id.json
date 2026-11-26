@@ -597,7 +597,16 @@
     "reprocessMsg": "Semua foto OLT yang sudah diunggah diproses ulang: latar dihapus dan ukuran distandarkan. Foto lama diganti hasilnya.",
     "reprocessDone": "{{total}} foto diproses, latar terhapus pada {{removed}}, gagal {{failed}}.",
     "bgNotRemoved": "Foto disimpan, tetapi latar tidak bisa dihapus otomatis. {{why}}",
-    "bgEngineOff": "Mesin hapus-latar belum aktif. {{why}}"
+    "bgEngineOff": "Mesin hapus-latar belum aktif. {{why}}",
+    "engineOk": "Penghapus latar aktif.",
+    "engineOff": "Penghapus latar belum aktif",
+    "engineOffHint": "Perlu memasang paket onnxruntime dan mengunduh model (±43 MB).",
+    "engineInstall": "Pasang sekarang",
+    "engineAdminOnly": "Hanya super admin yang dapat memasangnya.",
+    "engineStep_pip": "Memasang paket onnxruntime… (1–3 menit)",
+    "engineStep_model": "Mengunduh model hapus-latar… (±43 MB)",
+    "engineReady": "Penghapus latar siap. Tekan \"Proses ulang semua foto\".",
+    "engineFailed": "Pemasangan gagal. Lihat keterangan di bawah tombol."
   },
   "migrate": {
     "selectFirst": "Pilih ONU dan PON tujuan",
