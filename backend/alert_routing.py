@@ -82,3 +82,13 @@ def route_alert(alert, idx, eligible, role='primary'):
         if found:
             return found
     return []
+
+
+SCOPE_KEY = 'tech_alert_scope'
+
+
+def alert_scope():
+    """'all' (default): semua alert ke semua teknisi terdaftar. 'area': alert FTTH hanya ke teknisi wilayahnya."""
+    from models import SystemConfig
+    row = SystemConfig.query.filter_by(key=SCOPE_KEY).first()
+    return 'area' if row and row.value == 'area' else 'all'

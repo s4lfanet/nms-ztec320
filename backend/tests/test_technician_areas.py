@@ -28,6 +28,16 @@ def _topo():
     return olt, odc, odp, onu
 
 
+def _scope(value):
+    from models import SystemConfig
+    row = SystemConfig.query.filter_by(key='tech_alert_scope').first()
+    if row:
+        row.value = value
+    else:
+        db.session.add(SystemConfig(key='tech_alert_scope', value=value))
+    db.session.commit()
+
+
 class TestRouting:
     def test_no_areas_everyone_gets_everything(self, client):
         from alerts import _technician_recipients
@@ -40,6 +50,7 @@ class TestRouting:
     def test_area_routes_to_nearest_and_noc_still_gets_it(self, client):
         from alerts import _technician_recipients
         with app.app_context():
+            _scope('area')
             andi, budi, noc = _tech('andi', '62811'), _tech('budi', '62812'), _tech('noc', '62813')
             olt, odc, odp, onu = _topo()
             db.session.add(TechnicianArea(user_id=andi.id, node_type='odc', node_id=odc.id))
@@ -71,6 +82,7 @@ class TestRouting:
     def test_onu_technician_first(self, client):
         from alerts import _technician_recipients
         with app.app_context():
+            _scope('area')
             andi, cici = _tech('andi', '62811'), _tech('cici', '62814')
             olt, odc, odp, onu = _topo()
             db.session.add(TechnicianArea(user_id=andi.id, node_type='odp', node_id=odp.id))
@@ -98,6 +110,7 @@ class TestRouting:
         """Alert SNMP/MikroTik (tanpa OLT/ODP) → semua teknisi, walau semuanya punya wilayah."""
         from alerts import _technician_recipients
         with app.app_context():
+            _scope('area')
             andi, budi = _tech('andi', '62811'), _tech('budi', '62812')
             olt, odc, odp, onu = _topo()
             db.session.add(TechnicianArea(user_id=andi.id, node_type='odc', node_id=odc.id))
@@ -111,6 +124,20 @@ class TestRouting:
             assert set(u.username for u in out2) == {'andi'}
 
 
+    def test_default_semua_teknisi_dapat_semua_alert_ftth(self, client):
+        from alerts import _technician_recipients
+        with app.app_context():
+            andi, budi = _tech('andi', '62811'), _tech('budi', '62812')
+            olt, odc, odp, onu = _topo()
+            db.session.add(TechnicianArea(user_id=andi.id, node_type='odc', node_id=odc.id))
+            db.session.add(TechnicianArea(user_id=budi.id, node_type='olt', node_id=olt.id))
+            db.session.commit()
+            alert = {'message': 'x', 'olt_id': olt.id, 'onu_ids': [onu.id]}
+            out = _technician_recipients([alert])
+            assert set(u.username for u in out) == {'andi', 'budi'}      # tanpa setelan = semua
+            assert alert['assigned_user_ids'] == [andi.id]                # penanggung jawab tetap tercatat
+
+
 class TestApi:
     H = {'X-Requested-With': 'XMLHttpRequest'}
 
@@ -120,6 +147,13 @@ class TestApi:
         with client.session_transaction() as sess:
             sess['_user_id'] = str(uid)
             sess['_fresh'] = True
+
+    def test_scope_api(self, client):
+        self._login(client)
+        assert client.get('/api/technician-areas/scope').get_json()['scope'] == 'all'
+        assert client.put('/api/technician-areas/scope', json={'scope': 'area'}, headers=self.H).get_json()['scope'] == 'area'
+        assert client.get('/api/technician-areas/scope').get_json()['scope'] == 'area'
+        assert client.put('/api/technician-areas/scope', json={'scope': 'apa-saja'}, headers=self.H).get_json()['scope'] == 'all'
 
     def test_crud(self, client):
         self._login(client)

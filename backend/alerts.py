@@ -1848,6 +1848,8 @@ def _technician_recipients(alerts):
     except Exception as e:  # table missing / DB issue → old behaviour
         logger.warning(f"[ALERT] technician areas unavailable: {e}")
         idx = {}
+    from alert_routing import alert_scope
+    scope_all = alert_scope() == 'all'
     with_area = {a.user_id for rows in idx.values() for a in rows}
     noc = [u for u in technicians if u.id not in with_area]
     out = {}
@@ -1856,6 +1858,16 @@ def _technician_recipients(alerts):
             located = bool(alert_levels(alert))
         except Exception:
             located = True
+        if scope_all:
+            # Mode "semua teknisi" (default): semua alert ke semua teknisi terdaftar. Hasil routing
+            # wilayah tetap dicatat di assigned_user_ids (dipakai insiden sebagai penanggung jawab).
+            try:
+                alert['assigned_user_ids'] = [u.id for u in route_alert(alert, idx, eligible)] if located else []
+            except Exception:
+                alert['assigned_user_ids'] = []
+            for u in technicians:
+                out.setdefault(u, []).append(alert)
+            continue
         if not located:
             # Alert info yang tidak terkait wilayah FTTH (perangkat SNMP/MikroTik, keamanan, dsb.)
             # → semua teknisi terdaftar, bukan hanya yang tanpa wilayah.

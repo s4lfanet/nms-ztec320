@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Alert FTTH ke semua teknisi (bisa dipilih)
+- Pengaturan baru di kartu Wilayah Teknisi: alert FTTH dikirim ke **semua teknisi terdaftar** (default) atau hanya teknisi wilayahnya. Wilayah tetap dicatat sebagai penanggung jawab insiden.
+
 ### 2026-11-26 — Alert info ke semua teknisi
 - Alert yang tidak terkait wilayah FTTH (perangkat SNMP, MikroTik, keamanan) kini dikirim ke SEMUA teknisi terdaftar (punya izin terima alert dan nomor WA), tidak lagi hanya teknisi tanpa wilayah. Alert ONU/ODP/OLT tetap mengikuti wilayah teknisi.
 
