@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Foto OLT otomatis distandarkan
+
+#### Diubah
+- Unggahan foto OLT (per OLT maupun per model) kini otomatis dikonversi ke PNG standar: sisi terpanjang maks 512 px, rasio asli tetap, orientasi kamera diluruskan, transparansi dipertahankan. Batas unggahan tetap 1,5 MB; gambar rusak atau terlalu besar resolusinya ditolak dengan pesan jelas.
+
 ### 2026-11-26 — Restore database dari UI
 
 #### Ditambahkan

@@ -1,4 +1,4 @@
-"""Foto/ikon OLT unggahan pengguna.
+"""Foto/ikon OLT unggahan pengguna. Semua unggahan otomatis diubah menjadi PNG standar (lihat normalize).
 
 Dua tingkat, urutan prioritas:
 1. Foto khusus satu OLT  → instance/olt_images/<olt_id>.<ext>
@@ -17,7 +17,9 @@ ALLOWED = {
     'jpg': b'\xff\xd8\xff',
     'webp': b'RIFF',
 }
-MAX_BYTES = 1_500_000
+MAX_BYTES = 1_500_000        # batas berkas unggahan asli
+STANDARD_PX = 512            # sisi terpanjang hasil standar (rasio asli dipertahankan)
+MAX_SOURCE_PIXELS = 40_000_000   # tolak gambar raksasa (bom dekompresi) sebelum dibuka penuh
 
 
 def _dir():
@@ -85,15 +87,42 @@ def _validate(data):
     return ext, ''
 
 
+def normalize(data):
+    """Ubah gambar unggahan apa pun (PNG/JPG/WEBP, resolusi berapa pun) menjadi PNG standar:
+    arah EXIF diluruskan, sisi terpanjang paling besar STANDARD_PX (rasio asli dipertahankan, tidak
+    diperbesar), transparansi dipertahankan, metadata dibuang. → (png_bytes, '') atau (None, pesan)."""
+    import io
+    from PIL import Image, ImageOps
+    try:
+        im = Image.open(io.BytesIO(data))
+        w, h = im.size
+        if w * h > MAX_SOURCE_PIXELS:
+            return None, 'Resolusi gambar terlalu besar'
+        im = ImageOps.exif_transpose(im)
+        im.load()
+    except Exception:
+        return None, 'Gambar rusak atau tidak bisa dibaca'
+    if im.mode not in ('RGB', 'RGBA'):
+        im = im.convert('RGBA' if ('A' in im.getbands() or 'transparency' in im.info) else 'RGB')
+    if max(im.size) > STANDARD_PX:
+        im.thumbnail((STANDARD_PX, STANDARD_PX), Image.LANCZOS)
+    out = io.BytesIO()
+    im.save(out, 'PNG', optimize=True)
+    return out.getvalue(), ''
+
+
 def save_model(key, data):
     if not key or not KEY_RE.match(key):
         return False, 'Vendor/model tidak valid'
     ext, msg = _validate(data)
     if not ext:
         return False, msg
+    png, msg = normalize(data)
+    if not png:
+        return False, msg
     remove_model(key)
-    with open(os.path.join(_model_dir(), f'{key}.{ext}'), 'wb') as f:
-        f.write(data)
+    with open(os.path.join(_model_dir(), f'{key}.png'), 'wb') as f:
+        f.write(png)
     return True, ''
 
 
@@ -140,9 +169,12 @@ def save(olt_id, data):
     ext, msg = _validate(data)
     if not ext:
         return False, msg
+    png, msg = normalize(data)
+    if not png:
+        return False, msg
     remove(olt_id)
-    with open(os.path.join(_dir(), f'{int(olt_id)}.{ext}'), 'wb') as f:
-        f.write(data)
+    with open(os.path.join(_dir(), f'{int(olt_id)}.png'), 'wb') as f:
+        f.write(png)
     return True, ''
 
 
