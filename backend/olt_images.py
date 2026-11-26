@@ -87,7 +87,7 @@ def _validate(data):
     return ext, ''
 
 
-def normalize(data):
+def normalize(data, remove_bg=True):
     """Ubah gambar unggahan apa pun (PNG/JPG/WEBP, resolusi berapa pun) menjadi PNG standar:
     arah EXIF diluruskan, sisi terpanjang paling besar STANDARD_PX (rasio asli dipertahankan, tidak
     diperbesar), transparansi dipertahankan, metadata dibuang. → (png_bytes, '') atau (None, pesan)."""
@@ -104,6 +104,15 @@ def normalize(data):
         return None, 'Gambar rusak atau tidak bisa dibaca'
     if im.mode not in ('RGB', 'RGBA'):
         im = im.convert('RGBA' if ('A' in im.getbands() or 'transparency' in im.info) else 'RGB')
+    if remove_bg:
+        import image_bg
+        work = im
+        if max(im.size) > 1024:        # segmentasi tak butuh resolusi tinggi → lebih cepat & hemat memori
+            work = im.copy()
+            work.thumbnail((1024, 1024), Image.LANCZOS)
+        res, removed = image_bg.remove_background(work)
+        if removed:
+            im = res
     if max(im.size) > STANDARD_PX:
         im.thumbnail((STANDARD_PX, STANDARD_PX), Image.LANCZOS)
     out = io.BytesIO()

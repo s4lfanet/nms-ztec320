@@ -40,5 +40,6 @@ pytest>=8.0
 
 # === Image processing (PWA/favicon generation from uploaded logo) ===
 Pillow>=13,<14
+onnxruntime>=1.18,<2
 fpdf2>=2.9
 pywebpush>=2.0
