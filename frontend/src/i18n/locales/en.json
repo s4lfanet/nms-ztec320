@@ -2630,7 +2630,8 @@
       "snmp_cpu_threshold": "High CPU at",
       "snmp_cpu_cycles": "…for",
       "snmp_temp_threshold": "High temperature at",
-      "snmp_rx_low_dbm": "SFP RX too low below"
+      "snmp_rx_low_dbm": "SFP RX too low below",
+      "snmp_hold_minutes": "Hold temp/SFP/error alerts until sustained (0 = immediate)"
     },
     "unit": {
       "min": "min",

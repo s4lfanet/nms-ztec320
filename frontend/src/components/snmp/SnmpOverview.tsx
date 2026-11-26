@@ -156,6 +156,7 @@ export const FIELDS: { key: string; step: number; unit: string }[] = [
   { key: 'snmp_cpu_cycles', step: 1, unit: 'poll' },
   { key: 'snmp_temp_threshold', step: 1, unit: '°C' },
   { key: 'snmp_rx_low_dbm', step: 0.5, unit: 'dBm' },
+  { key: 'snmp_hold_minutes', step: 1, unit: 'min' },
 ];
 
 export function AlertThresholdsButton() {
