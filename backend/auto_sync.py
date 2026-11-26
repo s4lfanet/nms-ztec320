@@ -139,10 +139,13 @@ def _sync_one_olt(olt_id, use_light):
                 db.session.commit()
 
             from snmp_collector import poll_olt
+            known_onus = ONU.query.filter_by(olt_id=olt.id).count()   # untuk menilai kelengkapan hasil sinkron
             result = poll_olt(olt, progress_cb=update_progress, light=use_light)
 
             if result.get('success'):
                 onu_count, stale_count = save_sync_result(olt, result, sync, light=use_light)
+                import sync_quality
+                sync_quality.record(olt, onu_count, known_onus, False)
                 print(f'  {olt.name}: OK — {onu_count} ONUs synced' + (f', {stale_count} stale removed' if stale_count else ''))
 
                 # Only check unregistered ONUs via CLI in full mode
@@ -182,6 +185,8 @@ def _sync_one_olt(olt_id, use_light):
                 except Exception as e:
                     print(f'  [{olt_id}] WARNING: WebSocket broadcast (error) failed: {e}')
                 print(f'  {olt.name}: ERROR: {result.get("message", "Unknown")}')
+                import sync_quality
+                sync_quality.record(olt, 0, known_onus, True, str(result.get('message') or (result.get('errors') or ['?'])[0])[:120])
                 return olt_id, False, result.get('message', 'Unknown'), 0
         except Exception as e:
             try:
@@ -220,6 +225,11 @@ with app.app_context():
                 last_full = last_full.replace(tzinfo=timezone.utc)
             if datetime.now(timezone.utc) - last_full > FULL_SYNC_INTERVAL:
                 use_light = False  # Periodic full sync
+        # Hormati polling_interval per OLT bila lebih lama dari siklus cron (5 mnt): lewati bila belum waktunya.
+        # (Hanya mengurangi beban; sinkron penuh terjadwal tetap berjalan sesuai FULL_SYNC_INTERVAL.)
+        import sync_quality
+        if use_light and not sync_quality.light_sync_due(olt.polling_interval, olt.last_sync, datetime.now(timezone.utc)):
+            continue
         sync_tasks.append((olt.id, use_light))
     db.session.remove()
 
@@ -262,6 +272,12 @@ else:
     print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] No OLTs to sync')
 
 print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Auto-sync complete')
+try:
+    import job_health
+    with app.app_context():
+        job_health.beat('auto-sync')     # tanda cron sinkron hidup (dipantau job_health)
+except Exception as e:
+    print(f'  heartbeat error: {e}')
 
 # A native segfault ("Segmentation fault", no Python traceback) has been
 # observed at interpreter shutdown after every cron run — faulthandler
