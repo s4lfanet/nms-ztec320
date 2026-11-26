@@ -4,6 +4,13 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Audit sinkronisasi OLT: penjaga kualitas data
+
+#### Ditambahkan
+- Alert **"Data sinkron tidak lengkap"** bila sinkron OLT gagal atau hanya membaca <50% ONU selama 3 siklus berturut-turut (OLT masih menjawab SNMP tetapi status/RX/TX membeku). Ada pesan pulih otomatis.
+- Cron `auto_sync` kini punya detak di job_health (alert bila tak berdetak >20 menit).
+- Pengaturan `polling_interval` per OLT kini dihormati bila lebih lama dari 5 menit (mengurangi beban OLT besar).
+
 ### 2026-11-26 — Pasang penghapus latar dari UI
 
 #### Ditambahkan

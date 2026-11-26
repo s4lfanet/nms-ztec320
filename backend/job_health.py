@@ -19,6 +19,7 @@ PREFIX_FLAG = 'job_stale_'
 # perlu: job hanya dianggap aktif bila ada perangkat yang dipantau (idle = wajar).
 JOBS = {
     'alert-monitor': ('Alert monitor', 15 * 60, None),
+    'auto-sync': ('Sinkron OLT (cron 5 menit)', 20 * 60, 'olt_sync'),
     'link-poller': ('Poller MikroTik/PPPoE', 15 * 60, 'mikrotik'),
     'snmp-poller': ('Poller perangkat SNMP', 30 * 60, 'snmp'),
     'traffic-poller': ('Poller trafik (cron 5 menit)', 45 * 60, 'olt'),
@@ -67,6 +68,9 @@ def _applicable(kind):
         if kind == 'snmp':
             from models import SnmpDevice
             return SnmpDevice.query.count() > 0
+        if kind == 'olt_sync':
+            from models import OLT
+            return OLT.query.filter_by(snmp_enabled=True).count() > 0
         if kind == 'olt_backup':
             from models import OLT
             return OLT.query.filter_by(auto_backup_enabled=True).count() > 0
