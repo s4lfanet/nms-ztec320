@@ -1,7 +1,8 @@
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Activity, DatabaseBackup, Download } from 'lucide-react';
-import { Badge, Button, Card } from './ui';
+import { Activity, DatabaseBackup, Download, RotateCcw, TriangleAlert, Upload } from 'lucide-react';
+import { Badge, Button, Card, Modal } from './ui';
 import { toast } from './Toast';
 import { api } from '../lib/api';
 
@@ -14,10 +15,47 @@ function age(sec: number | null | undefined, t: (k: string) => string) {
 }
 const mb = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 
+type Target = { kind: 'server'; name: string } | { kind: 'upload'; file: File };
+
+/** Pemulihan database: wajib ketik RESTORE. Salinan pengaman dibuat otomatis; layanan restart setelahnya. */
+function RestoreDialog({ target, onClose }: { target: Target | null; onClose: () => void }) {
+  const { t } = useTranslation();
+  const [word, setWord] = useState('');
+  const [done, setDone] = useState<string | null>(null);
+  const run = useMutation({
+    mutationFn: () => (target!.kind === 'server' ? api.systemRestoreFromBackup(target!.name) : api.systemRestoreUpload(target!.file)),
+    onSuccess: (r) => {
+      setDone(r.restarting ? t('syshealth.restoreDoneRestart') : t('syshealth.restoreDoneManual'));
+      if (r.restarting) setTimeout(() => window.location.reload(), 15_000);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const close = () => { if (!run.isPending) { setWord(''); setDone(null); onClose(); } };
+  const label = target ? (target.kind === 'server' ? target.name : target.file.name) : '';
+  return (
+    <Modal open={!!target} onClose={close} title={t('syshealth.restoreTitle')} icon={<TriangleAlert size={18} className="text-danger" />} size="sm"
+      footer={done ? <Button variant="primary" onClick={() => window.location.reload()}>{t('syshealth.reload')}</Button> : (
+        <div className="flex gap-2 justify-end">
+          <Button variant="secondary" onClick={close} disabled={run.isPending}>{t('common.cancel')}</Button>
+          <Button variant="danger" onClick={() => run.mutate()} loading={run.isPending} disabled={word !== 'RESTORE'}>{t('syshealth.restoreGo')}</Button>
+        </div>)}>
+      {done ? <p className="text-sm">{done}</p> : (
+        <div className="space-y-3 text-sm">
+          <p className="font-mono text-xs break-all">{label}</p>
+          <p className="text-tx2">{t('syshealth.restoreWarn')}</p>
+          <label className="block"><span className="label-sm">{t('syshealth.restoreType')}</span>
+            <input className="input-field" value={word} onChange={e => setWord(e.target.value)} autoComplete="off" /></label>
+        </div>)}
+    </Modal>
+  );
+}
+
 /** Status job latar belakang + backup (DB, salinan luar server, konfigurasi OLT). Hanya super admin. */
 export function SystemHealth() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const [target, setTarget] = useState<Target | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const { data } = useQuery({ queryKey: ['system-health'], queryFn: api.systemHealth, refetchInterval: 60_000 });
   const backup = useMutation({
     mutationFn: api.systemBackupDb,
@@ -55,7 +93,12 @@ export function SystemHealth() {
               : <span className="text-danger">{t('syshealth.noBackup')}</span>}
             {b.disk && <span className="text-xs text-tx3 ml-2">{t('syshealth.diskFree')} {b.disk.free_pct}%</span>}
           </div>
-          <Button variant="primary" onClick={() => backup.mutate()} loading={backup.isPending}>{t('syshealth.backupNow')}</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" onClick={() => backup.mutate()} loading={backup.isPending}>{t('syshealth.backupNow')}</Button>
+            <Button variant="secondary" icon={<Upload size={14} />} onClick={() => fileRef.current?.click()}>{t('syshealth.restoreUpload')}</Button>
+            <input ref={fileRef} type="file" accept=".db" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) setTarget({ kind: 'upload', file: f }); e.target.value = ''; }} />
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-sm mb-3">
@@ -76,6 +119,7 @@ export function SystemHealth() {
                 <span className="flex items-center gap-3 shrink-0 text-tx3">
                   {mb(f.size)}
                   <a className="text-accent inline-flex items-center gap-1" href={`/api/system/backups/${encodeURIComponent(f.name)}`} download><Download size={12} />{t('syshealth.download')}</a>
+                  {f.name.endsWith('.db') && <button type="button" className="text-danger inline-flex items-center gap-1" onClick={() => setTarget({ kind: 'server', name: f.name })}><RotateCcw size={12} />{t('syshealth.restore')}</button>}
                 </span>
               </div>
             ))}
@@ -99,6 +143,7 @@ export function SystemHealth() {
           </>
         )}
       </Card>
+      <RestoreDialog target={target} onClose={() => setTarget(null)} />
     </>
   );
 }

@@ -316,6 +316,17 @@ export const api = {
   snmpMaintenanceDelete: (id: number) => request<{ success: boolean }>(`/api/snmp/maintenance/${id}`, { method: 'DELETE' }),
   systemHealth: () => request<SystemHealth>('/api/system/health'),
   systemBackupDb: () => request<{ success: boolean; filename: string; size_bytes: number; remote_uploaded: boolean; remote_error: string }>('/api/system/backup-db', { method: 'POST' }),
+  systemRestoreFromBackup: (filename: string) =>
+    request<RestoreResult>('/api/system/restore-from-backup', { method: 'POST', body: JSON.stringify({ filename, confirm: 'RESTORE' }) }),
+  systemRestoreUpload: async (file: File): Promise<RestoreResult> => {
+    const fd = new FormData();
+    fd.append('backup_file', file);
+    fd.append('restart', '1');
+    const res = await fetch('/api/system/restore-db', { method: 'POST', body: fd, credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(data.message || `HTTP ${res.status}`, data.error_code, res.status, data);
+    return data as RestoreResult;
+  },
   snmpReportSend: () => request<{ success: boolean; message: string }>('/api/snmp/report/send', { method: 'POST' }),
   snmpDigestSend: () => request<{ success: boolean; message: string }>('/api/snmp/digest/send', { method: 'POST' }),
   snmpPortUpdate: (id: number, data: { ignored?: boolean; watched?: boolean }) => request<{ success: boolean; port: SnmpPort }>(`/api/snmp/ports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -1486,3 +1497,5 @@ export interface SystemHealth {
     disk: { free_pct: number; free_bytes: number } | null;
   };
 }
+
+export interface RestoreResult { success: boolean; message: string; pre_restore_backup?: string; restarting?: boolean }

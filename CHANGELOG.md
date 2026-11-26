@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Restore database dari UI
+
+#### Ditambahkan
+- Tombol **Pulihkan** pada tiap backup di kartu Backup, dan **Pulihkan dari berkas…** untuk unggah .db. Wajib ketik `RESTORE`; salinan pengaman dibuat otomatis, rollback otomatis bila hasil rusak, layanan restart setelahnya.
+
 ### 2026-11-26 — Status job & backup, salinan backup ke server lain
 
 #### Ditambahkan

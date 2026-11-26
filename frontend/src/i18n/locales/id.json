@@ -3040,6 +3040,15 @@
     "offsiteHint": "Backup hanya tersimpan di server ini. Isi BACKUP_REMOTE_SCP_TARGET di backend/.env (contoh user@host:/var/backups/nms/) agar backup harian disalin ke server lain.",
     "download": "Unduh",
     "oltBackup": "Backup konfigurasi OLT",
-    "never": "Belum pernah"
+    "never": "Belum pernah",
+    "restore": "Pulihkan",
+    "restoreUpload": "Pulihkan dari berkas…",
+    "restoreTitle": "Pulihkan database",
+    "restoreWarn": "Seluruh data saat ini diganti dengan isi backup ini (ONU, pengguna, pengaturan, riwayat). Salinan pengaman database sekarang dibuat otomatis, dan layanan akan restart. Perubahan sejak backup ini dibuat akan hilang.",
+    "restoreType": "Ketik RESTORE untuk melanjutkan",
+    "restoreGo": "Pulihkan sekarang",
+    "restoreDoneRestart": "Database dipulihkan. Layanan sedang restart; halaman dimuat ulang otomatis dalam beberapa detik. Anda mungkin perlu login lagi.",
+    "restoreDoneManual": "Database dipulihkan, tetapi layanan tidak bisa restart otomatis. Jalankan: sudo systemctl restart salfanet-nms",
+    "reload": "Muat ulang"
   }
 }
