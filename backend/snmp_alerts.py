@@ -17,7 +17,7 @@ Alert port hanya untuk port bertanda "Pantau" (uplink/backbone) — port akses
 pelanggan sengaja tidak dialert agar tidak berisik.
 """
 import logging
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from models import db, Notification, SystemConfig, SnmpDevice, SnmpPort, SnmpEvent, SnmpSample, SnmpSensorRule
 
@@ -37,12 +37,13 @@ DEFAULTS = {
     'snmp_flap_count': 4,
     'snmp_flap_minutes': 30,
     'snmp_rx_low_dbm': -25,
+    'snmp_hold_minutes': 3,
 }
 LIMITS = {
     'snmp_down_minutes': (1, 120), 'snmp_cpu_threshold': (10, 100), 'snmp_cpu_cycles': (1, 20),
     'snmp_temp_threshold': (30, 120), 'snmp_util_threshold': (10, 100), 'snmp_util_cycles': (1, 20),
     'snmp_err_threshold': (0.01, 100000), 'snmp_flap_count': (2, 50), 'snmp_flap_minutes': (5, 240),
-    'snmp_rx_low_dbm': (-40, 0),
+    'snmp_rx_low_dbm': (-40, 0), 'snmp_hold_minutes': (0, 60),
 }
 
 
@@ -124,9 +125,20 @@ def port_label(p):
     return p.name + (f' ({p.alias})' if p.alias else '')
 
 
+# Kategori tanpa persistensi bawaan (satu bacaan sudah memicu) → ditahan `snmp_hold_minutes`
+# supaya WARNING lalu UP dalam hitungan menit (naik-turun sesaat) tidak membanjiri grup.
+HOLD_CATS = ('snmp_temp', 'snmp_optical', 'snmp_port_err')
+
+
 class _Ctx:
+    hold = 0
+
     def __init__(self, now, notifications_to_create, alerts_to_send):
         self.now, self.notifs, self.alerts = now, notifications_to_create, alerts_to_send
+        try:
+            self.hold = int(get_settings()['snmp_hold_minutes'])
+        except Exception:
+            self.hold = 0
         self.open = {}
         for n in Notification.query.filter(Notification.category.in_(CATEGORIES),
                                            Notification.resolved.is_(False)).all():
@@ -135,10 +147,36 @@ class _Ctx:
     def is_open(self, category, target_type, target_id):
         return (category, target_type, target_id) in self.open
 
+    def _held(self, category, target_id, active):
+        """True bila kondisi bermasalah belum bertahan cukup lama untuk dialert.
+        Waktu mulai disimpan di SystemConfig `snmp_hold_<kategori>_<id>`; hilang saat kondisi pulih."""
+        k = f'snmp_hold_{category}_{target_id}'
+        row = SystemConfig.query.filter_by(key=k).first()
+        if not active:
+            if row:
+                db.session.delete(row)
+            return False
+        now = self.now.replace(tzinfo=None)
+        if row is None:
+            db.session.add(SystemConfig(key=k, value=now.isoformat()))
+            return True
+        try:
+            since = datetime.fromisoformat(row.value)
+        except ValueError:
+            row.value = now.isoformat()
+            return True
+        if now - since >= timedelta(minutes=self.hold):
+            db.session.delete(row)
+            return False
+        return True
+
     def toggle(self, dev, category, target_type, target_id, active, severity, title, message,
                recovery_title, recovery_msg, quiet_recovery=False):
         key = (category, target_type, target_id)
         notif = self.open.get(key)
+        if self.hold > 0 and category in HOLD_CATS and notif is None:
+            if self._held(category, target_id, active):
+                return
         base = {'olt_id': None, 'olt_name': dev.name, 'olt_ip': dev.host,
                 'target_type': target_type, 'target_id': target_id}
         if active and not notif:

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from tests.test_link_state import ctx  # noqa
 
 import snmp_alerts
 
@@ -33,3 +34,24 @@ def test_toggle_alert_dan_pulih_berisi_waktu_dan_lama():
     c.toggle(dev, 'snmp_cpu', 'snmp', 1, False, 'warning', 't', 'm', 'ok', 'CPU normal')
     rec = alerts[-1]['message']
     assert 'Lama bermasalah: 25 menit' in rec and 'SW1 (10.0.0.1)' in rec and 'WIB' in rec
+
+
+def test_hold_menahan_alert_sesaat_dan_melepas_setelah_bertahan(ctx):
+    from models import db, SystemConfig
+    now = datetime(2026, 11, 26, 6, 0, 0)
+    dev = type('D', (), {'name': 'SW1', 'host': '10.0.0.1'})()
+
+    def run(t, active):
+        alerts = []
+        c = snmp_alerts._Ctx.__new__(snmp_alerts._Ctx)
+        c.now, c.notifs, c.alerts, c.open, c.hold = t, [], alerts, {}, 3
+        c.toggle(dev, 'snmp_temp', 'snmp', 7, active, 'warning', 't', 'Suhu', 'ok', 'normal')
+        db.session.commit()
+        return alerts
+
+    assert run(now, True) == []                                   # baru terlihat → ditahan
+    assert run(now + timedelta(minutes=1), True) == []            # belum 3 menit
+    assert run(now + timedelta(minutes=2), False) == []           # pulih sebelum waktunya → senyap
+    assert SystemConfig.query.filter_by(key='snmp_hold_snmp_temp_7').first() is None
+    assert run(now + timedelta(minutes=10), True) == []           # mulai lagi dari nol
+    assert len(run(now + timedelta(minutes=14), True)) == 1       # bertahan ≥3 menit → terkirim
