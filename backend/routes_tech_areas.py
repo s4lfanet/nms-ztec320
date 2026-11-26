@@ -78,6 +78,46 @@ def add_area():
     return jsonify({'success': True, 'area': _row(a)})
 
 
+@bp.route('/api/technician-areas/bulk', methods=['POST'])
+@login_required
+@permission_required('manage_users')
+def add_areas_bulk():
+    """Beberapa teknisi × beberapa node sekaligus (idempoten: pasangan yang ada hanya diubah perannya).
+    Body: {user_ids: [..], nodes: [{node_type, node_id}, ..], role}"""
+    d = request.get_json() or {}
+    role = 'backup' if d.get('role') == 'backup' else 'primary'
+    try:
+        user_ids = sorted({int(x) for x in (d.get('user_ids') or [])})
+        nodes = {(str(n.get('node_type') or ''), int(n.get('node_id'))) for n in (d.get('nodes') or [])}
+    except (TypeError, ValueError, AttributeError):
+        return jsonify({'success': False, 'message': 'Data tidak valid'}), 400
+    if not user_ids or not nodes:
+        return jsonify({'success': False, 'message': 'Pilih minimal satu teknisi dan satu wilayah'}), 400
+    if len(user_ids) * len(nodes) > 2000:
+        return jsonify({'success': False, 'message': 'Terlalu banyak sekaligus (maks 2000 kombinasi)'}), 400
+    users = {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()}
+    if len(users) != len(user_ids):
+        return jsonify({'success': False, 'message': 'Ada teknisi yang tidak ditemukan'}), 404
+    names = {}
+    for nt, nid in nodes:
+        if nt not in _TYPES or (names.setdefault((nt, nid), _node_name(nt, nid)) is None):
+            return jsonify({'success': False, 'message': f'Wilayah tidak valid: {nt} #{nid}'}), 404
+    existing = {(a.user_id, a.node_type, a.node_id): a
+                for a in TechnicianArea.query.filter(TechnicianArea.user_id.in_(user_ids)).all()}
+    added = changed = 0
+    for uid in user_ids:
+        for nt, nid in sorted(nodes):
+            a = existing.get((uid, nt, nid))
+            if a is None:
+                db.session.add(TechnicianArea(user_id=uid, node_type=nt, node_id=nid, role=role)); added += 1
+            elif a.role != role:
+                a.role = role; changed += 1
+    db.session.commit()
+    log_action('technician_area_bulk', 'users', target=','.join(users[u].username for u in user_ids),
+               detail=f'{len(nodes)} wilayah ({role}): +{added}, diubah {changed}')
+    return jsonify({'success': True, 'added': added, 'changed': changed})
+
+
 @bp.route('/api/technician-areas/<int:area_id>', methods=['DELETE'])
 @login_required
 @permission_required('manage_users')

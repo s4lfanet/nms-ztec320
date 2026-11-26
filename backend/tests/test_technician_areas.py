@@ -125,3 +125,25 @@ class TestApi:
         assert len(rows) == 1 and rows[0]['user_name'] == 'Andi'
         assert client.delete(f'/api/technician-areas/{aid}', headers=self.H).get_json()['success']
         assert client.get('/api/technician-areas').get_json()['areas'] == []
+
+    def test_bulk_banyak_teknisi_banyak_wilayah(self, client):
+        self._login(client)
+        with app.app_context():
+            a, b = _tech('andi2', '62811'), _tech('budi2', '62822')
+            olt, odc, odp, onu = _topo()
+            ids = (a.id, b.id, olt.id, odc.id, odp.id)
+        ua, ub, oid, cid, pid = ids
+        nodes = [{'node_type': 'olt', 'node_id': oid}, {'node_type': 'odc', 'node_id': cid}, {'node_type': 'odp', 'node_id': pid}]
+        r = client.post('/api/technician-areas/bulk', json={'user_ids': [ua, ub], 'nodes': nodes}, headers=self.H).get_json()
+        assert r['success'] and r['added'] == 6 and r['changed'] == 0
+        # ulangi = idempoten; ganti peran = diubah, bukan digandakan
+        r = client.post('/api/technician-areas/bulk', json={'user_ids': [ua], 'nodes': nodes, 'role': 'backup'}, headers=self.H).get_json()
+        assert r['added'] == 0 and r['changed'] == 3
+        assert len(client.get('/api/technician-areas').get_json()['areas']) == 6
+        # validasi
+        bad = client.post('/api/technician-areas/bulk', json={'user_ids': [ua], 'nodes': []}, headers=self.H)
+        assert bad.status_code == 400
+        bad = client.post('/api/technician-areas/bulk', json={'user_ids': [ua], 'nodes': [{'node_type': 'odc', 'node_id': 9999}]}, headers=self.H)
+        assert bad.status_code == 404
+        bad = client.post('/api/technician-areas/bulk', json={'user_ids': [987654], 'nodes': nodes}, headers=self.H)
+        assert bad.status_code == 404
