@@ -1831,12 +1831,13 @@ def _technician_recipients(alerts):
 
     Teknisi dengan wilayah (TechnicianArea) hanya menerima alert wilayahnya
     (atau ONU yang ditugaskan ke mereka). Teknisi tanpa wilayah (admin/NOC)
-    menerima semua alert seperti sebelumnya. Bila sebuah alert tidak cocok
+    menerima semua alert seperti sebelumnya. Alert yang tidak punya lokasi di topologi FTTH
+    (SNMP, MikroTik, keamanan: bersifat info) dikirim ke SEMUA teknisi terdaftar. Bila sebuah alert tidak cocok
     dengan wilayah mana pun dan tidak ada teknisi tanpa wilayah, alert dikirim
     ke semua teknisi supaya tidak hilang. Hasil routing dicatat di
     alert['assigned_user_ids']."""
     from models import User
-    from alert_routing import load_areas, route_alert
+    from alert_routing import load_areas, route_alert, alert_levels
     users = User.query.filter(User.phone != None, User.phone != '', User.is_super_admin == False).all()  # noqa: E711,E712
     technicians = [u for u in users if u.role and u.role.has_permission('receive_alerts')]
     if not technicians:
@@ -1851,6 +1852,17 @@ def _technician_recipients(alerts):
     noc = [u for u in technicians if u.id not in with_area]
     out = {}
     for alert in alerts:
+        try:
+            located = bool(alert_levels(alert))
+        except Exception:
+            located = True
+        if not located:
+            # Alert info yang tidak terkait wilayah FTTH (perangkat SNMP/MikroTik, keamanan, dsb.)
+            # → semua teknisi terdaftar, bukan hanya yang tanpa wilayah.
+            alert['assigned_user_ids'] = []
+            for u in technicians:
+                out.setdefault(u, []).append(alert)
+            continue
         routed = route_alert(alert, idx, eligible)
         alert['assigned_user_ids'] = [u.id for u in routed]
         targets = list(routed)

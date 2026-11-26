@@ -94,6 +94,23 @@ class TestRouting:
             assert route_alert(alert, idx, {andi.id: andi}, role='backup') == [andi]
 
 
+    def test_alert_info_tanpa_lokasi_ke_semua_teknisi(self, client):
+        """Alert SNMP/MikroTik (tanpa OLT/ODP) → semua teknisi, walau semuanya punya wilayah."""
+        from alerts import _technician_recipients
+        with app.app_context():
+            andi, budi = _tech('andi', '62811'), _tech('budi', '62812')
+            olt, odc, odp, onu = _topo()
+            db.session.add(TechnicianArea(user_id=andi.id, node_type='odc', node_id=odc.id))
+            db.session.add(TechnicianArea(user_id=budi.id, node_type='olt', node_id=olt.id))
+            db.session.commit()
+            snmp = {'message': 'CPU', 'type': 'snmp_cpu', 'target_type': 'snmp', 'target_id': 5, 'olt_id': None}
+            out = _technician_recipients([snmp])
+            assert set(u.username for u in out) == {'andi', 'budi'}
+            # alert ONU tetap per wilayah
+            out2 = _technician_recipients([{'message': 'x', 'olt_id': olt.id, 'onu_ids': [onu.id]}])
+            assert set(u.username for u in out2) == {'andi'}
+
+
 class TestApi:
     H = {'X-Requested-With': 'XMLHttpRequest'}
 
