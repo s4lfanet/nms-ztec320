@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Alert info ke semua teknisi
+- Alert yang tidak terkait wilayah FTTH (perangkat SNMP, MikroTik, keamanan) kini dikirim ke SEMUA teknisi terdaftar (punya izin terima alert dan nomor WA), tidak lagi hanya teknisi tanpa wilayah. Alert ONU/ODP/OLT tetap mengikuti wilayah teknisi.
+
 ### 2026-11-26 — Wilayah teknisi: tambah banyak sekaligus
 - Form wilayah teknisi di Pengaturan Alert kini memilih beberapa teknisi dan beberapa wilayah (OLT/OTB/JC/ODC/ODP) sekaligus, dengan filter jenis, kotak cari, dan "pilih semua yang tampil". Endpoint baru `POST /api/technician-areas/bulk`.
 
