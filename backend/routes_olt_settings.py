@@ -1456,6 +1456,27 @@ def _bg_result(info):
     return {'background_removed': bool(info.get('background_removed')), 'bg': image_bg.status()}
 
 
+@bp.route('/api/olt-images/engine', methods=['GET'])
+@login_required
+def olt_images_engine():
+    """Status mesin hapus-latar + kemajuan pemasangan."""
+    import image_bg
+    return jsonify({'success': True, 'bg': image_bg.status(), 'install': image_bg.install_state()})
+
+
+@bp.route('/api/olt-images/engine/install', methods=['POST'])
+@login_required
+@super_admin_required
+def olt_images_engine_install():
+    """Pasang onnxruntime + unduh model hapus-latar (jalan di latar belakang; pantau lewat GET /engine)."""
+    import image_bg
+    from flask import current_app
+    started = image_bg.start_install(current_app._get_current_object())
+    if started:
+        log_action('olt_engine_install', 'system', detail='pip install onnxruntime + model hapus-latar')
+    return jsonify({'success': True, 'started': started, 'bg': image_bg.status(), 'install': image_bg.install_state()})
+
+
 @bp.route('/api/olt-images/reprocess', methods=['POST'])
 @login_required
 @permission_required('settings_ip_olts')

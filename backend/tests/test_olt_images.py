@@ -245,3 +245,67 @@ def test_upload_reports_background_status(ctx, tmp_path, monkeypatch):
     r = c.post(f'/api/olt/{olt.id}/image', headers=H, data={'image': (io.BytesIO(flat.getvalue()), 'b.png')},
                content_type='multipart/form-data').get_json()
     assert r['success'] and r['background_removed'] is False
+
+
+def _wait_install(timeout=5):
+    import time
+    t = time.time()
+    while image_bg.install_state()['state'] == 'running' and time.time() - t < timeout:
+        time.sleep(0.02)
+    return image_bg.install_state()
+
+
+def test_engine_install_success_and_failure(ctx, monkeypatch):
+    import subprocess
+    calls = []
+
+    class R:
+        def __init__(self, rc): self.returncode, self.stdout, self.stderr = rc, 'out', 'err'
+    rc = {'v': 0}
+    monkeypatch.setattr(subprocess, 'run', lambda cmd, **k: calls.append(cmd) or R(rc['v']))
+    monkeypatch.setattr(image_bg, '_get_session', lambda: object())          # model siap
+    c = _client_admin()
+    r = c.post('/api/olt-images/engine/install', headers=H).get_json()
+    assert r['success'] and r['started'] is True
+    st = _wait_install()
+    assert st['state'] == 'done' and calls and calls[0][1:4] == ['-m', 'pip', 'install'] and image_bg.PIP_SPEC in calls[0]
+    # pip gagal → failed + log
+    rc['v'] = 1
+    c.post('/api/olt-images/engine/install', headers=H)
+    st = _wait_install()
+    assert st['state'] == 'failed' and st['step'] == 'pip' and st['log']
+    # model gagal dimuat → failed di langkah model
+    rc['v'] = 0
+    monkeypatch.setattr(image_bg, '_get_session', lambda: None)
+    c.post('/api/olt-images/engine/install', headers=H)
+    st = _wait_install()
+    assert st['state'] == 'failed' and st['step'] == 'model'
+    g = c.get('/api/olt-images/engine', headers=H).get_json()
+    assert g['success'] and 'engine' in g['bg'] and g['install']['state'] == 'failed'
+
+
+def test_engine_install_not_started_twice_and_super_admin_only(ctx, monkeypatch):
+    import threading
+    gate = threading.Event()
+    import subprocess
+
+    class R:
+        returncode, stdout, stderr = 0, '', ''
+    monkeypatch.setattr(subprocess, 'run', lambda cmd, **k: gate.wait(3) and R())
+    monkeypatch.setattr(image_bg, '_get_session', lambda: object())
+    c = _client_admin()
+    assert c.post('/api/olt-images/engine/install', headers=H).get_json()['started'] is True
+    assert c.post('/api/olt-images/engine/install', headers=H).get_json()['started'] is False   # sudah berjalan
+    gate.set(); _wait_install()
+
+
+def test_engine_install_forbidden_for_non_super_admin(ctx, monkeypatch):
+    started = []
+    monkeypatch.setattr(image_bg, 'start_install', lambda app: started.append(1) or True)
+    u = User(username='plain' + secrets.token_hex(2), full_name='p', is_super_admin=False)
+    u.set_password(secrets.token_hex(8)); db.session.add(u); db.session.commit()
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s['_user_id'] = str(u.id); s['_fresh'] = True
+    assert c.post('/api/olt-images/engine/install', headers=H).status_code in (401, 403)
+    assert not started

@@ -597,7 +597,16 @@
     "reprocessMsg": "All uploaded OLT photos are reprocessed: background removed and size standardised. Old photos are replaced.",
     "reprocessDone": "{{total}} photos processed, background removed on {{removed}}, failed {{failed}}.",
     "bgNotRemoved": "Photo saved, but the background could not be removed automatically. {{why}}",
-    "bgEngineOff": "The background remover is not active. {{why}}"
+    "bgEngineOff": "The background remover is not active. {{why}}",
+    "engineOk": "Background remover is active.",
+    "engineOff": "Background remover is not active",
+    "engineOffHint": "Needs the onnxruntime package and a model download (~43 MB).",
+    "engineInstall": "Install now",
+    "engineAdminOnly": "Only a super admin can install it.",
+    "engineStep_pip": "Installing onnxruntime… (1–3 min)",
+    "engineStep_model": "Downloading the background-removal model… (~43 MB)",
+    "engineReady": "Background remover is ready. Press \"Reprocess all photos\".",
+    "engineFailed": "Installation failed. See the details below the button."
   },
   "migrate": {
     "selectFirst": "Select ONUs and target PON",

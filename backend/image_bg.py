@@ -7,6 +7,7 @@ dibuang dan foto asli dipakai apa adanya — fungsi ini tidak pernah membuat ung
 import hashlib
 import logging
 import os
+import sys
 import threading
 import time
 import urllib.request
@@ -167,3 +168,56 @@ def remove_background(im):
     except Exception as e:
         logger.warning('hapus latar gagal: %s', e)
         return im, False
+
+
+# ─── Pemasangan mesin dari UI (tanpa masuk VPS) ───
+
+PIP_SPEC = 'onnxruntime>=1.18,<2'
+_install = {'state': 'idle', 'step': '', 'log': '', 'started': 0.0, 'finished': 0.0}
+_install_lock = threading.Lock()
+
+
+def install_state():
+    return dict(_install)
+
+
+def _reset_engine():
+    """Setelah paket terpasang: lupakan kegagalan lama supaya sesi dibuat ulang."""
+    global _session, _retry_after, _last_error
+    import importlib
+    importlib.invalidate_caches()
+    for m in [m for m in list(sys.modules) if m == 'onnxruntime' or m.startswith('onnxruntime.')]:
+        del sys.modules[m]
+    _session, _retry_after, _last_error = None, 0.0, ''
+
+
+def _run_install(app):
+    global _install
+    try:
+        _install.update(step='pip')
+        import subprocess
+        r = subprocess.run([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', PIP_SPEC],
+                           capture_output=True, text=True, timeout=900)
+        _install['log'] = ((r.stdout or '') + (r.stderr or ''))[-600:]
+        if r.returncode != 0:
+            _install.update(state='failed', step='pip', finished=time.time())
+            return
+        _reset_engine()
+        _install.update(step='model')          # unduh model ±43 MB + muat sesi
+        with app.app_context():
+            ok = _get_session() is not None
+            if not ok:
+                _install['log'] = (_last_error or 'model gagal dimuat')[-600:]
+        _install.update(state='done' if ok else 'failed', step='' if ok else 'model', finished=time.time())
+    except Exception as e:
+        _install.update(state='failed', log=str(e)[-600:], finished=time.time())
+
+
+def start_install(app):
+    """Mulai pemasangan di thread latar. → False bila sudah berjalan."""
+    with _install_lock:
+        if _install['state'] == 'running':
+            return False
+        _install.update(state='running', step='pip', log='', started=time.time(), finished=0.0)
+    threading.Thread(target=_run_install, args=(app,), daemon=True, name='olt-bg-engine-install').start()
+    return True
