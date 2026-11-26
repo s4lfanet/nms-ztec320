@@ -2630,7 +2630,8 @@
       "snmp_cpu_threshold": "CPU tinggi",
       "snmp_cpu_cycles": "…selama",
       "snmp_temp_threshold": "Suhu tinggi",
-      "snmp_rx_low_dbm": "Redaman RX SFP terlalu rendah di bawah"
+      "snmp_rx_low_dbm": "Redaman RX SFP terlalu rendah di bawah",
+      "snmp_hold_minutes": "Tahan alert suhu/SFP/error sampai bertahan (0 = langsung)"
     },
     "unit": {
       "min": "menit",

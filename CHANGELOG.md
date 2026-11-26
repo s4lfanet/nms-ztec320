@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Pengaturan lama tahan alert SNMP
+- Ambang alert SNMP (modal dan halaman pengaturan) kini punya isian "Tahan alert suhu/SFP/error sampai bertahan" (menit, 0 = langsung).
+
 ### 2026-11-26 — Tahan alert SNMP yang naik-turun sesaat
 - Alert suhu, redaman SFP, dan error port baru dikirim bila kondisi bertahan ≥ `snmp_hold_minutes` (default 3 menit, 0 = mati). Kalau pulih sebelum itu, tidak ada pesan WARNING maupun UP, jadi grup tidak ramai oleh gangguan sesaat.
 
