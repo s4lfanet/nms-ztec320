@@ -1387,12 +1387,13 @@ def olt_image_upload(olt_id):
     if not db.session.get(OLT, olt_id):
         return jsonify({'success': False, 'message': 'OLT not found'}), 404
     f = request.files.get('image')
-    ok, msg = olt_images.save(olt_id, f.read(olt_images.MAX_BYTES + 1) if f else b'')
+    info = {}
+    ok, msg = olt_images.save(olt_id, f.read(olt_images.MAX_BYTES + 1) if f else b'', info=info)
     if not ok:
         return jsonify({'success': False, 'message': msg}), 400
     log_action('olt_image_upload', 'olt', target=str(olt_id))
     _invalidate_dashboard_cache()
-    return jsonify({'success': True, 'image_url': olt_images.url(olt_id)})
+    return jsonify({'success': True, 'image_url': olt_images.url(olt_id), **_bg_result(info)})
 
 
 # ─── Foto per model OLT (unggah sekali, dipakai semua OLT vendor+model sama) ───
@@ -1441,12 +1442,30 @@ def olt_model_image_upload():
     if not key or not model:
         return jsonify({'success': False, 'message': 'Vendor dan model wajib diisi'}), 400
     f = request.files.get('image')
-    ok, msg = olt_images.save_model(key, f.read(olt_images.MAX_BYTES + 1) if f else b'')
+    info = {}
+    ok, msg = olt_images.save_model(key, f.read(olt_images.MAX_BYTES + 1) if f else b'', info=info)
     if not ok:
         return jsonify({'success': False, 'message': msg}), 400
     log_action('olt_model_image_upload', 'olt', target=key)
     _invalidate_dashboard_cache()
-    return jsonify({'success': True, 'key': key, 'image_url': olt_images.model_url(vendor, model)})
+    return jsonify({'success': True, 'key': key, 'image_url': olt_images.model_url(vendor, model), **_bg_result(info)})
+
+
+def _bg_result(info):
+    import image_bg
+    return {'background_removed': bool(info.get('background_removed')), 'bg': image_bg.status()}
+
+
+@bp.route('/api/olt-images/reprocess', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def olt_images_reprocess():
+    """Proses ulang semua foto OLT yang sudah tersimpan (hapus latar + standar 512 px PNG)."""
+    import image_bg
+    res = olt_images.reprocess_all()
+    log_action('olt_images_reprocess', 'olt', detail=f"{res['total']} foto, latar terhapus {res['removed']}, gagal {res['failed']}")
+    _invalidate_dashboard_cache()
+    return jsonify({'success': True, **res, 'bg': image_bg.status()})
 
 
 @bp.route('/api/olt-models/<key>/image', methods=['DELETE'])

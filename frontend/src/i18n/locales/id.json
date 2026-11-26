@@ -591,7 +591,13 @@
     "modelPhotoSaved": "Foto {{model}} disimpan",
     "modelPhotoRemoveTitle": "Hapus foto {{model}}?",
     "modelPhotoRemoveMsg": "OLT dengan model ini kembali memakai ilustrasi (kecuali yang punya foto khusus).",
-    "modelPhotosTab": "Foto OLT"
+    "modelPhotosTab": "Foto OLT",
+    "reprocess": "Proses ulang semua foto (hapus latar)",
+    "reprocessTitle": "Proses ulang foto?",
+    "reprocessMsg": "Semua foto OLT yang sudah diunggah diproses ulang: latar dihapus dan ukuran distandarkan. Foto lama diganti hasilnya.",
+    "reprocessDone": "{{total}} foto diproses, latar terhapus pada {{removed}}, gagal {{failed}}.",
+    "bgNotRemoved": "Foto disimpan, tetapi latar tidak bisa dihapus otomatis. {{why}}",
+    "bgEngineOff": "Mesin hapus-latar belum aktif. {{why}}"
   },
   "migrate": {
     "selectFirst": "Pilih ONU dan PON tujuan",

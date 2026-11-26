@@ -87,7 +87,7 @@ def _validate(data):
     return ext, ''
 
 
-def normalize(data, remove_bg=True):
+def normalize(data, remove_bg=True, info=None):
     """Ubah gambar unggahan apa pun (PNG/JPG/WEBP, resolusi berapa pun) menjadi PNG standar:
     arah EXIF diluruskan, sisi terpanjang paling besar STANDARD_PX (rasio asli dipertahankan, tidak
     diperbesar), transparansi dipertahankan, metadata dibuang. → (png_bytes, '') atau (None, pesan)."""
@@ -113,6 +113,8 @@ def normalize(data, remove_bg=True):
         res, removed = image_bg.remove_background(work)
         if removed:
             im = res
+        if info is not None:
+            info['background_removed'] = bool(removed)
     if max(im.size) > STANDARD_PX:
         im.thumbnail((STANDARD_PX, STANDARD_PX), Image.LANCZOS)
     out = io.BytesIO()
@@ -120,13 +122,13 @@ def normalize(data, remove_bg=True):
     return out.getvalue(), ''
 
 
-def save_model(key, data):
+def save_model(key, data, info=None):
     if not key or not KEY_RE.match(key):
         return False, 'Vendor/model tidak valid'
     ext, msg = _validate(data)
     if not ext:
         return False, msg
-    png, msg = normalize(data)
+    png, msg = normalize(data, info=info)
     if not png:
         return False, msg
     remove_model(key)
@@ -173,12 +175,12 @@ def detect_ext(data):
     return None
 
 
-def save(olt_id, data):
+def save(olt_id, data, info=None):
     """→ (ok, pesan). Mengganti foto lama apa pun formatnya."""
     ext, msg = _validate(data)
     if not ext:
         return False, msg
-    png, msg = normalize(data)
+    png, msg = normalize(data, info=info)
     if not png:
         return False, msg
     remove(olt_id)
@@ -192,3 +194,32 @@ def remove(olt_id):
         p = os.path.join(_dir(), f'{int(olt_id)}.{ext}')
         if os.path.isfile(p):
             os.remove(p)
+
+
+def reprocess_all():
+    """Proses ulang SEMUA foto tersimpan (per OLT & per model): hapus latar + standarkan, lalu simpan
+    sebagai PNG. → {'total','removed','failed'}. Foto yang gagal diproses dibiarkan apa adanya."""
+    res = {'total': 0, 'removed': 0, 'failed': 0}
+    for d, rm in ((_dir(), remove), (_model_dir(), remove_model)):
+        for name in sorted(os.listdir(d)):
+            stem, _, ext = name.rpartition('.')
+            if ext not in ALLOWED or not stem:
+                continue
+            path = os.path.join(d, name)
+            res['total'] += 1
+            try:
+                with open(path, 'rb') as f:
+                    data = f.read()
+                info = {}
+                png, _msg = normalize(data, info=info)
+                if not png:
+                    res['failed'] += 1
+                    continue
+                if ext != 'png':
+                    os.remove(path)
+                with open(os.path.join(d, f'{stem}.png'), 'wb') as f:
+                    f.write(png)
+                res['removed'] += 1 if info.get('background_removed') else 0
+            except Exception:
+                res['failed'] += 1
+    return res
