@@ -581,7 +581,7 @@
     "migrated": "ONU berhasil dimigrasi",
     "crossDone": "Migrasi antar-OLT selesai",
     "modelPhotos": "Foto per model OLT",
-    "modelPhotosHint": "Unggah foto asli tiap model (dari rak, brosur, atau situs vendor yang Anda simpan). Satu foto otomatis dipakai semua OLT dengan model yang sama; foto khusus satu OLT tetap diutamakan. PNG/JPG/WebP, maks 1,5 MB.",
+    "modelPhotosHint": "Unggah foto asli tiap model (dari rak, brosur, atau situs vendor yang Anda simpan). Satu foto otomatis dipakai semua OLT dengan model yang sama; foto khusus satu OLT tetap diutamakan. PNG/JPG/WebP, maks 1,5 MB. Resolusi apa pun otomatis diubah ke PNG standar (sisi terpanjang maks 512 px, rasio asli tetap).",
     "modelPhotosAll": "Tampilkan semua model ({{n}})",
     "modelPhotosInUse": "Hanya model yang dipakai",
     "modelPhotoCount": "{{n}} OLT",
