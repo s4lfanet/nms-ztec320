@@ -117,11 +117,15 @@ def check_snmp_devices(now, notifications_to_create, alerts_to_send):
             notifications_to_create.append({'olt_id': None, 'onu_id': None, 'severity': 'critical',
                                             'category': 'snmp_down', 'title': title, 'message': msg,
                                             'target_roles': '', 'target_type': 'snmp', 'target_id': dev.id})
-            alerts_to_send.append(dict(base, type='snmp_down', severity='critical', title=title, message=msg,
-                                       is_recovery=False))
+            from snmp_alerts import stamp, fmt_duration
+            alerts_to_send.append(dict(base, type='snmp_down', severity='critical', title=title,
+                                       message=stamp(msg, now), is_recovery=False))
         elif notif and dev.status == 'up':
+            from snmp_alerts import stamp, fmt_duration
             notif.resolved, notif.resolved_at, notif.is_read = True, now, True
             alerts_to_send.append(dict(base, type='snmp_down_recovery', severity='info',
                                        title=f'✅ Perangkat pulih: {dev.name}',
-                                       message=f'✅ Perangkat {dev.name} ({dev.host}) kembali terjangkau.',
+                                       message=stamp(f'✅ Perangkat {dev.name} ({dev.host}) kembali terjangkau.'
+                                                     + (f'\nLama tidak terjangkau: {fmt_duration(now - (notif.created_at.replace(tzinfo=None) if notif.created_at else now))}'
+                                                        if notif.created_at else ''), now),
                                        is_recovery=True))

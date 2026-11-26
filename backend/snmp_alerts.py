@@ -17,7 +17,7 @@ Alert port hanya untuk port bertanda "Pantau" (uplink/backbone) — port akses
 pelanggan sengaja tidak dialert agar tidak berisik.
 """
 import logging
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from models import db, Notification, SystemConfig, SnmpDevice, SnmpPort, SnmpEvent, SnmpSample, SnmpSensorRule
 
@@ -99,6 +99,27 @@ def _fmt_bps(v):
     return f'{v:.0f} bps'
 
 
+def stamp(msg, now):
+    """Tambahkan baris waktu (zona waktu sistem, mis. WIB) di akhir pesan alert."""
+    try:
+        from alerts import _get_tz
+        dt = now.replace(tzinfo=timezone.utc) if now.tzinfo is None else now
+        local = dt.astimezone(_get_tz())
+        return f'{msg}\n\n🕒 Waktu: {local.strftime("%d/%m/%Y, %H.%M.%S")} {local.tzname() or ""}'.rstrip()
+    except Exception:
+        return msg
+
+
+def fmt_duration(delta):
+    """'5 menit', '2 jam 10 menit', '1 hari 3 jam' — untuk pesan pulih."""
+    mins = max(int(delta.total_seconds() // 60), 0)
+    if mins < 60:
+        return f'{mins} menit'
+    if mins < 1440:
+        return f'{mins // 60} jam' + (f' {mins % 60} menit' if mins % 60 else '')
+    return f'{mins // 1440} hari' + (f' {(mins % 1440) // 60} jam' if (mins % 1440) // 60 else '')
+
+
 def port_label(p):
     return p.name + (f' ({p.alias})' if p.alias else '')
 
@@ -124,14 +145,22 @@ class _Ctx:
             self.notifs.append({'olt_id': None, 'onu_id': None, 'severity': severity, 'category': category,
                                 'title': title, 'message': message, 'target_roles': '',
                                 'target_type': target_type, 'target_id': target_id})
-            self.alerts.append(dict(base, type=category, severity=severity, title=title, message=message,
-                                    is_recovery=False))
+            self.alerts.append(dict(base, type=category, severity=severity, title=title,
+                                    message=stamp(message, self.now), is_recovery=False))
             self.open[key] = True  # cegah duplikat dalam siklus yang sama
         elif not active and notif is not None and notif is not True:
             notif.resolved, notif.resolved_at, notif.is_read = True, self.now, True
             if not quiet_recovery:  # naik/turun level (Warning ↔ Down) tidak perlu pesan "pulih"
+                msg = recovery_msg
+                try:  # berapa lama bermasalah (waktu notifikasi dibuat → sekarang)
+                    if notif.created_at:
+                        ca = notif.created_at if notif.created_at.tzinfo else notif.created_at.replace(tzinfo=timezone.utc)
+                        now = self.now if self.now.tzinfo else self.now.replace(tzinfo=timezone.utc)
+                        msg += f'\nPerangkat: {dev.name} ({dev.host})\nLama bermasalah: {fmt_duration(now - ca)}'
+                except Exception:
+                    pass
                 self.alerts.append(dict(base, type=category + '_recovery', severity='info', title=recovery_title,
-                                        message=recovery_msg, is_recovery=True))
+                                        message=stamp(msg, self.now), is_recovery=True))
             del self.open[key]
 
 
@@ -178,7 +207,8 @@ def _check_port(c, dev, p, cfg):
     mins = int((now - p.status_changed_at).total_seconds() // 60) if p.status_changed_at else 0
     c.toggle(dev, 'snmp_port_down', 'snmp_port', p.id, down, 'critical',
              f'🔴 Port turun: {dev.name} {label}',
-             _head(dev, '🔴 PORT DIPANTAU TURUN') + f'\nPort: {label}\nStatus: {p.oper_status}'
+             _head(dev, '🔴 PORT DIPANTAU TURUN') + f'\nPort: {label}\nSebab: ifOperStatus={p.oper_status}, ifAdminStatus={p.admin_status} '
+             f'(port diaktifkan tetapi link tidak naik)'
              f'\nTurun sejak: {mins} menit lalu',
              f'✅ Port naik: {dev.name} {label}', f'✅ Port {label} di {dev.name} kembali UP.')
     # Flapping: banyak port_down dalam jendela waktu

@@ -4,6 +4,10 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Alert SNMP lebih lengkap (gaya PRTG)
+- Semua alert SNMP (perangkat turun, port turun, CPU, suhu, utilisasi, redaman SFP, error, sensor kustom) kini diakhiri baris waktu dengan zona (🕒 Waktu: ... WIB).
+- Pesan pulih memuat nama perangkat dan lama bermasalah. Alert port turun menyebut ifOperStatus dan ifAdminStatus.
+
 ### 2026-11-26 — Filter jenis port di detail perangkat SNMP
 - Tab Port: chip filter per jenis (Ethernet/SFP, VLAN, Bridge, Bonding, PPPoE/Tunnel, Wi-Fi, Loopback, Lainnya) + jumlahnya, dan kolom cari nama/komentar. Digabung dengan filter status. Muncul bila port >8.
 
