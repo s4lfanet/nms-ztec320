@@ -8,6 +8,16 @@ from tests.test_link_state import ctx  # noqa: F401
 import olt_images
 
 H = {'X-Requested-With': 'XMLHttpRequest'}
+import pytest
+import image_bg
+
+
+@pytest.fixture(autouse=True)
+def _no_model(monkeypatch):
+    """Tes tidak boleh mengunduh model hapus-latar (43 MB): sesi model dianggap tak tersedia."""
+    monkeypatch.setattr(image_bg, '_get_session', lambda: None)
+
+
 PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
 
 
@@ -144,3 +154,60 @@ def test_upload_converts_and_stores_png(ctx, tmp_path, monkeypatch):
     bad = c.post(f'/api/olt/{olt.id}/image', headers=H, data={'image': (io.BytesIO(PNG_MAGIC + b'rusak'), 'x.png')},
                  content_type='multipart/form-data')
     assert bad.status_code == 400
+
+
+def _scene():
+    """Latar bergradasi + 'perangkat' gelap di tengah (untuk uji hapus-latar)."""
+    from PIL import Image, ImageDraw
+    im = Image.new('RGB', (400, 300), (200, 200, 200))
+    ImageDraw.Draw(im).rectangle([100, 80, 300, 200], fill=(30, 30, 40))
+    return im
+
+
+def test_remove_background_with_model_mask_crops_to_object(monkeypatch):
+    import numpy as np
+    im = _scene()
+    m = np.zeros((300, 400), dtype=np.float32); m[80:201, 100:301] = 1.0      # peta model palsu
+    monkeypatch.setattr(image_bg, '_predict', lambda i: m)
+    out, ok = image_bg.remove_background(im)
+    assert ok and out.mode == 'RGBA'
+    assert 200 <= out.width <= 220 and 120 <= out.height <= 135                # terpotong rapat + sedikit ruang
+    assert out.getpixel((0, 0))[3] == 0                                        # sudut = transparan
+    assert out.getpixel((out.width // 2, out.height // 2))[3] == 255           # tengah = objek
+
+
+def test_remove_background_rejects_implausible_masks(monkeypatch):
+    import numpy as np
+    im = _scene()
+    for fill in (0.0, 1.0):                                                    # objek hilang / seluruh gambar
+        monkeypatch.setattr(image_bg, '_predict', lambda i, f=fill: np.full((300, 400), f, dtype=np.float32))
+        out, ok = image_bg.remove_background(im)
+        assert not ok and out.size == im.size
+    monkeypatch.setattr(image_bg, '_predict', lambda i: (_ for _ in ()).throw(RuntimeError('boom')))
+    assert image_bg.remove_background(im)[1] is False                          # error tidak menggagalkan unggahan
+
+
+def test_uniform_background_fallback_without_model():
+    out, ok = image_bg.remove_background(_scene())
+    assert ok and out.mode == 'RGBA' and out.width < 260 and out.height < 160
+    assert out.getpixel((0, 0))[3] == 0
+    # latar tidak polos (bising) → dibiarkan
+    import numpy as np
+    from PIL import Image
+    noisy = Image.fromarray(np.random.default_rng(0).integers(0, 255, (200, 300, 3), dtype=np.uint8))
+    assert image_bg.remove_background(noisy)[1] is False
+
+
+def test_normalize_includes_background_removal_then_standard_size(monkeypatch):
+    from PIL import Image
+    import numpy as np
+    big = _scene().resize((2000, 1500))
+    m = np.zeros((big.height, big.width), dtype=np.float32)
+    monkeypatch.setattr(image_bg, '_predict', lambda i: np.pad(np.ones((i.height // 2, i.width // 2), np.float32),
+                        ((i.height // 4, i.height - i.height // 2 - i.height // 4),
+                         (i.width // 4, i.width - i.width // 2 - i.width // 4))))
+    buf = io.BytesIO(); big.save(buf, 'JPEG', quality=80)
+    out, err = olt_images.normalize(buf.getvalue())
+    im = Image.open(io.BytesIO(out))
+    assert not err and im.mode == 'RGBA' and max(im.size) == 512
+    assert olt_images.normalize(buf.getvalue(), remove_bg=False)[0] != out

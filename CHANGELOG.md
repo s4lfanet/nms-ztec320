@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Foto OLT: latar dihapus otomatis
+
+#### Ditambahkan
+- Unggahan foto OLT kini otomatis menghapus latar: hasilnya objek saja (PNG transparan), dipotong rapat, lalu diperkecil ke standar 512 px. Memakai model segmentasi `silueta` (±43 MB, diunduh sekali saat unggahan pertama); bila model tak tersedia dipakai penghapus latar polos; bila hasil tak wajar, foto asli dipakai.
+- Dependensi baru: `onnxruntime`.
+
 ### 2026-11-26 — Foto OLT otomatis distandarkan
 
 #### Diubah

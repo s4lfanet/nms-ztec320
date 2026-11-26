@@ -581,7 +581,7 @@
     "migrated": "ONU migrated successfully",
     "crossDone": "Cross-OLT migration completed",
     "modelPhotos": "Photos per OLT model",
-    "modelPhotosHint": "Upload a real photo for each model (from your rack, a brochure, or a vendor site you saved). One photo is used for every OLT of that model; a photo set for a single OLT still takes priority. PNG/JPG/WebP, max 1.5 MB. Any resolution is automatically converted to a standard PNG (longest side at most 512 px, aspect ratio kept).",
+    "modelPhotosHint": "Upload a real photo for each model (from your rack, a brochure, or a vendor site you saved). One photo is used for every OLT of that model; a photo set for a single OLT still takes priority. PNG/JPG/WebP, max 1.5 MB. Any resolution is automatically converted to a standard PNG (longest side at most 512 px, aspect ratio kept). The photo background is removed automatically (object only, transparent background).",
     "modelPhotosAll": "Show all models ({{n}})",
     "modelPhotosInUse": "Only models in use",
     "modelPhotoCount": "{{n}} OLT",
