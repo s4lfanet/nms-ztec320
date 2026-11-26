@@ -2066,7 +2066,13 @@
     "areaPickAll": "Select all shown ({{n}})",
     "areaNoNodes": "No matching areas.",
     "areaAddBulk": "Add ({{u}} technicians × {{n}} areas)",
-    "areaSavedBulk": "Saved: {{added}} new, {{changed}} role changed"
+    "areaSavedBulk": "Saved: {{added}} new, {{changed}} role changed",
+    "areaScopeTitle": "Send FTTH alerts to",
+    "areaScope_all": "All registered technicians (recommended)",
+    "areaScope_all_hint": "Every ONU/ODP/OLT issue reaches all technicians. Areas still define who is responsible for incidents.",
+    "areaScope_area": "Only the area technicians",
+    "areaScope_area_hint": "Issues go only to the technicians of the nearest area (OLT/OTB/ODC/ODP).",
+    "areaScopeSaved": "Alert delivery setting saved"
   },
   "pg_addonu": {
     "onuInfo": "ONU info",

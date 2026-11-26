@@ -78,6 +78,30 @@ def add_area():
     return jsonify({'success': True, 'area': _row(a)})
 
 
+@bp.route('/api/technician-areas/scope', methods=['GET'])
+@login_required
+def get_scope():
+    from alert_routing import alert_scope
+    return jsonify({'success': True, 'scope': alert_scope()})
+
+
+@bp.route('/api/technician-areas/scope', methods=['PUT'])
+@login_required
+@permission_required('manage_users')
+def set_scope():
+    from models import SystemConfig
+    from alert_routing import SCOPE_KEY
+    scope = 'area' if (request.get_json() or {}).get('scope') == 'area' else 'all'
+    row = SystemConfig.query.filter_by(key=SCOPE_KEY).first()
+    if row:
+        row.value = scope
+    else:
+        db.session.add(SystemConfig(key=SCOPE_KEY, value=scope))
+    db.session.commit()
+    log_action('technician_alert_scope', 'users', target='alert', detail=scope)
+    return jsonify({'success': True, 'scope': scope})
+
+
 @bp.route('/api/technician-areas/bulk', methods=['POST'])
 @login_required
 @permission_required('manage_users')

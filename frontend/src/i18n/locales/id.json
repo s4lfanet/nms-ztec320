@@ -2066,7 +2066,13 @@
     "areaPickAll": "Pilih semua yang tampil ({{n}})",
     "areaNoNodes": "Tidak ada wilayah yang cocok.",
     "areaAddBulk": "Tambahkan ({{u}} teknisi × {{n}} wilayah)",
-    "areaSavedBulk": "Tersimpan: {{added}} baru, {{changed}} diubah perannya"
+    "areaSavedBulk": "Tersimpan: {{added}} baru, {{changed}} diubah perannya",
+    "areaScopeTitle": "Alert FTTH dikirim ke",
+    "areaScope_all": "Semua teknisi terdaftar (disarankan)",
+    "areaScope_all_hint": "Setiap gangguan ONU/ODP/OLT sampai ke semua teknisi. Wilayah tetap dipakai sebagai penanggung jawab insiden.",
+    "areaScope_area": "Hanya teknisi wilayahnya",
+    "areaScope_area_hint": "Gangguan hanya dikirim ke teknisi pemegang wilayah terdekat (OLT/OTB/ODC/ODP).",
+    "areaScopeSaved": "Pengaturan pengiriman alert tersimpan"
   },
   "pg_addonu": {
     "onuInfo": "Info ONU",
