@@ -46,7 +46,12 @@ function OltImageSlot({ olt, canManage }: { olt: OltHeaderInfo; canManage: boole
     e.target.value = '';
     if (!f) return;
     setBusy(true);
-    try { await api.oltImageUpload(olt.id, f); toast.success(t('oc.imageSaved')); refresh(); }
+    try {
+      const res = await api.oltImageUpload(olt.id, f);
+      if (res.background_removed === false) toast.warning(t('olts.bgNotRemoved', { why: res.bg?.error || '' }));
+      else toast.success(t('oc.imageSaved'));
+      refresh();
+    }
     catch (err) { toast.error((err as Error).message || t('oc.imageFailed')); }
     finally { setBusy(false); }
   };

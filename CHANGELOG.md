@@ -4,6 +4,12 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Proses ulang foto OLT + status hapus-latar
+
+#### Ditambahkan
+- Tombol **Proses ulang semua foto (hapus latar)** di Kustomisasi → Foto OLT, agar foto yang diunggah sebelum fitur hapus-latar ikut dibersihkan.
+- Setelah unggah, NMS memberi tahu bila latar tidak bisa dihapus otomatis beserta alasannya (mis. onnxruntime/model belum tersedia).
+
 ### 2026-11-26 — Foto OLT: latar dihapus otomatis
 
 #### Ditambahkan

@@ -211,3 +211,37 @@ def test_normalize_includes_background_removal_then_standard_size(monkeypatch):
     im = Image.open(io.BytesIO(out))
     assert not err and im.mode == 'RGBA' and max(im.size) == 512
     assert olt_images.normalize(buf.getvalue(), remove_bg=False)[0] != out
+
+
+def test_reprocess_all_converts_old_photos(ctx, tmp_path, monkeypatch):
+    from PIL import Image
+    (tmp_path / 'o').mkdir(); (tmp_path / 'm').mkdir()
+    monkeypatch.setattr(olt_images, '_dir', lambda: str(tmp_path / 'o'))
+    monkeypatch.setattr(olt_images, '_model_dir', lambda: str(tmp_path / 'm'))
+    buf = io.BytesIO(); _scene().resize((1600, 1200)).save(buf, 'JPEG')
+    (tmp_path / 'o' / '7.jpg').write_bytes(buf.getvalue())                    # foto lama (JPG, latar masih ada)
+    (tmp_path / 'm' / 'zte--c320.png').write_bytes(PNG)
+    (tmp_path / 'm' / 'zte--rusak.png').write_bytes(PNG_MAGIC + b'rusak')     # tak terbaca → dibiarkan
+    c = _client_admin()
+    r = c.post('/api/olt-images/reprocess', headers=H).get_json()
+    assert r['success'] and r['total'] == 3 and r['failed'] == 1 and r['removed'] >= 1
+    assert r['bg']['engine'] in ('model', 'fallback')
+    assert not (tmp_path / 'o' / '7.jpg').exists() and (tmp_path / 'o' / '7.png').exists()
+    im = Image.open(tmp_path / 'o' / '7.png')
+    assert im.mode == 'RGBA' and im.getpixel((0, 0))[3] == 0
+    assert (tmp_path / 'm' / 'zte--rusak.png').read_bytes().endswith(b'rusak')
+
+
+def test_upload_reports_background_status(ctx, tmp_path, monkeypatch):
+    monkeypatch.setattr(olt_images, '_dir', lambda: str(tmp_path))
+    olt = OLT(name='X', ip_address='10.0.0.77', vendor='zte', model='C320')
+    db.session.add(olt); db.session.commit()
+    c = _client_admin()
+    buf = io.BytesIO(); _scene().save(buf, 'PNG')
+    r = c.post(f'/api/olt/{olt.id}/image', headers=H, data={'image': (io.BytesIO(buf.getvalue()), 'a.png')},
+               content_type='multipart/form-data').get_json()
+    assert r['success'] and r['background_removed'] is True and 'engine' in r['bg']
+    flat = io.BytesIO(); __import__('PIL.Image', fromlist=['x']).new('RGB', (50, 50), (9, 9, 9)).save(flat, 'PNG')
+    r = c.post(f'/api/olt/{olt.id}/image', headers=H, data={'image': (io.BytesIO(flat.getvalue()), 'b.png')},
+               content_type='multipart/form-data').get_json()
+    assert r['success'] and r['background_removed'] is False

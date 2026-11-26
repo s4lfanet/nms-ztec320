@@ -48,8 +48,25 @@ export function OltModelPhotos({ canManage, bare = false }: { canManage: boolean
   const upload = async (r: Row, file?: File) => {
     if (!file) return;
     setBusyKey(r.key);
-    try { await api.oltModelImageUpload(r.vendor, r.model, file); toast.success(t('olts.modelPhotoSaved', { model: r.label })); refresh(); }
+    try {
+      const res = await api.oltModelImageUpload(r.vendor, r.model, file);
+      if (res.background_removed === false) toast.warning(t('olts.bgNotRemoved', { why: res.bg?.error || '' }));
+      else toast.success(t('olts.modelPhotoSaved', { model: r.label }));
+      refresh();
+    }
     catch (err) { toast.error((err as Error).message || t('oc.imageFailed')); }
+    finally { setBusyKey(null); }
+  };
+  const reprocess = async () => {
+    if (!(await confirm({ title: t('olts.reprocessTitle'), message: t('olts.reprocessMsg') }))) return;
+    setBusyKey('*');
+    try {
+      const r = await api.oltImagesReprocess();
+      const msg = t('olts.reprocessDone', { total: r.total, removed: r.removed, failed: r.failed });
+      if (r.total > 0 && r.removed === 0) toast.warning(`${msg} ${t('olts.bgEngineOff', { why: r.bg.error || '' })}`);
+      else toast.success(msg);
+      refresh();
+    } catch (err) { toast.error((err as Error).message); }
     finally { setBusyKey(null); }
   };
   const remove = async (r: Row) => {
@@ -67,7 +84,10 @@ export function OltModelPhotos({ canManage, bare = false }: { canManage: boolean
   ) : undefined;
   const body = (
     <>
-      <p className="text-xs text-tx3 mb-3 max-w-[70ch]">{t('olts.modelPhotosHint')}</p>
+      <p className="text-xs text-tx3 mb-2 max-w-[70ch]">{t('olts.modelPhotosHint')}</p>
+      {rows.some(r => r.image_url) && (
+        <button type="button" disabled={!!busyKey} onClick={reprocess} className="text-xs text-accent hover:underline mb-3">{t('olts.reprocess')}</button>
+      )}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
         {shown.map(r => (
           <div key={r.key} className={cn('rounded-lg border border-brd bg-glass p-2 flex flex-col items-center gap-1.5 min-w-0', busyKey === r.key && 'opacity-60')}>

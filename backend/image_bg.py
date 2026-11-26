@@ -22,6 +22,7 @@ PAD = 0.03                      # ruang di sekeliling objek saat dipotong
 
 _lock = threading.Lock()
 _session = None
+_last_error = ''
 _retry_after = 0.0              # setelah gagal muat/unduh model, jangan coba lagi sampai waktu ini
 
 
@@ -49,7 +50,7 @@ def _download(path):
 
 def _get_session():
     """Sesi onnxruntime (dibuat sekali). None bila tidak tersedia."""
-    global _session, _retry_after
+    global _session, _retry_after, _last_error
     if _session is not None:
         return _session
     if time.time() < _retry_after:
@@ -67,9 +68,25 @@ def _get_session():
             _session = ort.InferenceSession(path, opts, providers=['CPUExecutionProvider'])
         except Exception as e:
             logger.warning('model hapus-latar tidak tersedia, pakai cadangan: %s', e)
+            _last_error = f'{type(e).__name__}: {e}'[:200]
             _retry_after = time.time() + 600
             return None
     return _session
+
+
+def status():
+    """Keadaan mesin hapus-latar untuk UI: 'model' (siap), 'fallback' (hanya latar polos) + alasan."""
+    try:
+        import onnxruntime  # noqa: F401
+        has_ort = True
+    except Exception:
+        has_ort = False
+    try:
+        has_file = os.path.isfile(_model_path())
+    except Exception:
+        has_file = False
+    return {'engine': 'model' if _session is not None else 'fallback', 'onnxruntime': has_ort,
+            'model_file': has_file, 'error': _last_error or ('onnxruntime belum terpasang' if not has_ort else '')}
 
 
 def _predict(im):
