@@ -2521,7 +2521,21 @@
       "testing": "Pengujian",
       "unknown": "Tidak diketahui"
     },
-    "tabGraphs": "Grafik"
+    "tabGraphs": "Grafik",
+    "portSearch": "Cari port (nama / komentar)…",
+    "portKind": "Jenis port",
+    "portShown": "Menampilkan {{n}} dari {{total}} port",
+    "pk": {
+      "all": "Semua",
+      "ethernet": "Ethernet/SFP",
+      "vlan": "VLAN",
+      "bridge": "Bridge",
+      "bond": "Bonding/LAG",
+      "tunnel": "PPPoE/Tunnel",
+      "wifi": "Wi-Fi",
+      "loopback": "Loopback",
+      "other": "Lainnya"
+    }
   },
   "graph": {
     "range": "Rentang waktu",

@@ -2521,7 +2521,21 @@
       "testing": "Testing",
       "unknown": "Unknown"
     },
-    "tabGraphs": "Graphs"
+    "tabGraphs": "Graphs",
+    "portSearch": "Search ports (name / comment)…",
+    "portKind": "Port type",
+    "portShown": "Showing {{n}} of {{total}} ports",
+    "pk": {
+      "all": "All",
+      "ethernet": "Ethernet/SFP",
+      "vlan": "VLAN",
+      "bridge": "Bridge",
+      "bond": "Bonding/LAG",
+      "tunnel": "PPPoE/Tunnel",
+      "wifi": "Wi-Fi",
+      "loopback": "Loopback",
+      "other": "Other"
+    }
   },
   "graph": {
     "range": "Time range",

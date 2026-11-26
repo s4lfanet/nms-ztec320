@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Filter jenis port di detail perangkat SNMP
+- Tab Port: chip filter per jenis (Ethernet/SFP, VLAN, Bridge, Bonding, PPPoE/Tunnel, Wi-Fi, Loopback, Lainnya) + jumlahnya, dan kolom cari nama/komentar. Digabung dengan filter status. Muncul bila port >8.
+
 ### 2026-11-26 — Audit sinkronisasi OLT: penjaga kualitas data
 
 #### Ditambahkan
