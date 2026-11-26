@@ -3040,6 +3040,15 @@
     "offsiteHint": "Backups only live on this server. Set BACKUP_REMOTE_SCP_TARGET in backend/.env (e.g. user@host:/var/backups/nms/) to copy the daily backup to another server.",
     "download": "Download",
     "oltBackup": "OLT config backups",
-    "never": "Never"
+    "never": "Never",
+    "restore": "Restore",
+    "restoreUpload": "Restore from file…",
+    "restoreTitle": "Restore database",
+    "restoreWarn": "All current data is replaced with this backup (ONUs, users, settings, history). A safety copy of the current database is made automatically and the service restarts. Changes made since this backup are lost.",
+    "restoreType": "Type RESTORE to continue",
+    "restoreGo": "Restore now",
+    "restoreDoneRestart": "Database restored. The service is restarting; this page reloads automatically in a few seconds. You may need to log in again.",
+    "restoreDoneManual": "Database restored, but the service could not restart automatically. Run: sudo systemctl restart salfanet-nms",
+    "reload": "Reload"
   }
 }

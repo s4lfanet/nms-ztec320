@@ -1266,6 +1266,40 @@ class TestDatabaseBackup:
         # Clean up
         os.remove(tmp_backup.name)
 
+    def test_restore_from_server_backup_requires_confirm_and_restores(self, client, tmp_path, monkeypatch):
+        """Restore dari backup di server: wajib ketik RESTORE, nama divalidasi, data kembali ke saat backup."""
+        import sqlite3
+        import db_backup
+        import routes_system
+        from models import db as _db
+        monkeypatch.setattr(db_backup, 'DEFAULT_BACKUP_DIR', str(tmp_path))
+        monkeypatch.setattr(routes_system, '_restart_service_soon', lambda delay=2.0: False)
+        H = {'X-Requested-With': 'XMLHttpRequest'}
+        client.post('/api/auth/login', data=json.dumps({'username': 'admin', 'password': 'admin' + str(123)}),
+                    content_type='application/json')
+        with app.app_context():
+            _db.session.add(OLT(name='SebelumBackup', ip_address='10.77.0.1')); _db.session.commit()
+        db_path = str(db.engine.url).replace('sqlite:///', '')
+        name = 'nms_db_backup_20261126_000000.db'
+        src, dst = sqlite3.connect(db_path), sqlite3.connect(str(tmp_path / name))
+        src.backup(dst); dst.close(); src.close()
+        with app.app_context():
+            _db.session.add(OLT(name='SesudahBackup', ip_address='10.77.0.2')); _db.session.commit()
+
+        def post(**body):
+            return client.post('/api/system/restore-from-backup', data=json.dumps(body),
+                               content_type='application/json', headers=H)
+        assert post(filename=name).status_code == 400                              # tanpa konfirmasi
+        assert post(filename=name, confirm='restore').status_code == 400            # harus persis RESTORE
+        assert post(filename='../x.db', confirm='RESTORE').status_code == 404       # nama tak sah
+        assert post(filename='nms_db_backup_none.db', confirm='RESTORE').status_code == 404
+        r = post(filename=name, confirm='RESTORE')
+        assert r.status_code == 200 and r.get_json()['pre_restore_backup']
+        with app.app_context():
+            names = {o.name for o in OLT.query.all()}
+        assert 'SebelumBackup' in names and 'SesudahBackup' not in names
+        assert (tmp_path / name).exists()                                           # backup asli utuh
+
     def test_backup_restore_data_equivalence(self, client):
         """Verify row counts match across all tables after backup→restore."""
         import sqlite3

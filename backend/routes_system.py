@@ -578,129 +578,160 @@ def download_db_backup(filename):
     return send_file(path, as_attachment=True, download_name=filename)
 
 
-@bp.route('/api/system/restore-db', methods=['POST'])
-@super_admin_required
-def restore_database():
-    """Restore database from an uploaded backup file.
-
-    Accepts a .db file (SQLite) uploaded via multipart form data.
-    The current database is backed up before restore (safety net).
-    Only works for SQLite databases.
-    """
-    import tempfile
-
-    # Always use the actual engine URL (handles test fixtures that replace
-    # db.engines[None] but don't update app.config)
+def _live_sqlite_path():
+    """Path file DB SQLite yang sedang dipakai, atau None (bukan SQLite / in-memory)."""
     try:
         db_uri = str(db.engine.url)
     except Exception:
         from flask import current_app
         db_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
     if 'sqlite' not in db_uri:
-        return jsonify({'success': False, 'message': 'Restore only supported for SQLite databases'}), 400
+        return None, 'Restore only supported for SQLite databases'
+    path = db_uri.replace('sqlite:///', '')
+    if path == ':memory:' or not os.path.exists(path):
+        return None, 'Cannot resolve database file path for restore'
+    return path, ''
 
+
+def _restore_sqlite_from_file(src_path, db_path, label):
+    """Pulihkan DB SQLite dari `src_path` (file ini TIDAK dihapus).
+    Urutan: cek integritas → cek skema → salinan pengaman (db + '.pre_restore_<waktu>') → timpa →
+    verifikasi → auto-rollback bila hasilnya rusak. → (dict respons, kode http)."""
+    import sqlite3
+    try:
+        chk = sqlite3.connect(src_path)
+        result = chk.execute('PRAGMA integrity_check').fetchone()
+        if result[0] != 'ok':
+            chk.close()
+            return {'success': False, 'message': f'Uploaded file integrity check failed: {result[0]}'}, 400
+        backup_tables = {r[0] for r in chk.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()}
+        chk.close()
+
+        cur_db = sqlite3.connect(db_path)
+        current_tables = {r[0] for r in cur_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()}
+        cur_db.close()
+        missing = current_tables - backup_tables
+        if missing:
+            return {'success': False,
+                    'message': f'Schema mismatch: backup is missing tables: {sorted(missing)[:10]}'}, 400
+
+        pre = db_path + f'.pre_restore_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        src = sqlite3.connect(db_path)
+        safety = sqlite3.connect(pre)
+        src.backup(safety)
+        safety.close()
+        src.close()
+        os.chmod(pre, 0o600)
+
+        db.session.remove()
+        db.engine.dispose()
+        shutil.copy2(src_path, db_path)
+
+        post = sqlite3.connect(db_path)
+        post_result = post.execute('PRAGMA integrity_check').fetchone()
+        post.close()
+        if post_result[0] != 'ok':
+            try:
+                shutil.copy2(pre, db_path)
+                log_action('restore_database', 'system',
+                           detail=f'Restore FAILED verification, rolled back to {os.path.basename(pre)}')
+                return {'success': False,
+                        'message': 'Restored DB failed integrity check, auto-rolled back to pre-restore backup',
+                        'rolled_back': True, 'pre_restore_backup': os.path.basename(pre)}, 500
+            except Exception as rollback_err:
+                return {'success': False,
+                        'message': f'Restore failed verification AND rollback failed: {rollback_err}. '
+                                   f'Pre-restore backup at: {os.path.basename(pre)}',
+                        'rolled_back': False, 'pre_restore_backup': os.path.basename(pre)}, 500
+
+        log_action('restore_database', 'system',
+                   detail=f'Restored from {label}, pre-restore backup: {os.path.basename(pre)}')
+        return {'success': True, 'message': f'Database restored from {label}',
+                'pre_restore_backup': os.path.basename(pre), 'integrity_check': 'ok'}, 200
+    except Exception as e:
+        return {'success': False, 'message': f'Restore failed: {e}'}, 500
+
+
+def _restart_service_soon(delay=2.0):
+    """Restart layanan sebentar lagi (setelah respons terkirim) agar migrasi skema memeriksa DB hasil restore.
+    Pola sama dengan Apply Update: systemd-run di scope terpisah. → True bila dijadwalkan."""
+    if not os.path.exists('/usr/bin/systemd-run'):
+        return False
+
+    def _go():
+        time.sleep(delay)
+        try:
+            import subprocess
+            subprocess.run(['sudo', '-n', '/usr/bin/systemd-run', '--no-block', '--unit=salfanet-nms-restart',
+                            '--', '/usr/bin/systemctl', 'restart', 'salfanet-nms'],
+                           capture_output=True, timeout=30)
+        except Exception as e:
+            logger.warning('restart after restore failed: %s', e)
+    threading.Thread(target=_go, daemon=True).start()
+    return True
+
+
+@bp.route('/api/system/restore-db', methods=['POST'])
+@super_admin_required
+def restore_database():
+    """Restore database from an uploaded backup file (.db, multipart).
+    The current database is backed up before restore (safety net). SQLite only."""
+    import tempfile
+    db_path, err = _live_sqlite_path()
+    if not db_path:
+        return jsonify({'success': False, 'message': err}), (400 if 'only supported' in err else 500)
     if 'backup_file' not in request.files:
         return jsonify({'success': False, 'message': 'No backup file uploaded'}), 400
-
     upload = request.files['backup_file']
     if not upload.filename:
         return jsonify({'success': False, 'message': 'Empty filename'}), 400
-
-    # Save uploaded file to temp with restrictive permissions
     tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False, dir=tempfile.gettempdir())
     upload_path = tmp.name
     tmp.close()
     os.chmod(upload_path, 0o600)
     upload.save(upload_path)
-
     try:
-        import sqlite3
-
-        # Verify uploaded backup integrity
-        chk = sqlite3.connect(upload_path)
-        result = chk.execute('PRAGMA integrity_check').fetchone()
-        if result[0] != 'ok':
-            chk.close()
-            os.remove(upload_path)
-            return jsonify({'success': False, 'message': f'Uploaded file integrity check failed: {result[0]}'}), 400
-
-        # Schema compatibility check: backup must have all tables in current DB
-        db_path = db_uri.replace('sqlite:///', '')
-        if db_path == ':memory:' or not os.path.exists(db_path):
-            os.remove(upload_path)
-            return jsonify({'success': False, 'message': 'Cannot resolve database file path for restore'}), 500
-        cur = chk.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-        backup_tables = {row[0] for row in cur.fetchall()}
-        chk.close()
-
-        cur_db = sqlite3.connect(db_path)
-        cur = cur_db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-        current_tables = {row[0] for row in cur.fetchall()}
-        cur_db.close()
-
-        missing_tables = current_tables - backup_tables
-        if missing_tables:
-            os.remove(upload_path)
-            return jsonify({
-                'success': False,
-                'message': f'Schema mismatch: backup is missing tables: {sorted(missing_tables)[:10]}'
-            }), 400
-
-        # Safety: backup current DB before overwrite
-        pre_restore_backup = db_path + f'.pre_restore_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-        src = sqlite3.connect(db_path)
-        safety = sqlite3.connect(pre_restore_backup)
-        src.backup(safety)
-        safety.close()
-        src.close()
-        os.chmod(pre_restore_backup, 0o600)
-
-        # Close SQLAlchemy connections before overwriting
-        db.session.remove()
-        db.engine.dispose()
-
-        # Overwrite DB file
-        shutil.copy2(upload_path, db_path)
-
-        # Post-restore verification: check the restored DB
-        post_chk = sqlite3.connect(db_path)
-        post_result = post_chk.execute('PRAGMA integrity_check').fetchone()
-        post_chk.close()
-
-        if post_result[0] != 'ok':
-            # Auto-rollback: restore the pre-restore backup
-            try:
-                shutil.copy2(pre_restore_backup, db_path)
-                log_action('restore_database', 'system',
-                           detail=f'Restore FAILED verification, rolled back to {os.path.basename(pre_restore_backup)}')
-                return jsonify({
-                    'success': False,
-                    'message': f'Restored DB failed integrity check, auto-rolled back to pre-restore backup',
-                    'rolled_back': True,
-                    'pre_restore_backup': os.path.basename(pre_restore_backup),
-                }), 500
-            except Exception as rollback_err:
-                return jsonify({
-                    'success': False,
-                    'message': f'Restore failed verification AND rollback failed: {rollback_err}. Pre-restore backup at: {os.path.basename(pre_restore_backup)}',
-                    'rolled_back': False,
-                    'pre_restore_backup': os.path.basename(pre_restore_backup),
-                }), 500
-
-        log_action('restore_database', 'system',
-                   detail=f'Restored from {upload.filename}, pre-restore backup: {os.path.basename(pre_restore_backup)}')
-
-        return jsonify({
-            'success': True,
-            'message': f'Database restored from {upload.filename}',
-            'pre_restore_backup': os.path.basename(pre_restore_backup),
-            'integrity_check': 'ok',
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Restore failed: {e}'}), 500
+        body, code = _restore_sqlite_from_file(upload_path, db_path, upload.filename)
+        if body.get('success') and request.form.get('restart') == '1':
+            body['restarting'] = _restart_service_soon()
+        return jsonify(body), code
     finally:
         try:
             os.remove(upload_path)
+        except Exception:
+            pass
+
+
+@bp.route('/api/system/restore-from-backup', methods=['POST'])
+@super_admin_required
+def restore_from_backup():
+    """Pulihkan dari backup yang tersimpan di server (nms_db_backup_*.db).
+    Wajib body {filename, confirm: 'RESTORE'}; layanan di-restart otomatis setelahnya."""
+    import backup_health, tempfile
+    data = request.get_json(silent=True) or {}
+    if data.get('confirm') != 'RESTORE':
+        return jsonify({'success': False, 'message': 'Konfirmasi tidak cocok: ketik RESTORE'}), 400
+    path = backup_health.safe_backup_path(data.get('filename'))
+    if not path or not path.endswith('.db'):
+        return jsonify({'success': False, 'message': 'Backup tidak ditemukan (hanya berkas .db SQLite)'}), 404
+    db_path, err = _live_sqlite_path()
+    if not db_path:
+        return jsonify({'success': False, 'message': err}), 400
+    # salin dulu ke temp: backup asli tak tersentuh walau restore gagal di tengah
+    fd, tmp = tempfile.mkstemp(suffix='.db', dir=tempfile.gettempdir())
+    os.close(fd)
+    try:
+        shutil.copy2(path, tmp)
+        os.chmod(tmp, 0o600)
+        body, code = _restore_sqlite_from_file(tmp, db_path, data['filename'])
+        if body.get('success'):
+            body['restarting'] = _restart_service_soon()
+        return jsonify(body), code
+    finally:
+        try:
+            os.remove(tmp)
         except Exception:
             pass
 
