@@ -2057,7 +2057,16 @@
     "maintAdd": "Schedule maintenance",
     "maintSaved": "Maintenance scheduled",
     "maintRemoveTitle": "Delete this maintenance window?",
-    "maintBadTime": "Invalid start time"
+    "maintBadTime": "Invalid start time",
+    "areaTechnicians": "Technicians (pick several)",
+    "areaNodes": "Areas (pick several)",
+    "areaPickedN": "selected",
+    "areaAllTypes": "All",
+    "areaSearch": "Search OLT / OTB / ODC / ODP name…",
+    "areaPickAll": "Select all shown ({{n}})",
+    "areaNoNodes": "No matching areas.",
+    "areaAddBulk": "Add ({{u}} technicians × {{n}} areas)",
+    "areaSavedBulk": "Saved: {{added}} new, {{changed}} role changed"
   },
   "pg_addonu": {
     "onuInfo": "ONU info",

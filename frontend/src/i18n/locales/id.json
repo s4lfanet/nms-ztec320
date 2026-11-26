@@ -2057,7 +2057,16 @@
     "maintAdd": "Jadwalkan maintenance",
     "maintSaved": "Maintenance dijadwalkan",
     "maintRemoveTitle": "Hapus jadwal maintenance?",
-    "maintBadTime": "Waktu mulai tidak valid"
+    "maintBadTime": "Waktu mulai tidak valid",
+    "areaTechnicians": "Teknisi (boleh pilih beberapa)",
+    "areaNodes": "Wilayah (boleh pilih beberapa)",
+    "areaPickedN": "dipilih",
+    "areaAllTypes": "Semua",
+    "areaSearch": "Cari nama OLT / OTB / ODC / ODP…",
+    "areaPickAll": "Pilih semua yang tampil ({{n}})",
+    "areaNoNodes": "Tidak ada wilayah yang cocok.",
+    "areaAddBulk": "Tambahkan ({{u}} teknisi × {{n}} wilayah)",
+    "areaSavedBulk": "Tersimpan: {{added}} baru, {{changed}} diubah perannya"
   },
   "pg_addonu": {
     "onuInfo": "Info ONU",

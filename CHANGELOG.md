@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-26 — Wilayah teknisi: tambah banyak sekaligus
+- Form wilayah teknisi di Pengaturan Alert kini memilih beberapa teknisi dan beberapa wilayah (OLT/OTB/JC/ODC/ODP) sekaligus, dengan filter jenis, kotak cari, dan "pilih semua yang tampil". Endpoint baru `POST /api/technician-areas/bulk`.
+
 ### 2026-11-26 — Pengaturan lama tahan alert SNMP
 - Ambang alert SNMP (modal dan halaman pengaturan) kini punya isian "Tahan alert suhu/SFP/error sampai bertahan" (menit, 0 = langsung).
 

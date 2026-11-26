@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../components/Toast';
@@ -1852,25 +1852,43 @@ function TechnicianAreasCard() {
   const areas: AreaRow[] = areaData?.areas || [];
   const nodes: AreaNode[] = nodeData?.nodes || [];
   const techs: { id: number; full_name: string; username: string; phone: string }[] = techData?.technicians || [];
-  const [userId, setUserId] = useState('');
-  const [node, setNode] = useState('');
+  const [userIds, setUserIds] = useState<number[]>([]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());   // "tipe:id"
+  const [typeFilter, setTypeFilter] = useState<'all' | typeof AREA_TYPES[number]>('all');
+  const [q, setQ] = useState('');
   const [role, setRole] = useState<'primary' | 'backup'>('primary');
   const [busy, setBusy] = useState(false);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['technician-areas'] });
 
+  const visibleNodes = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return nodes.filter(n => (typeFilter === 'all' || n.type === typeFilter) && (!needle || n.name.toLowerCase().includes(needle)));
+  }, [nodes, typeFilter, q]);
+  const key = (n: AreaNode) => `${n.type}:${n.id}`;
+  const allVisiblePicked = visibleNodes.length > 0 && visibleNodes.every(n => picked.has(key(n)));
+  const toggleNode = (n: AreaNode) => setPicked(prev => { const nx = new Set(prev); nx.has(key(n)) ? nx.delete(key(n)) : nx.add(key(n)); return nx; });
+  const toggleAllVisible = () => setPicked(prev => {
+    const nx = new Set(prev);
+    visibleNodes.forEach(n => allVisiblePicked ? nx.delete(key(n)) : nx.add(key(n)));
+    return nx;
+  });
+  const toggleUser = (id: number) => setUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
   const add = async () => {
-    if (!userId || !node) { toast.error(t('pg_alerts.areaPickBoth')); return; }
-    const [node_type, node_id] = node.split(':');
+    if (!userIds.length || !picked.size) { toast.error(t('pg_alerts.areaPickBoth')); return; }
     setBusy(true);
     try {
-      const r = await fetch('/api/technician-areas', {
+      const r = await fetch('/api/technician-areas/bulk', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({ user_id: Number(userId), node_type, node_id: Number(node_id), role }),
+        body: JSON.stringify({
+          user_ids: userIds, role,
+          nodes: [...picked].map(k => { const [node_type, id] = k.split(':'); return { node_type, node_id: Number(id) }; }),
+        }),
       });
       const d = await r.json();
-      if (d.success) { toast.success(t('pg_alerts.areaSaved')); setNode(''); refresh(); }
+      if (d.success) { toast.success(t('pg_alerts.areaSavedBulk', { added: d.added, changed: d.changed })); setPicked(new Set()); refresh(); }
       else toast.error(d.message || t('pg_alerts.failedToSave'));
     } catch { toast.error(t('pg_alerts.failedToSave')); }
     setBusy(false);
@@ -1930,28 +1948,60 @@ function TechnicianAreasCard() {
         )}
 
         {canEdit && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-brd">
-            <Select label={t('pg_alerts.areaTechnician')} value={userId} onChange={e => setUserId(e.target.value)}>
-              <option value="">{t('pg_alerts.areaChoose')}</option>
-              {techs.map(u => <option key={u.id} value={u.id}>{u.full_name || u.username}</option>)}
-            </Select>
-            <Select label={t('pg_alerts.areaNode')} value={node} onChange={e => setNode(e.target.value)}>
-              <option value="">{t('pg_alerts.areaChoose')}</option>
-              {AREA_TYPES.map(ty => {
-                const list = nodes.filter(n => n.type === ty);
-                return list.length ? (
-                  <optgroup key={ty} label={ty.toUpperCase()}>
-                    {list.map(n => <option key={`${ty}:${n.id}`} value={`${ty}:${n.id}`}>{n.name}</option>)}
-                  </optgroup>
-                ) : null;
-              })}
-            </Select>
-            <Select label={t('pg_alerts.areaRole')} value={role} onChange={e => setRole(e.target.value as 'primary' | 'backup')}>
-              <option value="primary">{t('pg_alerts.areaPrimary')}</option>
-              <option value="backup">{t('pg_alerts.areaBackup')}</option>
-            </Select>
-            <div className="sm:col-span-3">
-              <Button variant="primary" icon={<Plus size={15} />} loading={busy} onClick={add}>{t('pg_alerts.areaAdd')}</Button>
+          <div className="space-y-4 pt-3 border-t border-brd">
+            <div>
+              <div className="text-xs font-medium text-tx2 mb-1.5">{t('pg_alerts.areaTechnicians')}
+                <span className="ml-1 text-tx3 font-normal">({userIds.length})</span></div>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('pg_alerts.areaTechnicians')}>
+                {techs.map(u => (
+                  <button key={u.id} type="button" aria-pressed={userIds.includes(u.id)} onClick={() => toggleUser(u.id)}
+                    className={cn('rounded-full border px-3 py-1 text-xs transition-colors',
+                      userIds.includes(u.id) ? 'border-accent bg-accent/10 text-accent' : 'border-brd text-tx2 hover:border-accent hover:text-accent')}>
+                    {u.full_name || u.username}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium text-tx2 mb-1.5">{t('pg_alerts.areaNodes')}
+                <span className="ml-1 text-tx3 font-normal">({picked.size} {t('pg_alerts.areaPickedN')})</span></div>
+              <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2">
+                {(['all', ...AREA_TYPES] as const).map(ty => (
+                  <button key={ty} type="button" aria-pressed={typeFilter === ty} onClick={() => setTypeFilter(ty)}
+                    className={cn('shrink-0 rounded-full border px-3 py-1 text-xs',
+                      typeFilter === ty ? 'border-accent bg-accent/10 text-accent' : 'border-brd text-tx2')}>
+                    {ty === 'all' ? t('pg_alerts.areaAllTypes') : ty.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+              <input className="input-field text-sm mb-2" value={q} onChange={e => setQ(e.target.value)} placeholder={t('pg_alerts.areaSearch')} aria-label={t('pg_alerts.areaSearch')} />
+              <div className="rounded-lg border border-brd max-h-64 overflow-y-auto divide-y divide-brd">
+                <label className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-tx1 bg-glass sticky top-0 cursor-pointer">
+                  <input type="checkbox" checked={allVisiblePicked} onChange={toggleAllVisible} />
+                  {t('pg_alerts.areaPickAll', { n: visibleNodes.length })}
+                </label>
+                {visibleNodes.length === 0 && <p className="px-3 py-3 text-xs text-tx3">{t('pg_alerts.areaNoNodes')}</p>}
+                {visibleNodes.map(n => (
+                  <label key={key(n)} className="flex items-center gap-2 px-3 py-2 text-sm text-tx1 cursor-pointer hover:bg-glass">
+                    <input type="checkbox" checked={picked.has(key(n))} onChange={() => toggleNode(n)} />
+                    <span className="font-mono text-[10px] text-tx3 w-8">{n.type.toUpperCase()}</span>
+                    <span className="truncate">{n.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <Select label={t('pg_alerts.areaRole')} value={role} onChange={e => setRole(e.target.value as 'primary' | 'backup')}>
+                <option value="primary">{t('pg_alerts.areaPrimary')}</option>
+                <option value="backup">{t('pg_alerts.areaBackup')}</option>
+              </Select>
+              <div className="sm:col-span-2">
+                <Button variant="primary" icon={<Plus size={15} />} loading={busy} onClick={add}>
+                  {t('pg_alerts.areaAddBulk', { u: userIds.length, n: picked.size })}
+                </Button>
+              </div>
             </div>
           </div>
         )}
