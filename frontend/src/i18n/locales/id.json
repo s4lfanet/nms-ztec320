@@ -3099,11 +3099,11 @@
   "flow": {
     "tab": "Trafik Aplikasi",
     "setupTitle": "Trafik Aplikasi (NetFlow)",
-    "setupDesc": "Melihat ke mana trafik pelanggan pergi: Google, YouTube, Meta, TikTok, Netflix, dan lainnya, lengkap dengan grafik dan daftar pelanggan teratas. Data berasal dari fitur Traffic Flow di MikroTik; NMS hanya menerima data, tidak mengubah router.",
+    "setupDesc": "Melihat ke mana trafik pelanggan di router ini pergi: Google, YouTube, Meta, TikTok, Netflix, dan lainnya, lengkap dengan grafik dan pelanggan teratas. Data berasal dari Traffic Flow di MikroTik; NMS hanya menerima data, tidak mengubah router. Setiap perangkat punya tampilan sendiri.",
     "enable": "Aktifkan",
     "disable": "Matikan",
     "disabledNote": "Belum aktif. Tekan Aktifkan, lalu jalankan perintah di bawah pada MikroTik.",
-    "waiting": "Menunggu data dari router di UDP port {{port}}. Pastikan perintah di MikroTik sudah dijalankan dan firewall server mengizinkan port ini.",
+    "waiting": "Menunggu data dari {{name}} ({{ip}}) di UDP port {{port}}. Pastikan perintah di MikroTik ini sudah dijalankan dan firewall server mengizinkan port tersebut.",
     "cmdTitle": "Perintah di MikroTik (Terminal)",
     "cmdHint": "Ganti interfaces=all dengan interface LAN/pelanggan bila perlu. Router harus bisa menjangkau IP server NMS.",
     "copy": "Salin",
@@ -3112,8 +3112,6 @@
     "port": "Port UDP penerima",
     "localNets": "Jaringan pelanggan (lokal)",
     "lastSeen": "data terakhir {{s}} dtk lalu",
-    "router": "Router",
-    "allRouters": "Semua router",
     "iface": "Interface internet",
     "allIfaces": "Semua interface",
     "dir": {
@@ -3144,6 +3142,9 @@
     "noClients": "Belum ada data pelanggan untuk rentang ini.",
     "onu": "ONU",
     "showSetup": "Tampilkan petunjuk",
-    "hideSetup": "Sembunyikan petunjuk"
+    "hideSetup": "Sembunyikan petunjuk",
+    "senderIp": "IP pengirim Traffic Flow (opsional)",
+    "senderIpHint": "Kosongkan bila router mengirim dari IP {{ip}} (IP perangkat ini). Isi bila router mengirim dari IP lain, misalnya alamat loopback.",
+    "noneFrom": "Belum ada data dari {{name}} ({{ip}})."
   }
 }

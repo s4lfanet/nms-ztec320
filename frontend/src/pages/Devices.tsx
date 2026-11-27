@@ -9,7 +9,6 @@ import { Button, EmptyState, LoadingOverlay, Modal, StatusStrip, Tabs } from '..
 import { DevicesOverview, useSnmpSummary } from '../components/snmp/SnmpOverview';
 import { SnmpSettings } from '../components/snmp/SnmpSettings';
 import { MacSearch } from '../components/snmp/MacTables';
-import { TrafficFlow } from '../components/snmp/TrafficFlow';
 import { SnmpReport } from '../components/snmp/SnmpReport';
 import { TopologyMap } from '../components/snmp/TopologyMap';
 import { MikrotikSecurity } from '../components/snmp/MikrotikSecurity';
@@ -28,9 +27,9 @@ export function Devices() {
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
-  const [view, setView] = useState<'list' | 'topology' | 'search' | 'report' | 'flow' | 'security' | 'settings'>(() => {
+  const [view, setView] = useState<'list' | 'topology' | 'search' | 'report' | 'security' | 'settings'>(() => {
     const q = new URLSearchParams(window.location.search).get('tab');
-    return q === 'settings' || q === 'search' || q === 'flow' || (q === 'security' && canEdit) ? q : 'list';
+    return q === 'settings' || q === 'search' || (q === 'security' && canEdit) ? q : 'list';
   });
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
     queryKey: ['snmp-devices'], queryFn: api.snmpDevices, refetchInterval: 30_000,
@@ -55,7 +54,7 @@ export function Devices() {
           </div>
         )}
       />
-      {isLoading ? <LoadingOverlay /> : devices.length === 0 && view !== 'settings' && view !== 'security' && view !== 'flow' ? (
+      {isLoading ? <LoadingOverlay /> : devices.length === 0 && view !== 'settings' && view !== 'security' ? (
         <EmptyState icon={Router} title={t('dev.emptyTitle')} description={t('dev.emptyDesc')}
           action={canEdit && (
             <div className="flex flex-wrap justify-center gap-2">
@@ -66,15 +65,14 @@ export function Devices() {
           )} />
       ) : (
         <div className="space-y-4">
-          <Tabs mobileGrid={canEdit ? 3 : 3} active={view} onChange={k => setView(k as typeof view)} tabs={[
+          <Tabs mobileGrid={canEdit ? 3 : 4} active={view} onChange={k => setView(k as typeof view)} tabs={[
             { key: 'list', label: t('devx.tabList') },
             { key: 'topology', label: t('topo.tab') },
             { key: 'search', label: t('mact.searchTab') },
             { key: 'report', label: t('devx.tabReport') },
-            { key: 'flow', label: t('flow.tab') },
             ...(canEdit ? [{ key: 'security', label: t('mtsec.tab') }, { key: 'settings', label: t('snset.tab') }] : []),
           ]} />
-          {view === 'settings' ? <SnmpSettings /> : view === 'security' ? <MikrotikSecurity canEdit={canEdit} /> : view === 'flow' ? <TrafficFlow canEdit={canEdit} /> : view === 'search' ? <MacSearch /> : view === 'report' ? <SnmpReport /> : view === 'topology' ? <TopologyMap /> : <>
+          {view === 'settings' ? <SnmpSettings /> : view === 'security' ? <MikrotikSecurity canEdit={canEdit} /> : view === 'search' ? <MacSearch /> : view === 'report' ? <SnmpReport /> : view === 'topology' ? <TopologyMap /> : <>
           {summary.data && <DevicesOverview summary={summary.data} />}
           <StatusStrip
             aria-label={t('dev.statusSummary')}

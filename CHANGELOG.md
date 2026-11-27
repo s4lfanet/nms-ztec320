@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-27 — Trafik Aplikasi per perangkat SNMP
+- Trafik Aplikasi dipindah dari tab global ke **tab di halaman tiap perangkat SNMP**, jadi tiap MikroTik punya grafik, layanan teratas, dan pelanggan teratasnya sendiri. Data dicocokkan lewat IP perangkat, atau lewat kolom baru **IP pengirim Traffic Flow** bila router mengirim dari IP lain (mis. loopback).
+
 ### 2026-11-27 — Trafik Aplikasi (NetFlow/IPFIX): lihat pelanggan mengakses apa
 - Tab baru **Trafik Aplikasi** di Monitoring SNMP: grafik bertumpuk per layanan (Google, YouTube, Meta, TikTok, Netflix, dll.), daftar layanan teratas, pelanggan teratas (klik untuk rincian per pelanggan), filter router/interface internet dan rentang 1 jam–30 hari, arah unduh/unggah.
 - Data dari fitur Traffic Flow MikroTik (NetFlow v5/v9 dan IPFIX) yang diterima kolektor UDP di NMS (default port 2055, mati sampai diaktifkan di tab). Nama layanan dikenali dari DNS cache router (lewat API, baca-saja), reverse DNS, dan aturan domain. Halaman menampilkan perintah MikroTik yang tinggal disalin.

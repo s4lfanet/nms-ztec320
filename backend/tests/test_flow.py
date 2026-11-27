@@ -172,3 +172,36 @@ class TestApi:
         assert i['exporters'][0]['interfaces'][0]['if_index'] == 7
         r = client.put('/api/flow/settings', json={'flow_enabled': 1, 'flow_port': 2056}, headers=self.H).get_json()
         assert r['settings']['flow_enabled'] == 1 and r['settings']['flow_port'] == 2056
+
+    def test_per_device_dan_flow_ip(self, client):
+        from models import SnmpDevice, SnmpPort
+        self._login(client)
+        with app.app_context():
+            a = SnmpDevice(name='RB-A', host='10.1.0.1', snmp_version='2c')
+            b = SnmpDevice(name='RB-B', host='10.1.0.2', snmp_version='2c', flow_ip='10.99.0.2')   # pengirim beda dari host
+            db.session.add_all([a, b]); db.session.flush()
+            db.session.add(SnmpPort(device_id=b.id, if_index=5, name='sfp-b', admin_status='up', oper_status='up'))
+            now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+            db.session.add(FlowBucket(ts=now, exporter='10.1.0.1', if_index=3, service='YouTube', down_bytes=1000, up_bytes=0))
+            db.session.add(FlowBucket(ts=now, exporter='10.99.0.2', if_index=5, service='Netflix', down_bytes=5000, up_bytes=0))
+            db.session.add(FlowClientHour(ts=now, exporter='10.99.0.2', client_ip='10.0.0.7', service='Netflix', down_bytes=5000, up_bytes=0))
+            db.session.add(FlowExporter(ip='10.99.0.2', last_seen=datetime.utcnow(), version=9, packets=1, flows=1))
+            db.session.commit()
+            ida, idb = a.id, b.id
+        ra = client.get(f'/api/flow/overview?range=24h&device_id={ida}').get_json()
+        rb = client.get(f'/api/flow/overview?range=24h&device_id={idb}').get_json()
+        assert [x['service'] for x in ra['services']] == ['YouTube']
+        assert [x['service'] for x in rb['services']] == ['Netflix']          # lewat flow_ip, bukan host
+        assert [c['ip'] for c in client.get(f'/api/flow/clients?device_id={idb}').get_json()['clients']] == ['10.0.0.7']
+        assert client.get(f'/api/flow/clients?device_id={ida}').get_json()['clients'] == []
+        st = client.get(f'/api/flow/status?device_id={idb}').get_json()
+        assert st['exporter_ip'] == '10.99.0.2' and st['has_data'] and st['exporters'][0]['name'] == 'RB-B'
+        assert client.get(f'/api/flow/status?device_id={ida}').get_json()['exporters'] == []
+        i = client.get(f'/api/flow/interfaces?device_id={idb}').get_json()
+        assert i['exporters'][0]['interfaces'][0]['name'] == 'sfp-b'
+        assert client.get('/api/flow/overview?device_id=99999').status_code == 404
+        # flow_ip lewat API perangkat: divalidasi
+        bad = client.put(f'/api/snmp/devices/{idb}', json={'flow_ip': 'bukan-ip', 'community': 'x' + str(1234)}, headers=self.H)
+        assert bad.status_code == 400
+        ok = client.put(f'/api/snmp/devices/{idb}', json={'flow_ip': '10.99.0.9', 'community': 'x' + str(1234)}, headers=self.H).get_json()
+        assert ok['device']['flow_ip'] == '10.99.0.9'
