@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Topologi per jalur / per perangkat
+- Perangkat yang tidak saling terhubung kini dipisah menjadi jalur topologi sendiri-sendiri. Di tab Topologi ada pemilih **Jalur topologi** (semua jalur atau satu jalur), dan setiap perangkat SNMP punya tab **Topologi** yang hanya menampilkan jalur perangkat itu.
+
 ### 2026-11-27 — OLT tampil di topologi SNMP
 - OLT kini muncul di peta topologi sebagai node (kotak berlabel OLT) dengan garis ke port MikroTik/switch tempat ia terhubung. Port ditemukan otomatis lewat LLDP atau ARP+tabel MAC; bila tidak ketemu, tunjuk manual lewat kartu **OLT di topologi**. Garis merah bila port turun atau OLT tidak terjangkau, dan alert port turun kini menyebut OLT beserta jumlah ONU yang ikut terdampak.
 

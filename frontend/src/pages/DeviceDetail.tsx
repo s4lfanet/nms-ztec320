@@ -7,6 +7,7 @@ import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { ActionMenu, Card, EmptyState, LoadingOverlay, Tabs } from '../components/ui';
 import { TrafficFlow } from '../components/snmp/TrafficFlow';
+import { TopologyMap } from '../components/snmp/TopologyMap';
 import { toast } from '../components/Toast';
 import { confirm } from '../components/ConfirmDialog';
 import { api, type SnmpDevice, type SnmpNeighbor, type SnmpPort, type SnmpSensor } from '../lib/api';
@@ -40,8 +41,8 @@ export function DeviceDetail() {
   const qc = useQueryClient();
   const canEdit = useHasPerm()('settings_ip_olts');
   const [params] = useSearchParams();
-  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'neighbors' | 'tables' | 'rules' | 'flow' | 'events'>(
-    () => { const q = params.get('tab'); return q === 'ports' || q === 'tables' || q === 'flow' ? q : 'overview'; });
+  const [tab, setTab] = useState<'overview' | 'graphs' | 'ports' | 'neighbors' | 'tables' | 'rules' | 'flow' | 'topology' | 'events'>(
+    () => { const q = params.get('tab'); return q === 'ports' || q === 'tables' || q === 'flow' || q === 'topology' ? q : 'overview'; });
   const [range, setRange] = useState<GraphRange>('24h');
   const [editing, setEditing] = useState(false);
   const { data, isLoading, dataUpdatedAt, isFetching } = useQuery({
@@ -100,6 +101,7 @@ export function DeviceDetail() {
         { key: 'tables', label: t('mact.tab') },
         { key: 'rules', label: t('snrule.tab') },
         { key: 'flow', label: t('flow.tab') },
+        { key: 'topology', label: t('topo.tab') },
         { key: 'events', label: t('dev.tabEvents') },
       ]} />
 
@@ -109,6 +111,7 @@ export function DeviceDetail() {
       {tab === 'neighbors' && <Neighbors list={data.neighbors || []} />}
       {tab === 'tables' && <DeviceTables deviceId={did} canEdit={canEdit} />}
       {tab === 'rules' && <SensorRules deviceId={did} canEdit={canEdit} ports={data.ports} />}
+      {tab === 'topology' && <TopologyMap deviceId={did} />}
       {tab === 'flow' && <TrafficFlow canEdit={canEdit} deviceId={did} deviceName={d.name} />}
       {tab === 'events' && (
         <Card title={t('dev.tabEvents')}>

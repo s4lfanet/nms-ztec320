@@ -384,6 +384,30 @@ def olts_behind_port(port_id):
         return []
 
 
+def components(nodes, links, deps):
+    """Kelompok terhubung (jalur yang tidak saling berhubungan = topologi terpisah).
+    → [set(node_id)] diurutkan dari yang terbesar. Garis dependensi ikut dihitung sebagai hubungan."""
+    adj = {n['id']: set() for n in nodes}
+    for e in list(links) + list(deps):
+        if e['source'] in adj and e['target'] in adj:
+            adj[e['source']].add(e['target'])
+            adj[e['target']].add(e['source'])
+    seen, out = set(), []
+    for nid in adj:
+        if nid in seen:
+            continue
+        comp, stack = set(), [nid]
+        while stack:
+            x = stack.pop()
+            if x in comp:
+                continue
+            comp.add(x)
+            stack.extend(adj[x] - comp)
+        seen |= comp
+        out.append(comp)
+    return sorted(out, key=len, reverse=True)
+
+
 def annotate(nodes, now=None):
     """Lapisan gaya PRTG di atas peta: penanda pemeliharaan, status sensor kustom, dan garis
     dependensi induk-anak. Mengubah `nodes` di tempat; mengembalikan daftar dependensi."""

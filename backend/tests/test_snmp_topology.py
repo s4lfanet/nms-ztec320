@@ -99,3 +99,24 @@ def test_topology_api_and_device_neighbors(ctx):
     assert d['neighbors'][0]['remote_name'] == 'olt-x' and d['neighbors'][0]['local_port'] == 'sfp1'
     assert c.delete(f'/api/snmp/devices/{core.id}', headers=H).status_code == 200
     assert SnmpNeighbor.query.count() == 0
+
+
+def test_topologi_per_jalur_terpisah(ctx):
+    """Dua kelompok yang tidak saling terhubung = dua topologi; ?device_id= hanya mengembalikan jalurnya."""
+    a1 = _dev('A-Core', '10.1.0.1', 'a-core', [('sfp1', '')])
+    a2 = _dev('A-Sw', '10.1.0.2', 'a-sw', [('sfp1', '')])
+    b1 = _dev('B-Core', '10.2.0.1', 'b-core', [('sfp1', '')])
+    b2 = _dev('B-Sw', '10.2.0.2', 'b-sw', [('sfp1', '')])
+    _dev('Sendiri', '10.3.0.1', 'sendiri', [('sfp1', '')])
+    now = sm._now()
+    for src, dst in ((a1, a2), (b1, b2)):
+        st.apply(src, [{'protocol': 'lldp', 'local_if_index': 1, 'remote_name': dst.sys_name, 'remote_chassis': '',
+                        'remote_port': 'sfp1', 'remote_port_descr': '', 'remote_platform': '', 'remote_ip': dst.host}], now)
+    db.session.commit(); st.link_all(); db.session.commit()
+    c = _client()
+    full = c.get('/api/snmp/topology', headers=H).get_json()
+    assert len(full['groups']) == 2 and {g['nodes'] for g in full['groups']} == {2}
+    only_a = c.get(f'/api/snmp/topology?device_id={a2.id}', headers=H).get_json()
+    assert {n['name'] for n in only_a['nodes']} == {'A-Core', 'A-Sw'} and len(only_a['links']) == 1
+    alone = c.get(f'/api/snmp/topology?device_id={SnmpDevice.query.filter_by(name="Sendiri").one().id}', headers=H).get_json()
+    assert len(alone['nodes']) == 1 and alone['links'] == []

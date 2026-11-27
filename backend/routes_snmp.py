@@ -861,11 +861,35 @@ import snmp_topology  # noqa: E402
 @bp.route('/api/snmp/topology', methods=['GET'])
 @login_required
 def snmp_topology_get():
+    """Topologi semua perangkat, atau hanya jalur yang terhubung ke ?device_id= (perangkat lain yang tidak
+    saling terhubung = topologi terpisah). `groups` = daftar jalur terpisah untuk pemilih di UI."""
     nodes, links = snmp_topology.build()
     for lk in links:
         lk['last_seen'] = _iso(lk['last_seen'])
     deps = snmp_topology.annotate(nodes)
-    return jsonify({'success': True, 'nodes': nodes, 'links': links, 'deps': deps})
+    comps = snmp_topology.components(nodes, links, deps)
+    by_id = {n['id']: n for n in nodes}
+    deg = {}
+    for e in list(links) + list(deps):
+        for k in (e['source'], e['target']):
+            deg[k] = deg.get(k, 0) + 1
+    groups = []
+    for c in comps:
+        if len(c) < 2:
+            continue
+        reg = [by_id[i] for i in c if by_id[i].get('device_id')]
+        if not reg:
+            continue
+        head = max(reg, key=lambda n: (deg.get(n['id'], 0), n['name'].lower()))
+        groups.append({'device_id': head['device_id'], 'name': head['name'], 'nodes': len(c),
+                       'device_ids': sorted(n['device_id'] for n in reg)})
+    did = request.args.get('device_id', type=int)
+    if did:
+        keep = next((c for c in comps if f'd{did}' in c), {f'd{did}'})
+        nodes = [n for n in nodes if n['id'] in keep]
+        links = [l for l in links if l['source'] in keep and l['target'] in keep]
+        deps = [d for d in deps if d['source'] in keep and d['target'] in keep]
+    return jsonify({'success': True, 'nodes': nodes, 'links': links, 'deps': deps, 'groups': groups})
 
 
 @bp.route('/api/snmp/olt-links', methods=['GET'])

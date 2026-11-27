@@ -2691,7 +2691,10 @@
     "devPick": "SNMP device",
     "portPick": "Port",
     "portAny": "(port not specified)",
-    "oltAdd": "Link"
+    "oltAdd": "Link",
+    "path": "Topology path",
+    "pathAll": "All paths ({{n}})",
+    "pathItem": "{{name}} — {{n}} nodes"
   },
   "pdet": {
     "spec": "Specification",
