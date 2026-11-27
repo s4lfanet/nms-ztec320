@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-27 — AI agent bisa membaca Trafik Aplikasi
+- Asisten AI (web, WhatsApp, Telegram) kini bisa menjawab "pelanggan X akses apa?" dan "layanan apa yang paling banyak dipakai di router Y?" lewat tool baru `traffic_flow` dan `traffic_flow_client` (data NetFlow/IPFIX, per perangkat SNMP, rentang 1 jam–30 hari).
+
 ### 2026-11-27 — Perbaikan: data perangkat SNMP tampak hilang / error 500 setelah update
 - Update Trafik Aplikasi per perangkat menambah kolom `flow_ip` tapi lupa didaftarkan di migrasi database, sehingga daftar perangkat SNMP kosong dan simpan error 500 di instalasi lama. **Data tidak hilang.** Kolom kini ditambahkan otomatis saat layanan start, plus jaring pengaman yang melengkapi kolom model yang belum ada.
 
