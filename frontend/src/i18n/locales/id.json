@@ -3145,6 +3145,15 @@
     "hideSetup": "Sembunyikan petunjuk",
     "senderIp": "IP pengirim Traffic Flow (opsional)",
     "senderIpHint": "Kosongkan bila router mengirim dari IP {{ip}} (IP perangkat ini). Isi bila router mengirim dari IP lain, misalnya alamat loopback.",
-    "noneFrom": "Belum ada data dari {{name}} ({{ip}})."
+    "noneFrom": "Belum ada data dari {{name}} ({{ip}}).",
+    "noteTitle": "Cara membaca angka (catatan sampling)",
+    "noteSource": "Sumber: Traffic Flow MikroTik (NetFlow/IPFIX). NMS hanya menerima laporan flow (koneksi + jumlah byte); isi paket tidak dibaca.",
+    "noteAccuracy": "NMS tidak mengambil sampel sendiri: semua flow yang diterima dihitung penuh. Angka bisa sedikit kurang bila paket UDP hilang. Atur active-flow-timeout MikroTik ±1 menit agar koneksi panjang (streaming) terhitung berkala.",
+    "noteBucket": "Data dirangkum per 5 menit (grafik 1–24 jam) dan per jam (7 dan 30 hari), ditulis ke database tiap 60 detik, jadi grafik bisa terlambat ±1 menit.",
+    "noteClients": "Pelanggan dengan trafik sangat kecil (di bawah 20 KB) ditahan dulu sampai cukup besar, jadi belum tentu langsung muncul di daftar.",
+    "noteDirection": "Unduh/unggah ditentukan dari jaringan lokal di pengaturan. Bila IP pelanggan di luar daftar itu, arah bisa salah.",
+    "noteService": "Nama layanan dikenali dari DNS cache router, reverse DNS, dan aturan domain. Yang tidak dikenali masuk \"Lainnya\"; layanan di CDN bersama bisa kurang tepat.",
+    "noteRetention": "Penyimpanan: data 5 menit 3 hari, data per jam 60 hari, data per pelanggan 7 hari (bisa diatur).",
+    "noteUse": "Cocok untuk melihat tren dan perbandingan antar layanan. Jangan dipakai untuk tagihan atau kuota yang presisi."
   }
 }

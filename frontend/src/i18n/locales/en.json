@@ -3145,6 +3145,15 @@
     "hideSetup": "Hide setup",
     "senderIp": "Traffic Flow sender IP (optional)",
     "senderIpHint": "Leave empty if the router sends from {{ip}} (this device's IP). Fill it in if the router sends from another IP, e.g. a loopback address.",
-    "noneFrom": "No data from {{name}} ({{ip}}) yet."
+    "noneFrom": "No data from {{name}} ({{ip}}) yet.",
+    "noteTitle": "How to read these numbers (sampling notes)",
+    "noteSource": "Source: MikroTik Traffic Flow (NetFlow/IPFIX). The NMS only receives flow reports (connection + byte counts); packet contents are never read.",
+    "noteAccuracy": "The NMS does no sampling of its own: every received flow is counted. Numbers can run slightly low if UDP packets are lost. Set the MikroTik active-flow-timeout to about 1 minute so long connections (streaming) are reported regularly.",
+    "noteBucket": "Data is summarised per 5 minutes (1–24 h charts) and per hour (7 and 30 days) and written to the database every 60 seconds, so charts can lag by about 1 minute.",
+    "noteClients": "Customers with very little traffic (under 20 KB) are held back until they reach a useful size, so they may not appear in the list immediately.",
+    "noteDirection": "Download/upload is decided from the local networks in settings. If a customer IP is outside that list, direction may be wrong.",
+    "noteService": "Service names come from the router DNS cache, reverse DNS and domain rules. Unrecognised traffic goes to \"Other\"; services behind shared CDNs may be less accurate.",
+    "noteRetention": "Retention: 5-minute data 3 days, hourly data 60 days, per-customer data 7 days (configurable).",
+    "noteUse": "Good for trends and comparing services. Do not use it for exact billing or quota."
   }
 }

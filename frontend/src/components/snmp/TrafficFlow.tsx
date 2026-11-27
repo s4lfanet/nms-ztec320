@@ -331,6 +331,15 @@ export function TrafficFlow({ canEdit, deviceId, deviceName }: { canEdit: boolea
           </div>
         </>
       )}
+      {hasData && (
+        <details className="text-xs text-tx2 border border-line rounded-lg px-3 py-2">
+          <summary className="cursor-pointer font-medium text-tx">{t('flow.noteTitle')}</summary>
+          <ul className="list-disc pl-5 mt-2 space-y-1">
+            {(['noteSource', 'noteAccuracy', 'noteBucket', 'noteClients', 'noteDirection', 'noteService', 'noteRetention', 'noteUse'] as const)
+              .map(k => <li key={k}>{t(`flow.${k}`)}</li>)}
+          </ul>
+        </details>
+      )}
       {open && <ClientModal client={open} range={range} deviceId={deviceId} onClose={() => setOpen(null)} />}
     </div>
   );
