@@ -48,3 +48,14 @@ def test_collect_entity_and_cisco_cpu_and_empty():
     sensors, cpu = asyncio.run(sv.collect(_Fake(t)))
     assert sensors[0]['name'] == 'Chassis temp' and sensors[0]['value'] == 47.0 and cpu == 16.0
     assert asyncio.run(sv.collect(_Fake({}))) == ([], None)
+
+
+def test_parse_huawei_dan_collect():
+    r = sv.parse_huawei({'17': 41, '18': 0, '19': 2147483647}, {'17.1': 55, '17.2': 255}, {'17': 'Board 0', '18': 'x'})
+    by = {x['key']: x for x in r}
+    assert by['hwt.17']['value'] == 41.0 and by['hwt.17']['name'] == 'Board 0'
+    assert 'hwt.18' not in by and 'hwt.19' not in by           # 0 dan nilai tak masuk akal dilewati
+    assert by['hwf.17.1']['unit'] == '%' and 'hwf.17.2' not in by
+    t = {sv.HW_TEMP: {'17': 44}, sv.HW_FAN: {'17.1': 60}, sv.ENT_NAME: {'17': b'MPU'}}
+    sensors, _ = asyncio.run(sv.collect(_Fake(t)))
+    assert {s['key'] for s in sensors} == {'hwt.17', 'hwf.17.1'}

@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Sensor Huawei VRP
+- Switch/router Huawei yang tidak mengisi ENTITY-SENSOR kini tetap terbaca suhu papan dan kecepatan kipasnya (HUAWEI-ENTITY-EXTENT-MIB). Redaman optik Huawei belum dibaca karena unit-nya tidak konsisten antar perangkat.
+
 ### 2026-11-28 — Sensor switch/router vendor lain (roadmap tahap A)
 - Perangkat SNMP non-MikroTik (Cisco, Huawei, Juniper, Arista, dan switch lain yang mendukung ENTITY-SENSOR-MIB) kini ikut membaca sensor otomatis: suhu, tegangan, arus, daya, kipas, dan redaman optik SFP (dBm). Cisco lama memakai CISCO-ENVMON (suhu + status kipas/PSU, tampil OK/FAIL dan dialert) dan CPU 5 menit. Sensor tampil di kartu Kesehatan perangkat dengan grafik riwayat; suhu ikut alert suhu yang ada.
 

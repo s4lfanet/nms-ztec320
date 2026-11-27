@@ -8,6 +8,8 @@ yang bukan MikroTik dan mengembalikan daftar sensor berformat sama dengan sensor
 ENT_SENSOR = '1.3.6.1.2.1.99.1.1.1'          # entPhySensorTable: .1 type .2 scale .3 precision .4 value .5 operStatus
 ENT_NAME = '1.3.6.1.2.1.47.1.1.1.1.7'        # entPhysicalName
 ENT_DESCR = '1.3.6.1.2.1.47.1.1.1.1.2'       # entPhysicalDescr
+HW_TEMP = '1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11'   # hwEntityTemperature (°C), indeks = entPhysicalIndex
+HW_FAN = '1.3.6.1.4.1.2011.5.25.31.1.1.10.1.5'    # hwEntityFanSpeed (% dari kecepatan penuh), indeks = entPhysicalIndex.fanIndex
 CISCO_TEMP = '1.3.6.1.4.1.9.9.13.1.3.1'      # ciscoEnvMonTemperatureStatusTable: .2 descr .3 value(C)
 CISCO_FAN = '1.3.6.1.4.1.9.9.13.1.4.1'       # ciscoEnvMonFanStatusTable: .2 descr .3 state
 CISCO_PSU = '1.3.6.1.4.1.9.9.13.1.5.1'       # ciscoEnvMonSupplyStatusTable: .2 descr .3 state
@@ -61,6 +63,22 @@ def parse_entity(cols, names):
     return out
 
 
+def parse_huawei(temp, fan, names):
+    """HUAWEI-ENTITY-EXTENT-MIB: suhu papan (°C; 0/nilai tak masuk akal = sensor tak ada → dilewati) dan
+    kecepatan kipas (% dari penuh). Redaman optik Huawei sengaja tidak dibaca: perangkat yang sama kadang
+    melaporkan dBm kadang mW untuk OID yang sama (diketahui dari LibreNMS), jadi perlu data nyata."""
+    out = []
+    for idx, v in temp.items():
+        if isinstance(v, int) and 1 <= v <= 200:
+            out.append({'kind': 'temperature', 'key': f'hwt.{idx}', 'name': (names.get(idx) or f'Suhu {idx}')[:150],
+                        'value': float(v), 'unit': 'C'})
+    for idx, v in fan.items():
+        if isinstance(v, int) and 0 <= v <= 100:
+            out.append({'kind': 'fan', 'key': f'hwf.{idx}', 'name': (names.get(idx.split('.')[0]) or 'Kipas') + f' {idx}',
+                        'value': float(v), 'unit': '%'})
+    return out
+
+
 def parse_cisco(temp, fan, psu):
     """Cadangan CISCO-ENVMON: suhu (°C) + status kipas/PSU (state 1 normal → ok=1, selain itu 0;
     5 notPresent dan 6 notFunctioning: 5 dilewati karena slot kosong)."""
@@ -100,6 +118,11 @@ async def collect(c):
         names = {k: _text(v) for k, v in (await _walk(c, ENT_NAME, 1500)).items()}
         descr = {k: _text(v) for k, v in (await _walk(c, ENT_DESCR, 1500)).items()} if not any(names.values()) else {}
         sensors = parse_entity(cols, {k: names.get(k) or descr.get(k, '') for k in types})
+    if not sensors:
+        hwt = await _walk(c, HW_TEMP)
+        if hwt:
+            names = {k: _text(v) for k, v in (await _walk(c, ENT_NAME, 1500)).items()}
+            sensors = parse_huawei(hwt, await _walk(c, HW_FAN), names)
     if not sensors:
         t = await _table(c, CISCO_TEMP, ('2', '3'))
         if t['3']:
