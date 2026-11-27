@@ -2579,7 +2579,9 @@
       "current": "Arus",
       "fan": "Kipas",
       "storage": "Penyimpanan"
-    }
+    },
+    "compare": "Bandingkan periode lalu",
+    "prevPeriod": "periode lalu"
   },
   "devx": {
     "tabList": "Daftar perangkat",

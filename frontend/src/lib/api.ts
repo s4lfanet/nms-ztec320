@@ -304,9 +304,10 @@ export const api = {
   flowOverview: (q: { device_id: number; range: string; if_index?: string }) => request<FlowOverview>(`/api/flow/overview?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as unknown as [string, string][])}`),
   flowClients: (q: { device_id: number; range: string; service?: string; q?: string }) => request<{ success: boolean; clients: FlowClientRow[] }>(`/api/flow/clients?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as unknown as [string, string][])}`),
   flowClient: (ip: string, q: { device_id: number; range: string }) => request<FlowClientDetail>(`/api/flow/client/${encodeURIComponent(ip)}?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as unknown as [string, string][])}`),
-  snmpGraph: (q: { device_id: number; port_id?: number; metrics: string; range: string }) => {
+  snmpGraph: (q: { device_id: number; port_id?: number; metrics: string; range: string; compare?: boolean }) => {
     const qs = new URLSearchParams({ device_id: String(q.device_id), metrics: q.metrics, range: q.range });
     if (q.port_id) qs.set('port_id', String(q.port_id));
+    if (q.compare) qs.set('compare', '1');
     return request<SnmpGraphData>(`/api/snmp/graph?${qs}`);
   },
   snmpDeviceMetrics: (id: number) => request<{ success: boolean; metrics: { metric: string; name: string }[] }>(`/api/snmp/devices/${id}/metrics`),

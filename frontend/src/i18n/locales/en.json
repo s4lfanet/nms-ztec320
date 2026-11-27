@@ -2579,7 +2579,9 @@
       "current": "Current",
       "fan": "Fans",
       "storage": "Storage"
-    }
+    },
+    "compare": "Compare previous period",
+    "prevPeriod": "previous period"
   },
   "devx": {
     "tabList": "Device list",
