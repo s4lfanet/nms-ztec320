@@ -2635,7 +2635,8 @@
       "snmp_port_err": "Error port",
       "snmp_cpu": "CPU tinggi",
       "snmp_temp": "Suhu tinggi",
-      "snmp_optical": "Redaman SFP buruk"
+      "snmp_optical": "Redaman SFP buruk",
+      "flow_anomaly": "Trafik pelanggan tidak wajar"
     },
     "th": {
       "snmp_down_minutes": "Port/perangkat turun dialert setelah",
