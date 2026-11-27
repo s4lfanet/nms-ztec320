@@ -1793,3 +1793,64 @@ class MtSecFwSeen(db.Model):
     last_seen = db.Column(db.DateTime)
     times = db.Column(db.Integer, default=1)
     __table_args__ = (db.UniqueConstraint('device_id', 'list', 'address', name='uq_mt_sec_fw'),)
+
+
+# ==================== TRAFIK APLIKASI (NetFlow / IPFIX) ====================
+
+class FlowBucket(db.Model):
+    """Volume per layanan per 5 menit (`ts` = batas bucket, UTC naif). down = ke pelanggan, up = dari pelanggan."""
+    __tablename__ = 'flow_buckets'
+    id = db.Column(db.Integer, primary_key=True)
+    ts = db.Column(db.DateTime, nullable=False, index=True)
+    exporter = db.Column(db.String(45), nullable=False, default='')
+    if_index = db.Column(db.Integer, nullable=False, default=0)   # interface sisi internet (SNMP ifIndex)
+    service = db.Column(db.String(80), nullable=False)
+    down_bytes = db.Column(db.BigInteger, default=0)
+    up_bytes = db.Column(db.BigInteger, default=0)
+    __table_args__ = (db.UniqueConstraint('ts', 'exporter', 'if_index', 'service', name='uq_flow_bucket'),)
+
+
+class FlowServiceHour(db.Model):
+    """Rollup per jam dari FlowBucket (retensi lebih panjang)."""
+    __tablename__ = 'flow_service_hours'
+    id = db.Column(db.Integer, primary_key=True)
+    ts = db.Column(db.DateTime, nullable=False, index=True)
+    exporter = db.Column(db.String(45), nullable=False, default='')
+    if_index = db.Column(db.Integer, nullable=False, default=0)
+    service = db.Column(db.String(80), nullable=False)
+    down_bytes = db.Column(db.BigInteger, default=0)
+    up_bytes = db.Column(db.BigInteger, default=0)
+    __table_args__ = (db.UniqueConstraint('ts', 'exporter', 'if_index', 'service', name='uq_flow_service_hour'),)
+
+
+class FlowClientHour(db.Model):
+    """Volume per pelanggan (IP lokal) per layanan per jam."""
+    __tablename__ = 'flow_client_hours'
+    id = db.Column(db.Integer, primary_key=True)
+    ts = db.Column(db.DateTime, nullable=False, index=True)
+    exporter = db.Column(db.String(45), nullable=False, default='')
+    client_ip = db.Column(db.String(45), nullable=False, index=True)
+    service = db.Column(db.String(80), nullable=False)
+    down_bytes = db.Column(db.BigInteger, default=0)
+    up_bytes = db.Column(db.BigInteger, default=0)
+    __table_args__ = (db.UniqueConstraint('ts', 'exporter', 'client_ip', 'service', name='uq_flow_client_hour'),)
+
+
+class FlowIpName(db.Model):
+    """Cache IP tujuan → nama → layanan (dari DNS cache MikroTik atau reverse DNS)."""
+    __tablename__ = 'flow_ip_names'
+    ip = db.Column(db.String(45), primary_key=True)
+    name = db.Column(db.String(255), default='')
+    service = db.Column(db.String(80), default='')
+    source = db.Column(db.String(8), default='')   # dns | rdns | none
+    resolved_at = db.Column(db.DateTime)
+
+
+class FlowExporter(db.Model):
+    """Router yang mengirim paket flow (dikenali dari IP sumber UDP)."""
+    __tablename__ = 'flow_exporters'
+    ip = db.Column(db.String(45), primary_key=True)
+    last_seen = db.Column(db.DateTime)
+    version = db.Column(db.Integer, default=0)
+    packets = db.Column(db.BigInteger, default=0)
+    flows = db.Column(db.BigInteger, default=0)

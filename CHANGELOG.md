@@ -4,6 +4,11 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-27 — Trafik Aplikasi (NetFlow/IPFIX): lihat pelanggan mengakses apa
+- Tab baru **Trafik Aplikasi** di Monitoring SNMP: grafik bertumpuk per layanan (Google, YouTube, Meta, TikTok, Netflix, dll.), daftar layanan teratas, pelanggan teratas (klik untuk rincian per pelanggan), filter router/interface internet dan rentang 1 jam–30 hari, arah unduh/unggah.
+- Data dari fitur Traffic Flow MikroTik (NetFlow v5/v9 dan IPFIX) yang diterima kolektor UDP di NMS (default port 2055, mati sampai diaktifkan di tab). Nama layanan dikenali dari DNS cache router (lewat API, baca-saja), reverse DNS, dan aturan domain. Halaman menampilkan perintah MikroTik yang tinggal disalin.
+- Perlu: izinkan UDP 2055 ke server NMS dan jalankan perintah traffic-flow di router.
+
 ### 2026-11-26 — Alert FTTH ke semua teknisi (bisa dipilih)
 - Pengaturan baru di kartu Wilayah Teknisi: alert FTTH dikirim ke **semua teknisi terdaftar** (default) atau hanya teknisi wilayahnya. Wilayah tetap dicatat sebagai penanggung jawab insiden.
 

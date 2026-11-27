@@ -146,6 +146,15 @@ def start_servers(flask_port: int = 5000, ws_port: int = 8765,
     snmp_thread.start()
     logger.info("SNMP device poller started")
 
+    # Trafik Aplikasi: kolektor NetFlow/IPFIX dari MikroTik (idle sampai diaktifkan di
+    # Monitoring SNMP → Trafik Aplikasi; baru membuka port UDP saat diaktifkan)
+    from flow_collector import run_flow_collector
+    flow_thread = threading.Thread(
+        target=run_flow_collector, args=(flask_app,), daemon=True, name="flow-collector"
+    )
+    flow_thread.start()
+    logger.info("Flow collector thread started")
+
     # AI agent: balas pertanyaan dari bot Telegram (idle sampai diaktifkan
     # di Pengaturan AI Agent + kanal Telegram dinyalakan)
     from ai_agent import start_telegram_poller

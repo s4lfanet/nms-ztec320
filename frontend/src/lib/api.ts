@@ -62,6 +62,17 @@ export interface IncidentReport {
   technicians: Array<{ name: string; resolved: number; avg_minutes: number }>;
 }
 
+
+export interface FlowSettings { flow_enabled: number; flow_port: number; flow_local_nets: string; flow_bucket_days: number; flow_hour_days: number; flow_client_days: number; flow_dns_minutes: number }
+export interface FlowExporterRow { ip: string; name: string; version: number; packets: number; flows: number; last_seen: string | null; age_seconds: number | null }
+export interface FlowStatus { success: boolean; settings: FlowSettings; exporters: FlowExporterRow[]; server_ip: string; ip_names: number; has_data: boolean }
+export interface FlowServiceRow { service: string; down: number; up: number; total: number; share: number }
+export type FlowPoint = { ts: string } & Record<string, [number, number] | string>;
+export interface FlowOverview { success: boolean; range: string; step: number; down: number; up: number; services: FlowServiceRow[]; series_names: string[]; series: FlowPoint[]; clients: number; unresolved_share: number }
+export interface FlowClientRow { ip: string; down: number; up: number; total: number; user: string; onu: string; top_services: { service: string; total: number }[] }
+export interface FlowClientDetail { success: boolean; ip: string; user: string; onu: string; services: { service: string; down: number; up: number; total: number }[]; series_names: string[]; series: FlowPoint[]; step: number }
+export interface FlowIfaces { success: boolean; exporters: { exporter: string; name: string; interfaces: { if_index: number; name: string }[] }[] }
+
 export const api = {
   // Auth
   login: (username: string, password: string) =>
@@ -287,6 +298,12 @@ export const api = {
   snmpDeviceDiscover: (id: number) => request<{ success: boolean; message: string }>(`/api/snmp/devices/${id}/discover`, { method: 'POST' }),
   snmpTest: (data: Partial<SnmpDeviceForm> & { device_id?: number }) =>
     request<{ success: boolean; ok: boolean; sys_name?: string; sys_descr?: string; vendor?: string; ms?: number; error?: string }>('/api/snmp/test', { method: 'POST', body: JSON.stringify(data) }),
+  flowStatus: () => request<FlowStatus>('/api/flow/status'),
+  flowSettingsSave: (d: Partial<FlowSettings>) => request<{ success: boolean; settings: FlowSettings }>('/api/flow/settings', { method: 'PUT', body: JSON.stringify(d) }),
+  flowInterfaces: () => request<FlowIfaces>('/api/flow/interfaces'),
+  flowOverview: (q: { range: string; exporter?: string; if_index?: string }) => request<FlowOverview>(`/api/flow/overview?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
+  flowClients: (q: { range: string; exporter?: string; service?: string; q?: string }) => request<{ success: boolean; clients: FlowClientRow[] }>(`/api/flow/clients?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
+  flowClient: (ip: string, q: { range: string; exporter?: string }) => request<FlowClientDetail>(`/api/flow/client/${encodeURIComponent(ip)}?${new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][])}`),
   snmpGraph: (q: { device_id: number; port_id?: number; metrics: string; range: string }) => {
     const qs = new URLSearchParams({ device_id: String(q.device_id), metrics: q.metrics, range: q.range });
     if (q.port_id) qs.set('port_id', String(q.port_id));

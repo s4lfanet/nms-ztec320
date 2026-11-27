@@ -97,6 +97,8 @@ from routes_ai import bp as ai_bp
 app.register_blueprint(ai_bp)
 from routes_tech_areas import bp as tech_areas_bp  # noqa: E402
 app.register_blueprint(tech_areas_bp)
+from routes_flow import bp as flow_bp  # noqa: E402
+app.register_blueprint(flow_bp)
 from routes_incidents import bp as incidents_bp  # noqa: E402
 app.register_blueprint(incidents_bp)
 from routes_snmp import bp as snmp_bp  # noqa: E402
