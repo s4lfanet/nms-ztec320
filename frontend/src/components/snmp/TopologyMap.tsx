@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Network } from 'lucide-react';
-import { Card, EmptyState, LoadingOverlay } from '../ui';
+import { Button, Card, EmptyState, LoadingOverlay, Select } from '../ui';
+import { toast } from '../Toast';
+import { useHasPerm } from '../../hooks/useHasPerm';
 import { api, type TopoLink, type TopoNode } from '../../lib/api';
 import { fmtBps, fmtSpeed } from '../../lib/snmpFormat';
 import { cn } from '../../lib/utils';
@@ -98,6 +100,7 @@ function linkWidth(l: TopoLink) {
 
 export function TopologyMap() {
   const { t } = useTranslation();
+  const canEdit = useHasPerm()('settings_ip_olts');
   const navigate = useNavigate();
   const [showExternal, setShowExternal] = useState(true);
   const [sel, setSel] = useState<string | null>(null);
@@ -126,7 +129,10 @@ export function TopologyMap() {
   if (isLoading) return <LoadingOverlay />;
   if (!data || (data.links.length === 0 && (data.deps?.length ?? 0) === 0)) {
     return (
-      <EmptyState icon={Network} title={t('topo.emptyTitle')} description={t('topo.emptyDesc')} />
+      <div className="space-y-3">
+        <EmptyState icon={Network} title={t('topo.emptyTitle')} description={t('topo.emptyDesc')} />
+        <OltLinks canEdit={canEdit} />
+      </div>
     );
   }
   return (
@@ -142,6 +148,7 @@ export function TopologyMap() {
           <span className="inline-flex items-center gap-1.5"><i className="inline-block w-5 h-[3px] rounded" style={{ background: 'var(--color-danger)' }} />{t('topo.legendBad')}</span>
           {deps.length > 0 && <span className="inline-flex items-center gap-1.5"><i className="inline-block w-5 border-t-2 border-dashed" style={{ borderColor: 'var(--text-3)' }} />{t('topo.legendDep')}</span>}
           {nodes.some(n => n.in_maintenance || n.rules_warn || n.rules_down) && <span>{t('topo.legendBadges')}</span>}
+          {nodes.some(n => n.kind === 'olt') && <span className="inline-flex items-center gap-1.5"><i className="inline-block w-3.5 h-3.5 rounded-[3px] border-2" style={{ borderColor: 'var(--color-accent)' }} />{t('topo.legendOlt')}</span>}
           <span className="ml-auto">{t('topo.tapHint')}</span>
         </div>
         <svg viewBox={`0 0 ${W} ${Hh}`} className="w-full h-auto rounded-lg bg-glass" role="img" aria-label={t('topo.aria', { n: nodes.length, l: links.length })}>
@@ -179,9 +186,16 @@ export function TopologyMap() {
                 {(n.rules_down || n.rules_warn) ? (
                   <circle r={r + 6} fill="none" strokeWidth={3} stroke={n.rules_down ? 'var(--color-danger)' : 'var(--color-warning)'} />
                 ) : null}
-                <circle r={r} fill={n.external ? 'var(--bg-surface)' : NODE_COLOR[n.status] || NODE_COLOR.unknown}
-                  stroke={NODE_COLOR[n.status] || NODE_COLOR.unknown} strokeWidth={n.external ? 2 : 0}
-                  strokeDasharray={n.external ? '3 3' : undefined} />
+                {n.kind === 'olt' ? (
+                  <g>
+                    <rect x={-r - 3} y={-r + 1} width={(r + 3) * 2} height={(r - 1) * 2} rx={5} fill={NODE_COLOR[n.status] || NODE_COLOR.unknown} />
+                    <text y={4} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--bg-surface)">OLT</text>
+                  </g>
+                ) : (
+                  <circle r={r} fill={n.external ? 'var(--bg-surface)' : NODE_COLOR[n.status] || NODE_COLOR.unknown}
+                    stroke={NODE_COLOR[n.status] || NODE_COLOR.unknown} strokeWidth={n.external ? 2 : 0}
+                    strokeDasharray={n.external ? '3 3' : undefined} />
+                )}
                 {n.in_maintenance && (
                   <g transform={`translate(${r + 2},${-r - 2})`}>
                     <circle r={8} fill="var(--color-warning)" stroke="var(--bg-surface)" strokeWidth={2} />
@@ -198,6 +212,7 @@ export function TopologyMap() {
         </svg>
         {selected && <LinkDetail l={selected} a={byId[selected.source]} b={byId[selected.target]} />}
       </Card>
+      <OltLinks canEdit={canEdit} />
       <Card title={t('topo.links', { n: links.length })} bodyClassName="p-3">
         <ul className="divide-y divide-line">
           {links.map(l => (
@@ -244,5 +259,68 @@ function LinkDetail({ l, a, b }: { l: TopoLink; a?: TopoNode; b?: TopoNode }) {
         <p className="text-xs text-tx3 mt-1">{[l.source_port.alias, l.target_port.alias].filter(Boolean).join(' · ')}</p>
       )}
     </div>
+  );
+}
+
+const SRC_LABEL: Record<string, string> = { manual: 'topo.srcManual', arp: 'topo.srcArp', lldp: 'topo.srcLldp' };
+
+/** Penautan OLT ↔ port: daftar (manual + terdeteksi otomatis) dan form tambah. OLT tidak mengirim LLDP,
+ *  jadi bila tidak terdeteksi lewat ARP/MAC, tunjuk portnya di sini. */
+function OltLinks({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['snmp-olt-links'], queryFn: api.snmpOltLinks });
+  const [olt, setOlt] = useState('');
+  const [dev, setDev] = useState('');
+  const [port, setPort] = useState('');
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['snmp-olt-links'] }); qc.invalidateQueries({ queryKey: ['snmp-topology'] }); };
+  const add = useMutation({
+    mutationFn: () => api.snmpOltLinkAdd({ olt_id: Number(olt), device_id: Number(dev), port_id: port ? Number(port) : null }),
+    onSuccess: () => { refresh(); setPort(''); toast.success(t('topo.oltSaved')); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const del = useMutation({
+    mutationFn: (id: number) => api.snmpOltLinkDelete(id),
+    onSuccess: () => { refresh(); toast.success(t('topo.oltRemoved')); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  if (!data || (data.olts.length === 0 && data.links.length === 0)) return null;
+  const ports = data.devices.find(d => String(d.id) === dev)?.ports || [];
+  return (
+    <Card title={t('topo.oltTitle')} bodyClassName="p-3 space-y-3">
+      <p className="text-xs text-tx3">{t('topo.oltHint')}</p>
+      {data.links.length > 0 && (
+        <ul className="divide-y divide-line">
+          {data.links.map((l, i) => (
+            <li key={`${l.olt_id}-${l.device_id}-${l.port_id}-${i}`} className="flex items-center gap-2 py-1.5 text-sm">
+              <span className="flex-1 min-w-0 break-words text-tx1">
+                {l.olt_name} <span className="text-tx3">↔</span> {l.device_name} <span className="text-tx3">{l.port}</span>
+              </span>
+              <span className="text-[11px] text-tx3">{t(SRC_LABEL[l.source])}</span>
+              {canEdit && l.id != null && (
+                <Button variant="ghost" onClick={() => del.mutate(l.id as number)}>{t('common.delete')}</Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canEdit && (
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+          <Select label={t('topo.oltPick')} value={olt} onChange={e => setOlt(e.target.value)}>
+            <option value="">—</option>
+            {data.olts.map(o => <option key={o.id} value={o.id}>{o.name} ({o.ip})</option>)}
+          </Select>
+          <Select label={t('topo.devPick')} value={dev} onChange={e => { setDev(e.target.value); setPort(''); }}>
+            <option value="">—</option>
+            {data.devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </Select>
+          <Select label={t('topo.portPick')} value={port} onChange={e => setPort(e.target.value)} disabled={!dev}>
+            <option value="">{t('topo.portAny')}</option>
+            {ports.map(p => <option key={p.id} value={p.id}>{p.name}{p.alias ? ` — ${p.alias}` : ''}</option>)}
+          </Select>
+          <Button onClick={() => add.mutate()} disabled={!olt || !dev || add.isPending}>{t('topo.oltAdd')}</Button>
+        </div>
+      )}
+    </Card>
   );
 }

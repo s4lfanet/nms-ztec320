@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-27 — OLT tampil di topologi SNMP
+- OLT kini muncul di peta topologi sebagai node (kotak berlabel OLT) dengan garis ke port MikroTik/switch tempat ia terhubung. Port ditemukan otomatis lewat LLDP atau ARP+tabel MAC; bila tidak ketemu, tunjuk manual lewat kartu **OLT di topologi**. Garis merah bila port turun atau OLT tidak terjangkau, dan alert port turun kini menyebut OLT beserta jumlah ONU yang ikut terdampak.
+
 ### 2026-11-27 — Status PSU/kipas MikroTik: tampil OK/FAIL + alert
 - Sensor status (psu1-state, psu2-state, fan-state) sebelumnya tampil sebagai angka dan tidak pernah dialert. Kini tampil **OK / FAIL** berwarna, dan NMS mengirim alert kritis bila PSU atau kipas gagal (pulih otomatis saat kembali OK). PSU yang tidak ada di tabel kesehatan MikroTik ikut dibaca langsung.
 

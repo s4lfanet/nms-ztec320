@@ -1629,6 +1629,17 @@ class SnmpNeighbor(db.Model):
     last_seen = db.Column(db.DateTime, nullable=True)
 
 
+class SnmpOltLink(db.Model):
+    """Penautan manual "port perangkat SNMP ini terhubung ke OLT" untuk topologi (OLT tidak mengirim LLDP)."""
+    __tablename__ = 'snmp_olt_links'
+    id = db.Column(db.Integer, primary_key=True)
+    olt_id = db.Column(db.Integer, db.ForeignKey('olts.id', ondelete='CASCADE'), nullable=False, index=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    port_id = db.Column(db.Integer, nullable=True)
+    created_by = db.Column(db.String(100), default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class SnmpArp(db.Model):
     """Tabel ARP perangkat SNMP (snmp_tables) — IP ↔ MAC per interface, dengan riwayat terakhir terlihat."""
     __tablename__ = 'snmp_arp'

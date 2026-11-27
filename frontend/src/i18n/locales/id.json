@@ -2678,7 +2678,20 @@
     "noNeighbors": "Tidak ada tetangga terdeteksi. Aktifkan LLDP (atau Neighbor Discovery di MikroTik) lalu jalankan Discovery.",
     "neighborsHint": "Diperbarui setiap discovery. Perangkat yang dikenali otomatis dihubungkan lewat IP, nama (sysName/identity), atau MAC.",
     "legendDep": "Dependensi induk-anak",
-    "legendBadges": "M = pemeliharaan · cincin = sensor Warning/Down"
+    "legendBadges": "M = pemeliharaan · cincin = sensor Warning/Down",
+    "legendOlt": "OLT",
+    "oltTitle": "OLT di topologi",
+    "oltHint": "OLT tidak mengirim LLDP. NMS mencoba menemukan port-nya otomatis lewat ARP/MAC; bila tidak ketemu, tunjuk port yang terhubung ke OLT. Garis merah bila port turun atau OLT tidak terjangkau.",
+    "srcManual": "manual",
+    "srcArp": "otomatis (ARP/MAC)",
+    "srcLldp": "otomatis (LLDP)",
+    "oltSaved": "Penautan OLT disimpan",
+    "oltRemoved": "Penautan OLT dihapus",
+    "oltPick": "OLT",
+    "devPick": "Perangkat SNMP",
+    "portPick": "Port",
+    "portAny": "(port tidak ditentukan)",
+    "oltAdd": "Hubungkan"
   },
   "pdet": {
     "spec": "Spesifikasi",
