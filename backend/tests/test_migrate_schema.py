@@ -97,3 +97,34 @@ class TestAddColHelper:
                 os.unlink(db_path)
             except (OSError, PermissionError):
                 pass
+
+
+class TestModelColumnsSafetyNet:
+    def test_kolom_model_yang_belum_ada_ditambahkan_dan_data_tetap(self):
+        """Regresi: kolom baru di model (snmp_devices.flow_ip) harus ikut ditambahkan ke tabel lama
+        dan baris lama tetap terbaca — bukan membuat seluruh tabel gagal ('no such column')."""
+        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
+            db_path = f.name
+        try:
+            conn = sqlite3.connect(db_path)
+            # tabel versi lama: tanpa flow_ip, tanpa kolom opsional lain
+            conn.execute("CREATE TABLE snmp_devices (id INTEGER PRIMARY KEY, name VARCHAR(100) NOT NULL, "
+                         "host VARCHAR(255) NOT NULL, port INTEGER, snmp_version VARCHAR(3))")
+            conn.execute("INSERT INTO snmp_devices (name, host, port, snmp_version) VALUES ('RB-LAMA','10.0.0.1',161,'2c')")
+            conn.commit()
+            conn.close()
+
+            _run_migrate_schema_against(db_path)
+
+            cols = _cols(db_path, 'snmp_devices')
+            assert 'flow_ip' in cols
+            # kolom model lain yang hilang juga dilengkapi oleh jaring pengaman
+            assert {'enabled', 'location', 'notes', 'vendor'} <= cols
+            conn = sqlite3.connect(db_path)
+            assert conn.execute("SELECT name, host FROM snmp_devices").fetchall() == [('RB-LAMA', '10.0.0.1')]
+            conn.close()
+        finally:
+            try:
+                os.unlink(db_path)
+            except (OSError, PermissionError):
+                pass
