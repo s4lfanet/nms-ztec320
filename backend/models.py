@@ -1465,6 +1465,7 @@ class SnmpDevice(db.Model):
     enabled = db.Column(db.Boolean, default=True)
     location = db.Column(db.String(200), default='')
     notes = db.Column(db.Text, default='')
+    flow_ip = db.Column(db.String(64), default='')   # IP pengirim Traffic Flow bila beda dari `host` (kosong = host)
     # Hasil discovery
     sys_name = db.Column(db.String(255), default='')
     sys_descr = db.Column(db.Text, default='')

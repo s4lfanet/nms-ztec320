@@ -44,8 +44,27 @@ def _filters(model, q, exporter, if_index, since):
     return q
 
 
+def exporter_ip(dev):
+    """IP pengirim flow untuk perangkat SNMP: `flow_ip` bila diisi, selain itu `host`."""
+    return (dev.flow_ip or dev.host or '').strip()
+
+
+def _device_exporter():
+    """`device_id` → (dev, exporter_ip). Tanpa device_id → (None, parameter exporter bila ada)."""
+    raw = request.args.get('device_id')
+    if raw:
+        try:
+            dev = db.session.get(SnmpDevice, int(raw))
+        except ValueError:
+            dev = None
+        if not dev:
+            return None, None, True
+        return dev, exporter_ip(dev), False
+    return None, request.args.get('exporter') or None, False
+
+
 def _exporter_name(ip):
-    d = SnmpDevice.query.filter_by(host=ip).first()
+    d = SnmpDevice.query.filter((SnmpDevice.flow_ip == ip) | (SnmpDevice.host == ip)).first()
     if d:
         return d.name
     m = MikrotikDevice.query.filter_by(host=ip).first()
@@ -58,7 +77,13 @@ def status():
     cfg = flow_collector.get_settings()
     now = _now()
     exps = []
-    for e in FlowExporter.query.order_by(FlowExporter.last_seen.desc()).all():
+    dev, exp_ip, missing = _device_exporter()
+    if missing:
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    q = FlowExporter.query.order_by(FlowExporter.last_seen.desc())
+    if exp_ip:
+        q = q.filter(FlowExporter.ip == exp_ip)
+    for e in q.all():
         exps.append({'ip': e.ip, 'name': _exporter_name(e.ip), 'version': e.version, 'packets': e.packets or 0,
                      'flows': e.flows or 0, 'last_seen': utc_iso(e.last_seen),
                      'age_seconds': int((now - e.last_seen).total_seconds()) if e.last_seen else None})
@@ -69,9 +94,12 @@ def status():
         s.close()
     except Exception:
         server_ip = ''
+    has = db.session.query(FlowBucket.id)
+    if exp_ip:
+        has = has.filter(FlowBucket.exporter == exp_ip)
     return jsonify({'success': True, 'settings': cfg, 'exporters': exps, 'server_ip': server_ip,
-                    'ip_names': FlowIpName.query.count(),
-                    'has_data': db.session.query(FlowBucket.id).first() is not None})
+                    'ip_names': FlowIpName.query.count(), 'has_data': has.first() is not None,
+                    'exporter_ip': exp_ip or '', 'flow_ip': (dev.flow_ip or '') if dev else ''})
 
 
 @bp.route('/api/flow/settings', methods=['PUT'])
@@ -89,14 +117,20 @@ def save_settings():
 def interfaces():
     """Pasangan router + interface yang punya data (untuk filter)."""
     since = _now() - timedelta(days=3)
-    rows = db.session.query(FlowBucket.exporter, FlowBucket.if_index).filter(FlowBucket.ts >= since).distinct().all()
+    dev, exp_ip, missing = _device_exporter()
+    if missing:
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    q = db.session.query(FlowBucket.exporter, FlowBucket.if_index).filter(FlowBucket.ts >= since)
+    if exp_ip:
+        q = q.filter(FlowBucket.exporter == exp_ip)
+    rows = q.distinct().all()
     out = {}
     for ex, ifx in rows:
         d = out.setdefault(ex, {'exporter': ex, 'name': _exporter_name(ex), 'interfaces': []})
         port = None
-        dev = SnmpDevice.query.filter_by(host=ex).first()
-        if dev and ifx:
-            port = SnmpPort.query.filter_by(device_id=dev.id, if_index=ifx).first()
+        pdev = dev or SnmpDevice.query.filter((SnmpDevice.flow_ip == ex) | (SnmpDevice.host == ex)).first()
+        if pdev and ifx:
+            port = SnmpPort.query.filter_by(device_id=pdev.id, if_index=ifx).first()
         d['interfaces'].append({'if_index': ifx, 'name': (port.name if port else (f'ifIndex {ifx}' if ifx else '-'))})
     for d in out.values():
         d['interfaces'].sort(key=lambda x: x['if_index'])
@@ -109,7 +143,10 @@ def overview():
     key, (hours, source, step) = _range()
     model = _model_for(source)
     since = _now() - timedelta(hours=hours)
-    exporter, if_index = request.args.get('exporter'), request.args.get('if_index')
+    _dev, exporter, missing = _device_exporter()
+    if missing:
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    if_index = request.args.get('if_index')
     base = _filters(model, db.session.query(model.service, func.sum(model.down_bytes), func.sum(model.up_bytes)),
                     exporter, if_index, since).group_by(model.service)
     rows = [(s, int(d or 0), int(u or 0)) for s, d, u in base.all()]
@@ -165,7 +202,10 @@ def _client_labels(ips):
 def clients():
     key, (hours, _src, _step) = _range()
     since = _now() - timedelta(hours=max(hours, 2))
-    exporter, service = request.args.get('exporter'), request.args.get('service')
+    _dev, exporter, missing = _device_exporter()
+    if missing:
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    service = request.args.get('service')
     q = db.session.query(FlowClientHour.client_ip, func.sum(FlowClientHour.down_bytes),
                          func.sum(FlowClientHour.up_bytes)).filter(FlowClientHour.ts >= since)
     if exporter:
@@ -203,8 +243,11 @@ def client_detail(ip):
     key, (hours, _src, _step) = _range()
     since = _now() - timedelta(hours=max(hours, 2))
     q = FlowClientHour.query.filter(FlowClientHour.client_ip == ip, FlowClientHour.ts >= since)
-    if request.args.get('exporter'):
-        q = q.filter(FlowClientHour.exporter == request.args['exporter'])
+    _dev, exporter, missing = _device_exporter()
+    if missing:
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    if exporter:
+        q = q.filter(FlowClientHour.exporter == exporter)
     totals, by_ts = {}, {}
     for r in q.all():
         t = totals.setdefault(r.service, [0, 0])

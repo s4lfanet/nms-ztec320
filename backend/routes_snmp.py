@@ -30,7 +30,7 @@ def _device_dict(d, ports=None):
         'id': d.id, 'name': d.name, 'host': d.host, 'port': d.port, 'snmp_version': d.snmp_version,
         'v3_user': d.v3_user or '', 'v3_level': d.v3_level, 'v3_auth_proto': d.v3_auth_proto, 'v3_priv_proto': d.v3_priv_proto,
         'has_community': bool(d._community_enc), 'has_auth_pass': bool(d._v3_auth_enc), 'has_priv_pass': bool(d._v3_priv_enc),
-        'enabled': d.enabled, 'location': d.location or '', 'notes': d.notes or '',
+        'enabled': d.enabled, 'location': d.location or '', 'notes': d.notes or '', 'flow_ip': d.flow_ip or '',
         'sys_name': d.sys_name or '', 'sys_descr': d.sys_descr or '', 'sys_location': d.sys_location or '',
         'sys_contact': d.sys_contact or '', 'vendor': d.vendor or '', 'os_name': d.os_name or '',
         'hardware': d.hardware or '', 'os_version': d.os_version or '', 'serial': d.serial or '',
@@ -116,6 +116,15 @@ def _apply(d, data, creating=False):
     for k in ('location', 'notes'):
         if k in data:
             setattr(d, k, (data.get(k) or '').strip()[:2000])
+    if 'flow_ip' in data:
+        fip = (data.get('flow_ip') or '').strip()
+        if fip:
+            import ipaddress
+            try:
+                fip = str(ipaddress.ip_address(fip))
+            except ValueError:
+                return 'IP pengirim Traffic Flow tidak valid'
+        d.flow_ip = fip
     if 'enabled' in data:
         d.enabled = bool(data['enabled'])
     if 'parent_id' in data:

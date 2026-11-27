@@ -3099,11 +3099,11 @@
   "flow": {
     "tab": "App traffic",
     "setupTitle": "Application traffic (NetFlow)",
-    "setupDesc": "See where customer traffic goes: Google, YouTube, Meta, TikTok, Netflix and more, with charts and top customers. Data comes from MikroTik Traffic Flow; the NMS only receives data and never changes the router.",
+    "setupDesc": "See where customer traffic on this router goes: Google, YouTube, Meta, TikTok, Netflix and more, with charts and top customers. Data comes from MikroTik Traffic Flow; the NMS only receives data and never changes the router. Each device has its own view.",
     "enable": "Enable",
     "disable": "Disable",
     "disabledNote": "Not enabled. Press Enable, then run the command below on the MikroTik.",
-    "waiting": "Waiting for data from the router on UDP port {{port}}. Make sure the MikroTik command was run and the server firewall allows this port.",
+    "waiting": "Waiting for data from {{name}} ({{ip}}) on UDP port {{port}}. Make sure the command was run on this MikroTik and the server firewall allows the port.",
     "cmdTitle": "MikroTik command (Terminal)",
     "cmdHint": "Replace interfaces=all with your LAN/customer interfaces if needed. The router must reach the NMS server IP.",
     "copy": "Copy",
@@ -3112,8 +3112,6 @@
     "port": "Receiver UDP port",
     "localNets": "Customer (local) networks",
     "lastSeen": "last data {{s}} s ago",
-    "router": "Router",
-    "allRouters": "All routers",
     "iface": "Internet interface",
     "allIfaces": "All interfaces",
     "dir": {
@@ -3144,6 +3142,9 @@
     "noClients": "No customer data for this range yet.",
     "onu": "ONU",
     "showSetup": "Show setup",
-    "hideSetup": "Hide setup"
+    "hideSetup": "Hide setup",
+    "senderIp": "Traffic Flow sender IP (optional)",
+    "senderIpHint": "Leave empty if the router sends from {{ip}} (this device's IP). Fill it in if the router sends from another IP, e.g. a loopback address.",
+    "noneFrom": "No data from {{name}} ({{ip}}) yet."
   }
 }

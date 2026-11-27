@@ -99,15 +99,21 @@ function DirButtons({ value, onChange }: { value: Dir; onChange: (d: Dir) => voi
 
 /* ─── Setup: aktifkan + perintah MikroTik ─── */
 
-function SetupCard({ canEdit }: { canEdit: boolean }) {
+function SetupCard({ canEdit, deviceId, deviceName }: { canEdit: boolean; deviceId: number; deviceName: string }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ['flow-status'], queryFn: api.flowStatus, refetchInterval: 15_000 });
+  const { data } = useQuery({ queryKey: ['flow-status', deviceId], queryFn: () => api.flowStatus(deviceId), refetchInterval: 15_000 });
+  const [flowIp, setFlowIp] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<FlowSettings>>({});
   const [expanded, setExpanded] = useState<boolean | null>(null);   // null = otomatis
   const save = useMutation({
     mutationFn: (d: Partial<FlowSettings>) => api.flowSettingsSave(d),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['flow-status'] }); setForm({}); toast.success(t('flow.saved')); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const saveIp = useMutation({
+    mutationFn: (ip: string) => api.snmpDeviceUpdate(deviceId, { flow_ip: ip }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['flow-status'] }); qc.invalidateQueries({ queryKey: ['flow-overview'] }); qc.invalidateQueries({ queryKey: ['snmp-device', deviceId] }); setFlowIp(null); toast.success(t('flow.saved')); },
     onError: (e: Error) => toast.error(e.message),
   });
   if (!data) return null;
@@ -133,7 +139,7 @@ function SetupCard({ canEdit }: { canEdit: boolean }) {
       <div className="space-y-3 text-sm">
         {showDetail && <p className="text-tx2">{t('flow.setupDesc')}</p>}
         {!s.flow_enabled && <Notice tone="info">{t('flow.disabledNote')}</Notice>}
-        {s.flow_enabled === 1 && !fresh && <Notice tone="warn">{t('flow.waiting', { port: s.flow_port })}</Notice>}
+        {s.flow_enabled === 1 && !fresh && <Notice tone="warn">{t('flow.waiting', { name: deviceName, ip: data.exporter_ip, port: s.flow_port })}</Notice>}
         {showDetail && <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-medium text-tx2">{t('flow.cmdTitle')}</span>
@@ -143,6 +149,16 @@ function SetupCard({ canEdit }: { canEdit: boolean }) {
           <CodeBlock maxHeight="max-h-32">{cmd}</CodeBlock>
           <p className="text-xs text-tx3 mt-1">{t('flow.cmdHint')}</p>
         </div>}
+        {showDetail && canEdit && (
+          <label className="text-xs text-tx2 flex flex-col gap-1">
+            <span>{t('flow.senderIp')}</span>
+            <span className="flex gap-2">
+              <input className="input-field flex-1" value={flowIp ?? data.flow_ip} placeholder={data.exporter_ip} onChange={e => setFlowIp(e.target.value)} />
+              <Button variant="secondary" disabled={flowIp === null} loading={saveIp.isPending} onClick={() => saveIp.mutate((flowIp || '').trim())}>{t('common.save')}</Button>
+            </span>
+            <span className="text-tx3">{t('flow.senderIpHint', { ip: data.exporter_ip })}</span>
+          </label>
+        )}
         {showDetail && canEdit && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="text-xs text-tx2 flex flex-col gap-1">
@@ -158,7 +174,7 @@ function SetupCard({ canEdit }: { canEdit: boolean }) {
             </div>
           </div>
         )}
-        {data.exporters.length > 0 && (
+        {data.exporters.length > 0 ? (
           <ul className="divide-y divide-line border border-line rounded-lg">
             {data.exporters.map(e => (
               <li key={e.ip} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
@@ -169,6 +185,8 @@ function SetupCard({ canEdit }: { canEdit: boolean }) {
               </li>
             ))}
           </ul>
+        ) : s.flow_enabled === 1 && (
+          <p className="text-xs text-tx3">{t('flow.noneFrom', { name: deviceName, ip: data.exporter_ip })}</p>
         )}
       </div>
     </Card>
@@ -177,10 +195,10 @@ function SetupCard({ canEdit }: { canEdit: boolean }) {
 
 /* ─── Detail pelanggan ─── */
 
-function ClientModal({ client, range, exporter, onClose }: { client: FlowClientRow; range: FlowRange; exporter: string; onClose: () => void }) {
+function ClientModal({ client, range, deviceId, onClose }: { client: FlowClientRow; range: FlowRange; deviceId: number; onClose: () => void }) {
   const { t } = useTranslation();
   const [dir, setDir] = useState<Dir>('total');
-  const { data } = useQuery({ queryKey: ['flow-client', client.ip, range, exporter], queryFn: () => api.flowClient(client.ip, { range, exporter }) });
+  const { data } = useQuery({ queryKey: ['flow-client', client.ip, range, deviceId], queryFn: () => api.flowClient(client.ip, { range, device_id: deviceId }) });
   const title = client.user ? `${client.user} (${client.ip})` : client.ip;
   return (
     <Modal open onClose={onClose} title={title} icon={<Users size={18} />} size="xl">
@@ -231,47 +249,39 @@ function ServiceTable({ rows, onPick, active }: { rows: { service: string; down:
 
 /* ─── Halaman utama ─── */
 
-export function TrafficFlow({ canEdit }: { canEdit: boolean }) {
+export function TrafficFlow({ canEdit, deviceId, deviceName }: { canEdit: boolean; deviceId: number; deviceName: string }) {
   const { t } = useTranslation();
   const [range, setRange] = useState<FlowRange>('24h');
   const [dir, setDir] = useState<Dir>('total');
-  const [exporter, setExporter] = useState('');
   const [ifIndex, setIfIndex] = useState('');
   const [service, setService] = useState('');
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<FlowClientRow | null>(null);
 
-  const status = useQuery({ queryKey: ['flow-status'], queryFn: api.flowStatus, refetchInterval: 15_000 });
-  const ifaces = useQuery({ queryKey: ['flow-ifaces'], queryFn: api.flowInterfaces, refetchInterval: 120_000, enabled: !!status.data?.has_data });
+  const status = useQuery({ queryKey: ['flow-status', deviceId], queryFn: () => api.flowStatus(deviceId), refetchInterval: 15_000 });
+  const ifaces = useQuery({ queryKey: ['flow-ifaces', deviceId], queryFn: () => api.flowInterfaces(deviceId), refetchInterval: 120_000, enabled: !!status.data?.has_data });
   const overview = useQuery({
-    queryKey: ['flow-overview', range, exporter, ifIndex], queryFn: () => api.flowOverview({ range, exporter, if_index: ifIndex }),
+    queryKey: ['flow-overview', deviceId, range, ifIndex], queryFn: () => api.flowOverview({ device_id: deviceId, range, if_index: ifIndex }),
     refetchInterval: 60_000, enabled: !!status.data?.has_data,
   });
   const clients = useQuery({
-    queryKey: ['flow-clients', range, exporter, service, q], queryFn: () => api.flowClients({ range, exporter, service, q }),
+    queryKey: ['flow-clients', deviceId, range, service, q], queryFn: () => api.flowClients({ device_id: deviceId, range, service, q }),
     refetchInterval: 120_000, enabled: !!status.data?.has_data,
   });
 
-  const exps = ifaces.data?.exporters || [];
-  const curIfaces = exps.find(e => e.exporter === exporter)?.interfaces || [];
+  const curIfaces = ifaces.data?.exporters?.[0]?.interfaces || [];
   const o = overview.data;
   const hasData = !!status.data?.has_data;
 
   return (
     <div className="space-y-4">
-      <SetupCard canEdit={canEdit} />
+      <SetupCard canEdit={canEdit} deviceId={deviceId} deviceName={deviceName} />
       {hasData && (
         <>
           <div className="flex flex-wrap items-end gap-3">
             <RangeButtons value={range} onChange={setRange} />
-            {exps.length > 1 && (
-              <Select label={t('flow.router')} value={exporter} onChange={e => { setExporter(e.target.value); setIfIndex(''); }}>
-                <option value="">{t('flow.allRouters')}</option>
-                {exps.map(e => <option key={e.exporter} value={e.exporter}>{e.name}</option>)}
-              </Select>
-            )}
-            {exporter && curIfaces.length > 1 && (
-              <Select label={t('flow.iface')} value={ifIndex} onChange={e => setIfIndex(e.target.value)}>
+            {curIfaces.length > 1 && (
+              <Select wrapperClassName="sm:w-64" label={t('flow.iface')} value={ifIndex} onChange={e => setIfIndex(e.target.value)}>
                 <option value="">{t('flow.allIfaces')}</option>
                 {curIfaces.map(i => <option key={i.if_index} value={i.if_index}>{i.name}</option>)}
               </Select>
@@ -321,7 +331,7 @@ export function TrafficFlow({ canEdit }: { canEdit: boolean }) {
           </div>
         </>
       )}
-      {open && <ClientModal client={open} range={range} exporter={exporter} onClose={() => setOpen(null)} />}
+      {open && <ClientModal client={open} range={range} deviceId={deviceId} onClose={() => setOpen(null)} />}
     </div>
   );
 }
