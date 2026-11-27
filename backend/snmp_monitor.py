@@ -423,6 +423,17 @@ def collect_poll(params, mikrotik=False):
                     v = sv.get(f'{MT_HEALTH}.{k}.0')
                     if isinstance(v, int) and v not in (0,) and abs(v) < 10_000_000:
                         sensors.append({'kind': kind, 'key': f'mts.{k}', 'name': name, 'value': v / div, 'unit': u})
+            # Status PSU (MIKROTIK-MIB mtxrHlPowerSupplyState .15 / BackupPowerSupplyState .16; 1 = ok, 0 = gagal).
+            # Pada sebagian model tidak ada di tabel gauge, jadi dibaca terpisah bila belum ada.
+            if not any(x['kind'] == 'status' and 'psu' in x['name'].lower() for x in sensors):
+                try:
+                    pv = await c.get([f'{MT_HEALTH}.15.0', f'{MT_HEALTH}.16.0'])
+                except RuntimeError:
+                    pv = {}
+                for k, name in (('15', 'psu1-state'), ('16', 'psu2-state')):
+                    v = pv.get(f'{MT_HEALTH}.{k}.0')
+                    if isinstance(v, int) and v in (0, 1):
+                        sensors.append({'kind': 'status', 'key': f'mts.{k}', 'name': name, 'value': v, 'unit': ''})
         out['sensors'] = sensors
         return out
     return _run(fn, params)

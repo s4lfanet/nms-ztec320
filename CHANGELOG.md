@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-27 — Status PSU/kipas MikroTik: tampil OK/FAIL + alert
+- Sensor status (psu1-state, psu2-state, fan-state) sebelumnya tampil sebagai angka dan tidak pernah dialert. Kini tampil **OK / FAIL** berwarna, dan NMS mengirim alert kritis bila PSU atau kipas gagal (pulih otomatis saat kembali OK). PSU yang tidak ada di tabel kesehatan MikroTik ikut dibaca langsung.
+
 ### 2026-11-27 — Alert trafik pelanggan tidak wajar
 - Bila trafik unggah/unduh satu pelanggan melonjak jauh di atas kebiasaannya (default ≥ 2 GB per jam dan ≥ 5× rata-rata), NMS mengirim alert lewat jalur alert biasa, lengkap dengan nama PPPoE, router, dan petunjuk kemungkinan penyebab (perangkat terinfeksi, torrent, update massal). Pulih otomatis di jam berikutnya. Butuh Trafik Aplikasi aktif dengan riwayat ≥ 6 jam per pelanggan.
 

@@ -19,12 +19,12 @@ pelanggan sengaja tidak dialert agar tidak berisik.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from models import db, Notification, SystemConfig, SnmpDevice, SnmpPort, SnmpEvent, SnmpSample, SnmpSensorRule
+from models import db, Notification, SystemConfig, SnmpDevice, SnmpPort, SnmpEvent, SnmpSample, SnmpSensorRule, SnmpSensor
 
 logger = logging.getLogger(__name__)
 
 CATEGORIES = ('snmp_port_down', 'snmp_port_flap', 'snmp_port_util', 'snmp_port_err', 'snmp_cpu', 'snmp_temp',
-              'snmp_optical', 'snmp_rule', 'flow_anomaly')
+              'snmp_optical', 'snmp_rule', 'flow_anomaly', 'snmp_status')
 
 DEFAULTS = {
     'snmp_down_minutes': 4,
@@ -127,7 +127,7 @@ def port_label(p):
 
 # Kategori tanpa persistensi bawaan (satu bacaan sudah memicu) → ditahan `snmp_hold_minutes`
 # supaya WARNING lalu UP dalam hitungan menit (naik-turun sesaat) tidak membanjiri grup.
-HOLD_CATS = ('snmp_temp', 'snmp_optical', 'snmp_port_err')
+HOLD_CATS = ('snmp_temp', 'snmp_optical', 'snmp_port_err', 'snmp_status')
 
 
 class _Ctx:
@@ -234,6 +234,17 @@ def _check_device(c, dev, cfg):
              _head(dev, '🌡️ SUHU PERANGKAT TINGGI') + f'\nSuhu: {t}°C (batas {th:.0f}°C)\n\n'
              f'⚠️ Cek pendingin ruang/rak dan kipas perangkat.',
              f'✅ Suhu normal: {dev.name}', f'✅ Suhu {dev.name} kembali normal ({t}°C).')
+    # Sensor status (PSU/kipas): nilai 1 = ok, 0 = gagal (MIKROTIK-MIB). Hanya bacaan segar yang dinilai.
+    fresh = now.replace(tzinfo=None) - timedelta(minutes=30)
+    for sn in SnmpSensor.query.filter_by(device_id=dev.id, kind='status').all():
+        if sn.value is None or not sn.updated_at or sn.updated_at < fresh:
+            continue
+        bad = sn.value < 0.5
+        c.toggle(dev, 'snmp_status', 'snmp_sensor', sn.id, bad, 'critical',
+                 f'🔴 {sn.name} GAGAL: {dev.name}',
+                 _head(dev, f'🔴 SENSOR STATUS GAGAL: {sn.name}') + f'\nStatus: FAIL\n\n'
+                 f'⚠️ Cek modul/kabel power atau kipas perangkat sekarang; redundansi bisa sedang hilang.',
+                 f'✅ {sn.name} normal: {dev.name}', f'✅ {sn.name} di {dev.name} kembali OK.')
 
 
 def _check_port(c, dev, p, cfg):

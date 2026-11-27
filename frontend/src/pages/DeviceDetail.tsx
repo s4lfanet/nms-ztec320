@@ -157,8 +157,8 @@ function Overview({ device: d, sensors }: { device: SnmpDevice; sensors: SnmpSen
               <li key={s.id} className="flex items-center gap-2 rounded-lg bg-glass border border-line px-2.5 py-2">
                 <span className="text-tx3">{SENSOR_ICON[s.kind] || <Gauge size={14} />}</span>
                 <span className="flex-1 min-w-0 text-xs text-tx2 truncate" title={s.name}>{s.name}</span>
-                <span className="text-sm font-medium text-tx1 tabular-nums">
-                  {s.value == null ? '—' : `${Number.isInteger(s.value) ? s.value : s.value.toFixed(1)}${s.unit === 'C' ? '°C' : s.unit ? ' ' + s.unit : ''}`}
+                <span className={cn('text-sm font-medium tabular-nums', s.kind === 'status' && s.value != null ? (s.value >= 0.5 ? 'text-success' : 'text-danger') : 'text-tx1')}>
+                  {s.value == null ? '—' : s.kind === 'status' ? (s.value >= 0.5 ? 'OK' : 'FAIL') : `${Number.isInteger(s.value) ? s.value : s.value.toFixed(1)}${s.unit === 'C' ? '°C' : s.unit ? ' ' + s.unit : ''}`}
                 </span>
               </li>
             ))}

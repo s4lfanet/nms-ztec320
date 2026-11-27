@@ -2636,7 +2636,8 @@
       "snmp_cpu": "CPU tinggi",
       "snmp_temp": "Suhu tinggi",
       "snmp_optical": "Redaman SFP buruk",
-      "flow_anomaly": "Trafik pelanggan tidak wajar"
+      "flow_anomaly": "Trafik pelanggan tidak wajar",
+      "snmp_status": "Sensor status gagal (PSU/kipas)"
     },
     "th": {
       "snmp_down_minutes": "Port/perangkat turun dialert setelah",
