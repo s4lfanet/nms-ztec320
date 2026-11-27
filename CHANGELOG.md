@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-27 — Perbaikan: data perangkat SNMP tampak hilang / error 500 setelah update
+- Update Trafik Aplikasi per perangkat menambah kolom `flow_ip` tapi lupa didaftarkan di migrasi database, sehingga daftar perangkat SNMP kosong dan simpan error 500 di instalasi lama. **Data tidak hilang.** Kolom kini ditambahkan otomatis saat layanan start, plus jaring pengaman yang melengkapi kolom model yang belum ada.
+
 ### 2026-11-27 — Trafik Aplikasi per perangkat SNMP
 - Trafik Aplikasi dipindah dari tab global ke **tab di halaman tiap perangkat SNMP**, jadi tiap MikroTik punya grafik, layanan teratas, dan pelanggan teratasnya sendiri. Data dicocokkan lewat IP perangkat, atau lewat kolom baru **IP pengirim Traffic Flow** bila router mengirim dari IP lain (mis. loopback).
 

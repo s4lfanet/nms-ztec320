@@ -443,6 +443,7 @@ def migrate_schema():
     add_col('snmp_devices', 'tables_at', 'DATETIME')
     add_col('snmp_devices', 'tables_note', 'VARCHAR(255)')
     add_col('snmp_devices', 'parent_id', 'INTEGER')
+    add_col('snmp_devices', 'flow_ip', 'VARCHAR(64)', "''")
     add_col('snmp_ports', 'mtu', 'INTEGER')
     add_col('snmp_ports', 'duplex', 'VARCHAR(8)')
     add_col('snmp_ports', 'ip_addrs', 'TEXT')
@@ -651,6 +652,33 @@ def migrate_schema():
     ensure_index('ix_notifications_unread', 'notifications', 'is_read', 'resolved')
     ensure_index('ix_alert_history_onu_type', 'alert_history', 'onu_id', 'alert_type')
     ensure_index('ix_action_logs_user_id', 'action_logs', 'user_id')
+
+    # Jaring pengaman: kolom model yang belum ada di tabel lama ditambahkan otomatis, supaya kolom baru
+    # yang lupa didaftarkan di atas tidak membuat seluruh tabel tak terbaca ("no such column").
+    try:
+        fresh = sqla_inspect(db.engine)
+        for tbl in db.metadata.sorted_tables:
+            if tbl.name not in existing_tables:
+                continue
+            have = {c['name'] for c in fresh.get_columns(tbl.name)}
+            for col in tbl.columns:
+                if col.name in have or col.primary_key or col.unique:
+                    continue
+                coltype = col.type.compile(dialect=db.engine.dialect)
+                default = None
+                scalar = getattr(col.default, 'arg', None) if col.default is not None and col.default.is_scalar else None
+                if isinstance(scalar, bool):
+                    default = '1' if scalar else '0'
+                elif isinstance(scalar, (int, float)):
+                    default = str(scalar)
+                elif isinstance(scalar, str):
+                    default = "'" + scalar.replace("'", "''") + "'"
+                elif not col.nullable:
+                    default = "''" if 'CHAR' in coltype.upper() or 'TEXT' in coltype.upper() else '0'
+                logger.warning(f"  Migration (auto): {tbl.name}.{col.name} belum ada di database — ditambahkan")
+                add_col(tbl.name, col.name, coltype, default)
+    except Exception as e:
+        logger.warning(f"  Migration auto-add columns failed: {e}")
 
     # Encrypt plaintext SNMP community strings (S6)
     try:
