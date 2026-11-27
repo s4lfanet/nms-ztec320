@@ -2691,7 +2691,10 @@
     "devPick": "Perangkat SNMP",
     "portPick": "Port",
     "portAny": "(port tidak ditentukan)",
-    "oltAdd": "Hubungkan"
+    "oltAdd": "Hubungkan",
+    "path": "Jalur topologi",
+    "pathAll": "Semua jalur ({{n}})",
+    "pathItem": "{{name}} — {{n}} node"
   },
   "pdet": {
     "spec": "Spesifikasi",

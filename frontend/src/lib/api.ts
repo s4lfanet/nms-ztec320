@@ -319,7 +319,7 @@ export const api = {
     request<{ success: boolean; points: number; step_s: number; ports: Record<string, { in: (number | null)[]; out: (number | null)[] }> }>(`/api/snmp/devices/${deviceId}/sparks`),
   snmpPortLive: (portId: number) =>
     request<{ success: boolean; ts: number; in: number; out: number; pin: number | null; pout: number | null; in_err: number | null; out_err: number | null; oper: string; hc: boolean; speed_mbps: number | null }>(`/api/snmp/ports/${portId}/live`),
-  snmpTopology: () => request<{ success: boolean; nodes: TopoNode[]; links: TopoLink[]; deps?: TopoDep[] }>('/api/snmp/topology'),
+  snmpTopology: (deviceId?: number) => request<{ success: boolean; nodes: TopoNode[]; links: TopoLink[]; deps?: TopoDep[]; groups?: TopoGroup[] }>(`/api/snmp/topology${deviceId ? `?device_id=${deviceId}` : ''}`),
   snmpOltLinks: () => request<OltLinkOptions>('/api/snmp/olt-links'),
   snmpOltLinkAdd: (d: { olt_id: number; device_id: number; port_id?: number | null }) => request<{ success: boolean }>('/api/snmp/olt-links', { method: 'POST', body: JSON.stringify(d) }),
   snmpOltLinkDelete: (id: number) => request<{ success: boolean }>(`/api/snmp/olt-links/${id}`, { method: 'DELETE' }),
@@ -1027,6 +1027,7 @@ export interface TopoNode {
   parent_id?: number | null; in_maintenance?: boolean; rules_warn?: number; rules_down?: number;
   kind?: 'olt'; olt_id?: number;
 }
+export interface TopoGroup { device_id: number; name: string; nodes: number; device_ids: number[] }
 export interface TopoDep { id: string; source: string; target: string }
 export interface TopoLink {
   id: string; source: string; target: string;

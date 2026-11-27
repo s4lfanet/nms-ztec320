@@ -98,16 +98,27 @@ function linkWidth(l: TopoLink) {
   return s >= 10000 ? 4 : s >= 1000 ? 2.6 : 1.6;
 }
 
-export function TopologyMap() {
+export function TopologyMap({ deviceId }: { deviceId?: number } = {}) {
   const { t } = useTranslation();
   const canEdit = useHasPerm()('settings_ip_olts');
   const navigate = useNavigate();
   const [showExternal, setShowExternal] = useState(true);
   const [sel, setSel] = useState<string | null>(null);
+  const [group, setGroup] = useState<number | undefined>(undefined);
+  const scope = deviceId ?? group;
   // Layar sempit: kanvas tegak supaya label tetap terbaca (bukan peta lebar yang diperkecil)
   const [narrow] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
   const W = narrow ? 520 : 1000, Hh = narrow ? 640 : 620;
-  const { data, isLoading } = useQuery({ queryKey: ['snmp-topology'], queryFn: api.snmpTopology, refetchInterval: 60_000 });
+  const { data, isLoading } = useQuery({ queryKey: ['snmp-topology', scope ?? 'all'], queryFn: () => api.snmpTopology(scope), refetchInterval: 60_000 });
+  // daftar jalur terpisah selalu diambil dari peta lengkap (tanpa filter) supaya pemilih tidak hilang saat satu jalur dipilih
+  const all = useQuery({ queryKey: ['snmp-topology', 'all'], queryFn: () => api.snmpTopology(), refetchInterval: 60_000, enabled: deviceId == null });
+  const groups = all.data?.groups || [];
+  const picker = deviceId == null && groups.length > 1 ? (
+    <Select wrapperClassName="sm:w-72" label={t('topo.path')} value={group ? String(group) : ''} onChange={e => { setGroup(e.target.value ? Number(e.target.value) : undefined); setSel(null); }}>
+      <option value="">{t('topo.pathAll', { n: groups.length })}</option>
+      {groups.map(g => <option key={g.device_id} value={g.device_id}>{t('topo.pathItem', { name: g.name, n: g.nodes })}</option>)}
+    </Select>
+  ) : null;
 
   const { nodes, links, deps } = useMemo(() => {
     const ns = (data?.nodes || []).filter(n => showExternal || !n.external);
@@ -130,6 +141,7 @@ export function TopologyMap() {
   if (!data || (data.links.length === 0 && (data.deps?.length ?? 0) === 0)) {
     return (
       <div className="space-y-3">
+        {picker}
         <EmptyState icon={Network} title={t('topo.emptyTitle')} description={t('topo.emptyDesc')} />
         <OltLinks canEdit={canEdit} />
       </div>
@@ -137,6 +149,7 @@ export function TopologyMap() {
   }
   return (
     <div className="space-y-3">
+      {picker}
       <Card bodyClassName="p-2 sm:p-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 pb-2 text-xs text-tx3">
           <label className="inline-flex items-center gap-2 text-tx2">
