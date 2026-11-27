@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Sensor switch/router vendor lain (roadmap tahap A)
+- Perangkat SNMP non-MikroTik (Cisco, Huawei, Juniper, Arista, dan switch lain yang mendukung ENTITY-SENSOR-MIB) kini ikut membaca sensor otomatis: suhu, tegangan, arus, daya, kipas, dan redaman optik SFP (dBm). Cisco lama memakai CISCO-ENVMON (suhu + status kipas/PSU, tampil OK/FAIL dan dialert) dan CPU 5 menit. Sensor tampil di kartu Kesehatan perangkat dengan grafik riwayat; suhu ikut alert suhu yang ada.
+
 ### 2026-11-28 — Topologi per jalur / per perangkat
 - Perangkat yang tidak saling terhubung kini dipisah menjadi jalur topologi sendiri-sendiri. Di tab Topologi ada pemilih **Jalur topologi** (semua jalur atau satu jalur), dan setiap perangkat SNMP punya tab **Topologi** yang hanya menampilkan jalur perangkat itu.
 

@@ -434,6 +434,15 @@ def collect_poll(params, mikrotik=False):
                     v = pv.get(f'{MT_HEALTH}.{k}.0')
                     if isinstance(v, int) and v in (0, 1):
                         sensors.append({'kind': 'status', 'key': f'mts.{k}', 'name': name, 'value': v, 'unit': ''})
+        if not mikrotik:
+            try:  # switch/router vendor lain: ENTITY-SENSOR, CISCO-ENVMON (tahap A)
+                import snmp_sensors_vendor
+                vs, vcpu = await snmp_sensors_vendor.collect(c)
+                sensors += vs
+                if out.get('cpu') is None and vcpu is not None:
+                    out['cpu'], out['cpu_cores'] = vcpu, 1
+            except Exception as e:
+                logger.debug(f'vendor sensors: {e}')
         out['sensors'] = sensors
         return out
     return _run(fn, params)
