@@ -12,7 +12,9 @@ dengan 95th percentile, laporan bulanan + CSV, alert ambang (port, CPU, suhu, re
 topologi LLDP/CDP/MNDP, tabel ARP/MAC + pencarian MAC/IP, halaman Pengaturan, dan tool
 AI Agent (`snmp_devices`, `snmp_device`, `snmp_port`, `find_mac`, perintah `/snmp`, `/mac`).
 
-## Tahap A — Sensor vendor lain (prioritas)
+## Tahap A — Sensor vendor lain (prioritas) — SEBAGIAN SELESAI 28 Nov 2026
+
+**Sudah:** ENTITY-SENSOR-MIB (suhu, tegangan, arus, daya, kipas, dBm SFP) dan CISCO-ENVMON (suhu, status kipas/PSU) + CPU Cisco (`snmp_sensors_vendor.py`, dipanggil dari `collect_poll` untuk perangkat non-MikroTik). Belum: pemetaan DOM vendor ke kolom `dom_*` port, ENTITY-MIB inventaris, HUAWEI-ENTITY-EXTENT, JUNIPER-DOM, Ubiquiti, dan uji dengan snmpsim per vendor — butuh data walk dari perangkat asli.
 
 Tujuan: CPU, memori, suhu, kipas, PSU, dan redaman SFP terbaca juga dari switch/router selain MikroTik.
 
