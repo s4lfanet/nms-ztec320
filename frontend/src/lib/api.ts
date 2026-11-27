@@ -320,6 +320,9 @@ export const api = {
   snmpPortLive: (portId: number) =>
     request<{ success: boolean; ts: number; in: number; out: number; pin: number | null; pout: number | null; in_err: number | null; out_err: number | null; oper: string; hc: boolean; speed_mbps: number | null }>(`/api/snmp/ports/${portId}/live`),
   snmpTopology: () => request<{ success: boolean; nodes: TopoNode[]; links: TopoLink[]; deps?: TopoDep[] }>('/api/snmp/topology'),
+  snmpOltLinks: () => request<OltLinkOptions>('/api/snmp/olt-links'),
+  snmpOltLinkAdd: (d: { olt_id: number; device_id: number; port_id?: number | null }) => request<{ success: boolean }>('/api/snmp/olt-links', { method: 'POST', body: JSON.stringify(d) }),
+  snmpOltLinkDelete: (id: number) => request<{ success: boolean }>(`/api/snmp/olt-links/${id}`, { method: 'DELETE' }),
   snmpSummary: () => request<SnmpSummary>('/api/snmp/summary'),
   snmpSettings: () => request<SnmpSettingsData>('/api/snmp/settings'),
   snmpSettingsSave: (data: Record<string, number | string>) => request<{ success: boolean; settings: Record<string, number>; general: Record<string, number> }>('/api/snmp/settings', { method: 'PUT', body: JSON.stringify(data) }),
@@ -1022,14 +1025,17 @@ export interface SnmpPort {
 export interface TopoNode {
   id: string; device_id: number | null; name: string; host: string; status: string; vendor: string; hardware: string; external: boolean;
   parent_id?: number | null; in_maintenance?: boolean; rules_warn?: number; rules_down?: number;
+  kind?: 'olt'; olt_id?: number;
 }
 export interface TopoDep { id: string; source: string; target: string }
 export interface TopoLink {
   id: string; source: string; target: string;
   source_port: { port_id: number | null; port: string; alias: string }; target_port: { port_id: number | null; port: string; alias: string };
   protocols: string[]; speed_mbps: number | null; util_pct: number | null; in_bps: number | null; out_bps: number | null;
-  oper_status: string; last_seen: string | null;
+  oper_status: string; last_seen: string | null; olt_link_id?: number | null;
 }
+export interface OltLinkItem { id: number | null; olt_id: number; olt_name: string; device_id: number; device_name: string; port_id: number | null; port: string; source: 'manual' | 'arp' | 'lldp' }
+export interface OltLinkOptions { success: boolean; links: OltLinkItem[]; olts: { id: number; name: string; ip: string }[]; devices: { id: number; name: string; ports: { id: number; name: string; alias: string }[] }[] }
 export interface SnmpNeighbor {
   id: number; protocol: string; local_port: string; local_port_id: number | null; remote_name: string; remote_ip: string;
   remote_chassis: string; remote_port: string; remote_platform: string; remote_device_id: number | null;

@@ -2678,7 +2678,20 @@
     "noNeighbors": "No neighbors detected. Enable LLDP (or Neighbor Discovery on MikroTik) and run Discovery.",
     "neighborsHint": "Updated on every discovery. Known devices are linked automatically by IP, name (sysName/identity) or MAC.",
     "legendDep": "Parent-child dependency",
-    "legendBadges": "M = maintenance · ring = sensor Warning/Down"
+    "legendBadges": "M = maintenance · ring = sensor Warning/Down",
+    "legendOlt": "OLT",
+    "oltTitle": "OLTs in topology",
+    "oltHint": "OLTs do not send LLDP. The NMS tries to find the port via ARP/MAC; if that fails, pick the port connected to the OLT. The line turns red when the port is down or the OLT is unreachable.",
+    "srcManual": "manual",
+    "srcArp": "auto (ARP/MAC)",
+    "srcLldp": "auto (LLDP)",
+    "oltSaved": "OLT link saved",
+    "oltRemoved": "OLT link removed",
+    "oltPick": "OLT",
+    "devPick": "SNMP device",
+    "portPick": "Port",
+    "portAny": "(port not specified)",
+    "oltAdd": "Link"
   },
   "pdet": {
     "spec": "Specification",

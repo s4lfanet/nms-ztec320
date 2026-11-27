@@ -868,6 +868,69 @@ def snmp_topology_get():
     return jsonify({'success': True, 'nodes': nodes, 'links': links, 'deps': deps})
 
 
+@bp.route('/api/snmp/olt-links', methods=['GET'])
+@login_required
+def snmp_olt_links_get():
+    """Penautan OLT↔port (manual + terdeteksi) beserta pilihan untuk form."""
+    from models import OLT, SnmpOltLink
+    olts = OLT.query.order_by(OLT.name).all()
+    devs = SnmpDevice.query.order_by(SnmpDevice.name).all()
+    ports = {}
+    for p in SnmpPort.query.filter_by(deleted=False).order_by(SnmpPort.if_index).all():
+        ports.setdefault(p.device_id, []).append({'id': p.id, 'name': p.name, 'alias': p.alias or ''})
+    dname = {d.id: d.name for d in devs}
+    pname = {p['id']: p['name'] for ps in ports.values() for p in ps}
+    items = [{'id': x['link_id'], 'olt_id': x['olt'].id, 'olt_name': x['olt'].name, 'device_id': x['device_id'],
+              'device_name': dname.get(x['device_id'], ''), 'port_id': x['port_id'], 'port': pname.get(x['port_id'], ''),
+              'source': x['source']} for x in snmp_topology.olt_links()]
+    return jsonify({'success': True, 'links': items,
+                    'olts': [{'id': o.id, 'name': o.name, 'ip': o.ip_address} for o in olts],
+                    'devices': [{'id': d.id, 'name': d.name, 'ports': ports.get(d.id, [])} for d in devs]})
+
+
+@bp.route('/api/snmp/olt-links', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_olt_links_add():
+    from models import OLT, SnmpOltLink
+    data = request.get_json() or {}
+    try:
+        olt_id, dev_id = int(data.get('olt_id')), int(data.get('device_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'OLT dan perangkat wajib dipilih'}), 400
+    port_id = data.get('port_id')
+    port_id = int(port_id) if port_id not in (None, '', 0, '0') else None
+    olt, dev = db.session.get(OLT, olt_id), db.session.get(SnmpDevice, dev_id)
+    if not olt or not dev:
+        return jsonify({'success': False, 'message': 'OLT atau perangkat tidak ditemukan'}), 404
+    if port_id:
+        p = db.session.get(SnmpPort, port_id)
+        if not p or p.device_id != dev_id:
+            return jsonify({'success': False, 'message': 'Port bukan milik perangkat itu'}), 400
+    if SnmpOltLink.query.filter_by(olt_id=olt_id, device_id=dev_id, port_id=port_id).first():
+        return jsonify({'success': False, 'message': 'Penautan sudah ada'}), 409
+    if SnmpOltLink.query.count() >= 200:
+        return jsonify({'success': False, 'message': 'Batas penautan tercapai'}), 400
+    db.session.add(SnmpOltLink(olt_id=olt_id, device_id=dev_id, port_id=port_id, created_by=current_user.username))
+    db.session.commit()
+    log_action('snmp_olt_link_add', 'monitoring', target=f'{olt.name} ↔ {dev.name}')
+    return jsonify({'success': True})
+
+
+@bp.route('/api/snmp/olt-links/<int:lid>', methods=['DELETE'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_olt_links_delete(lid):
+    from models import SnmpOltLink
+    row = db.session.get(SnmpOltLink, lid)
+    if not row:
+        return jsonify({'success': False, 'message': 'Tidak ditemukan'}), 404
+    db.session.delete(row)
+    db.session.commit()
+    log_action('snmp_olt_link_del', 'monitoring', target=f'#{lid}')
+    return jsonify({'success': True})
+
+
 # ─── Port ala Observium: grafik mini 24 jam & mode Live ───
 
 import time as _time  # noqa: E402

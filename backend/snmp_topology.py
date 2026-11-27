@@ -255,6 +255,45 @@ def _util(p):
     return round(max(p.in_bps or 0, p.out_bps or 0) / (p.speed_mbps * 1e6) * 100, 1)
 
 
+def olt_links():
+    """Sambungan perangkat SNMP → OLT: [{olt, device_id, port_id, source, link_id}].
+    Prioritas: penautan manual (`SnmpOltLink`); bila OLT belum punya penautan manual dicari otomatis dari
+    (1) tetangga LLDP/CDP/MNDP yang IP/namanya sama dengan OLT, lalu (2) ARP+FDB: MAC IP manajemen OLT
+    dilihat di port mana (port 'ujung', bukan port yang menuju perangkat SNMP lain)."""
+    from models import OLT, SnmpArp, SnmpFdb, SnmpNeighbor, SnmpOltLink
+    olts = OLT.query.all()
+    if not olts:
+        return []
+    out, manual_olts = [], set()
+    for m in SnmpOltLink.query.all():
+        out.append({'olt': next((o for o in olts if o.id == m.olt_id), None), 'device_id': m.device_id,
+                    'port_id': m.port_id, 'source': 'manual', 'link_id': m.id})
+        manual_olts.add(m.olt_id)
+    out = [x for x in out if x['olt'] is not None]
+    nbrs = SnmpNeighbor.query.all()
+    trunk = {(n.device_id, n.port_id) for n in nbrs if n.remote_device_id and n.port_id}
+    arp_by_ip = {}
+    for a in SnmpArp.query.all():
+        arp_by_ip.setdefault(a.ip, []).append(a)
+    for o in olts:
+        if o.id in manual_olts:
+            continue
+        found = {}
+        ip, nm = (o.ip_address or '').strip(), _norm(o.name)
+        for n in nbrs:
+            if (ip and n.remote_ip == ip) or (nm and _norm(n.remote_name) == nm):
+                found[(n.device_id, n.port_id)] = 'lldp'
+        if not found and ip:
+            macs = {a.mac.lower() for a in arp_by_ip.get(ip, []) if a.mac}
+            if macs:
+                for f in SnmpFdb.query.filter(SnmpFdb.mac.in_(list(macs))).all():
+                    if f.port_id and (f.device_id, f.port_id) not in trunk:
+                        found[(f.device_id, f.port_id)] = 'arp'
+        for (did, pid), src in found.items():
+            out.append({'olt': o, 'device_id': did, 'port_id': pid, 'source': src, 'link_id': None})
+    return out
+
+
 def build():
     """Graf untuk UI: node = perangkat terdaftar + tetangga yang belum terdaftar; link = sambungan
     unik (A↔B digabung walau terlihat dari kedua sisi)."""
@@ -306,7 +345,43 @@ def build():
             'oper_status': (lp.oper_status if lp else (rp.oper_status if rp else '')),
             'last_seen': n.last_seen,
         }
+    # OLT: node + garis ke port perangkat SNMP tempat OLT terhubung (hanya OLT yang punya sambungan)
+    for ol in olt_links():
+        o, did = ol['olt'], ol['device_id']
+        if did not in devices:
+            continue
+        nid = f'o{o.id}'
+        if nid not in nodes:
+            nodes[nid] = {'id': nid, 'device_id': None, 'olt_id': o.id, 'kind': 'olt', 'name': o.name, 'host': o.ip_address,
+                          'status': 'up' if o.is_online else 'down', 'vendor': (o.vendor or '').upper(),
+                          'hardware': f'{o.model or ""} · ONU {o.online_onu or 0}/{o.total_onu or 0}', 'external': False}
+        lp = ports.get(ol['port_id'])
+        oper = lp.oper_status if lp else ''
+        if not o.is_online:
+            oper = 'down'
+        key = ('olt', did, str(ol['port_id'] or ''), o.id)
+        a = f'd{did}'
+        if key in links:
+            continue
+        links[key] = {
+            'id': f'olt:{did}:{ol["port_id"] or 0}:{o.id}', 'source': a, 'target': nid,
+            'source_port': {'port_id': ol['port_id'], 'port': lp.name if lp else '', 'alias': lp.alias if lp else ''},
+            'target_port': {'port_id': None, 'port': o.name, 'alias': ''},
+            'protocols': ['olt' if ol['source'] == 'manual' else ol['source']],
+            'speed_mbps': lp.speed_mbps if lp else None, 'util_pct': _util(lp) if lp else None,
+            'in_bps': lp.in_bps if lp else None, 'out_bps': lp.out_bps if lp else None,
+            'oper_status': oper, 'last_seen': None, 'olt_link_id': ol['link_id'],
+        }
     return list(nodes.values()), list(links.values())
+
+
+def olts_behind_port(port_id):
+    """OLT yang terhubung lewat port ini → [(nama, total_onu, online_onu)] (untuk alert port turun)."""
+    try:
+        return [(x['olt'].name, x['olt'].total_onu or 0, x['olt'].online_onu or 0)
+                for x in olt_links() if x['port_id'] == port_id]
+    except Exception:
+        return []
 
 
 def annotate(nodes, now=None):

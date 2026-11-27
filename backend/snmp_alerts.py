@@ -247,6 +247,15 @@ def _check_device(c, dev, cfg):
                  f'✅ {sn.name} normal: {dev.name}', f'✅ {sn.name} di {dev.name} kembali OK.')
 
 
+def _olt_impact(port_id):
+    """Baris tambahan alert port turun: OLT (dan jumlah ONU) yang terhubung lewat port ini."""
+    import snmp_topology
+    rows = snmp_topology.olts_behind_port(port_id)
+    if not rows:
+        return ''
+    return '\n\n📡 OLT terdampak: ' + '; '.join(f'{n} ({tot} ONU, {on} online)' for n, tot, on in rows)
+
+
 def _check_port(c, dev, p, cfg):
     now = c.now
     label = port_label(p)
@@ -258,7 +267,7 @@ def _check_port(c, dev, p, cfg):
              f'🔴 Port turun: {dev.name} {label}',
              _head(dev, '🔴 PORT DIPANTAU TURUN') + f'\nPort: {label}\nSebab: ifOperStatus={p.oper_status}, ifAdminStatus={p.admin_status} '
              f'(port diaktifkan tetapi link tidak naik)'
-             f'\nTurun sejak: {mins} menit lalu',
+             f'\nTurun sejak: {mins} menit lalu' + (_olt_impact(p.id) if down else ''),
              f'✅ Port naik: {dev.name} {label}', f'✅ Port {label} di {dev.name} kembali UP.')
     # Flapping: banyak port_down dalam jendela waktu
     win = now - timedelta(minutes=cfg['snmp_flap_minutes'])
