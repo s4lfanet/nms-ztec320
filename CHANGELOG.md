@@ -4,8 +4,8 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
-### 2026-11-27 — Bandingkan dengan periode lalu di grafik trafik
-- Grafik trafik port SNMP punya tombol **Bandingkan periode lalu**: garis putus-putus periode sebelumnya (mis. 24 jam lalu, minggu lalu) ditumpuk di atas grafik sekarang untuk melihat lonjakan tidak wajar. Tidak tersedia untuk rentang 1 tahun.
+### 2026-11-27 — Alert trafik pelanggan tidak wajar
+- Bila trafik unggah/unduh satu pelanggan melonjak jauh di atas kebiasaannya (default ≥ 2 GB per jam dan ≥ 5× rata-rata), NMS mengirim alert ke teknisi/admin lewat jalur alert biasa, lengkap dengan nama PPPoE, router, dan petunjuk kemungkinan penyebab (perangkat terinfeksi, torrent, update massal). Pulih otomatis di jam berikutnya. Butuh Trafik Aplikasi aktif dengan riwayat ≥ 6 jam per pelanggan.
 
 ### 2026-11-27 — Catatan sampling di Trafik Aplikasi
 - Di bawah grafik ada catatan lipat "Cara membaca angka": sumber data, akurasi, perangkuman 5 menit/jam, penyimpanan, dan batasan (tidak untuk tagihan presisi).

@@ -24,7 +24,7 @@ from models import db, Notification, SystemConfig, SnmpDevice, SnmpPort, SnmpEve
 logger = logging.getLogger(__name__)
 
 CATEGORIES = ('snmp_port_down', 'snmp_port_flap', 'snmp_port_util', 'snmp_port_err', 'snmp_cpu', 'snmp_temp',
-              'snmp_optical', 'snmp_rule')
+              'snmp_optical', 'snmp_rule', 'flow_anomaly')
 
 DEFAULTS = {
     'snmp_down_minutes': 4,

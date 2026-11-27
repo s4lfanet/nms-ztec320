@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -61,15 +61,6 @@ export function SnmpGraph({ deviceId, portId, series, unit, range, height = 180,
   const { t } = useTranslation();
   const gid = useId().replace(/:/g, '');
   const metrics = series.map(s => s.metric).join(',');
-  const [cmp, setCmp] = useState(false);
-  const canCompare = unit === 'bps' && range !== '1y';
-  const showPrev = cmp && canCompare;
-  const prevQ = useQuery({
-    queryKey: ['snmp-graph-prev', deviceId, portId ?? null, metrics, range],
-    queryFn: () => api.snmpGraph({ device_id: deviceId, port_id: portId, metrics, range, compare: true }),
-    enabled: showPrev,
-    refetchInterval: 300_000,
-  });
   const { data, isLoading } = useQuery({
     queryKey: ['snmp-graph', deviceId, portId ?? null, metrics, range],
     queryFn: () => api.snmpGraph({ device_id: deviceId, port_id: portId, metrics, range }),
@@ -84,30 +75,12 @@ export function SnmpGraph({ deviceId, portId, series, unit, range, height = 180,
       r[s.metric] = p.avg;
     }
   }
-  if (showPrev) {
-    for (const s of series) {
-      for (const p of prevQ.data?.series?.[s.metric] || []) {
-        const r = rows[p.t] || (rows[p.t] = { t: p.t });
-        r[`${s.metric}__prev`] = p.avg;
-      }
-    }
-  }
   const chart = Object.values(rows).sort((a, b) => String(a.t).localeCompare(String(b.t)));
   const empty = !isLoading && chart.length < 2;
 
   return (
     <div>
-      {(title || canCompare) && (
-        <div className="flex items-center justify-between gap-2 mb-1.5">
-          <p className="text-xs font-medium text-tx2">{title}</p>
-          {canCompare && (
-            <button type="button" role="switch" aria-checked={cmp} onClick={() => setCmp(c => !c)}
-              className={cn('px-2 py-0.5 text-[11px] rounded-md border', cmp ? 'border-accent text-accent bg-accent/10' : 'border-line text-tx3 hover:text-tx1')}>
-              {t('graph.compare')}
-            </button>
-          )}
-        </div>
-      )}
+      {title && <p className="text-xs font-medium text-tx2 mb-1.5">{title}</p>}
       <div style={{ height }} className="relative">
         {empty ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-tx3 border border-dashed border-line rounded-lg">
@@ -132,20 +105,11 @@ export function SnmpGraph({ deviceId, portId, series, unit, range, height = 180,
               <Tooltip
                 contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 8, fontSize: 12 }}
                 labelFormatter={v => new Date(String(v)).toLocaleString()}
-                formatter={(v, name) => {
-                  const isPrev = String(name).endsWith('__prev');
-                  const base = isPrev ? String(name).slice(0, -6) : String(name);
-                  const lbl = series.find(s => s.metric === base)?.label || base;
-                  return [fmtValue(Number(v), unit), isPrev ? `${lbl} (${t('graph.prevPeriod')})` : lbl];
-                }}
+                formatter={(v, name) => [fmtValue(Number(v), unit), series.find(s => s.metric === name)?.label || String(name)]}
               />
               {series.map(s => (
                 <Area key={s.metric} type="monotone" dataKey={s.metric} stroke={s.color} strokeWidth={1.6}
                   fill={`url(#g-${gid}-${s.metric.replace(/[^a-z0-9]/gi, '')})`} dot={false} isAnimationActive={false} connectNulls />
-              ))}
-              {showPrev && series.map(s => (
-                <Area key={`${s.metric}__prev`} type="monotone" dataKey={`${s.metric}__prev`} stroke={s.color} strokeWidth={1.2}
-                  strokeDasharray="4 3" strokeOpacity={0.7} fill="none" dot={false} isAnimationActive={false} connectNulls />
               ))}
             </AreaChart>
           </ResponsiveContainer>

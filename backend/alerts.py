@@ -817,6 +817,11 @@ def _check_onus_for_tenant(force_send=False):
     except Exception as e:
         logger.warning(f"[ALERT] snmp threshold check failed: {e}")
     try:
+        from flow_anomaly import check_flow_anomalies
+        check_flow_anomalies(now, notifications_to_create, alerts_to_send)
+    except Exception as e:
+        logger.warning(f"[ALERT] flow anomaly check failed: {e}")
+    try:
         from mikrotik_security import check_security
         check_security(now, notifications_to_create, alerts_to_send)
     except Exception as e:

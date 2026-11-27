@@ -348,28 +348,23 @@ def _p95(values):
     return v[max(0, int(round(0.95 * len(v))) - 1)]
 
 
-def build_graph(device_id, port_id, metrics, rng, prev=False):
-    """→ {series: {metric: [{t, avg, max}]}, stats: {metric: {...}}, source, step_s}.
-    prev=True → periode SEBELUMNYA dengan lebar sama (mis. 24 jam lalu), waktunya digeser maju
-    sebesar durasi agar bisa ditumpuk di atas grafik periode ini."""
+def build_graph(device_id, port_id, metrics, rng):
+    """→ {series: {metric: [{t, avg, max}]}, stats: {metric: {...}}, source, step_s}."""
     dur, source, bucket = RANGES[rng]
     now = snmp_monitor._now()
-    shift = dur if prev else timedelta(0)
-    end = now - shift
-    start = end - dur
+    start = now - dur
     out, stats = {}, {}
     for m in metrics:
         if source == 'raw':
-            q = SnmpSample.query.filter(SnmpSample.device_id == device_id, SnmpSample.metric == m, SnmpSample.ts >= start,
-                                       SnmpSample.ts < end)
+            q = SnmpSample.query.filter(SnmpSample.device_id == device_id, SnmpSample.metric == m, SnmpSample.ts >= start)
             q = q.filter(SnmpSample.port_id == port_id) if port_id else q.filter(SnmpSample.port_id.is_(None))
             rows = q.order_by(SnmpSample.ts).all()
-            pts = [{'t': _iso(r.ts + shift), 'avg': r.value, 'max': r.value} for r in rows]
+            pts = [{'t': _iso(r.ts), 'avg': r.value, 'max': r.value} for r in rows]
             vals = [r.value for r in rows]
             peak = max(vals) if vals else None
         else:
             q = SnmpSampleHourly.query.filter(SnmpSampleHourly.device_id == device_id, SnmpSampleHourly.metric == m,
-                                              SnmpSampleHourly.hour >= start, SnmpSampleHourly.hour < end)
+                                              SnmpSampleHourly.hour >= start)
             q = q.filter(SnmpSampleHourly.port_id == port_id) if port_id else q.filter(SnmpSampleHourly.port_id.is_(None))
             rows = q.order_by(SnmpSampleHourly.hour).all()
             buckets = {}
@@ -381,7 +376,7 @@ def build_graph(device_id, port_id, metrics, rng, prev=False):
                 b['total'] += r.total
                 b['count'] += r.count
                 b['max'] = r.vmax if b['max'] is None else max(b['max'], r.vmax or 0)
-            pts = [{'t': _iso(b['t'] + shift), 'avg': b['total'] / b['count'], 'max': b['max']} for _, b in sorted(buckets.items())]
+            pts = [{'t': _iso(b['t']), 'avg': b['total'] / b['count'], 'max': b['max']} for _, b in sorted(buckets.items())]
             vals = [r.total / r.count for r in rows if r.count]   # p95 dari rata-rata per jam
             peak = max((r.vmax for r in rows if r.vmax is not None), default=None)
         stats[m] = {
@@ -406,8 +401,7 @@ def snmp_graph():
         return jsonify({'success': False, 'message': 'device_id, metrics, dan range (6h/24h/7d/30d/1y) wajib'}), 400
     if port_id and not SnmpPort.query.filter_by(id=port_id, device_id=device_id).first():
         return jsonify({'success': False, 'message': 'Port tidak ditemukan'}), 404
-    prev = request.args.get('compare') == '1' and rng != '1y'
-    return jsonify({'success': True, **build_graph(device_id, port_id, metrics, rng, prev=prev)})
+    return jsonify({'success': True, **build_graph(device_id, port_id, metrics, rng)})
 
 
 @bp.route('/api/snmp/devices/<int:device_id>/metrics', methods=['GET'])

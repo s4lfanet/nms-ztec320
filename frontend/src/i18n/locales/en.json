@@ -2579,9 +2579,7 @@
       "current": "Current",
       "fan": "Fans",
       "storage": "Storage"
-    },
-    "compare": "Compare previous period",
-    "prevPeriod": "previous period"
+    }
   },
   "devx": {
     "tabList": "Device list",
@@ -2635,7 +2633,8 @@
       "snmp_port_err": "Port errors",
       "snmp_cpu": "High CPU",
       "snmp_temp": "High temperature",
-      "snmp_optical": "Poor SFP optical level"
+      "snmp_optical": "Poor SFP optical level",
+      "flow_anomaly": "Unusual customer traffic"
     },
     "th": {
       "snmp_down_minutes": "Alert on down after",
