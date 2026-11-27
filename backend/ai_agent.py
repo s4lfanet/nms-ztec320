@@ -624,7 +624,7 @@ def tool_snmp_devices(args):
     devs = SnmpDevice.query.order_by(SnmpDevice.name).all()
     return {
         'jumlah': sm['counts'],
-        'perangkat': [{'nama': d.name, 'ip': d.host, 'status': d.status if d.enabled else 'nonaktif',
+        'perangkat': [{'nama': d.name, 'grup': d.group_name or None, 'ip': d.host, 'status': d.status if d.enabled else 'nonaktif',
                        'alasan': d.status_reason or None, 'model': ' '.join(x for x in (d.vendor, d.hardware) if x) or None,
                        'cpu_pct': d.cpu_pct, 'ram_pct': d.mem_pct, 'suhu_c': d.temperature,
                        'uptime_detik': d.uptime_s, 'cek_terakhir': _iso(d.last_poll_at)} for d in devs[:40]],

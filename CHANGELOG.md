@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Grup perangkat SNMP
+- Perangkat SNMP bisa diberi **Grup** (mis. POP Pusat, Backbone, Korporat). Tampil di daftar dengan filter per grup, di pesan alert (`Grup: …`), dan di asisten AI. Kolom `group_name` didaftarkan di migrasi sehingga instalasi lama aman.
+
 ### 2026-11-28 — Sensor Huawei VRP
 - Switch/router Huawei yang tidak mengisi ENTITY-SENSOR kini tetap terbaca suhu papan dan kecepatan kipasnya (HUAWEI-ENTITY-EXTENT-MIB). Redaman optik Huawei belum dibaca karena unit-nya tidak konsisten antar perangkat.
 

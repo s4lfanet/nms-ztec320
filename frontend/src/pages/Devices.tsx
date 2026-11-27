@@ -26,6 +26,7 @@ export function Devices() {
   const canEdit = useHasPerm()('settings_ip_olts');
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
+  const [grp, setGrp] = useState('');
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<'list' | 'topology' | 'search' | 'report' | 'security' | 'settings'>(() => {
     const q = new URLSearchParams(window.location.search).get('tab');
@@ -37,9 +38,10 @@ export function Devices() {
   const devices = data?.devices || [];
   const summary = useSnmpSummary(devices.length > 0);
   const sum = data?.summary || {};
+  const groups = useMemo(() => [...new Set(devices.map(d => d.group).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [devices]);
   const shown = useMemo(() => devices.filter(d =>
-    (filter === 'all' || d.status === filter) &&
-    (!q || `${d.name} ${d.host} ${d.sys_name} ${d.hardware} ${d.location}`.toLowerCase().includes(q.toLowerCase()))), [devices, filter, q]);
+    (filter === 'all' || d.status === filter) && (!grp || d.group === grp) &&
+    (!q || `${d.name} ${d.host} ${d.sys_name} ${d.hardware} ${d.location} ${d.group}`.toLowerCase().includes(q.toLowerCase()))), [devices, filter, q, grp]);
 
   return (
     <PageContainer>
@@ -86,6 +88,16 @@ export function Devices() {
               { key: 'unknown', label: t('dev.st.unknown'), count: sum.unknown ?? 0, tone: 'idle' },
             ]}
           />
+          {groups.length > 0 && (
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('dev.group')}>
+              {['', ...groups].map(g => (
+                <button key={g || '__all'} type="button" onClick={() => setGrp(g)} aria-pressed={grp === g}
+                  className={cn('px-2.5 py-1 rounded-full text-xs border', grp === g ? 'border-accent text-accent bg-accent/10' : 'border-line text-tx2 hover:text-tx1')}>
+                  {g || t('dev.groupAll')}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-tx3" aria-hidden="true" />
             <input className="input-field w-full pl-9" value={q} onChange={e => setQ(e.target.value)} placeholder={t('dev.search')} />
@@ -113,7 +125,7 @@ function DeviceRow({ d }: { d: SnmpDevice }) {
           <span className={cn('w-2.5 h-2.5 rounded-full shrink-0', STATUS_DOT[d.status])} title={t(`dev.st.${d.status}`)} />
           <div className="min-w-0">
             <div className="font-medium text-sm text-tx1 truncate">{d.name}</div>
-            <div className="text-xs text-tx3 truncate font-mono">{d.host}{d.location ? <span className="font-sans"> · {d.location}</span> : null}</div>
+            <div className="text-xs text-tx3 truncate font-mono">{d.host}{d.location ? <span className="font-sans"> · {d.location}</span> : null}{d.group ? <span className="font-sans"> · {d.group}</span> : null}</div>
           </div>
         </div>
         <div className="text-xs text-tx2 truncate md:w-[26%]">
@@ -157,10 +169,11 @@ export function DeviceFormModal({ device, initial, onClose }: { device?: SnmpDev
     v3_user: device?.v3_user || '', v3_level: device?.v3_level || 'authPriv',
     v3_auth_proto: device?.v3_auth_proto || 'SHA', v3_auth_pass: '',
     v3_priv_proto: device?.v3_priv_proto || 'AES', v3_priv_pass: '',
-    location: device?.location || '', notes: device?.notes || '', enabled: device?.enabled ?? true,
+    location: device?.location || '', group: device?.group || '', notes: device?.notes || '', enabled: device?.enabled ?? true,
     parent_id: device?.parent_id ?? null,
     ...(device ? {} : initial),
   });
+  const groupOptions = [...new Set((qc.getQueryData<{ devices: SnmpDevice[] }>(['snmp-devices'])?.devices || []).map(d => d.group).filter(Boolean))];
   // Perangkat baru: isi versi & community bawaan dari Pengaturan (bila belum diisi)
   const { data: snset } = useQuery({ queryKey: ['snmp-settings'], queryFn: api.snmpSettings, enabled: !device });
   useEffect(() => {
@@ -217,6 +230,9 @@ export function DeviceFormModal({ device, initial, onClose }: { device?: SnmpDev
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block"><span className="label-sm">{t('dev.name')}</span>
             <input className="input-field" value={form.name} onChange={e => set({ name: e.target.value })} placeholder="CCR Core Pusat" /></label>
+          <label className="block"><span className="label-sm">{t('dev.group')}</span>
+            <input className="input-field" list="snmp-groups" value={form.group} onChange={e => set({ group: e.target.value })} placeholder="POP Pusat / Backbone / Korporat" maxLength={100} />
+            <datalist id="snmp-groups">{groupOptions.map(g => <option key={g} value={g} />)}</datalist></label>
           <label className="block"><span className="label-sm">{t('dev.location')}</span>
             <input className="input-field" value={form.location} onChange={e => set({ location: e.target.value })} placeholder="POP Pusat, rak 2" /></label>
         </div>

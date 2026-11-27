@@ -982,7 +982,7 @@ export interface SnmpDevice {
   id: number; name: string; host: string; port: number; snmp_version: '1' | '2c' | '3';
   v3_user: string; v3_level: string; v3_auth_proto: string; v3_priv_proto: string;
   has_community: boolean; community?: string; has_auth_pass: boolean; has_priv_pass: boolean;
-  enabled: boolean; location: string; notes: string;
+  enabled: boolean; location: string; group: string; notes: string;
   sys_name: string; sys_descr: string; sys_location: string; sys_contact: string;
   vendor: string; os_name: string; hardware: string; os_version: string; serial: string;
   discovered_at: string | null;
@@ -1006,7 +1006,7 @@ export interface SnmpDeviceForm {
   flow_ip?: string;
   name: string; host: string; port?: number; snmp_version: '1' | '2c' | '3'; community?: string;
   v3_user?: string; v3_level?: string; v3_auth_proto?: string; v3_auth_pass?: string; v3_priv_proto?: string; v3_priv_pass?: string;
-  location?: string; notes?: string; enabled?: boolean; parent_id?: number | null;
+  location?: string; group?: string; notes?: string; enabled?: boolean; parent_id?: number | null;
 }
 export interface SnmpPortDetail {
   mtu: number | null; duplex: string; ip_addrs: string[];
