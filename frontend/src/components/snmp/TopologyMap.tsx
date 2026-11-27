@@ -298,7 +298,7 @@ function OltLinks({ canEdit }: { canEdit: boolean }) {
               </span>
               <span className="text-[11px] text-tx3">{t(SRC_LABEL[l.source])}</span>
               {canEdit && l.id != null && (
-                <Button size="sm" variant="ghost" onClick={() => del.mutate(l.id as number)}>{t('common.delete')}</Button>
+                <Button variant="ghost" onClick={() => del.mutate(l.id as number)}>{t('common.delete')}</Button>
               )}
             </li>
           ))}
