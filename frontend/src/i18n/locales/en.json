@@ -2636,7 +2636,8 @@
       "snmp_cpu": "High CPU",
       "snmp_temp": "High temperature",
       "snmp_optical": "Poor SFP optical level",
-      "flow_anomaly": "Unusual customer traffic"
+      "flow_anomaly": "Unusual customer traffic",
+      "snmp_status": "Status sensor failed (PSU/fan)"
     },
     "th": {
       "snmp_down_minutes": "Alert on down after",
