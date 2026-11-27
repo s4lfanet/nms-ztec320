@@ -724,6 +724,90 @@ def tool_find_mac(args):
     } for x in r['results']]}
 
 
+
+# ─────────────────── Trafik Aplikasi (NetFlow/IPFIX, baca DB) ───────────────────
+def _fmt_bytes(n):
+    n = float(n or 0)
+    for u in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if n < 1024 or u == 'TB':
+            return f"{n:.1f} {u}" if u != 'B' else f"{int(n)} B"
+        n /= 1024
+
+
+def _flow_call(func, path, **params):
+    """Panggil view routes_flow (tanpa login) dengan query params; kembalikan JSON dict."""
+    from flask import current_app
+    from urllib.parse import urlencode
+    qs = urlencode({k: v for k, v in params.items() if v not in (None, '')})
+    with current_app.test_request_context(f'{path}?{qs}'):
+        res = getattr(func, '__wrapped__', func)(*([params['_ip']] if '_ip' in params else []))
+        if isinstance(res, tuple):
+            res = res[0]
+        return res.get_json()
+
+
+def _flow_range(args):
+    r = str(args.get('range') or '24h')
+    return r if r in ('1h', '6h', '24h', '7d', '30d') else '24h'
+
+
+def tool_traffic_flow(args):
+    """Trafik Aplikasi: layanan teratas (Google, YouTube, Meta, ...) & pelanggan teratas per router."""
+    import routes_flow
+    dev = None
+    if args.get('device'):
+        dev, cands = _snmp_device_find(args.get('device'))
+        if not dev:
+            return {'error': 'Perangkat SNMP tidak ditemukan', 'mungkin_maksud': cands} if cands else \
+                {'error': 'Perangkat SNMP tidak ditemukan'}
+    rng = _flow_range(args)
+    params = {'range': rng, 'device_id': dev.id if dev else None}
+    ov = _flow_call(routes_flow.overview, '/api/flow/overview', **params)
+    cl = _flow_call(routes_flow.clients, '/api/flow/clients', **params)
+    if not ov.get('services') and not ov.get('down') and not ov.get('up'):
+        return {'perangkat': dev.name if dev else 'semua', 'rentang': rng,
+                'catatan': 'Belum ada data Trafik Aplikasi. Aktifkan kolektor di tab Trafik Aplikasi perangkat SNMP '
+                           'dan jalankan traffic-flow di MikroTik (UDP 2055).'}
+    return {
+        'perangkat': dev.name if dev else 'semua router', 'rentang': rng,
+        'total_unduh': _fmt_bytes(ov.get('down')), 'total_unggah': _fmt_bytes(ov.get('up')),
+        'pelanggan_terlihat': ov.get('clients'), 'persen_tidak_dikenali': ov.get('unresolved_share'),
+        'layanan_teratas': [{'layanan': x['service'], 'unduh': _fmt_bytes(x['down']), 'unggah': _fmt_bytes(x['up']),
+                             'porsi_pct': x['share']} for x in ov['services'][:12]],
+        'pelanggan_teratas': [{'ip': c['ip'], 'pppoe': c.get('user') or None, 'onu': c.get('onu') or None,
+                               'total': _fmt_bytes(c['total']),
+                               'layanan': [t['service'] for t in c.get('top_services', [])]}
+                              for c in (cl.get('clients') or [])[:10]],
+    }
+
+
+def tool_traffic_flow_client(args):
+    """Trafik Aplikasi satu pelanggan (IP atau username PPPoE): mengakses layanan apa saja."""
+    import routes_flow
+    from models import PppoeSessionEvent
+    q = str(args.get('query') or '').strip()
+    if not q:
+        return {'error': 'Isi query: IP atau username PPPoE'}
+    ip = q
+    if not q.replace('.', '').isdigit():
+        ev = (PppoeSessionEvent.query.filter(PppoeSessionEvent.pppoe_user.ilike(f'%{q}%'), PppoeSessionEvent.event == 'up')
+              .order_by(PppoeSessionEvent.at.desc()).first())
+        if not ev or not ev.ip:
+            return {'error': 'Pelanggan/IP tidak ditemukan di riwayat sesi PPPoE'}
+        ip = ev.ip
+    dev = None
+    if args.get('device'):
+        dev, _c = _snmp_device_find(args.get('device'))
+    rng = _flow_range(args)
+    d = _flow_call(routes_flow.client_detail, f'/api/flow/client/{ip}', _ip=ip, range=rng,
+                   device_id=dev.id if dev else None)
+    if not d.get('services'):
+        return {'ip': ip, 'rentang': rng, 'catatan': 'Tidak ada data Trafik Aplikasi untuk IP ini pada rentang tersebut.'}
+    return {'ip': ip, 'pppoe': d.get('user') or None, 'onu': d.get('onu') or None, 'rentang': rng,
+            'layanan': [{'layanan': x['service'], 'unduh': _fmt_bytes(x['down']), 'unggah': _fmt_bytes(x['up'])}
+                        for x in d['services'][:15]]}
+
+
 TOOLS = [
     ('nms_summary', 'Ringkasan semua OLT: status OLT, suhu, jumlah ONU online/offline/LOS/dying-gasp.',
      {'type': 'object', 'properties': {}}, tool_summary),
@@ -790,6 +874,16 @@ TOOLS = [
     ('find_mac', 'Cari MAC (format bebas/sebagian) atau IP di tabel ARP & MAC semua perangkat SNMP: di perangkat '
                  'dan port mana terlihat, VLAN, kapan terakhir, dan pelanggan PPPoE yang memakainya.',
      {'type': 'object', 'properties': {'query': {'type': 'string'}}, 'required': ['query']}, tool_find_mac),
+    ('traffic_flow', 'Trafik Aplikasi (NetFlow/IPFIX dari MikroTik): pelanggan mengakses layanan apa (Google, YouTube, '
+                     'Meta, TikTok, Netflix, dll.) — layanan teratas & pelanggan teratas, per perangkat SNMP '
+                     '(opsional) dan rentang 1h/6h/24h/7d/30d.',
+     {'type': 'object', 'properties': {'device': {'type': 'string'},
+       'range': {'type': 'string', 'enum': ['1h', '6h', '24h', '7d', '30d']}}}, tool_traffic_flow),
+    ('traffic_flow_client', 'Layanan apa saja yang diakses satu pelanggan (IP atau username PPPoE) dari data Trafik '
+                            'Aplikasi: unduh/unggah per layanan.',
+     {'type': 'object', 'properties': {'query': {'type': 'string'}, 'device': {'type': 'string'},
+       'range': {'type': 'string', 'enum': ['1h', '6h', '24h', '7d', '30d']}}, 'required': ['query']},
+     tool_traffic_flow_client),
 ]
 _TOOL_FN = {t[0]: t[3] for t in TOOLS}
 
@@ -843,7 +937,7 @@ SYSTEM_PROMPT = (
     "ftth_free_ports; port/uplink OLT → olt_detail; trafik → traffic; sering putus/riwayat → onu_history; "
     "PPPoE/internet pelanggan → mikrotik; modem/SSID/WiFi → tr069; router/switch/server yang dipantau SNMP "
     "→ snmp_devices, satu perangkat → snmp_device, satu port/uplink-nya → snmp_port; cari MAC atau IP di "
-    "jaringan (di port mana) → find_mac; serangan/brute force/login mencurigakan ke router MikroTik → mikrotik_security. Untuk keluhan pelanggan, mulai dari "
+    "jaringan (di port mana) → find_mac; pelanggan mengakses apa/Google/YouTube/Meta/TikTok/layanan teratas → traffic_flow, satu pelanggan → traffic_flow_client; serangan/brute force/login mencurigakan ke router MikroTik → mikrotik_security. Untuk keluhan pelanggan, mulai dari "
     "diagnose, tambah onu_location bila perlu kunjungan, lalu beri kesimpulan singkat. "
     "Selalu ambil data lewat tool sebelum menyebut angka atau status — jangan menebak. "
     "Kamu hanya bisa MEMBACA data NMS; jika diminta reboot/ubah konfigurasi, jelaskan "
