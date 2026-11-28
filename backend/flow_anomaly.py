@@ -43,6 +43,33 @@ def get_settings():
     return out
 
 
+def save_settings(data):
+    """Simpan ambang anomali (nilai di luar batas dijepit). → daftar key yang berubah."""
+    from models import db
+    changed = []
+    for k in DEFAULTS:
+        if k not in data:
+            continue
+        try:
+            v = float(data[k])
+        except (TypeError, ValueError):
+            continue
+        if k == 'flow_anomaly_enabled':
+            v = 1 if v else 0
+        elif k in LIMITS:
+            v = min(max(v, LIMITS[k][0]), LIMITS[k][1])
+        txt = str(int(v)) if k == 'flow_anomaly_enabled' else str(round(v, 2))
+        row = SystemConfig.query.filter_by(key=k).first()
+        if row:
+            if row.value != txt:
+                row.value = txt
+                changed.append(k)
+        else:
+            db.session.add(SystemConfig(key=k, value=txt))
+            changed.append(k)
+    return changed
+
+
 def _target_id(ip, direction):
     """ID numerik stabil per (IP, arah) untuk dedupe notifikasi (kolom target_id = Integer)."""
     try:

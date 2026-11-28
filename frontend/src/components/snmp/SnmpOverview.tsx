@@ -178,6 +178,9 @@ function ThresholdsModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [grp, setGrp] = useState('');
+  const [fa, setFa] = useState<Record<string, string>>({});
+  const faVal = (k: 'flow_anomaly_min_gb' | 'flow_anomaly_factor') => fa[k] ?? String(data?.flow_anomaly?.[k] ?? '');
+  const faOn = fa.flow_anomaly_enabled != null ? fa.flow_anomaly_enabled === '1' : !!data?.flow_anomaly?.flow_anomaly_enabled;
   const [gform, setGform] = useState<Record<string, Record<string, string>>>({});
   const gval = (g: string, k: string) => gform[g]?.[k] ?? (data?.group_overrides?.[g]?.[k] != null ? String(data.group_overrides[g][k]) : '');
   const val = (k: string) => form[k] ?? (data ? String(data.settings[k]) : '');
@@ -192,7 +195,9 @@ function ThresholdsModal({ onClose }: { onClose: () => void }) {
           if (v !== '') (ovr[g] ??= {})[f.key] = Number(v);
         }
       }
-      await api.snmpSettingsSave({ ...body, group_overrides: ovr });
+      const faBody: Record<string, number> = {};
+      for (const [k, v] of Object.entries(fa)) if (v !== '') faBody[k] = Number(v);
+      await api.snmpSettingsSave({ ...body, ...faBody, group_overrides: ovr });
       qc.invalidateQueries({ queryKey: ['snmp-settings'] });
       toast.success(t('devx.thresholdsSaved'));
       onClose();
@@ -217,6 +222,28 @@ function ThresholdsModal({ onClose }: { onClose: () => void }) {
           </label>
         ))}
       </div>
+      {data?.flow_anomaly && (
+        <div className="mt-4 pt-3 border-t border-line">
+          <div className="text-sm font-medium text-tx1">{t('devx.faTitle')}</div>
+          <p className="text-xs text-tx3 mb-2">{t('devx.faHint')}</p>
+          <label className="inline-flex items-center gap-2 text-xs text-tx2 mb-2">
+            <input type="checkbox" checked={faOn} onChange={e => setFa(s => ({ ...s, flow_anomaly_enabled: e.target.checked ? '1' : '0' }))} />
+            {t('devx.faEnabled')}
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="text-xs text-tx2 flex flex-col gap-1">
+              <span>{t('devx.faMinGb')}</span>
+              <input type="number" inputMode="decimal" step={0.5} className="input-field w-full" value={faVal('flow_anomaly_min_gb')}
+                onChange={e => setFa(s => ({ ...s, flow_anomaly_min_gb: e.target.value }))} />
+            </label>
+            <label className="text-xs text-tx2 flex flex-col gap-1">
+              <span>{t('devx.faFactor')}</span>
+              <input type="number" inputMode="decimal" step={0.5} className="input-field w-full" value={faVal('flow_anomaly_factor')}
+                onChange={e => setFa(s => ({ ...s, flow_anomaly_factor: e.target.value }))} />
+            </label>
+          </div>
+        </div>
+      )}
       {(data?.groups?.length ?? 0) > 0 && (
         <div className="mt-4 pt-3 border-t border-line">
           <div className="text-sm font-medium text-tx1">{t('devx.grpTitle')}</div>
