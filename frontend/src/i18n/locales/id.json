@@ -3209,5 +3209,18 @@
     "clients": "{{n}} klien",
     "noise": "noise",
     "weakFirst": "Klien terhubung — sinyal terlemah di atas (hijau ≥ −65, kuning ≥ −75, merah di bawahnya)"
+  },
+  "disc": {
+    "title": "Penemuan perangkat",
+    "hint": "Hanya usulan: perangkat ditambah setelah Anda menekan Tambah, memakai community & versi bawaan dari pengaturan ini. Pindai hanya untuk IP privat (maks /22).",
+    "fromNeighbors": "Dari tetangga LLDP/CDP",
+    "noNeighbors": "Tidak ada tetangga baru ber-IP yang belum terdaftar.",
+    "scan": "Pindai subnet",
+    "scanBtn": "Pindai",
+    "scanning": "Memindai {{done}}/{{total}}…",
+    "scanDone": "Selesai {{cidr}} — {{n}} perangkat menjawab SNMP",
+    "add": "Tambah",
+    "added": "{{name}} ditambahkan",
+    "via": "terlihat dari {{name}}"
   }
 }

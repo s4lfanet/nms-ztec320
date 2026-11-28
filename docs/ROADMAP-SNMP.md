@@ -88,3 +88,7 @@ Radio + klien terhubung lewat MIKROTIK-MIB. Belum ada alert sinyal lemah/klien t
 
 ## Tahap D — BGP/OSPF — SELESAI 28 Nov 2026
 State sesi + alert turun/pulih. Belum: prefix diterima, riwayat state, peer yang hilang dari tabel.
+
+
+## Tahap E — Penemuan otomatis — SELESAI 28 Nov 2026
+Usulan tetangga + pindai subnet; selalu dikonfirmasi admin. Belum: penjadwalan pindai berkala, community per subnet.

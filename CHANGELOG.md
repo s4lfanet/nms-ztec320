@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Penemuan perangkat otomatis
+- Pengaturan SNMP kini punya kartu **Penemuan perangkat**: usulan dari tetangga LLDP/CDP yang belum terdaftar, dan **pindai subnet** privat (maks /22). Perangkat hanya ditambah saat Anda menekan *Tambah*, memakai community bawaan.
+
 ### 2026-11-28 — Sesi BGP & OSPF
 - Sesi **BGP** dan tetangga **OSPF** terbaca otomatis (MIB standar) dan tampil di kartu Kesehatan perangkat dengan state-nya. Sesi yang tidak established/full memicu **alert kritis** lewat WhatsApp/Telegram.
 

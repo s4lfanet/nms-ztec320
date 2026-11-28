@@ -1227,6 +1227,57 @@ def snmp_device_wireless(device_id):
     return jsonify({'success': True, 'radios': radios, 'clients': clients})
 
 
+# ─── Penemuan otomatis (tahap E) — hanya usulan ───
+
+@bp.route('/api/snmp/discovery', methods=['GET'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_discovery_get():
+    import snmp_discovery
+    return jsonify({'success': True, 'neighbors': snmp_discovery.neighbor_candidates(), 'scan': snmp_discovery.status()})
+
+
+@bp.route('/api/snmp/discovery/scan', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_discovery_scan():
+    import snmp_discovery
+    from flask import current_app
+    dflt = snmp_monitor.get_new_device_defaults(with_secret=True)
+    if not dflt.get('community'):
+        return jsonify({'success': False, 'message': 'Isi community bawaan di Pengaturan SNMP dulu'}), 400
+    snmp_monitor.refresh_runtime()
+    base = {'id': 0, 'port': 161, 'version': dflt['snmp_version'], 'community': dflt['community'], 'user': '', 'level': None,
+            'auth_proto': None, 'auth_pass': None, 'priv_proto': None, 'priv_pass': None}
+    ok, msg = snmp_discovery.start_scan((request.get_json() or {}).get('cidr'), base, current_app._get_current_object())
+    if ok:
+        log_action('snmp_scan', 'monitoring', target=str((request.get_json() or {}).get('cidr')))
+    return jsonify({'success': ok, 'message': msg}), (200 if ok else 400)
+
+
+@bp.route('/api/snmp/discovery/add', methods=['POST'])
+@login_required
+@permission_required('settings_ip_olts')
+def snmp_discovery_add():
+    """Tambah satu usulan sebagai perangkat SNMP (community/versi bawaan Pengaturan)."""
+    data = request.get_json() or {}
+    ip = (data.get('ip') or '').strip()
+    if SnmpDevice.query.filter_by(host=ip).first():
+        return jsonify({'success': False, 'message': 'IP sudah terdaftar'}), 400
+    dflt = snmp_monitor.get_new_device_defaults(with_secret=True)
+    payload = {'name': (data.get('name') or ip).strip() or ip, 'host': ip, 'community': dflt.get('community') or '',
+               'snmp_version': dflt['snmp_version'], 'group': data.get('group') or ''}
+    d = SnmpDevice(snmp_version=payload['snmp_version'], port=161)
+    err = _apply(d, payload, creating=True)
+    if err:
+        return jsonify({'success': False, 'message': err}), 400
+    db.session.add(d)
+    db.session.commit()
+    log_action('snmp_device_add', 'monitoring', target=f'{d.name} ({d.host}) [penemuan]')
+    _kick(d.id)
+    return jsonify({'success': True, 'device': _device_dict(d, [])})
+
+
 @bp.route('/api/snmp/devices/<int:device_id>/tables/refresh', methods=['POST'])
 @login_required
 @permission_required('settings_ip_olts')
