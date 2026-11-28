@@ -38,3 +38,15 @@ def test_disabled(ctx):
     notifs, alerts = [], []
     fa.check_flow_anomalies(now, notifs, alerts)
     assert alerts == []
+
+
+def test_ambang_anomali_lewat_api_pengaturan_snmp(ctx):
+    from tests.test_snmp_topology import H, _client
+    import flow_anomaly
+    c = _client()
+    j = c.get('/api/snmp/settings', headers=H).get_json()
+    assert j['flow_anomaly'] == {'flow_anomaly_enabled': 1, 'flow_anomaly_min_gb': 2.0, 'flow_anomaly_factor': 5.0}
+    r = c.put('/api/snmp/settings', json={'flow_anomaly_enabled': 0, 'flow_anomaly_min_gb': 0.01, 'flow_anomaly_factor': 3}, headers=H)
+    assert r.status_code == 200
+    s = flow_anomaly.get_settings()
+    assert s['flow_anomaly_enabled'] == 0 and s['flow_anomaly_min_gb'] == 0.1 and s['flow_anomaly_factor'] == 3   # 0.01 dijepit ke 0.1

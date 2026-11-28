@@ -1486,6 +1486,7 @@ export interface SnmpSettingsData {
   settings: Record<string, number>;
   defaults: Record<string, number>;
   group_overrides?: Record<string, Record<string, number>>;
+  flow_anomaly?: { flow_anomaly_enabled: number; flow_anomaly_min_gb: number; flow_anomaly_factor: number };
   groups?: string[];
   general: Record<string, number>;
   digest?: { snmp_digest_enabled: number; snmp_digest_day: number; snmp_digest_hour: number; snmp_digest_pdf: number };

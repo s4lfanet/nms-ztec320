@@ -2668,7 +2668,12 @@
     },
     "grpTitle": "Ambang per grup",
     "grpHint": "Kosongkan kolom = ikut ambang global (angka abu-abu). Isi untuk menimpa khusus grup ini, mis. backbone lebih ketat.",
-    "grpPick": "Pilih grup…"
+    "grpPick": "Pilih grup…",
+    "faTitle": "Trafik pelanggan tidak wajar",
+    "faHint": "Memberi peringatan bila satu pelanggan mengunduh/mengunggah jauh di atas kebiasaannya (dari data Trafik Aplikasi).",
+    "faEnabled": "Aktifkan deteksi",
+    "faMinGb": "Abaikan bila volume jam ini di bawah (GB)",
+    "faFactor": "Kelipatan dari kebiasaan pelanggan"
   },
   "topo": {
     "tab": "Topologi",

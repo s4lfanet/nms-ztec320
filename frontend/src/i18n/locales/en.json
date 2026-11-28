@@ -2668,7 +2668,12 @@
     },
     "grpTitle": "Per-group thresholds",
     "grpHint": "Leave a field empty to follow the global value (grey). Fill it to override for this group only, e.g. a stricter backbone.",
-    "grpPick": "Pick a group…"
+    "grpPick": "Pick a group…",
+    "faTitle": "Unusual customer traffic",
+    "faHint": "Warns when a customer downloads/uploads far above their usual level (from Traffic Flow data).",
+    "faEnabled": "Enable detection",
+    "faMinGb": "Ignore when this hour's volume is below (GB)",
+    "faFactor": "Multiple of the customer's usual level"
   },
   "topo": {
     "tab": "Topology",

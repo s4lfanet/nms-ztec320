@@ -452,6 +452,7 @@ def snmp_settings_get():
     return jsonify({
         'success': True, 'settings': snmp_alerts.get_settings(), 'defaults': snmp_alerts.DEFAULTS,
         'group_overrides': snmp_alerts.get_group_overrides(),
+        'flow_anomaly': __import__('flow_anomaly').get_settings(),
         'groups': sorted({(d.group_name or '').strip() for d in SnmpDevice.query.all()} - {''}),
         'general': snmp_monitor.get_general(),
         'digest': __import__('snmp_digest').settings(),
@@ -472,6 +473,7 @@ def snmp_settings_put():
     data = request.get_json() or {}
     import snmp_digest
     changed = snmp_alerts.save_settings(data) + snmp_monitor.save_general(data) + snmp_digest.save_settings(data)
+    changed += __import__('flow_anomaly').save_settings(data)
     if 'group_overrides' in data and snmp_alerts.save_group_overrides(data['group_overrides']):
         changed.append('group_overrides')
     db.session.commit()
@@ -480,6 +482,7 @@ def snmp_settings_put():
         log_action('snmp_settings', 'monitoring', target='SNMP', detail=', '.join(changed))
     return jsonify({'success': True, 'settings': snmp_alerts.get_settings(),
                     'group_overrides': snmp_alerts.get_group_overrides(),
+                    'flow_anomaly': __import__('flow_anomaly').get_settings(),
                     'general': snmp_monitor.get_general()})
 
 
