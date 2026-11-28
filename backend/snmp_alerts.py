@@ -318,7 +318,7 @@ def _olt_impact(port_id):
     return '\n\n📡 OLT terdampak: ' + '; '.join(f'{n} ({tot} ONU, {on} online)' for n, tot, on in rows)
 
 
-def _check_port(c, dev, p, dcfg):
+def _check_port(c, dev, p, cfg):
     now = c.now
     label = port_label(p)
     # Port turun
@@ -459,7 +459,7 @@ def check_snmp_thresholds(now, notifications_to_create, alerts_to_send):
             if rules:
                 _check_rules(c, dev, rules, poll_s)
             for p in SnmpPort.query.filter_by(device_id=dev.id, watched=True, ignored=False, deleted=False).all():
-                _check_port(c, dev, p, cfg)
+                _check_port(c, dev, p, dcfg)
         except Exception as e:  # satu perangkat bermasalah tidak menghentikan yang lain
             logger.warning(f'[SNMP-ALERT] {dev.name}: {e}')
     # Port yang tidak lagi dipantau / perangkat dihapus → tutup alert yang masih terbuka
