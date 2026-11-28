@@ -60,6 +60,7 @@ def _port_dict(p):
         'if_type': p.if_type, 'speed_mbps': p.speed_mbps, 'mac': p.mac,
         'admin_status': p.admin_status, 'oper_status': p.oper_status, 'status_changed_at': _iso(p.status_changed_at),
         'ignored': p.ignored, 'watched': bool(p.watched), 'in_bps': p.in_bps, 'out_bps': p.out_bps,
+        'customer': p.customer or '', 'commit_mbps': p.commit_mbps, 'overage_rate': p.overage_rate,
         'in_err_rate': p.in_err_rate, 'out_err_rate': p.out_err_rate,
         'in_errors': p.in_errors, 'out_errors': p.out_errors,
         'in_pps': p.in_pps, 'out_pps': p.out_pps,
@@ -328,6 +329,15 @@ def snmp_port_update(port_id):
         p.ignored = bool(data['ignored'])
     if 'watched' in data:
         p.watched = bool(data['watched'])
+    if 'customer' in data:
+        p.customer = str(data['customer'] or '').strip()[:150]
+    for k in ('commit_mbps', 'overage_rate'):
+        if k in data:
+            try:
+                v = None if data[k] in (None, '') else float(data[k])
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'message': f'{k} harus angka'}), 400
+            setattr(p, k, max(0.0, v) if v is not None else None)
     db.session.commit()
     return jsonify({'success': True, 'port': _port_dict(p)})
 
@@ -623,6 +633,9 @@ def build_report(month, tz_min=0, device_id=None, scope='watched'):
         q = q.filter(SnmpPort.device_id == device_id)
     if scope == 'watched':
         q = q.filter(SnmpPort.watched.is_(True))
+    elif scope == 'billing':
+        q = q.filter(db.or_(db.and_(SnmpPort.customer.isnot(None), SnmpPort.customer != ''),
+                            SnmpPort.commit_mbps.isnot(None)))
     ports = q.all()
     devs = {d.id: d for d in SnmpDevice.query.all()}
     hours_elapsed = max(1, int((min(end, now) - start).total_seconds() // 3600)) if now > start else 0
@@ -658,7 +671,18 @@ def build_report(month, tz_min=0, device_id=None, scope='watched'):
             row['peak_util_pct'] = round(peak / cap * 100, 1) if cap and peak else None
             row['p95_util_pct'] = round(p95 / cap * 100, 1) if cap and p95 else None
             row['coverage_pct'] = round(hours / hours_elapsed * 100, 1) if hours_elapsed else 0
-            if scope != 'watched' and not hours:
+            # Billing burstable: 95th percentile dari rata-rata per jam, arah terbesar (masuk/keluar)
+            p95_mbps = round(p95 / 1e6, 2)
+            row['customer'] = p.customer or ''
+            row['commit_mbps'] = p.commit_mbps
+            row['overage_rate'] = p.overage_rate
+            row['billing_p95_mbps'] = p95_mbps
+            over = max(0.0, p95_mbps - p.commit_mbps) if p.commit_mbps is not None else None
+            row['overage_mbps'] = round(over, 2) if over is not None else None
+            row['overage_cost'] = round(over * p.overage_rate) if over is not None and p.overage_rate else None
+            if scope == 'billing':
+                pass
+            elif scope != 'watched' and not hours:
                 continue
             rows.append(row)
     rows.sort(key=lambda r: (r['device_name'], r['port']))
@@ -709,6 +733,52 @@ def _report_csv(rep):
     return buf.getvalue()
 
 
+def _billing_csv(rep, customer=''):
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(['Billing port (burstable 95%)', rep['month']])
+    w.writerow(['Pelanggan', 'Perangkat', 'Port', 'Keterangan', 'Komitmen (Mbps)', 'Pemakaian 95% (Mbps)',
+                'Kelebihan (Mbps)', 'Tarif kelebihan /Mbps', 'Biaya kelebihan', 'Volume masuk (GB)',
+                'Volume keluar (GB)', 'Cakupan data (%)'])
+    total = 0
+    for r in rep['ports']:
+        if customer and r['customer'] != customer:
+            continue
+        total += r['overage_cost'] or 0
+        w.writerow([r['customer'], r['device_name'], r['port'], r['alias'],
+                    r['commit_mbps'] if r['commit_mbps'] is not None else '', r['billing_p95_mbps'],
+                    r['overage_mbps'] if r['overage_mbps'] is not None else '',
+                    r['overage_rate'] if r['overage_rate'] is not None else '',
+                    r['overage_cost'] if r['overage_cost'] is not None else '',
+                    round(r['in']['volume_bytes'] / 1e9, 2), round(r['out']['volume_bytes'] / 1e9, 2), r['coverage_pct']])
+    w.writerow([])
+    w.writerow(['Total biaya kelebihan', total])
+    return buf.getvalue()
+
+
+@bp.route('/api/snmp/billing', methods=['GET'])
+@login_required
+def snmp_billing():
+    """Billing per port: komitmen vs 95% bulanan, kelebihan & biaya. ?customer= untuk satu pelanggan; ?format=csv."""
+    month = request.args.get('month') or snmp_monitor._now().strftime('%Y-%m')
+    try:
+        _month_bounds(month, 0)
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'month harus berformat YYYY-MM'}), 400
+    tz_min = max(-720, min(840, request.args.get('tz', 0, type=int) or 0))
+    rep = build_report(month, tz_min, request.args.get('device_id', type=int), 'billing')
+    cust = (request.args.get('customer') or '').strip()
+    if cust:
+        rep['ports'] = [r for r in rep['ports'] if r['customer'] == cust]
+    if request.args.get('format') == 'csv':
+        name = ''.join(ch if ch.isalnum() or ch in '-_' else '_' for ch in cust) or 'semua'
+        return Response('﻿' + _billing_csv(rep, cust), mimetype='text/csv; charset=utf-8',
+                        headers={'Content-Disposition': f'attachment; filename=billing-{name}-{month}.csv'})
+    rep.pop('devices', None)
+    rep['customers'] = sorted({r['customer'] for r in rep['ports'] if r['customer']})
+    return jsonify({'success': True, **rep})
+
+
 @bp.route('/api/snmp/report', methods=['GET'])
 @login_required
 def snmp_report():
@@ -718,7 +788,8 @@ def snmp_report():
     except (ValueError, TypeError):
         return jsonify({'success': False, 'message': 'month harus berformat YYYY-MM'}), 400
     tz_min = max(-720, min(840, request.args.get('tz', 0, type=int) or 0))
-    scope = 'all' if request.args.get('scope') == 'all' else 'watched'
+    scope = request.args.get('scope')
+    scope = scope if scope in ('all', 'billing') else 'watched'
     rep = build_report(month, tz_min, request.args.get('device_id', type=int), scope)
     if request.args.get('format') == 'csv':
         return Response('﻿' + _report_csv(rep), mimetype='text/csv; charset=utf-8',

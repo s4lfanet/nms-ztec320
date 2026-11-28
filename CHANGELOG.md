@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Billing per port
+- Port bisa diberi **pelanggan, komitmen (Mbps), dan tarif kelebihan**. Laporan bulanan punya mode *Billing pelanggan*: pemakaian 95%, kelebihan di atas komitmen, biaya, dan unduh CSV per pelanggan (`/api/snmp/billing`).
+
 ### 2026-11-28 — Ambang alert per grup
 - Di **Ambang alert** kini ada bagian *Ambang per grup*: pilih grup perangkat lalu timpa ambang tertentu (CPU, suhu, utilisasi, dll.). Kolom kosong = ikut ambang global. Cocok untuk memperketat backbone atau melonggarkan perangkat akses.
 

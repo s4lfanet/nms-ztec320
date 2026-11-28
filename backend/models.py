@@ -1556,6 +1556,10 @@ class SnmpPort(db.Model):
     mtu = db.Column(db.Integer, nullable=True)
     duplex = db.Column(db.String(8), nullable=True)
     ip_addrs = db.Column(db.Text, nullable=True)            # JSON ["10.0.0.1/24", …]
+    # Billing per port (burstable 95%): pelanggan, komitmen (Mbps), tarif kelebihan per Mbps
+    customer = db.Column(db.String(150), default='')
+    commit_mbps = db.Column(db.Float, nullable=True)
+    overage_rate = db.Column(db.Float, nullable=True)
     sfp_info = db.Column(db.Text, nullable=True)            # JSON vendor/part/serial/tipe/λ/…
     dom_rx_dbm = db.Column(db.Float, nullable=True)
     dom_tx_dbm = db.Column(db.Float, nullable=True)

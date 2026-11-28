@@ -328,6 +328,10 @@ export const api = {
   snmpSettingsSave: (data: Record<string, number | string | Record<string, Record<string, number>>>) => request<{ success: boolean; settings: Record<string, number>; general: Record<string, number> }>('/api/snmp/settings', { method: 'PUT', body: JSON.stringify(data) }),
   snmpReport: (q: { month: string; scope: string; tz: number; device_id?: number }) =>
     request<SnmpReportData>(`/api/snmp/report?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`),
+  snmpBilling: (q: { month: string; tz: number; customer?: string }) =>
+    request<SnmpReportData & { customers: string[] }>(`/api/snmp/billing?${new URLSearchParams(Object.entries(q).filter(([, v]) => v).map(([k, v]) => [k, String(v)]))}`),
+  snmpBillingCsvUrl: (q: { month: string; tz: number; customer?: string }) =>
+    `/api/snmp/billing?${new URLSearchParams({ month: q.month, tz: String(q.tz), format: 'csv', ...(q.customer ? { customer: q.customer } : {}) })}`,
   snmpReportCsvUrl: (q: { month: string; scope: string; tz: number }) =>
     `/api/snmp/report?${new URLSearchParams({ month: q.month, scope: q.scope, tz: String(q.tz), format: 'csv' })}`,
   snmpRules: (deviceId: number) => request<{ success: boolean; rules: SnmpRule[]; sensors: SnmpRuleSensor[] }>(`/api/snmp/devices/${deviceId}/rules`),
@@ -353,7 +357,7 @@ export const api = {
   },
   snmpReportSend: () => request<{ success: boolean; message: string }>('/api/snmp/report/send', { method: 'POST' }),
   snmpDigestSend: () => request<{ success: boolean; message: string }>('/api/snmp/digest/send', { method: 'POST' }),
-  snmpPortUpdate: (id: number, data: { ignored?: boolean; watched?: boolean }) => request<{ success: boolean; port: SnmpPort }>(`/api/snmp/ports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  snmpPortUpdate: (id: number, data: { ignored?: boolean; watched?: boolean; customer?: string; commit_mbps?: number | null; overage_rate?: number | null }) => request<{ success: boolean; port: SnmpPort }>(`/api/snmp/ports/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   ftthExport: () => '/api/ftth/export',
   ftthExportJson: () => '/api/ftth/export.json',
   ftthCoreSetStatus: (ownerType: 'otb' | 'odc' | 'jc', ownerId: number, core: number, data: { status?: 'available' | 'reserved' | 'damaged'; attenuation_db?: number | null; notes?: string }) =>
@@ -1018,6 +1022,7 @@ export interface SnmpPort {
   id: number; if_index: number; name: string; descr: string; alias: string; if_type: number | null;
   speed_mbps: number | null; mac: string; admin_status: string; oper_status: string; status_changed_at: string | null;
   ignored: boolean; in_bps: number | null; out_bps: number | null; in_err_rate: number | null; out_err_rate: number | null;
+  customer?: string; commit_mbps?: number | null; overage_rate?: number | null;
   in_pps?: number | null; out_pps?: number | null; has_counters?: boolean;
   rx_dbm?: number | null; tx_dbm?: number | null; rx_loss?: boolean | null; sfp_type?: string | null;
   in_errors: number | null; out_errors: number | null; util_pct: number | null; watched: boolean;
@@ -1058,6 +1063,8 @@ export interface SnmpReportDir { avg_bps: number | null; max_bps: number | null;
 export interface SnmpReportPort {
   port_id: number; device_id: number; device_name: string; port: string; alias: string; speed_mbps: number | null; watched: boolean;
   in: SnmpReportDir; out: SnmpReportDir; peak_util_pct: number | null; p95_util_pct: number | null; coverage_pct: number;
+  customer?: string; commit_mbps?: number | null; overage_rate?: number | null; billing_p95_mbps?: number;
+  overage_mbps?: number | null; overage_cost?: number | null;
 }
 export interface SnmpReportData {
   success: boolean; month: string; start: string; end: string; ports: SnmpReportPort[];

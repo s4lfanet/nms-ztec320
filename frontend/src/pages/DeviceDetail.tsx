@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Router, RefreshCw, Pencil, Trash2, Thermometer, Fan, Zap, Cpu, MemoryStick, HardDrive, Gauge, EyeOff, Eye, Star, PanelBottomOpen } from 'lucide-react';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { ActionMenu, Card, EmptyState, LoadingOverlay, Tabs } from '../components/ui';
+import { ActionMenu, Button, Card, EmptyState, LoadingOverlay, Tabs } from '../components/ui';
 import { TrafficFlow } from '../components/snmp/TrafficFlow';
 import { TopologyMap } from '../components/snmp/TopologyMap';
 import { toast } from '../components/Toast';
@@ -202,6 +202,36 @@ function DeviceGraphs({ deviceId, range, setRange }: { deviceId: number; range: 
   );
 }
 
+function PortBilling({ port, canEdit, onSaved }: { port: SnmpPort; canEdit: boolean; onSaved: () => void }) {
+  const { t } = useTranslation();
+  const [f, setF] = useState({ customer: port.customer ?? '', commit: port.commit_mbps != null ? String(port.commit_mbps) : '', rate: port.overage_rate != null ? String(port.overage_rate) : '' });
+  const [saving, setSaving] = useState(false);
+  if (!canEdit && !port.customer && port.commit_mbps == null) return null;
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.snmpPortUpdate(port.id, { customer: f.customer, commit_mbps: f.commit === '' ? null : Number(f.commit), overage_rate: f.rate === '' ? null : Number(f.rate) });
+      toast.success(t('bill.saved'));
+      onSaved();
+    } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
+  };
+  return (
+    <div className="rounded-lg border border-line p-3">
+      <div className="text-sm font-medium text-tx1">{t('bill.title')}</div>
+      <p className="text-xs text-tx3 mb-2">{t('bill.hint')}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <label className="text-xs text-tx2 flex flex-col gap-1">{t('bill.customer')}
+          <input className="input-field" value={f.customer} disabled={!canEdit} maxLength={150} onChange={e => setF(s => ({ ...s, customer: e.target.value }))} /></label>
+        <label className="text-xs text-tx2 flex flex-col gap-1">{t('bill.commit')}
+          <input type="number" inputMode="decimal" min={0} className="input-field" value={f.commit} disabled={!canEdit} onChange={e => setF(s => ({ ...s, commit: e.target.value }))} /></label>
+        <label className="text-xs text-tx2 flex flex-col gap-1">{t('bill.rate')}
+          <input type="number" inputMode="decimal" min={0} className="input-field" value={f.rate} disabled={!canEdit} onChange={e => setF(s => ({ ...s, rate: e.target.value }))} /></label>
+      </div>
+      {canEdit && <div className="mt-2 flex justify-end"><Button variant="primary" loading={saving} onClick={save}>{t('common.save')}</Button></div>}
+    </div>
+  );
+}
+
 function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[]; canEdit: boolean; deviceId: number; range: GraphRange; setRange: (r: GraphRange) => void }) {
   const [openPort, setOpenPort] = useState<number | null>(null);
   const { t } = useTranslation();
@@ -310,6 +340,7 @@ function Ports({ ports, canEdit, deviceId, range, setRange }: { ports: SnmpPort[
                 <div className="reveal basis-full w-full pt-2 space-y-3">
                   {p.oper_status === 'up' && <PortLive portId={p.id} speedMbps={p.speed_mbps} />}
                   <PortDetail port={p} />
+                  <PortBilling port={p} canEdit={canEdit} onSaved={() => { qc.invalidateQueries({ queryKey: ['snmp-device', deviceId] }); }} />
                   <RangePicker value={range} onChange={setRange} />
                   {p.rx_dbm != null && (
                     <SnmpGraph deviceId={deviceId} portId={p.id} range={range} unit="dbm" height={130} title={t('pdet.opticalGraph')}
