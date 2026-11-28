@@ -183,7 +183,7 @@ chmod 600 "${APP_DIR}/backend/.env"
 echo "[6/8] Installing systemd service..."
 cat > /etc/systemd/system/${APP_NAME}.service << EOF
 [Unit]
-Description=Salfanet NMS - OLT Management System
+Description=Salfanet NMS - FTTH & Network Monitoring
 After=network.target
 
 [Service]

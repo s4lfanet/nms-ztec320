@@ -1,4 +1,4 @@
-# Salfanet NMS — Multi-Vendor OLT Management System
+# Salfanet NMS — FTTH & Network Monitoring
 
 Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600, C650; SNMP + CLI penuh) serta **HSGQ, HiOSO, VSOL, BDCOM, C-Data, Raisecom, Dasan, Huawei, FiberHome** (monitoring via SNMP adapter). Mendukung kartu **GPON** (GTG) dan **EPON** (ETG). Dibangun dengan Flask + React, mendukung sinkronisasi SNMP + CLI (SSH/Telnet), monitoring ONU real-time, alerting, provisioning, dan manajemen infrastruktur FTTH dari satu dashboard.
 
@@ -593,7 +593,7 @@ MIT License — see [LICENSE](LICENSE) file for details.
 
 ## Credits
 
-**Salfanet NMS** — Developed for FTTH network operators managing ZTE OLT infrastructure.
+**Salfanet NMS** — Developed for FTTH network operators: OLT/ONU management plus SNMP monitoring of routers and switches.
 
 - SNMP: [pysnmp](https://github.com/lextudio/pysnmp) 7.x
 - Frontend: [React](https://react.dev), [Vite](https://vitejs.dev), [TailwindCSS](https://tailwindcss.com)
