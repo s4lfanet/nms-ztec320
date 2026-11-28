@@ -3192,5 +3192,15 @@
     "allCustomers": "Semua pelanggan",
     "line": "Komitmen {{commit}} Mbps · 95%: {{p95}} Mbps · kelebihan {{over}} Mbps",
     "cost": "Rp {{v}}"
+  },
+  "vlan": {
+    "title": "VLAN",
+    "hint": "Dibaca dari Q-BRIDGE-MIB bersama tabel MAC. Untagged = akses, Tagged = trunk.",
+    "seenOnly": "Perangkat tidak mengirim konfigurasi VLAN; yang tampil hanya VLAN yang terlihat dari tabel MAC.",
+    "byVlan": "Per VLAN ({{n}})",
+    "byPort": "Per port ({{n}})",
+    "untag": "untagged",
+    "tag": "tagged",
+    "seen": "terlihat"
   }
 }

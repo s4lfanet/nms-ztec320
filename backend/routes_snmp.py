@@ -7,7 +7,7 @@ from flask_login import login_required, current_user
 import json
 from datetime import timedelta
 
-from models import db, SnmpSensorRule, SnmpMaintenance, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb
+from models import db, SnmpSensorRule, SnmpMaintenance, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb, SnmpVlan
 from helpers import utc_iso, log_action, permission_required
 import snmp_monitor
 
@@ -269,7 +269,7 @@ def snmp_device_delete(device_id):
     d = db.session.get(SnmpDevice, device_id)
     if not d:
         return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
-    for model in (SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb):
+    for model in (SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb, SnmpVlan):
         model.query.filter_by(device_id=d.id).delete()
     SnmpNeighbor.query.filter_by(remote_device_id=d.id).update({'remote_device_id': None, 'remote_port_id': None})
     SnmpDevice.query.filter_by(parent_id=d.id).update({'parent_id': None})
@@ -1169,6 +1169,40 @@ def snmp_device_tables(device_id):
                     'arp': [_arp_dict(r, d, ports) for r in arp],
                     'fdb': [{**_fdb_dict(r, d, ports), 'ip': ip_of.get(r.mac, '')} for r in fdb],
                     'truncated': len(arp) >= TABLE_LIMIT or len(fdb) >= TABLE_LIMIT})
+
+
+@bp.route('/api/snmp/devices/<int:device_id>/vlans', methods=['GET'])
+@login_required
+def snmp_device_vlans(device_id):
+    """VLAN perangkat: daftar VLAN + port tagged/untagged, dan ringkasan VLAN per port
+    (PVID, anggota, serta VLAN yang terlihat dari tabel MAC sebagai cadangan)."""
+    d = db.session.get(SnmpDevice, device_id)
+    if not d:
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    ports = SnmpPort.query.filter_by(device_id=d.id, deleted=False).all()
+    by_if = {p.if_index: p for p in ports}
+    nm = lambda i: by_if[i].name if i in by_if else f'#{i}'
+    vlans, per_port = [], {}
+    for v in SnmpVlan.query.filter_by(device_id=d.id).order_by(SnmpVlan.vlan).all():
+        eg, un = json.loads(v.egress or '[]'), set(json.loads(v.untagged or '[]'))
+        vlans.append({'vlan': v.vlan, 'name': v.name or '',
+                      'untagged': [nm(i) for i in eg if i in un], 'tagged': [nm(i) for i in eg if i not in un]})
+        for i in eg:
+            if i in by_if:
+                per_port.setdefault(by_if[i].id, {'member': []})['member'].append({'vlan': v.vlan, 'tagged': i not in un})
+    seen = {}
+    for pid, vl in db.session.query(SnmpFdb.port_id, SnmpFdb.vlan).filter(
+            SnmpFdb.device_id == d.id, SnmpFdb.vlan.isnot(None), SnmpFdb.port_id.isnot(None)).distinct().all():
+        seen.setdefault(pid, set()).add(vl)
+    out_ports = []
+    for p in ports:
+        pp = per_port.get(p.id, {'member': []})
+        if not (pp['member'] or p.pvid or seen.get(p.id)):
+            continue
+        out_ports.append({'if_index': p.if_index, 'port_id': p.id, 'port': p.name, 'alias': p.alias or '', 'pvid': p.pvid,
+                          'member': pp['member'], 'seen': sorted(seen.get(p.id, ()))})
+    out_ports.sort(key=lambda x: x['if_index'])
+    return jsonify({'success': True, 'vlans': vlans, 'ports': out_ports})
 
 
 @bp.route('/api/snmp/devices/<int:device_id>/tables/refresh', methods=['POST'])

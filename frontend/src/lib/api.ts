@@ -312,6 +312,7 @@ export const api = {
   },
   snmpDeviceMetrics: (id: number) => request<{ success: boolean; metrics: { metric: string; name: string }[] }>(`/api/snmp/devices/${id}/metrics`),
   snmpPortDetail: (portId: number) => request<{ success: boolean; port: SnmpPort; detail: SnmpPortDetail; macs?: SnmpPortMac[] }>(`/api/snmp/ports/${portId}`),
+  snmpDeviceVlans: (id: number) => request<SnmpVlanData>(`/api/snmp/devices/${id}/vlans`),
   snmpDeviceTables: (id: number) => request<{ success: boolean; tables_at: string | null; note: string; arp: SnmpMacRow[]; fdb: SnmpMacRow[]; truncated: boolean }>(`/api/snmp/devices/${id}/tables`),
   snmpDeviceTablesRefresh: (id: number) => request<{ success: boolean; tables_at: string | null; note: string }>(`/api/snmp/devices/${id}/tables/refresh`, { method: 'POST' }),
   snmpSearch: (q: string) => request<{ success: boolean; kind: 'mac' | 'ip' | 'text'; results: SnmpSearchRow[] }>(`/api/snmp/search?q=${encodeURIComponent(q)}`),
@@ -1540,3 +1541,9 @@ export interface RestoreResult { success: boolean; message: string; pre_restore_
 
 export interface BgStatus { engine: 'model' | 'fallback'; onnxruntime: boolean; model_file: boolean; error: string }
 export interface EngineInstall { state: 'idle' | 'running' | 'done' | 'failed'; step: string; log: string; started: number; finished: number }
+
+export interface SnmpVlanData {
+  success: boolean;
+  vlans: { vlan: number; name: string; untagged: string[]; tagged: string[] }[];
+  ports: { if_index: number; port_id: number; port: string; alias: string; pvid: number | null; member: { vlan: number; tagged: boolean }[]; seen: number[] }[];
+}

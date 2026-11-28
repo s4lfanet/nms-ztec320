@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — VLAN per port
+- Tab ARP/MAC perangkat SNMP kini menampilkan **VLAN**: daftar VLAN dengan port tagged/untagged, dan per port (PVID + VLAN anggota). Bila perangkat tidak menyediakan konfigurasi VLAN, ditampilkan VLAN yang terlihat dari tabel MAC.
+
 ### 2026-11-28 — Angka ONU dashboard selalu sama dengan daftar Semua ONU
 - Dashboard & AI kini menghitung ONU langsung dari tabel ONU (bukan salinan yang hanya diperbarui saat sync). Sync juga tidak lagi menggandakan hitungan bila hasil walk berisi entri ONU ganda.
 
