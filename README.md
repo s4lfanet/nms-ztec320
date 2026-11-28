@@ -6,6 +6,9 @@ Sistem manajemen OLT/ONU FTTH multi-vendor — **ZTE** (C320, C300, C300-M, C600
 ![Python](https://img.shields.io/badge/python-3.12+-green)
 ![React](https://img.shields.io/badge/react-19+-cyan)
 ![OLT](https://img.shields.io/badge/OLT-multi--vendor-orange)
+[![Telegram](https://img.shields.io/badge/Telegram-Grup%20Salfanet-26A5E4?logo=telegram&logoColor=white)](https://t.me/+WLSqwbXk59UxM2I1)
+
+💬 **Komunitas:** diskusi, update rilis, lapor bug & request fitur di [grup Telegram Salfanet](https://t.me/+WLSqwbXk59UxM2I1) (Salfanet NMS & Salfanet Radius).
 
 ## Fitur Utama
 

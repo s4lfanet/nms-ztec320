@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Link grup Telegram
+- Footer sidebar kini punya tautan **Grup Telegram Salfanet**; README mendapat badge dan baris Komunitas.
+
 ### 2026-11-28 — Ambang anomali trafik pelanggan bisa diatur di UI
 - Modal *Ambang alert* kini punya bagian *Trafik pelanggan tidak wajar*: aktif/nonaktif, volume minimum per jam, dan kelipatan dari kebiasaan pelanggan.
 
