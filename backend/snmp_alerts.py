@@ -24,7 +24,7 @@ from models import db, Notification, SystemConfig, SnmpDevice, SnmpPort, SnmpEve
 logger = logging.getLogger(__name__)
 
 CATEGORIES = ('snmp_port_down', 'snmp_port_flap', 'snmp_port_util', 'snmp_port_err', 'snmp_cpu', 'snmp_temp',
-              'snmp_optical', 'snmp_rule', 'flow_anomaly', 'snmp_status', 'snmp_routing')
+              'snmp_optical', 'snmp_rule', 'flow_anomaly', 'snmp_status', 'snmp_routing', 'snmp_wifi')
 
 DEFAULTS = {
     'snmp_down_minutes': 4,
@@ -38,12 +38,13 @@ DEFAULTS = {
     'snmp_flap_minutes': 30,
     'snmp_rx_low_dbm': -25,
     'snmp_hold_minutes': 3,
+    'snmp_wifi_weak_dbm': -80,
 }
 LIMITS = {
     'snmp_down_minutes': (1, 120), 'snmp_cpu_threshold': (10, 100), 'snmp_cpu_cycles': (1, 20),
     'snmp_temp_threshold': (30, 120), 'snmp_util_threshold': (10, 100), 'snmp_util_cycles': (1, 20),
     'snmp_err_threshold': (0.01, 100000), 'snmp_flap_count': (2, 50), 'snmp_flap_minutes': (5, 240),
-    'snmp_rx_low_dbm': (-40, 0), 'snmp_hold_minutes': (0, 60),
+    'snmp_rx_low_dbm': (-40, 0), 'snmp_hold_minutes': (0, 60), 'snmp_wifi_weak_dbm': (-95, -50),
 }
 
 
@@ -188,7 +189,7 @@ def port_label(p):
 
 # Kategori tanpa persistensi bawaan (satu bacaan sudah memicu) → ditahan `snmp_hold_minutes`
 # supaya WARNING lalu UP dalam hitungan menit (naik-turun sesaat) tidak membanjiri grup.
-HOLD_CATS = ('snmp_temp', 'snmp_optical', 'snmp_port_err', 'snmp_status', 'snmp_routing')
+HOLD_CATS = ('snmp_temp', 'snmp_optical', 'snmp_port_err', 'snmp_status', 'snmp_routing', 'snmp_wifi')
 
 
 class _Ctx:
@@ -317,6 +318,19 @@ def _check_device(c, dev, cfg):
                  _head(dev, f'🔴 SESI ROUTING TURUN: {sn.name}') + f'\nState: {sn.unit or "-"}\n\n'
                  f'⚠️ Cek link ke tetangga/peer, konfigurasi, dan upstream; rute lewat sesi ini bisa terputus.',
                  f'✅ {sn.name} pulih: {dev.name}', f'✅ {sn.name} di {dev.name} kembali normal ({sn.unit or "ok"}).')
+    # Wireless: klien dengan sinyal di bawah ambang (bawaan −80 dBm, batas "buruk" umum di WISP/NMS lain).
+    # Satu alert per perangkat (bukan per klien) agar tidak banjir; data berasal dari pembacaan tabel terakhir.
+    if dev.tables_at and dev.tables_at >= now.replace(tzinfo=None) - timedelta(hours=3):
+        from models import SnmpWifiClient
+        thr = cfg['snmp_wifi_weak_dbm']
+        weak = [w for w in SnmpWifiClient.query.filter_by(device_id=dev.id).order_by(SnmpWifiClient.signal.asc()).all()
+                if w.signal is not None and w.signal < thr]
+        lines = '\n'.join(f'• {w.mac} — {w.signal} dBm' for w in weak[:5])
+        c.toggle(dev, 'snmp_wifi', 'snmp', dev.id, bool(weak), 'warning',
+                 f'📶 {len(weak)} klien wireless sinyal lemah: {dev.name}',
+                 _head(dev, '📶 SINYAL WIRELESS LEMAH') + f'\n{len(weak)} klien di bawah {thr:.0f} dBm:\n{lines}\n\n'
+                 f'⚠️ Cek arah/posisi antena klien, jarak, dan interferensi (noise) pada radio AP.',
+                 f'✅ Sinyal wireless normal: {dev.name}', f'✅ Tidak ada lagi klien di bawah {thr:.0f} dBm pada {dev.name}.')
 
 
 def _olt_impact(port_id):

@@ -2640,7 +2640,8 @@
       "snmp_optical": "Redaman SFP buruk",
       "flow_anomaly": "Trafik pelanggan tidak wajar",
       "snmp_status": "Sensor status gagal (PSU/kipas)",
-      "snmp_routing": "Sesi routing turun (BGP/OSPF)"
+      "snmp_routing": "Sesi routing turun (BGP/OSPF)",
+      "snmp_wifi": "Klien wireless sinyal lemah"
     },
     "th": {
       "snmp_down_minutes": "Port/perangkat turun dialert setelah",
@@ -2653,7 +2654,8 @@
       "snmp_cpu_cycles": "…selama",
       "snmp_temp_threshold": "Suhu tinggi",
       "snmp_rx_low_dbm": "Redaman RX SFP terlalu rendah di bawah",
-      "snmp_hold_minutes": "Tahan alert suhu/SFP/error sampai bertahan (0 = langsung)"
+      "snmp_hold_minutes": "Tahan alert suhu/SFP/error sampai bertahan (0 = langsung)",
+      "snmp_wifi_weak_dbm": "Sinyal klien wireless lemah di bawah"
     },
     "unit": {
       "min": "menit",

@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Alert sinyal wireless lemah
+- Perangkat dengan klien wireless di bawah **−80 dBm** (bisa diubah di Ambang alert, juga per grup) memicu satu peringatan berisi klien terlemah; pulih otomatis bila sinyal membaik. Data klien dibaca berkala, jadi alert tidak realtime.
+
 ### 2026-11-28 — AI Agent membaca VLAN, wireless, billing, dan sesi routing
 - AI Agent kini bisa menjawab: VLAN dan PVID per port, klien wireless/AP dengan sinyal terlemah, tagihan/kelebihan bandwidth per pelanggan, serta status sesi BGP/OSPF.
 
