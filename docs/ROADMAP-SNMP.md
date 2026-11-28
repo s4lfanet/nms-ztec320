@@ -84,3 +84,7 @@ Q-BRIDGE (nama, egress/untagged, PVID) + cadangan dari FDB. Belum diuji pada per
 
 ## Tahap B — Wireless MikroTik — SELESAI 28 Nov 2026
 Radio + klien terhubung lewat MIKROTIK-MIB. Belum ada alert sinyal lemah/klien turun; belum diuji di perangkat nyata.
+
+
+## Tahap D — BGP/OSPF — SELESAI 28 Nov 2026
+State sesi + alert turun/pulih. Belum: prefix diterima, riwayat state, peer yang hilang dari tabel.

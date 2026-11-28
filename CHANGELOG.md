@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Sesi BGP & OSPF
+- Sesi **BGP** dan tetangga **OSPF** terbaca otomatis (MIB standar) dan tampil di kartu Kesehatan perangkat dengan state-nya. Sesi yang tidak established/full memicu **alert kritis** lewat WhatsApp/Telegram.
+
 ### 2026-11-28 — Wireless MikroTik
 - Tab ARP/MAC perangkat MikroTik menampilkan **Wireless**: per radio (SSID, frekuensi, jumlah klien, noise, CCQ) dan daftar klien dengan sinyal (terlemah di atas), SNR, rate, uptime, serta nama pelanggan bila MAC cocok sesi PPPoE.
 
