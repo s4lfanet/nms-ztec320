@@ -176,12 +176,22 @@ function ThresholdsModal({ onClose }: { onClose: () => void }) {
   const { data } = useQuery({ queryKey: ['snmp-settings'], queryFn: api.snmpSettings });
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [grp, setGrp] = useState('');
+  const [gform, setGform] = useState<Record<string, Record<string, string>>>({});
+  const gval = (g: string, k: string) => gform[g]?.[k] ?? (data?.group_overrides?.[g]?.[k] != null ? String(data.group_overrides[g][k]) : '');
   const val = (k: string) => form[k] ?? (data ? String(data.settings[k]) : '');
   const save = async () => {
     setSaving(true);
     try {
       const body = Object.fromEntries(Object.entries(form).filter(([, v]) => v !== '').map(([k, v]) => [k, Number(v)]));
-      await api.snmpSettingsSave(body);
+      const ovr: Record<string, Record<string, number>> = {};
+      for (const g of data?.groups ?? []) {
+        for (const f of FIELDS) {
+          const v = gval(g, f.key);
+          if (v !== '') (ovr[g] ??= {})[f.key] = Number(v);
+        }
+      }
+      await api.snmpSettingsSave({ ...body, group_overrides: ovr });
       qc.invalidateQueries({ queryKey: ['snmp-settings'] });
       toast.success(t('devx.thresholdsSaved'));
       onClose();
@@ -206,6 +216,31 @@ function ThresholdsModal({ onClose }: { onClose: () => void }) {
           </label>
         ))}
       </div>
+      {(data?.groups?.length ?? 0) > 0 && (
+        <div className="mt-4 pt-3 border-t border-line">
+          <div className="text-sm font-medium text-tx1">{t('devx.grpTitle')}</div>
+          <p className="text-xs text-tx3 mb-2">{t('devx.grpHint')}</p>
+          <select className="input-field w-full mb-2" value={grp} onChange={e => setGrp(e.target.value)}>
+            <option value="">{t('devx.grpPick')}</option>
+            {data!.groups!.map(g => <option key={g} value={g}>{g}{data!.group_overrides?.[g] ? ' •' : ''}</option>)}
+          </select>
+          {grp && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {FIELDS.map(f => (
+                <label key={f.key} className="text-xs text-tx2 flex flex-col gap-1">
+                  <span>{t(`devx.th.${f.key}`)}</span>
+                  <span className="flex items-center gap-2">
+                    <input type="number" inputMode="decimal" step={f.step} className="input-field w-full"
+                      placeholder={val(f.key)} value={gval(grp, f.key)}
+                      onChange={e => setGform(s => ({ ...s, [grp]: { ...(s[grp] ?? {}), [f.key]: e.target.value } }))} />
+                    <span className="text-tx3 w-10 shrink-0">{t(`devx.unit.${f.unit}`)}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }

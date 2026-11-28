@@ -325,7 +325,7 @@ export const api = {
   snmpOltLinkDelete: (id: number) => request<{ success: boolean }>(`/api/snmp/olt-links/${id}`, { method: 'DELETE' }),
   snmpSummary: () => request<SnmpSummary>('/api/snmp/summary'),
   snmpSettings: () => request<SnmpSettingsData>('/api/snmp/settings'),
-  snmpSettingsSave: (data: Record<string, number | string>) => request<{ success: boolean; settings: Record<string, number>; general: Record<string, number> }>('/api/snmp/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  snmpSettingsSave: (data: Record<string, number | string | Record<string, Record<string, number>>>) => request<{ success: boolean; settings: Record<string, number>; general: Record<string, number> }>('/api/snmp/settings', { method: 'PUT', body: JSON.stringify(data) }),
   snmpReport: (q: { month: string; scope: string; tz: number; device_id?: number }) =>
     request<SnmpReportData>(`/api/snmp/report?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`),
   snmpReportCsvUrl: (q: { month: string; scope: string; tz: number }) =>
@@ -1473,6 +1473,8 @@ export interface SnmpSettingsData {
   success: boolean;
   settings: Record<string, number>;
   defaults: Record<string, number>;
+  group_overrides?: Record<string, Record<string, number>>;
+  groups?: string[];
   general: Record<string, number>;
   digest?: { snmp_digest_enabled: number; snmp_digest_day: number; snmp_digest_hour: number; snmp_digest_pdf: number };
   general_defaults: Record<string, number>;

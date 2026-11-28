@@ -58,7 +58,7 @@ bukan langsung ditambah.
 
 ## Tahap F — Grup & aturan alert per perangkat/port — F1 (grup) SELESAI 28 Nov 2026
 
-**F1:** kolom `SnmpDevice.group_name` (teks bebas, saran dari grup yang sudah ada), filter chip di daftar perangkat, tampil di baris, di alert (`Grup: …`), dan di AI. **F2 (belum):** ambang alert per grup (CPU, suhu, utilisasi uplink); port pelanggan tidak dialert sudah bisa lewat tanda *watched* per port.
+**F1:** kolom `SnmpDevice.group_name` (teks bebas, saran dari grup yang sudah ada), filter chip di daftar perangkat, tampil di baris, di alert (`Grup: …`), dan di AI. **F2 (SELESAI 28 Nov 2026):** ambang alert per grup (override semua ambang di modal Ambang alert); port pelanggan tidak dialert sudah bisa lewat tanda *watched* per port.
 
 Grup perangkat (POP, backbone, pelanggan korporat) untuk filter dan laporan; ambang khusus per
 grup/port (mis. uplink 10G batas 80%, port pelanggan tidak dialert).

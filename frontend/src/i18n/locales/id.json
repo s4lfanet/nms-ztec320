@@ -2662,7 +2662,10 @@
       "x": "kali",
       "°C": "°C",
       "dBm": "dBm"
-    }
+    },
+    "grpTitle": "Ambang per grup",
+    "grpHint": "Kosongkan kolom = ikut ambang global (angka abu-abu). Isi untuk menimpa khusus grup ini, mis. backbone lebih ketat.",
+    "grpPick": "Pilih grup…"
   },
   "topo": {
     "tab": "Topologi",

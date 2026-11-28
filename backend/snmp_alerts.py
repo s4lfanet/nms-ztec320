@@ -85,6 +85,67 @@ def save_settings(data):
     return changed
 
 
+OVR_KEY = 'snmp_group_overrides'
+
+
+def _clamp(k, v):
+    lo, hi = LIMITS[k]
+    v = min(max(float(v), lo), hi)
+    d = DEFAULTS[k]
+    return int(round(v)) if isinstance(d, int) and k not in ('snmp_err_threshold', 'snmp_rx_low_dbm') else v
+
+
+def clean_overrides(data):
+    """{grup: {key: nilai}} → hanya key/nilai valid, dijepit LIMITS; grup kosong dibuang."""
+    out = {}
+    if not isinstance(data, dict):
+        return out
+    for g, vals in data.items():
+        g = str(g).strip()[:100]
+        if not g or not isinstance(vals, dict):
+            continue
+        clean = {}
+        for k, v in vals.items():
+            if k not in DEFAULTS or v in (None, ''):
+                continue
+            try:
+                clean[k] = _clamp(k, v)
+            except (TypeError, ValueError):
+                continue
+        if clean:
+            out[g] = clean
+    return out
+
+
+def get_group_overrides():
+    import json
+    row = SystemConfig.query.filter_by(key=OVR_KEY).first()
+    try:
+        return clean_overrides(json.loads(row.value)) if row and row.value else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def save_group_overrides(data):
+    """Ganti seluruh override grup. → True bila berubah."""
+    import json
+    txt = json.dumps(clean_overrides(data), ensure_ascii=False, sort_keys=True)
+    row = SystemConfig.query.filter_by(key=OVR_KEY).first()
+    if row:
+        if row.value == txt:
+            return False
+        row.value = txt
+    else:
+        db.session.add(SystemConfig(key=OVR_KEY, value=txt))
+    return True
+
+
+def cfg_for(dev, cfg, overrides):
+    """Ambang efektif perangkat: global ditimpa override grupnya (bila ada)."""
+    o = overrides.get((getattr(dev, 'group_name', '') or '').strip())
+    return {**cfg, **o} if o else cfg
+
+
 def _last_values(device_id, port_id, metric, n, since):
     q = SnmpSample.query.filter(SnmpSample.device_id == device_id, SnmpSample.metric == metric,
                                 SnmpSample.ts >= since)
@@ -377,6 +438,7 @@ def _check_rules(c, dev, rules, poll_seconds):
 
 def check_snmp_thresholds(now, notifications_to_create, alerts_to_send):
     cfg = get_settings()
+    ovr = get_group_overrides()
     c = _Ctx(now, notifications_to_create, alerts_to_send)
     try:
         import snmp_monitor
@@ -391,12 +453,13 @@ def check_snmp_thresholds(now, notifications_to_create, alerts_to_send):
         if scope.in_maintenance(dev):
             continue  # pemeliharaan: alert ambang ditahan (perangkat 'up' = terjangkau, induk turun tidak relevan)
         try:
-            _check_device(c, dev, cfg)
+            dcfg = cfg_for(dev, cfg, ovr)
+            _check_device(c, dev, dcfg)
             rules = SnmpSensorRule.query.filter_by(device_id=dev.id, enabled=True).all()
             if rules:
                 _check_rules(c, dev, rules, poll_s)
             for p in SnmpPort.query.filter_by(device_id=dev.id, watched=True, ignored=False, deleted=False).all():
-                _check_port(c, dev, p, cfg)
+                _check_port(c, dev, p, dcfg)
         except Exception as e:  # satu perangkat bermasalah tidak menghentikan yang lain
             logger.warning(f'[SNMP-ALERT] {dev.name}: {e}')
     # Port yang tidak lagi dipantau / perangkat dihapus → tutup alert yang masih terbuka

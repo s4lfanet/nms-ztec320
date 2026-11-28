@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Ambang alert per grup
+- Di **Ambang alert** kini ada bagian *Ambang per grup*: pilih grup perangkat lalu timpa ambang tertentu (CPU, suhu, utilisasi, dll.). Kolom kosong = ikut ambang global. Cocok untuk memperketat backbone atau melonggarkan perangkat akses.
+
 ### 2026-11-28 — Grup perangkat SNMP
 - Perangkat SNMP bisa diberi **Grup** (mis. POP Pusat, Backbone, Korporat). Tampil di daftar dengan filter per grup, di pesan alert (`Grup: …`), dan di asisten AI. Kolom `group_name` didaftarkan di migrasi sehingga instalasi lama aman.
 
