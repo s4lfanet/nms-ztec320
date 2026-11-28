@@ -2550,7 +2550,9 @@
       "wifi": "Wi-Fi",
       "loopback": "Loopback",
       "other": "Other"
-    }
+    },
+    "group": "Group",
+    "groupAll": "All groups"
   },
   "graph": {
     "range": "Time range",

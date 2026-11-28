@@ -444,6 +444,7 @@ def migrate_schema():
     add_col('snmp_devices', 'tables_note', 'VARCHAR(255)')
     add_col('snmp_devices', 'parent_id', 'INTEGER')
     add_col('snmp_devices', 'flow_ip', 'VARCHAR(64)', "''")
+    add_col('snmp_devices', 'group_name', 'VARCHAR(100)', "''")
     add_col('snmp_ports', 'mtu', 'INTEGER')
     add_col('snmp_ports', 'duplex', 'VARCHAR(8)')
     add_col('snmp_ports', 'ip_addrs', 'TEXT')

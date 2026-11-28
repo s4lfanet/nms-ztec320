@@ -203,7 +203,8 @@ class _Ctx:
 
 
 def _head(dev, title):
-    return f'{title}\n\nPerangkat: {dev.name} ({dev.host})' + (f'\nLokasi: {dev.location}' if dev.location else '')
+    return f'{title}\n\nPerangkat: {dev.name} ({dev.host})' + (f'\nLokasi: {dev.location}' if dev.location else '') \
+        + (f'\nGrup: {dev.group_name}' if getattr(dev, 'group_name', '') else '')
 
 
 def _check_device(c, dev, cfg):

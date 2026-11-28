@@ -1464,6 +1464,7 @@ class SnmpDevice(db.Model):
     _v3_priv_enc = db.Column('v3_priv_pass', db.Text, default='')
     enabled = db.Column(db.Boolean, default=True)
     location = db.Column(db.String(200), default='')
+    group_name = db.Column(db.String(100), default='')   # grup bebas (POP, Backbone, Korporat) untuk filter
     notes = db.Column(db.Text, default='')
     flow_ip = db.Column(db.String(64), default='')   # IP pengirim Traffic Flow bila beda dari `host` (kosong = host)
     # Hasil discovery

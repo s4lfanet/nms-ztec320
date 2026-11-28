@@ -2550,7 +2550,9 @@
       "wifi": "Wi-Fi",
       "loopback": "Loopback",
       "other": "Lainnya"
-    }
+    },
+    "group": "Grup",
+    "groupAll": "Semua grup"
   },
   "graph": {
     "range": "Rentang waktu",
