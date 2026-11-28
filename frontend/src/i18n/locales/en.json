@@ -2662,7 +2662,10 @@
       "x": "times",
       "°C": "°C",
       "dBm": "dBm"
-    }
+    },
+    "grpTitle": "Per-group thresholds",
+    "grpHint": "Leave a field empty to follow the global value (grey). Fill it to override for this group only, e.g. a stricter backbone.",
+    "grpPick": "Pick a group…"
   },
   "topo": {
     "tab": "Topology",
