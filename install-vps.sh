@@ -253,7 +253,7 @@ chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
 echo "[6/9] Installing systemd service..."
 cat > /etc/systemd/system/${APP_NAME}.service << EOF
 [Unit]
-Description=Salfanet NMS - OLT Management System
+Description=Salfanet NMS - FTTH & Network Monitoring
 After=network.target
 
 [Service]

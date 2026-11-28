@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════
-# Salfanet NMS — ZTE OLT Management System
+# Salfanet NMS — FTTH & Network Monitoring
 # Installer for Linux / macOS (repo already cloned)
 # For a fresh Ubuntu VPS (system packages + systemd + nginx),
 # use install-vps.sh instead.
@@ -8,7 +8,7 @@
 set -e
 
 echo "═════════════════════════════════════════════════════"
-echo "  Salfanet NMS — ZTE OLT Management System"
+echo "  Salfanet NMS — FTTH & Network Monitoring"
 echo "  Installer for Linux / macOS"
 echo "═════════════════════════════════════════════════════"
 echo

@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Subjudul aplikasi
+- Nama tetap **Salfanet NMS**; subjudul kini *FTTH & Network Monitoring* (README, installer, PWA, deskripsi service baru). Folder `/opt/salfanet-nms`, nama service, dan URL repo tidak berubah, jadi instalasi yang sudah berjalan tidak perlu diubah.
+
 ### 2026-11-28 — Penemuan perangkat otomatis
 - Pengaturan SNMP kini punya kartu **Penemuan perangkat**: usulan dari tetangga LLDP/CDP yang belum terdaftar, dan **pindai subnet** privat (maks /22). Perangkat hanya ditambah saat Anda menekan *Tambah*, memakai community bawaan.
 

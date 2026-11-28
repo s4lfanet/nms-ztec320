@@ -13,9 +13,9 @@ export default defineConfig({
       injectRegister: 'auto',
       disable: false,
       manifest: {
-        name: 'Salfanet NMS — FTTH Network Management',
+        name: 'Salfanet NMS — FTTH & Network Monitoring',
         short_name: 'Salfanet NMS',
-        description: 'Salfanet NMS — FTTH Network Management System',
+        description: 'Salfanet NMS — FTTH & Network Monitoring',
         theme_color: '#0A0C14',
         background_color: '#0A0C14',
         display: 'standalone',
