@@ -259,3 +259,27 @@ def delete_onu_row(onu):
     """Delete an ONU row together with its dependent rows. Caller commits."""
     delete_onu_dependents([onu.id])
     db.session.delete(onu)
+
+
+def onu_counts_by_olt(olt_ids=None):
+    """Hitungan ONU per OLT langsung dari tabel ONU (sumber kebenaran yang sama dengan
+    /api/all-onus). → {olt_id: {'total','online','los','dyinggasp','offline','other'}}.
+    Kolom OLT.total_onu dkk. hanya salinan yang diisi saat sync, jadi bisa basi."""
+    from models import ONU
+    q = db.session.query(ONU.olt_id, ONU.status, db.func.count(ONU.id)).group_by(ONU.olt_id, ONU.status)
+    if olt_ids is not None:
+        q = q.filter(ONU.olt_id.in_(list(olt_ids)))
+    out = {}
+    for oid, st, n in q.all():
+        c = out.setdefault(oid, {'total': 0, 'online': 0, 'los': 0, 'dyinggasp': 0, 'offline': 0, 'other': 0})
+        c['total'] += n
+        c[st if st in ('online', 'los', 'dyinggasp', 'offline') else 'other'] += n
+    return out
+
+
+def sync_olt_onu_counters(olt, counts=None):
+    """Samakan kolom hitungan OLT dengan isi tabel ONU. Caller commit."""
+    c = (counts if counts is not None else onu_counts_by_olt([olt.id])).get(
+        olt.id, {'total': 0, 'online': 0, 'los': 0, 'dyinggasp': 0, 'offline': 0, 'other': 0})
+    olt.total_onu, olt.online_onu, olt.los_onu = c['total'], c['online'], c['los']
+    olt.dyinggasp_onu, olt.offline_onu, olt.other_onu = c['dyinggasp'], c['offline'], c['other']

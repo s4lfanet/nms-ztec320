@@ -588,12 +588,12 @@ def save_sync_result(olt, result, sync, light=False):
                 elif onu.status == 'offline': offline += 1
                 else: other += 1
 
-    olt.total_onu = len(onus_data) + missed_count
-    olt.online_onu = online
-    olt.los_onu = los
-    olt.dyinggasp_onu = dyinggasp
-    olt.offline_onu = offline
-    olt.other_onu = other
+    # Hitungan diambil dari tabel ONU (bukan penghitung dalam-loop): entri ganda dalam satu
+    # hasil walk, ONU yang dihapus/dipindah, atau baris yang tak tersentuh tidak membuat
+    # angka dashboard menyimpang dari daftar Semua ONU.
+    db.session.flush()
+    from helpers import sync_olt_onu_counters
+    sync_olt_onu_counters(olt)
     olt.last_sync = datetime.now(timezone.utc)
     # Only stamp last_full_sync on a real full sync, otherwise the 5-minute light
     # syncs would keep pushing the timestamp forward and the 6-hour full-sync

@@ -154,13 +154,17 @@ def _onu_brief(o):
 
 def tool_summary(_args):
     out = []
+    from helpers import onu_counts_by_olt
+    live = onu_counts_by_olt()
+    zero = {'total': 0, 'online': 0, 'los': 0, 'dyinggasp': 0, 'offline': 0}
     for olt in OLT.query.order_by(OLT.name).all():
+        lc = live.get(olt.id, zero)
         out.append({
             'olt': olt.name, 'vendor': olt.vendor, 'online': bool(olt.is_online),
             'connection': olt.connection_status, 'temperature_c': olt.temperature,
-            'onu_total': olt.total_onu, 'onu_online': olt.online_onu,
-            'onu_offline': olt.offline_onu, 'onu_los': olt.los_onu,
-            'onu_dying_gasp': olt.dyinggasp_onu, 'last_sync': _iso(olt.last_sync),
+            'onu_total': lc['total'], 'onu_online': lc['online'],
+            'onu_offline': lc['offline'], 'onu_los': lc['los'],
+            'onu_dying_gasp': lc['dyinggasp'], 'last_sync': _iso(olt.last_sync),
         })
     return {'olts': out}
 

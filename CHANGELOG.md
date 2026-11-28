@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Angka ONU dashboard selalu sama dengan daftar Semua ONU
+- Dashboard & AI kini menghitung ONU langsung dari tabel ONU (bukan salinan yang hanya diperbarui saat sync). Sync juga tidak lagi menggandakan hitungan bila hasil walk berisi entri ONU ganda.
+
 ### 2026-11-28 — Billing per port
 - Port bisa diberi **pelanggan, komitmen (Mbps), dan tarif kelebihan**. Laporan bulanan punya mode *Billing pelanggan*: pemakaian 95%, kelebihan di atas komitmen, biaya, dan unduh CSV per pelanggan (`/api/snmp/billing`).
 
