@@ -750,6 +750,76 @@ def _flow_call(func, path, **params):
         return res.get_json()
 
 
+def _view_call(func, path, *a, **params):
+    """Panggil view routes_snmp (tanpa login) → JSON dict."""
+    from flask import current_app
+    from urllib.parse import urlencode
+    qs = urlencode({k: v for k, v in params.items() if v not in (None, '')})
+    with current_app.test_request_context(f'{path}?{qs}'):
+        res = getattr(func, '__wrapped__', func)(*a)
+        if isinstance(res, tuple):
+            res = res[0]
+        return res.get_json()
+
+
+def _need_device(args):
+    dev, cands = _snmp_device_find(args.get('device'))
+    if dev:
+        return dev, None
+    return None, ({'error': 'Perangkat SNMP tidak ditemukan', 'mungkin_maksud': cands} if cands else {'error': 'Perangkat SNMP tidak ditemukan'})
+
+
+def tool_snmp_vlans(args):
+    """VLAN satu perangkat SNMP: daftar VLAN (port tagged/untagged) dan VLAN per port (PVID)."""
+    import routes_snmp
+    dev, err = _need_device(args)
+    if err:
+        return err
+    j = _view_call(routes_snmp.snmp_device_vlans, f'/api/snmp/devices/{dev.id}/vlans', dev.id)
+    if not j.get('vlans') and not j.get('ports'):
+        return {'perangkat': dev.name, 'catatan': 'Belum ada data VLAN (perangkat tidak mengirim Q-BRIDGE / tabel MAC belum dibaca).'}
+    return {'perangkat': dev.name,
+            'vlan': [{'vlan': v['vlan'], 'nama': v['name'] or None, 'untagged': v['untagged'], 'tagged': v['tagged']} for v in j['vlans'][:80]],
+            'per_port': [{'port': p['port'], 'keterangan': p['alias'] or None, 'pvid': p['pvid'],
+                          'anggota': [f"{m['vlan']}{'T' if m['tagged'] else 'U'}" for m in p['member']],
+                          'vlan_terlihat_di_mac': p['seen']} for p in j['ports'][:80]]}
+
+
+def tool_snmp_wireless(args):
+    """Wireless MikroTik satu perangkat: radio (SSID, frekuensi, klien) dan klien dengan sinyal terlemah."""
+    import routes_snmp
+    dev, err = _need_device(args)
+    if err:
+        return err
+    j = _view_call(routes_snmp.snmp_device_wireless, f'/api/snmp/devices/{dev.id}/wireless', dev.id)
+    if not j.get('radios') and not j.get('clients'):
+        return {'perangkat': dev.name, 'catatan': 'Tidak ada data wireless (bukan AP MikroTik atau tabel belum dibaca).'}
+    cl = j['clients']
+    return {'perangkat': dev.name, 'total_klien': len(cl),
+            'radio': [{'interface': r['name'], 'ssid': r['ssid'] or None, 'freq_mhz': r['freq'], 'klien': r['clients'],
+                       'noise_dbm': r['noise'], 'ccq_pct': r['ccq']} for r in j['radios']],
+            'klien_terlemah': [{'mac': c['mac'], 'pelanggan': c['customer'] or None, 'interface': c['iface'], 'sinyal_dbm': c['signal'],
+                                'snr_db': c['snr'], 'uptime_detik': c['uptime_s']} for c in cl[:15]],
+            'klien_sinyal_buruk': sum(1 for c in cl if c['signal'] is not None and c['signal'] < -75)}
+
+
+def tool_snmp_billing(args):
+    """Billing per port (burstable 95%): pemakaian vs komitmen, kelebihan, biaya per pelanggan."""
+    import routes_snmp
+    j = _view_call(routes_snmp.snmp_billing, '/api/snmp/billing', month=str(args.get('month') or '').strip() or None,
+                   customer=str(args.get('customer') or '').strip() or None)
+    if not j.get('success', True) and j.get('message'):
+        return {'error': j['message']}
+    rows = j.get('ports') or []
+    if not rows:
+        return {'bulan': j.get('month'), 'catatan': 'Belum ada port ber-pelanggan/komitmen (isi di panel detail port).'}
+    return {'bulan': j['month'], 'catatan': 'p95 dihitung dari rata-rata per jam (arah terbesar)',
+            'total_biaya_kelebihan': sum(r['overage_cost'] or 0 for r in rows),
+            'port': [{'pelanggan': r['customer'] or None, 'perangkat': r['device_name'], 'port': r['port'],
+                      'komitmen_mbps': r['commit_mbps'], 'p95_mbps': r['billing_p95_mbps'], 'kelebihan_mbps': r['overage_mbps'],
+                      'biaya_kelebihan': r['overage_cost'], 'cakupan_data_pct': r['coverage_pct']} for r in rows[:60]]}
+
+
 def _flow_range(args):
     r = str(args.get('range') or '24h')
     return r if r in ('1h', '6h', '24h', '7d', '30d') else '24h'
@@ -888,6 +958,14 @@ TOOLS = [
      {'type': 'object', 'properties': {'query': {'type': 'string'}, 'device': {'type': 'string'},
        'range': {'type': 'string', 'enum': ['1h', '6h', '24h', '7d', '30d']}}, 'required': ['query']},
      tool_traffic_flow_client),
+    ('snmp_vlans', 'VLAN satu perangkat SNMP (switch/router): daftar VLAN dengan port tagged/untagged, PVID dan VLAN per port.',
+     {'type': 'object', 'properties': {'device': {'type': 'string'}}, 'required': ['device']}, tool_snmp_vlans),
+    ('snmp_wireless', 'Wireless MikroTik (AP): radio/SSID/frekuensi/jumlah klien dan klien dengan sinyal terlemah '
+                      '(nama pelanggan bila cocok PPPoE).',
+     {'type': 'object', 'properties': {'device': {'type': 'string'}}, 'required': ['device']}, tool_snmp_wireless),
+    ('snmp_billing', 'Billing per port (burstable 95%): pemakaian bulanan vs komitmen Mbps, kelebihan dan biaya per pelanggan. '
+                     'Opsional month (YYYY-MM) dan customer.',
+     {'type': 'object', 'properties': {'month': {'type': 'string'}, 'customer': {'type': 'string'}}}, tool_snmp_billing),
 ]
 _TOOL_FN = {t[0]: t[3] for t in TOOLS}
 
@@ -941,7 +1019,7 @@ SYSTEM_PROMPT = (
     "ftth_free_ports; port/uplink OLT → olt_detail; trafik → traffic; sering putus/riwayat → onu_history; "
     "PPPoE/internet pelanggan → mikrotik; modem/SSID/WiFi → tr069; router/switch/server yang dipantau SNMP "
     "→ snmp_devices, satu perangkat → snmp_device, satu port/uplink-nya → snmp_port; cari MAC atau IP di "
-    "jaringan (di port mana) → find_mac; pelanggan mengakses apa/Google/YouTube/Meta/TikTok/layanan teratas → traffic_flow, satu pelanggan → traffic_flow_client; serangan/brute force/login mencurigakan ke router MikroTik → mikrotik_security. Untuk keluhan pelanggan, mulai dari "
+    "jaringan (di port mana) → find_mac; pelanggan mengakses apa/Google/YouTube/Meta/TikTok/layanan teratas → traffic_flow, satu pelanggan → traffic_flow_client; serangan/brute force/login mencurigakan ke router MikroTik → mikrotik_security; VLAN di switch/port → snmp_vlans; sinyal klien wireless/AP → snmp_wireless; tagihan/kelebihan/komitmen bandwidth pelanggan → snmp_billing; sesi BGP/OSPF ada di sensor jenis 'routing' pada snmp_device (nilai 1 = sehat). Untuk keluhan pelanggan, mulai dari "
     "diagnose, tambah onu_location bila perlu kunjungan, lalu beri kesimpulan singkat. "
     "Selalu ambil data lewat tool sebelum menyebut angka atau status — jangan menebak. "
     "Kamu hanya bisa MEMBACA data NMS; jika diminta reboot/ubah konfigurasi, jelaskan "

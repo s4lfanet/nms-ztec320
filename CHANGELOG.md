@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — AI Agent membaca VLAN, wireless, billing, dan sesi routing
+- AI Agent kini bisa menjawab: VLAN dan PVID per port, klien wireless/AP dengan sinyal terlemah, tagihan/kelebihan bandwidth per pelanggan, serta status sesi BGP/OSPF.
+
 ### 2026-11-28 — Subjudul aplikasi
 - Nama tetap **Salfanet NMS**; subjudul kini *FTTH & Network Monitoring* (README, installer, PWA, deskripsi service baru). Folder `/opt/salfanet-nms`, nama service, dan URL repo tidak berubah, jadi instalasi yang sudah berjalan tidak perlu diubah.
 
