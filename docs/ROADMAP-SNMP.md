@@ -80,3 +80,7 @@ Komitmen Mbps, p95 bulanan (rata-rata per jam), kelebihan & biaya, CSV per pelan
 
 ## Tahap C — VLAN per port — SELESAI 28 Nov 2026
 Q-BRIDGE (nama, egress/untagged, PVID) + cadangan dari FDB. Belum diuji pada perangkat nyata; MikroTik bridge VLAN umumnya tidak mengisi Q-BRIDGE.
+
+
+## Tahap B — Wireless MikroTik — SELESAI 28 Nov 2026
+Radio + klien terhubung lewat MIKROTIK-MIB. Belum ada alert sinyal lemah/klien turun; belum diuji di perangkat nyata.

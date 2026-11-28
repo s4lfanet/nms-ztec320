@@ -7,7 +7,7 @@ from flask_login import login_required, current_user
 import json
 from datetime import timedelta
 
-from models import db, SnmpSensorRule, SnmpMaintenance, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb, SnmpVlan
+from models import db, SnmpSensorRule, SnmpMaintenance, SnmpDevice, SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb, SnmpVlan, SnmpWifiRadio, SnmpWifiClient
 from helpers import utc_iso, log_action, permission_required
 import snmp_monitor
 
@@ -269,7 +269,7 @@ def snmp_device_delete(device_id):
     d = db.session.get(SnmpDevice, device_id)
     if not d:
         return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
-    for model in (SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb, SnmpVlan):
+    for model in (SnmpPort, SnmpSensor, SnmpEvent, SnmpSample, SnmpSampleHourly, SnmpNeighbor, SnmpArp, SnmpFdb, SnmpVlan, SnmpWifiRadio, SnmpWifiClient):
         model.query.filter_by(device_id=d.id).delete()
     SnmpNeighbor.query.filter_by(remote_device_id=d.id).update({'remote_device_id': None, 'remote_port_id': None})
     SnmpDevice.query.filter_by(parent_id=d.id).update({'parent_id': None})
@@ -1203,6 +1203,28 @@ def snmp_device_vlans(device_id):
                           'member': pp['member'], 'seen': sorted(seen.get(p.id, ()))})
     out_ports.sort(key=lambda x: x['if_index'])
     return jsonify({'success': True, 'vlans': vlans, 'ports': out_ports})
+
+
+@bp.route('/api/snmp/devices/<int:device_id>/wireless', methods=['GET'])
+@login_required
+def snmp_device_wireless(device_id):
+    """Radio (SSID/frekuensi/klien) dan klien wireless MikroTik; klien diberi nama pelanggan bila MAC cocok PPPoE."""
+    d = db.session.get(SnmpDevice, device_id)
+    if not d:
+        return jsonify({'success': False, 'message': 'Perangkat tidak ditemukan'}), 404
+    names = {p.if_index: p.name for p in SnmpPort.query.filter_by(device_id=d.id).all()}
+    radios = [{'if_index': r.if_index, 'name': names.get(r.if_index, f'#{r.if_index}'), 'ssid': r.ssid or '', 'freq': r.freq,
+               'clients': r.clients, 'noise': r.noise, 'ccq': r.ccq}
+              for r in SnmpWifiRadio.query.filter_by(device_id=d.id).order_by(SnmpWifiRadio.if_index).all()]
+    rows = SnmpWifiClient.query.filter_by(device_id=d.id).order_by(SnmpWifiClient.signal.asc()).all()
+    who = _onu_matches({r.mac for r in rows}, set())
+    clients = [{'mac': r.mac, 'iface': names.get(r.if_index, f'#{r.if_index}'), 'signal': r.signal, 'snr': r.snr,
+                'tx_bps': r.tx_bps, 'rx_bps': r.rx_bps, 'uptime_s': r.uptime_s,
+                'customer': (who.get(r.mac.lower()) or {}).get('name', '')} for r in rows]
+    for rd in radios:   # jumlah klien dari registration table bila radio tidak melaporkannya (ROS 7)
+        if rd['clients'] is None:
+            rd['clients'] = sum(1 for c in clients if c['iface'] == rd['name'])
+    return jsonify({'success': True, 'radios': radios, 'clients': clients})
 
 
 @bp.route('/api/snmp/devices/<int:device_id>/tables/refresh', methods=['POST'])

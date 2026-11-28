@@ -30,6 +30,8 @@ Q_VLAN_NAME = '1.3.6.1.2.1.17.7.1.4.3.1.1'     # dot1qVlanStaticName (indeks vla
 Q_VLAN_EGRESS = '1.3.6.1.2.1.17.7.1.4.3.1.2'   # dot1qVlanStaticEgressPorts (bitmap port bridge)
 Q_VLAN_UNTAG = '1.3.6.1.2.1.17.7.1.4.3.1.4'    # dot1qVlanStaticUntaggedPorts
 Q_PVID = '1.3.6.1.2.1.17.7.1.4.5.1.1'          # dot1qPvid (indeks nomor port bridge)
+WL_AP = '1.3.6.1.4.1.14988.1.1.1.3.1'          # mtxrWlApEntry: .4 ssid .6 klien .7 freq .9 noise .10 ccq
+WL_RTAB = '1.3.6.1.4.1.14988.1.1.1.2.1'        # mtxrWlRtabEntry (indeks mac6.ifIndex): .3 sinyal .8 tx .9 rx .11 uptime .12 snr
 MAX_ROWS = 20000
 FDB_SKIP = {2, 4}  # invalid, self (MAC perangkat itu sendiri)
 
@@ -61,6 +63,15 @@ async def collect(c):
         out['vlan_name'] = await walk(Q_VLAN_NAME)
         out['vlan_untag'] = await walk(Q_VLAN_UNTAG)
         out['pvid'] = await walk(Q_PVID)
+    # Wireless MikroTik (tidak ada di perangkat lain → walk kosong, murah)
+    out['wl_signal'] = await walk(WL_RTAB + '.3')
+    if out['wl_signal']:
+        for k, col in (('wl_tx', 8), ('wl_rx', 9), ('wl_uptime', 11), ('wl_snr', 12)):
+            out[k] = await walk(f'{WL_RTAB}.{col}')
+    out['wl_ssid'] = await walk(WL_AP + '.4')
+    if out['wl_ssid']:
+        for k, col in (('wl_clients', 6), ('wl_freq', 7), ('wl_noise', 9), ('wl_ccq', 10)):
+            out[k] = await walk(f'{WL_AP}.{col}')
     out['base_port'] = await walk(BASE_PORT_IF) if (out.get('q_fdb') or out.get('d_fdb') or out['vlan_egress']) else {}
     return out
 
@@ -151,9 +162,29 @@ def parse(raw):
     for k, v in (raw.get('pvid') or {}).items():
         if k.isdigit() and isinstance(v, int) and v > 0:
             pvid[base.get(int(k), int(k))] = v
+    radios = []
+    for idx, ssid in (raw.get('wl_ssid') or {}).items():
+        if not idx.isdigit():
+            continue
+        g = lambda k: _int((raw.get(k) or {}).get(idx))
+        radios.append((int(idx), (ssid.decode('utf-8', 'replace') if isinstance(ssid, (bytes, bytearray)) else str(ssid or ''))[:64],
+                       g('wl_freq'), g('wl_clients'), g('wl_noise'), g('wl_ccq')))
+    wclients = []
+    for idx, sig in (raw.get('wl_signal') or {}).items():
+        p = idx.split('.')
+        if len(p) != 7 or not isinstance(sig, int):
+            continue
+        mac = _idx_mac(p[:6])
+        if not mac:
+            continue
+        g = lambda k: _int((raw.get(k) or {}).get(idx))
+        up = g('wl_uptime')
+        wclients.append((int(p[6]), mac, sig, g('wl_snr') or None, g('wl_tx'), g('wl_rx'),
+                         up // 100 if up is not None else None))   # TimeTicks (1/100 dtk) → detik
     return {'arp': [(i, ip, m) for (i, ip), m in arp.items()],
             'fdb': [(i, v, m) for (m, v), i in fdb.items()],
-            'vlans': sorted(vlans), 'pvid': pvid}
+            'vlans': sorted(vlans), 'pvid': pvid,
+            'wifi_radios': sorted(radios), 'wifi_clients': sorted(wclients)}
 
 
 def apply(dev, parsed, now):
@@ -191,6 +222,13 @@ def apply(dev, parsed, now):
     pv = parsed.get('pvid') or {}
     for p in SnmpPort.query.filter_by(device_id=dev.id).all():
         p.pvid = pv.get(p.if_index)
+    from models import SnmpWifiRadio, SnmpWifiClient
+    SnmpWifiRadio.query.filter_by(device_id=dev.id).delete()
+    SnmpWifiClient.query.filter_by(device_id=dev.id).delete()
+    for i, ssid, freq, cl, noise, ccq in parsed.get('wifi_radios') or []:
+        db.session.add(SnmpWifiRadio(device_id=dev.id, if_index=i, ssid=ssid, freq=freq, clients=cl, noise=noise, ccq=ccq))
+    for i, mac, sig, snr, tx, rx, up in parsed.get('wifi_clients') or []:
+        db.session.add(SnmpWifiClient(device_id=dev.id, if_index=i, mac=mac, signal=sig, snr=snr, tx_bps=tx, rx_bps=rx, uptime_s=up))
     dev.tables_at = now
     return len(parsed['arp']), len(parsed['fdb'])
 
