@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Server, Radio,
-  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart, Siren, BarChart3, LayoutTemplate, History, Router
+  Sliders, ChevronDown, ChevronRight, ChevronLeft, X, Zap, ScrollText, Activity, BookOpen, MonitorSmartphone, Terminal as TerminalIcon, Heart, Siren, BarChart3, LayoutTemplate, History, Router, Send
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useSlidingIndicator } from '../../hooks/useSlidingIndicator';
@@ -290,6 +290,15 @@ export function Sidebar({ collapsed, mobileOpen, onToggle, onMobileClose }: { co
         {/* Footer */}
         {isExpanded && (
           <div className="px-4 py-3 border-t border-brd space-y-2">
+            <a
+              href="https://t.me/+WLSqwbXk59UxM2I1"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-xs font-medium text-sky-400 hover:text-sky-300 transition-colors"
+            >
+              <Send size={13} />
+              <span>Grup Telegram Salfanet</span>
+            </a>
             <a
               href="https://saweria.co/salfanetradius"
               target="_blank"
