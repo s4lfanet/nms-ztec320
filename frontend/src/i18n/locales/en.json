@@ -2639,7 +2639,8 @@
       "snmp_temp": "High temperature",
       "snmp_optical": "Poor SFP optical level",
       "flow_anomaly": "Unusual customer traffic",
-      "snmp_status": "Status sensor failed (PSU/fan)"
+      "snmp_status": "Status sensor failed (PSU/fan)",
+      "snmp_routing": "Routing session down (BGP/OSPF)"
     },
     "th": {
       "snmp_down_minutes": "Alert on down after",

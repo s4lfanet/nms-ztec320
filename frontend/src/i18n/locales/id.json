@@ -2639,7 +2639,8 @@
       "snmp_temp": "Suhu tinggi",
       "snmp_optical": "Redaman SFP buruk",
       "flow_anomaly": "Trafik pelanggan tidak wajar",
-      "snmp_status": "Sensor status gagal (PSU/kipas)"
+      "snmp_status": "Sensor status gagal (PSU/kipas)",
+      "snmp_routing": "Sesi routing turun (BGP/OSPF)"
     },
     "th": {
       "snmp_down_minutes": "Port/perangkat turun dialert setelah",

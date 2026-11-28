@@ -443,6 +443,11 @@ def collect_poll(params, mikrotik=False):
                     out['cpu'], out['cpu_cores'] = vcpu, 1
             except Exception as e:
                 logger.debug(f'vendor sensors: {e}')
+        try:  # sesi BGP/OSPF (tahap D) — opsional, gagal tidak menggagalkan poll
+            import snmp_routing
+            sensors += await snmp_routing.collect(c)
+        except Exception as e:
+            logger.debug(f'routing: {e}')
         out['sensors'] = sensors
         return out
     return _run(fn, params)
@@ -633,7 +638,7 @@ def apply_poll(dev, data, now=None):
             if v is not None:
                 samples.append((p.id, metric, v))
     for s in sensors:
-        if s['value'] is not None and s['kind'] != 'status':
+        if s['value'] is not None and s['kind'] not in ('status', 'routing'):
             samples.append((None, f"{s['kind']}:{s['key']}", float(s['value'])))
     record_samples(dev.id, samples, now)
 
