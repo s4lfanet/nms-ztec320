@@ -1557,6 +1557,7 @@ class SnmpPort(db.Model):
     duplex = db.Column(db.String(8), nullable=True)
     ip_addrs = db.Column(db.Text, nullable=True)            # JSON ["10.0.0.1/24", …]
     # Billing per port (burstable 95%): pelanggan, komitmen (Mbps), tarif kelebihan per Mbps
+    pvid = db.Column(db.Integer, nullable=True)             # VLAN native/PVID (Q-BRIDGE dot1qPvid)
     customer = db.Column(db.String(150), default='')
     commit_mbps = db.Column(db.Float, nullable=True)
     overage_rate = db.Column(db.Float, nullable=True)
@@ -1669,6 +1670,17 @@ class SnmpFdb(db.Model):
     mac = db.Column(db.String(17), nullable=False, index=True)
     first_seen = db.Column(db.DateTime, nullable=True)
     last_seen = db.Column(db.DateTime, nullable=True)
+
+
+class SnmpVlan(db.Model):
+    """VLAN yang dikonfigurasi di switch/bridge (Q-BRIDGE-MIB): nama + port anggota (ifIndex)."""
+    __tablename__ = 'snmp_vlans'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    vlan = db.Column(db.Integer, nullable=False)
+    name = db.Column(db.String(64), default='')
+    egress = db.Column(db.Text, default='[]')       # JSON [ifIndex…] — semua anggota
+    untagged = db.Column(db.Text, default='[]')     # JSON [ifIndex…] — anggota untagged
 
 
 class SnmpMaintenance(db.Model):

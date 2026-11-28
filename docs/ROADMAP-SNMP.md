@@ -76,3 +76,7 @@ terpisah bila dibutuhkan.
 
 ## Tahap G — Billing per port — SELESAI 28 Nov 2026
 Komitmen Mbps, p95 bulanan (rata-rata per jam), kelebihan & biaya, CSV per pelanggan. Catatan: p95 dihitung dari agregat per jam, bukan sampel 5 menit.
+
+
+## Tahap C — VLAN per port — SELESAI 28 Nov 2026
+Q-BRIDGE (nama, egress/untagged, PVID) + cadangan dari FDB. Belum diuji pada perangkat nyata; MikroTik bridge VLAN umumnya tidak mengisi Q-BRIDGE.

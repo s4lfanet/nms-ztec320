@@ -448,6 +448,7 @@ def migrate_schema():
     add_col('snmp_ports', 'mtu', 'INTEGER')
     add_col('snmp_ports', 'duplex', 'VARCHAR(8)')
     add_col('snmp_ports', 'ip_addrs', 'TEXT')
+    add_col('snmp_ports', 'pvid', 'INTEGER')
     add_col('snmp_ports', 'customer', 'VARCHAR(150)', "''")
     add_col('snmp_ports', 'commit_mbps', 'FLOAT')
     add_col('snmp_ports', 'overage_rate', 'FLOAT')

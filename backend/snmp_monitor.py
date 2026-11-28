@@ -724,7 +724,7 @@ def update_tables(devs, force=False):
                 d.tables_at, d.tables_note = now, (err or '')[:255]
             else:
                 n_arp, n_fdb = snmp_tables.apply(d, parsed, now)
-                d.tables_note = f'{n_arp} ARP, {n_fdb} MAC'
+                d.tables_note = f'{n_arp} ARP, {n_fdb} MAC' + (f", {len(parsed['vlans'])} VLAN" if parsed.get('vlans') else '')
             db.session.commit()
         except Exception as e:
             db.session.rollback()

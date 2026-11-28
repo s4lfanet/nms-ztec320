@@ -26,6 +26,10 @@ Q_FDB_STATUS = '1.3.6.1.2.1.17.7.1.2.2.1.3'
 Q_VLAN_FDB = '1.3.6.1.2.1.17.7.1.4.2.1.3'    # dot1qVlanFdbId (indeks timeMark.vlan)
 D_FDB_PORT = '1.3.6.1.2.1.17.4.3.1.2'        # dot1dTpFdbPort
 D_FDB_STATUS = '1.3.6.1.2.1.17.4.3.1.3'
+Q_VLAN_NAME = '1.3.6.1.2.1.17.7.1.4.3.1.1'     # dot1qVlanStaticName (indeks vlan)
+Q_VLAN_EGRESS = '1.3.6.1.2.1.17.7.1.4.3.1.2'   # dot1qVlanStaticEgressPorts (bitmap port bridge)
+Q_VLAN_UNTAG = '1.3.6.1.2.1.17.7.1.4.3.1.4'    # dot1qVlanStaticUntaggedPorts
+Q_PVID = '1.3.6.1.2.1.17.7.1.4.5.1.1'          # dot1qPvid (indeks nomor port bridge)
 MAX_ROWS = 20000
 FDB_SKIP = {2, 4}  # invalid, self (MAC perangkat itu sendiri)
 
@@ -52,8 +56,20 @@ async def collect(c):
     else:
         out['d_fdb'] = await walk(D_FDB_PORT)
         out['d_fdb_status'] = await walk(D_FDB_STATUS) if out['d_fdb'] else {}
-    out['base_port'] = await walk(BASE_PORT_IF) if (out.get('q_fdb') or out.get('d_fdb')) else {}
+    out['vlan_egress'] = await walk(Q_VLAN_EGRESS)
+    if out['vlan_egress']:
+        out['vlan_name'] = await walk(Q_VLAN_NAME)
+        out['vlan_untag'] = await walk(Q_VLAN_UNTAG)
+        out['pvid'] = await walk(Q_PVID)
+    out['base_port'] = await walk(BASE_PORT_IF) if (out.get('q_fdb') or out.get('d_fdb') or out['vlan_egress']) else {}
     return out
+
+
+def _bitmap_ports(b):
+    """Bitmap PortList (bit 0 = MSB byte pertama = port bridge 1) → [nomor port bridge]."""
+    if not isinstance(b, (bytes, bytearray)):
+        return []
+    return [i * 8 + bit + 1 for i, byte in enumerate(b) for bit in range(8) if byte & (0x80 >> bit)]
 
 
 def _idx_mac(parts):
@@ -121,8 +137,23 @@ def parse(raw):
         mac = _idx_mac(p)
         if mac:
             fdb[(mac, None)] = base.get(bport, bport if bport else None) if isinstance(bport, int) else None
+    vlans = []
+    for idx, bm in (raw.get('vlan_egress') or {}).items():
+        if not idx.isdigit() or not 0 < int(idx) < 4095:
+            continue
+        to_if = lambda ports: sorted({base.get(bp, bp) for bp in ports})
+        name = (raw.get('vlan_name') or {}).get(idx)
+        if isinstance(name, (bytes, bytearray)):
+            name = bytes(name).decode('utf-8', 'replace')
+        vlans.append((int(idx), (name or '').strip()[:64] if isinstance(name, str) else '',
+                      to_if(_bitmap_ports(bm)), to_if(_bitmap_ports((raw.get('vlan_untag') or {}).get(idx)))))
+    pvid = {}
+    for k, v in (raw.get('pvid') or {}).items():
+        if k.isdigit() and isinstance(v, int) and v > 0:
+            pvid[base.get(int(k), int(k))] = v
     return {'arp': [(i, ip, m) for (i, ip), m in arp.items()],
-            'fdb': [(i, v, m) for (m, v), i in fdb.items()]}
+            'fdb': [(i, v, m) for (m, v), i in fdb.items()],
+            'vlans': sorted(vlans), 'pvid': pvid}
 
 
 def apply(dev, parsed, now):
@@ -151,6 +182,15 @@ def apply(dev, parsed, now):
         if r.if_index != if_index:
             r.if_index, r.first_seen = if_index, now   # MAC pindah port
         r.port_id, r.last_seen = ports.get(if_index), now
+    # VLAN: ganti seluruhnya tiap pembacaan (konfigurasi, bukan riwayat)
+    import json
+    from models import SnmpVlan
+    SnmpVlan.query.filter_by(device_id=dev.id).delete()
+    for vid, name, egress, untag in parsed.get('vlans') or []:
+        db.session.add(SnmpVlan(device_id=dev.id, vlan=vid, name=name, egress=json.dumps(egress), untagged=json.dumps(untag)))
+    pv = parsed.get('pvid') or {}
+    for p in SnmpPort.query.filter_by(device_id=dev.id).all():
+        p.pvid = pv.get(p.if_index)
     dev.tables_at = now
     return len(parsed['arp']), len(parsed['fdb'])
 

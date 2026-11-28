@@ -3192,5 +3192,15 @@
     "allCustomers": "All customers",
     "line": "Commit {{commit}} Mbps · 95th: {{p95}} Mbps · overage {{over}} Mbps",
     "cost": "Cost {{v}}"
+  },
+  "vlan": {
+    "title": "VLAN",
+    "hint": "Read from Q-BRIDGE-MIB with the MAC table. Untagged = access, Tagged = trunk.",
+    "seenOnly": "The device does not expose VLAN config; only VLANs seen in the MAC table are shown.",
+    "byVlan": "By VLAN ({{n}})",
+    "byPort": "By port ({{n}})",
+    "untag": "untagged",
+    "tag": "tagged",
+    "seen": "seen"
   }
 }
