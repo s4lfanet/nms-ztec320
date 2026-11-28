@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Logo baru Salfanet (ikon PWA & favicon)
+- Ikon PWA (192/512, maskable, apple-touch) dan `favicon.svg` diganti dengan logo baru: huruf S serat optik di sel heksagon (cyan ke hijau). Pengguna yang sudah memasang PWA mungkin perlu menghapus dan memasang ulang agar ikon di layar utama ikut berubah.
+
 ### 2026-11-28 — Link grup Telegram
 - Footer sidebar kini punya tautan **Grup Telegram Salfanet**; README mendapat badge dan baris Komunitas.
 
