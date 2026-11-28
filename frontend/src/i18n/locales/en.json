@@ -3209,5 +3209,18 @@
     "clients": "{{n}} clients",
     "noise": "noise",
     "weakFirst": "Connected clients — weakest signal first (green ≥ −65, yellow ≥ −75, red below)"
+  },
+  "disc": {
+    "title": "Device discovery",
+    "hint": "Suggestions only: a device is added when you press Add, using the default community & version from these settings. Scans cover private IPs only (max /22).",
+    "fromNeighbors": "From LLDP/CDP neighbors",
+    "noNeighbors": "No new neighbors with an IP that are not registered yet.",
+    "scan": "Subnet scan",
+    "scanBtn": "Scan",
+    "scanning": "Scanning {{done}}/{{total}}…",
+    "scanDone": "Done {{cidr}} — {{n}} devices answered SNMP",
+    "add": "Add",
+    "added": "{{name}} added",
+    "via": "seen from {{name}}"
   }
 }

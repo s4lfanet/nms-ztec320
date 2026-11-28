@@ -313,6 +313,9 @@ export const api = {
   snmpDeviceMetrics: (id: number) => request<{ success: boolean; metrics: { metric: string; name: string }[] }>(`/api/snmp/devices/${id}/metrics`),
   snmpPortDetail: (portId: number) => request<{ success: boolean; port: SnmpPort; detail: SnmpPortDetail; macs?: SnmpPortMac[] }>(`/api/snmp/ports/${portId}`),
   snmpDeviceWireless: (id: number) => request<SnmpWirelessData>(`/api/snmp/devices/${id}/wireless`),
+  snmpDiscovery: () => request<SnmpDiscoveryData>('/api/snmp/discovery'),
+  snmpDiscoveryScan: (cidr: string) => request<{ success: boolean; message: string }>('/api/snmp/discovery/scan', { method: 'POST', body: JSON.stringify({ cidr }) }),
+  snmpDiscoveryAdd: (ip: string, name: string) => request<{ success: boolean }>('/api/snmp/discovery/add', { method: 'POST', body: JSON.stringify({ ip, name }) }),
   snmpDeviceVlans: (id: number) => request<SnmpVlanData>(`/api/snmp/devices/${id}/vlans`),
   snmpDeviceTables: (id: number) => request<{ success: boolean; tables_at: string | null; note: string; arp: SnmpMacRow[]; fdb: SnmpMacRow[]; truncated: boolean }>(`/api/snmp/devices/${id}/tables`),
   snmpDeviceTablesRefresh: (id: number) => request<{ success: boolean; tables_at: string | null; note: string }>(`/api/snmp/devices/${id}/tables/refresh`, { method: 'POST' }),
@@ -1553,4 +1556,10 @@ export interface SnmpWirelessData {
   success: boolean;
   radios: { if_index: number; name: string; ssid: string; freq: number | null; clients: number | null; noise: number | null; ccq: number | null }[];
   clients: { mac: string; iface: string; signal: number | null; snr: number | null; tx_bps: number | null; rx_bps: number | null; uptime_s: number | null; customer: string }[];
+}
+
+export interface SnmpSuggestion { ip: string; name: string; platform: string; source: 'neighbor' | 'scan'; seen_from?: string; protocol?: string; descr?: string }
+export interface SnmpDiscoveryData {
+  success: boolean; neighbors: SnmpSuggestion[];
+  scan: { running: boolean; cidr: string; total: number; done: number; found: SnmpSuggestion[]; error: string };
 }

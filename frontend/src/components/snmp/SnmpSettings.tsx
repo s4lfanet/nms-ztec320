@@ -1,3 +1,4 @@
+import { DiscoveryCard } from './DiscoveryCard';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -169,6 +170,8 @@ export function SnmpSettings() {
       </Card>
 
       <DigestCard />
+
+      <DiscoveryCard />
 
       <StickyActionBar>
         <Button variant="secondary" icon={<RotateCcw size={16} />} onClick={resetDefaults}>{t('snset.reset')}</Button>
