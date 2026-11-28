@@ -433,3 +433,33 @@ class TestSameSerialDedupe:
             onus = ONU.query.filter_by(olt_id=olt_id).all()
         assert len(onus) == 1
         assert onus[0].status == 'online'  # second entry updated the same row
+
+
+class TestCountersMatchOnuTable:
+    def test_duplicate_entries_and_live_counts(self, db_ctx):
+        """Entri ganda onu_index dalam satu hasil walk tidak boleh menggandakan hitungan, dan
+        hitungan OLT/dashboard harus sama dengan isi tabel ONU."""
+        from sync_helper import save_sync_result
+        from helpers import onu_counts_by_olt
+        from app import app
+        with app.app_context():
+            olt = OLT(name='Count-OLT', ip_address='10.9.9.50', vendor='ZTE', model='C320')
+            db.session.add(olt)
+            db.session.commit()
+            sync = OLTSyncStatus(olt_id=olt.id)
+            db.session.add(sync)
+            db.session.commit()
+            row = lambda: {'onu_index': 110101, 'frame': 1, 'slot': 1, 'port': 1, 'onu_id': 1,
+                           'serial_number': 'ZTEGD001', 'name': 'A', 'status': 'online', 'oper_state': 1, 'reg_status': 1}
+            row2 = dict(row(), onu_index=110102, onu_id=2, serial_number='ZTEGD002', status='offline')
+            result = {'system': {}, 'snmp_ok': True, 'telnet_ok': True, 'onus': [row(), row(), row2]}
+            save_sync_result(olt, result, sync, light=False)
+            olt_id = olt.id
+            assert ONU.query.filter_by(olt_id=olt_id).count() == 2
+            o = db.session.get(OLT, olt_id)
+            assert (o.total_onu, o.online_onu, o.offline_onu) == (2, 1, 1)
+            # kolom OLT sengaja dibuat basi: perhitungan langsung tetap benar
+            o.total_onu = 99
+            db.session.commit()
+            live = onu_counts_by_olt([olt_id])[olt_id]
+            assert live['total'] == 2 and live['online'] == 1 and live['offline'] == 1

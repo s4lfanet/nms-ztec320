@@ -76,12 +76,17 @@ def api_dashboard():
     for u in OLTUplink.query.filter(OLTUplink.olt_id.in_(olt_ids)).all():
         uplink_counts[u.olt_id] += 1
 
-    total_onu = sum(o.total_onu for o in olts)
-    online_onu = sum(o.online_onu for o in olts)
-    los_onu = sum(o.los_onu for o in olts)
-    dyinggasp_onu = sum(o.dyinggasp_onu for o in olts)
-    offline_onu = sum(o.offline_onu for o in olts)
-    other_onu = sum(o.other_onu for o in olts)
+    # Hitung langsung dari tabel ONU agar selalu sama dengan halaman Semua ONU
+    # (kolom OLT.total_onu dkk. hanya salinan dari sync terakhir dan bisa basi).
+    from helpers import onu_counts_by_olt
+    live = onu_counts_by_olt(olt_ids)
+    zero = {'total': 0, 'online': 0, 'los': 0, 'dyinggasp': 0, 'offline': 0, 'other': 0}
+    total_onu = sum(live.get(i, zero)['total'] for i in olt_ids)
+    online_onu = sum(live.get(i, zero)['online'] for i in olt_ids)
+    los_onu = sum(live.get(i, zero)['los'] for i in olt_ids)
+    dyinggasp_onu = sum(live.get(i, zero)['dyinggasp'] for i in olt_ids)
+    offline_onu = sum(live.get(i, zero)['offline'] for i in olt_ids)
+    other_onu = sum(live.get(i, zero)['other'] for i in olt_ids)
     t = max(total_onu, 1)
     stats = {
         'total_olts': len(olts), 'total_onu': total_onu,
@@ -95,8 +100,9 @@ def api_dashboard():
     olt_list = [{
         'id': o.id, 'name': o.name, 'ip_address': o.ip_address, 'model': o.model,
         'firmware_version': o.firmware_version, 'is_online': o.is_online,
-        'total_onu': o.total_onu, 'online_onu': o.online_onu, 'los_onu': o.los_onu,
-        'dyinggasp_onu': o.dyinggasp_onu, 'offline_onu': o.offline_onu,
+        'total_onu': live.get(o.id, zero)['total'], 'online_onu': live.get(o.id, zero)['online'],
+        'los_onu': live.get(o.id, zero)['los'],
+        'dyinggasp_onu': live.get(o.id, zero)['dyinggasp'], 'offline_onu': live.get(o.id, zero)['offline'],
         'temperature': o.temperature, 'last_sync': utc_iso(o.last_sync),
         'connection_status': o.connection_status,
         'fans': [{'number': f.fan_number, 'status': f.status, 'rpm': f.rpm, 'speed_level': f.speed_level} for f in fans_by_olt.get(o.id, [])],
