@@ -3180,5 +3180,17 @@
     "noteService": "Service names come from the router DNS cache, reverse DNS and domain rules. Unrecognised traffic goes to \"Other\"; services behind shared CDNs may be less accurate.",
     "noteRetention": "Retention: 5-minute data 3 days, hourly data 60 days, per-customer data 7 days (configurable).",
     "noteUse": "Good for trends and comparing services. Do not use it for exact billing or quota."
+  },
+  "bill": {
+    "title": "Port billing (burstable 95th)",
+    "hint": "Fill in for ports billed by usage. Usage = 95th percentile of hourly averages (larger direction) over the month; overage = above commit.",
+    "customer": "Customer",
+    "commit": "Commit (Mbps)",
+    "rate": "Overage rate per Mbps",
+    "saved": "Port billing saved",
+    "scope": "Customer billing",
+    "allCustomers": "All customers",
+    "line": "Commit {{commit}} Mbps · 95th: {{p95}} Mbps · overage {{over}} Mbps",
+    "cost": "Cost {{v}}"
   }
 }

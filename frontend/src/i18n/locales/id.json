@@ -3180,5 +3180,17 @@
     "noteService": "Nama layanan dikenali dari DNS cache router, reverse DNS, dan aturan domain. Yang tidak dikenali masuk \"Lainnya\"; layanan di CDN bersama bisa kurang tepat.",
     "noteRetention": "Penyimpanan: data 5 menit 3 hari, data per jam 60 hari, data per pelanggan 7 hari (bisa diatur).",
     "noteUse": "Cocok untuk melihat tren dan perbandingan antar layanan. Jangan dipakai untuk tagihan atau kuota yang presisi."
+  },
+  "bill": {
+    "title": "Billing port (burstable 95%)",
+    "hint": "Isi untuk port yang ditagih per pemakaian. Pemakaian = persentil-95 rata-rata per jam (arah terbesar) dalam sebulan; kelebihan = di atas komitmen.",
+    "customer": "Pelanggan",
+    "commit": "Komitmen (Mbps)",
+    "rate": "Tarif kelebihan per Mbps (Rp)",
+    "saved": "Billing port disimpan",
+    "scope": "Billing pelanggan",
+    "allCustomers": "Semua pelanggan",
+    "line": "Komitmen {{commit}} Mbps · 95%: {{p95}} Mbps · kelebihan {{over}} Mbps",
+    "cost": "Rp {{v}}"
   }
 }

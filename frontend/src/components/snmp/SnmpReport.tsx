@@ -26,10 +26,12 @@ const pctTone = (v: number | null) => v == null ? 'text-tx3' : v >= 80 ? 'text-d
 export function SnmpReport() {
   const { t } = useTranslation();
   const [month, setMonth] = useState(thisMonth());
-  const [scope, setScope] = useState<'watched' | 'all'>('watched');
+  const [scope, setScope] = useState<'watched' | 'all' | 'billing'>('watched');
+  const [customer, setCustomer] = useState('');
   const tz = -new Date().getTimezoneOffset();
   const q = { month, scope, tz };
-  const { data, isLoading } = useQuery({ queryKey: ['snmp-report', q], queryFn: () => api.snmpReport(q) });
+  const billing = scope === 'billing';
+  const { data, isLoading } = useQuery({ queryKey: ['snmp-report', q, customer], queryFn: () => billing ? api.snmpBilling({ month, tz, customer }) : api.snmpReport(q) });
   return (
     <div className="space-y-3">
       <Card bodyClassName="p-3">
@@ -44,9 +46,19 @@ export function SnmpReport() {
             <select className="input-field !w-auto" value={scope} onChange={e => setScope(e.target.value as typeof scope)}>
               <option value="watched">{t('devx.scopeWatched')}</option>
               <option value="all">{t('devx.scopeAll')}</option>
+              <option value="billing">{t('bill.scope')}</option>
             </select>
           </label>
-          <a className="btn-cancel border border-line inline-flex items-center gap-1.5 text-sm ml-auto px-3 py-2 rounded-lg" href={api.snmpReportCsvUrl(q)} download>
+          {billing && (
+            <label className="text-xs text-tx2 flex flex-col gap-1">
+              {t('bill.customer')}
+              <select className="input-field !w-auto" value={customer} onChange={e => setCustomer(e.target.value)}>
+                <option value="">{t('bill.allCustomers')}</option>
+                {((data as { customers?: string[] } | undefined)?.customers ?? []).map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+          )}
+          <a className="btn-cancel border border-line inline-flex items-center gap-1.5 text-sm ml-auto px-3 py-2 rounded-lg" href={billing ? api.snmpBillingCsvUrl({ month, tz, customer }) : api.snmpReportCsvUrl(q)} download>
             <Download size={14} />{t('devx.csv')}
           </a>
         </div>
@@ -99,7 +111,7 @@ function ReportRow({ p }: { p: SnmpReportPort }) {
   return (
     <li className="py-2.5 space-y-1.5">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <span className="text-sm text-tx1">{p.device_name} · {p.port}</span>
+        <span className="text-sm text-tx1">{p.customer ? `${p.customer} · ` : ''}{p.device_name} · {p.port}</span>
         {p.speed_mbps ? <span className="text-xs text-tx3">{fmtSpeed(p.speed_mbps)}</span> : null}
         {p.alias && <span className="text-xs text-tx3 truncate">{p.alias}</span>}
         <span className="ml-auto text-xs text-tx2">
@@ -113,6 +125,12 @@ function ReportRow({ p }: { p: SnmpReportPort }) {
       </div>
       {dir('in', '↓')}
       {dir('out', '↑')}
+      {p.billing_p95_mbps != null && p.commit_mbps != null && (
+        <p className="text-xs text-tx2">
+          {t('bill.line', { commit: p.commit_mbps, p95: p.billing_p95_mbps, over: p.overage_mbps ?? 0 })}
+          {p.overage_cost ? <b className="text-warning"> · {t('bill.cost', { v: p.overage_cost.toLocaleString() })}</b> : null}
+        </p>
+      )}
       {p.coverage_pct < 90 && <p className="text-[11px] text-warning">{t('devx.coverage', { n: p.coverage_pct })}</p>}
     </li>
   );
