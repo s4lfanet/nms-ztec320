@@ -4,6 +4,9 @@ Semua perubahan penting pada proyek ini akan didokumentasikan dalam file ini.
 
 ## [Unreleased]
 
+### 2026-11-28 — Wireless MikroTik
+- Tab ARP/MAC perangkat MikroTik menampilkan **Wireless**: per radio (SSID, frekuensi, jumlah klien, noise, CCQ) dan daftar klien dengan sinyal (terlemah di atas), SNR, rate, uptime, serta nama pelanggan bila MAC cocok sesi PPPoE.
+
 ### 2026-11-28 — VLAN per port
 - Tab ARP/MAC perangkat SNMP kini menampilkan **VLAN**: daftar VLAN dengan port tagged/untagged, dan per port (PVID + VLAN anggota). Bila perangkat tidak menyediakan konfigurasi VLAN, ditampilkan VLAN yang terlihat dari tabel MAC.
 

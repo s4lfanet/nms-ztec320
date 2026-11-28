@@ -3202,5 +3202,11 @@
     "untag": "untagged",
     "tag": "tagged",
     "seen": "terlihat"
+  },
+  "wifi": {
+    "title": "Wireless",
+    "clients": "{{n}} klien",
+    "noise": "noise",
+    "weakFirst": "Klien terhubung — sinyal terlemah di atas (hijau ≥ −65, kuning ≥ −75, merah di bawahnya)"
   }
 }

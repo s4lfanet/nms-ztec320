@@ -3202,5 +3202,11 @@
     "untag": "untagged",
     "tag": "tagged",
     "seen": "seen"
+  },
+  "wifi": {
+    "title": "Wireless",
+    "clients": "{{n}} clients",
+    "noise": "noise",
+    "weakFirst": "Connected clients — weakest signal first (green ≥ −65, yellow ≥ −75, red below)"
   }
 }

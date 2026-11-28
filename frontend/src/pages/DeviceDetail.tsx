@@ -20,6 +20,7 @@ import { PortLive, PortSpark } from '../components/snmp/PortLive';
 import { PortDetail, rxTone } from '../components/snmp/PortDetail';
 import { DeviceTables } from '../components/snmp/MacTables';
 import { VlanCard } from '../components/snmp/VlanCard';
+import { WirelessCard } from '../components/snmp/WirelessCard';
 import { PORT_KINDS, countKinds, portKind, type PortKind } from '../lib/portKind';
 import { SnmpGraph, RangePicker, type GraphRange, type GraphUnit } from '../components/snmp/SnmpGraph';
 
@@ -110,7 +111,7 @@ export function DeviceDetail() {
       {tab === 'graphs' && <DeviceGraphs deviceId={did} range={range} setRange={setRange} />}
       {tab === 'ports' && <Ports ports={data.ports} canEdit={canEdit} deviceId={did} range={range} setRange={setRange} />}
       {tab === 'neighbors' && <Neighbors list={data.neighbors || []} />}
-      {tab === 'tables' && <div className="space-y-3"><DeviceTables deviceId={did} canEdit={canEdit} /><VlanCard deviceId={did} /></div>}
+      {tab === 'tables' && <div className="space-y-3"><DeviceTables deviceId={did} canEdit={canEdit} /><WirelessCard deviceId={did} /><VlanCard deviceId={did} /></div>}
       {tab === 'rules' && <SensorRules deviceId={did} canEdit={canEdit} ports={data.ports} />}
       {tab === 'topology' && <TopologyMap deviceId={did} />}
       {tab === 'flow' && <TrafficFlow canEdit={canEdit} deviceId={did} deviceName={d.name} />}

@@ -1683,6 +1683,33 @@ class SnmpVlan(db.Model):
     untagged = db.Column(db.Text, default='[]')     # JSON [ifIndex…] — anggota untagged
 
 
+class SnmpWifiRadio(db.Model):
+    """Radio/AP wireless MikroTik (MIKROTIK-MIB mtxrWlApTable): SSID, frekuensi, jumlah klien."""
+    __tablename__ = 'snmp_wifi_radios'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    if_index = db.Column(db.Integer, nullable=False)
+    ssid = db.Column(db.String(64), default='')
+    freq = db.Column(db.Integer, nullable=True)       # MHz
+    clients = db.Column(db.Integer, nullable=True)
+    noise = db.Column(db.Integer, nullable=True)      # dBm
+    ccq = db.Column(db.Integer, nullable=True)        # %
+
+
+class SnmpWifiClient(db.Model):
+    """Klien terhubung (registration table MikroTik, mtxrWlRtabTable)."""
+    __tablename__ = 'snmp_wifi_clients'
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey('snmp_devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    if_index = db.Column(db.Integer, nullable=False)
+    mac = db.Column(db.String(17), nullable=False, index=True)
+    signal = db.Column(db.Integer, nullable=True)     # dBm
+    snr = db.Column(db.Integer, nullable=True)        # dB (0 = tidak ada)
+    tx_bps = db.Column(db.BigInteger, nullable=True)
+    rx_bps = db.Column(db.BigInteger, nullable=True)
+    uptime_s = db.Column(db.Integer, nullable=True)
+
+
 class SnmpMaintenance(db.Model):
     """Jendela pemeliharaan perangkat SNMP: selama aktif, alert perangkat itu ditahan.
     device_id NULL = semua perangkat SNMP. Waktu disimpan UTC naif."""
